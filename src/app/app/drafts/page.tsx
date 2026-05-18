@@ -2,6 +2,7 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { demoDraftRows } from "@/lib/queues/demo-queues";
 import { getDraftQueueRows, type DraftQueueRow } from "@/lib/queues/get-queue-data";
+import { processQueuedAiTasksAction } from "./actions";
 
 export default async function DraftsPage() {
   const rows = await getDraftQueueRows(demoDraftRows);
@@ -12,6 +13,11 @@ export default async function DraftsPage() {
       title="Draft Queue"
       description="AI-generated content drafts waiting for review, approval, rejection, or later publishing."
     >
+      <form action={processQueuedAiTasksAction} className="button-row section-actions">
+        <button className="button" type="submit">
+          Process queued AI tasks
+        </button>
+      </form>
       <QueueTable<DraftQueueRow>
         rows={rows}
         columns={[

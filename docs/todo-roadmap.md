@@ -68,12 +68,12 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 - [x] Define prompt context builder from tenant, brand, services, locations, offers, and marketing settings
 - [x] Generate weekly draft tasks per active brand
-- [ ] Generate draft content only, not auto-publish
-- [ ] Generate SEO recommendations
-- [ ] Generate campaign recommendations
-- [ ] Classify risk level for drafts and recommendations
-- [ ] Default legal-sensitive brands to review-required
-- [ ] Store AI input context and output metadata for auditability
+- [x] Generate draft content only, not auto-publish
+- [x] Generate SEO recommendations
+- [x] Generate campaign recommendations
+- [x] Classify risk level for drafts and recommendations
+- [x] Default legal-sensitive brands to review-required
+- [x] Store AI input context and output metadata for auditability
 
 ## Tenant And SaaS Platform
 
