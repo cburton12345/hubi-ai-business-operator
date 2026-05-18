@@ -13,10 +13,12 @@ export function createPostgresPool() {
   if (!pool) {
     pool = new Pool({
       connectionString: env.DATABASE_URL,
+      // Render can prefer IPv6 for Supabase hostnames; Supabase's shared pooler is reachable over IPv4.
+      family: 4,
       ssl: {
         rejectUnauthorized: false
       }
-    });
+    } as pg.PoolConfig);
   }
 
   return pool;
