@@ -22,10 +22,10 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Phase 1: Foundation
 
-- [ ] Apply Supabase migrations to a clean project
-- [ ] Verify RLS policies against real Supabase Auth users
+- [x] Apply Supabase migrations to a clean project
+- [x] Verify RLS policies against Supabase Auth-compatible user context
 - [x] Create seed migration for internal tenant
-- [ ] Apply seed migration for internal tenant
+- [x] Apply seed migration for internal tenant
 - [ ] Seed internal brands:
   - [x] Create seed for 4bid
   - [x] Create seed for MarketplacePro
@@ -33,31 +33,31 @@ The product should eventually act like an AI COO for local service, rental, soft
   - [x] Create seed for Homes4Rent
   - [x] Create seed for Roofing / storm restoration
   - [x] Create seed for Ferocity
-  - [ ] Apply internal brand seeds to Supabase
-- [ ] Create real tenant membership flow for first admin user
-- [ ] Add protected admin routes
-- [ ] Add tenant selector
-- [ ] Add brand selector
+  - [x] Apply internal brand seeds to Supabase
+- [x] Create real tenant membership flow for first admin user
+- [x] Add protected admin routes
+- [x] Add tenant selector
+- [x] Add brand selector
 - [x] Add tenant-scoped Supabase dashboard query fallback
 - [x] Replace remaining demo queues with real Supabase query tables
 - [x] Build CRM-lite lead dashboard
 - [x] Add lead detail view
 - [x] Add lead status updates
 - [x] Add lead notes and event history
-- [ ] Create reusable public lead forms by brand
+- [x] Create reusable public lead forms by brand
 - [ ] Add business-model-specific lead detail handling:
-  - [ ] Local service
-  - [ ] Rental
-  - [ ] Software/demo
-  - [ ] Marketplace buyer/seller
-  - [ ] Legal/personal injury intake
+  - [x] Local service
+  - [x] Rental
+  - [x] Software/demo
+  - [x] Marketplace buyer/seller
+  - [x] Legal/personal injury intake
 - [x] Add AI task queue table views
 - [x] Add AI draft queue table views
 - [x] Add recommendation queue views
 - [x] Add approval queue views
-- [ ] Add approve/reject/change-request actions
-- [ ] Log important admin actions to `activity_logs`
-- [ ] Add basic tests for lead capture and approval workflow
+- [x] Add approve/reject/change-request actions
+- [x] Log important admin actions to `activity_logs`
+- [x] Add basic tests for lead capture and approval workflow
 - [ ] Deploy first Render preview
 
 ## Phase 1 AI Scope
@@ -124,11 +124,11 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Ferocity / Personal Injury Lead Generation
 
-- [ ] Ferocity brand seed
-- [ ] Legal-sensitive risk profile
-- [ ] Case intake fields
-- [ ] Consent capture
-- [ ] Disclaimer acknowledgement
+- [x] Ferocity brand seed
+- [x] Legal-sensitive risk profile
+- [x] Case intake fields
+- [x] Consent capture
+- [x] Disclaimer acknowledgement
 - [ ] No-legal-advice content guardrails
 - [ ] No compensation guarantee guardrails
 - [ ] Attorney relationship disclaimer handling

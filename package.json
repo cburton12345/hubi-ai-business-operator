@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
     "db:migrate": "node scripts/run-migrations.mjs",
+    "db:verify-rls": "node scripts/verify-rls.mjs",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "node scripts/clean-next-types.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
@@ -25,6 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.0.10",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
   }
 }

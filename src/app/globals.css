@@ -282,6 +282,7 @@ pre {
 }
 
 .form-stack select,
+.form-stack input,
 .form-stack textarea {
   width: 100%;
   padding: 10px 11px;
@@ -289,6 +290,53 @@ pre {
   border-radius: 8px;
   background: white;
   color: var(--ink);
+}
+
+.auth-workspace {
+  max-width: 560px;
+  padding-top: 8vh;
+}
+
+.auth-panel {
+  width: 100%;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.checkbox-row {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mini-button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.danger-button {
+  border-color: #fecdca;
+  color: var(--danger);
 }
 
 @media (max-width: 860px) {

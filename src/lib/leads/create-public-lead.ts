@@ -12,6 +12,15 @@ type LeadRecord = {
   id: string;
 };
 
+function textDetail(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function boolDetail(details: Record<string, unknown>, key: string) {
+  return typeof details[key] === "boolean" ? details[key] : null;
+}
+
 export async function createPublicLead(input: PublicLeadInput, requestMeta: { ipAddress?: string; userAgent?: string }) {
   const supabase = createSupabaseAdminClient();
 
@@ -75,6 +84,14 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     };
   }
 
+  await insertLeadDetails({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
+    leadType: input.leadType,
+    details: input.details
+  });
+
   const payload = {
     tenant_id: form.tenant_id,
     brand_id: form.brand_id,
@@ -113,4 +130,84 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     status: 201,
     leadId: lead.id
   };
+}
+
+async function insertLeadDetails({
+  tenantId,
+  brandId,
+  leadId,
+  leadType,
+  details
+}: {
+  tenantId: string;
+  brandId: string;
+  leadId: string;
+  leadType: PublicLeadInput["leadType"];
+  details: Record<string, unknown>;
+}) {
+  const supabase = createSupabaseAdminClient();
+
+  if (!supabase) {
+    return;
+  }
+
+  if (leadType === "appointment" || leadType === "quote" || leadType === "general") {
+    await supabase.from("local_service_lead_details").insert({
+      tenant_id: tenantId,
+      brand_id: brandId,
+      lead_id: leadId,
+      service_interest: textDetail(details, "serviceInterest"),
+      location: textDetail(details, "location"),
+      appointment_window: textDetail(details, "appointmentWindow"),
+      urgency: textDetail(details, "urgency")
+    });
+  }
+
+  if (leadType === "rental_request") {
+    await supabase.from("rental_lead_details").insert({
+      tenant_id: tenantId,
+      brand_id: brandId,
+      lead_id: leadId,
+      rental_item_type: textDetail(details, "rentalItemType"),
+      delivery_needed: boolDetail(details, "deliveryNeeded"),
+      location: textDetail(details, "location")
+    });
+  }
+
+  if (leadType === "demo") {
+    await supabase.from("software_lead_details").insert({
+      tenant_id: tenantId,
+      brand_id: brandId,
+      lead_id: leadId,
+      company_name: textDetail(details, "companyName"),
+      role: textDetail(details, "role"),
+      current_system: textDetail(details, "currentSystem"),
+      demo_requested: true
+    });
+  }
+
+  if (leadType === "buyer" || leadType === "seller") {
+    await supabase.from("marketplace_lead_details").insert({
+      tenant_id: tenantId,
+      brand_id: brandId,
+      lead_id: leadId,
+      intent: leadType,
+      asset_category: textDetail(details, "assetCategory"),
+      location: textDetail(details, "location")
+    });
+  }
+
+  if (leadType === "case_intake") {
+    await supabase.from("legal_lead_details").insert({
+      tenant_id: tenantId,
+      brand_id: brandId,
+      lead_id: leadId,
+      case_type: textDetail(details, "caseType"),
+      state: textDetail(details, "state") ?? textDetail(details, "location"),
+      injury_type: textDetail(details, "injuryType"),
+      has_attorney: boolDetail(details, "hasAttorney"),
+      treatment_received: boolDetail(details, "treatmentReceived"),
+      legal_disclaimer_acknowledged: Boolean(details.legalDisclaimerAcknowledged)
+    });
+  }
 }
