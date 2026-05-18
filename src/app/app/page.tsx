@@ -30,6 +30,9 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/forms">
               Forms
             </Link>
+            <Link className="button secondary-button" href="/app/access">
+              Access
+            </Link>
           </div>
         </div>
 

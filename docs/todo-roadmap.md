@@ -77,11 +77,11 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Tenant And SaaS Platform
 
-- [ ] Platform admin role
-- [ ] Tenant owner role
-- [ ] Tenant admin role
-- [ ] Tenant operator role
-- [ ] Tenant viewer role
+- [x] Platform admin role
+- [x] Tenant owner role
+- [x] Tenant admin role
+- [x] Tenant operator role
+- [x] Tenant viewer role
 - [ ] Tenant workspace settings
 - [ ] Brand-level access rules
 - [ ] User invites

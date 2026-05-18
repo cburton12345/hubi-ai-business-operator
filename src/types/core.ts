@@ -4,6 +4,8 @@ export type RiskProfile = "normal" | "regulated" | "legal_sensitive";
 
 export type RiskLevel = "low" | "medium" | "high";
 
+export type PlatformRole = "super_admin" | "support" | "user";
+
 export type TenantRole = "owner" | "admin" | "operator" | "viewer";
 
 export type BrandSummary = {
