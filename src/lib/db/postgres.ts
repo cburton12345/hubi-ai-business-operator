@@ -1,4 +1,5 @@
 import pg from "pg";
+import dns from "node:dns";
 import { env } from "@/lib/env";
 
 const { Pool } = pg;
@@ -15,6 +16,13 @@ export function createPostgresPool() {
       connectionString: env.DATABASE_URL,
       // Render can prefer IPv6 for Supabase hostnames; Supabase's shared pooler is reachable over IPv4.
       family: 4,
+      lookup: (
+        hostname: string,
+        options: dns.LookupOptions,
+        callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+      ) => {
+        dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
+      },
       ssl: {
         rejectUnauthorized: false
       }
