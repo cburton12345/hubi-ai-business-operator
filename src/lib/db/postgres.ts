@@ -29,5 +29,9 @@ export async function queryPostgres<T extends pg.QueryResultRow>(text: string, v
     return null;
   }
 
-  return db.query<T>(text, values);
+  try {
+    return await db.query<T>(text, values);
+  } catch {
+    return null;
+  }
 }
