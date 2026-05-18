@@ -14,12 +14,14 @@ export default async function AppDashboardPage() {
             <h1>{snapshot.tenantName}</h1>
             <p className="muted">Phase 1 command center for brands, leads, AI drafts, recommendations, and approvals.</p>
           </div>
-          <Link className="button secondary-button" href="/app/tenant/internal-portfolio">
-            View Tenant
-          </Link>
-          <Link className="button" href="/app/leads">
-            Leads
-          </Link>
+          <div className="button-row">
+            <Link className="button secondary-button" href="/app/tenant/internal-portfolio">
+              View Tenant
+            </Link>
+            <Link className="button" href="/app/leads">
+              Leads
+            </Link>
+          </div>
         </div>
 
         <div className="grid">
@@ -64,6 +66,20 @@ export default async function AppDashboardPage() {
             <h2>
               <Lightbulb size={18} /> AI Task Queue
             </h2>
+            <div className="button-row section-actions">
+              <Link className="button secondary-button" href="/app/tasks">
+                Tasks
+              </Link>
+              <Link className="button secondary-button" href="/app/drafts">
+                Drafts
+              </Link>
+              <Link className="button secondary-button" href="/app/recommendations">
+                Recommendations
+              </Link>
+              <Link className="button secondary-button" href="/app/approvals">
+                Approvals
+              </Link>
+            </div>
             <ul className="list">
               {snapshot.tasks.map((task) => (
                 <li className="list-row" key={task.title}>

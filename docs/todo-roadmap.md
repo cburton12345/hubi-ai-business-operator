@@ -39,7 +39,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Add tenant selector
 - [ ] Add brand selector
 - [x] Add tenant-scoped Supabase dashboard query fallback
-- [ ] Replace remaining demo queues with real Supabase query tables
+- [x] Replace remaining demo queues with real Supabase query tables
 - [x] Build CRM-lite lead dashboard
 - [x] Add lead detail view
 - [x] Add lead status updates
@@ -51,10 +51,10 @@ The product should eventually act like an AI COO for local service, rental, soft
   - [ ] Software/demo
   - [ ] Marketplace buyer/seller
   - [ ] Legal/personal injury intake
-- [ ] Add AI task queue table views
-- [ ] Add AI draft queue table views
-- [ ] Add recommendation queue views
-- [ ] Add approval queue views
+- [x] Add AI task queue table views
+- [x] Add AI draft queue table views
+- [x] Add recommendation queue views
+- [x] Add approval queue views
 - [ ] Add approve/reject/change-request actions
 - [ ] Log important admin actions to `activity_logs`
 - [ ] Add basic tests for lead capture and approval workflow
