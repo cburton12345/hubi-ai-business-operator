@@ -9,3 +9,4 @@ build/
 coverage/
 *.log
 tsconfig.tsbuildinfo
+.render-generated-admin-token

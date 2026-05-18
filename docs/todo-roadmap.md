@@ -26,7 +26,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Verify RLS policies against Supabase Auth-compatible user context
 - [x] Create seed migration for internal tenant
 - [x] Apply seed migration for internal tenant
-- [ ] Seed internal brands:
+- [x] Seed internal brands:
   - [x] Create seed for 4bid
   - [x] Create seed for MarketplacePro
   - [x] Create seed for Preferred Trailer Rental
@@ -45,7 +45,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Add lead status updates
 - [x] Add lead notes and event history
 - [x] Create reusable public lead forms by brand
-- [ ] Add business-model-specific lead detail handling:
+- [x] Add business-model-specific lead detail handling:
   - [x] Local service
   - [x] Rental
   - [x] Software/demo
@@ -59,6 +59,10 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Log important admin actions to `activity_logs`
 - [x] Add basic tests for lead capture and approval workflow
 - [ ] Deploy first Render preview
+  - [x] Validate `render.yaml` against Render workspace
+  - [ ] Connect GitHub repo access in Render or make the repo fetchable by Render
+  - [ ] Add missing Supabase runtime secrets in Render
+  - [ ] Trigger and verify first live deploy
 
 ## Phase 1 AI Scope
 
@@ -237,6 +241,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Rate limiting
 - [ ] Audit logs
 - [ ] Tenant isolation tests
+- [x] Render Blueprint validation
 - [ ] Render deploy verification
 - [ ] Supabase usage monitoring
 - [ ] Security review before external customers
