@@ -36,7 +36,9 @@ export default async function LeadsPage() {
                 {leads.map((lead) => (
                   <tr key={lead.id}>
                     <td>
-                      <strong>{lead.name}</strong>
+                      <Link href={`/app/leads/${lead.id}`}>
+                        <strong>{lead.name}</strong>
+                      </Link>
                       <span className="muted">{lead.email || lead.phone || "No contact info"}</span>
                     </td>
                     <td>{lead.brandName}</td>

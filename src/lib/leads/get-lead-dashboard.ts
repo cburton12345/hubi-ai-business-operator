@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { demoLeads } from "@/lib/leads/demo-leads";
 
 export type LeadDashboardRow = {
   id: string;
@@ -32,33 +33,6 @@ type LeadRow = {
       }[]
     | null;
 };
-
-const demoLeads: LeadDashboardRow[] = [
-  {
-    id: "demo-ferocity-intake",
-    brandName: "Ferocity",
-    leadType: "case_intake",
-    status: "new",
-    qualificationStatus: "needs_review",
-    priority: "high",
-    name: "Sample Legal Intake",
-    email: "intake@example.com",
-    phone: "",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "demo-trailer-quote",
-    brandName: "Preferred Trailer Rental",
-    leadType: "rental_request",
-    status: "new",
-    qualificationStatus: "unqualified",
-    priority: "normal",
-    name: "Sample Rental Lead",
-    email: "",
-    phone: "(555) 010-0000",
-    createdAt: new Date().toISOString()
-  }
-];
 
 export async function getLeadDashboardRows() {
   const supabase = createSupabaseAdminClient();

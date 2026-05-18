@@ -41,9 +41,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Add tenant-scoped Supabase dashboard query fallback
 - [ ] Replace remaining demo queues with real Supabase query tables
 - [x] Build CRM-lite lead dashboard
-- [ ] Add lead detail view
-- [ ] Add lead status updates
-- [ ] Add lead notes and event history
+- [x] Add lead detail view
+- [x] Add lead status updates
+- [x] Add lead notes and event history
 - [ ] Create reusable public lead forms by brand
 - [ ] Add business-model-specific lead detail handling:
   - [ ] Local service
