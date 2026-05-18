@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { queryPostgres } from "@/lib/db/postgres";
 import type { PublicLeadInput } from "@/lib/leads/schemas";
 
 type FormRecord = {
@@ -25,11 +26,7 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
-    return {
-      ok: false,
-      status: 503,
-      error: "Lead capture is not configured."
-    };
+    return createPublicLeadWithPostgres(input, requestMeta);
   }
 
   const { data: form, error: formError } = await supabase
@@ -139,6 +136,157 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
   };
 }
 
+async function createPublicLeadWithPostgres(
+  input: PublicLeadInput,
+  requestMeta: { ipAddress?: string; userAgent?: string }
+) {
+  const formResult = await queryPostgres<FormRecord>(
+    `
+    select id, tenant_id, brand_id, active
+    from public.forms
+    where public_key = $1
+    limit 1
+    `,
+    [input.formPublicKey]
+  );
+  const form = formResult?.rows[0];
+
+  if (!form || !form.active) {
+    return {
+      ok: false,
+      status: 404,
+      error: "Lead form was not found."
+    };
+  }
+
+  const leadResult = await queryPostgres<LeadRecord>(
+    `
+    insert into public.leads (
+      tenant_id,
+      brand_id,
+      form_id,
+      source,
+      source_detail,
+      name,
+      email,
+      phone,
+      message,
+      lead_type,
+      status,
+      qualification_status,
+      priority,
+      consent_to_contact,
+      metadata_json
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'new', $11, $12, $13, $14::jsonb)
+    returning id
+    `,
+    [
+      form.tenant_id,
+      form.brand_id,
+      form.id,
+      input.source ?? "website",
+      input.sourceDetail ?? null,
+      input.name ?? null,
+      input.email ?? null,
+      input.phone ?? null,
+      input.message ?? null,
+      input.leadType,
+      input.leadType === "case_intake" ? "needs_review" : "unqualified",
+      input.leadType === "case_intake" ? "high" : "normal",
+      input.consentToContact,
+      JSON.stringify({
+        details: input.details,
+        utm: input.utm,
+        submittedAt: input.submittedAt ?? null
+      })
+    ]
+  );
+  const lead = leadResult?.rows[0];
+
+  if (!lead) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Unable to create lead."
+    };
+  }
+
+  await insertLeadDetailsWithPostgres({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
+    leadType: input.leadType,
+    details: input.details
+  });
+
+  await queryPostgres(
+    `
+    insert into public.form_submissions (
+      tenant_id,
+      brand_id,
+      form_id,
+      lead_id,
+      payload_json,
+      ip_address,
+      user_agent
+    )
+    values ($1, $2, $3, $4, $5::jsonb, $6::inet, $7)
+    `,
+    [
+      form.tenant_id,
+      form.brand_id,
+      form.id,
+      lead.id,
+      JSON.stringify({
+        source: input.source,
+        sourceDetail: input.sourceDetail,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        message: input.message,
+        leadType: input.leadType,
+        consentToContact: input.consentToContact,
+        details: input.details,
+        utm: input.utm,
+        submittedAt: input.submittedAt ?? null
+      }),
+      requestMeta.ipAddress ?? null,
+      requestMeta.userAgent ?? null
+    ]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.lead_events (
+      tenant_id,
+      brand_id,
+      lead_id,
+      type,
+      body,
+      metadata_json
+    )
+    values ($1, $2, $3, 'form_submission', 'Lead captured from public form.', $4::jsonb)
+    `,
+    [
+      form.tenant_id,
+      form.brand_id,
+      lead.id,
+      JSON.stringify({
+        source: input.source ?? "website",
+        leadType: input.leadType,
+        utm: input.utm
+      })
+    ]
+  );
+
+  return {
+    ok: true,
+    status: 201,
+    leadId: lead.id
+  };
+}
+
 async function insertLeadDetails({
   tenantId,
   brandId,
@@ -216,5 +364,141 @@ async function insertLeadDetails({
       treatment_received: boolDetail(details, "treatmentReceived"),
       legal_disclaimer_acknowledged: Boolean(details.legalDisclaimerAcknowledged)
     });
+  }
+}
+
+async function insertLeadDetailsWithPostgres({
+  tenantId,
+  brandId,
+  leadId,
+  leadType,
+  details
+}: {
+  tenantId: string;
+  brandId: string;
+  leadId: string;
+  leadType: PublicLeadInput["leadType"];
+  details: Record<string, unknown>;
+}) {
+  if (leadType === "appointment" || leadType === "quote" || leadType === "general") {
+    await queryPostgres(
+      `
+      insert into public.local_service_lead_details (
+        tenant_id,
+        brand_id,
+        lead_id,
+        service_interest,
+        location,
+        appointment_window,
+        urgency
+      )
+      values ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        tenantId,
+        brandId,
+        leadId,
+        textDetail(details, "serviceInterest"),
+        textDetail(details, "location"),
+        textDetail(details, "appointmentWindow"),
+        textDetail(details, "urgency")
+      ]
+    );
+  }
+
+  if (leadType === "rental_request") {
+    await queryPostgres(
+      `
+      insert into public.rental_lead_details (
+        tenant_id,
+        brand_id,
+        lead_id,
+        rental_item_type,
+        delivery_needed,
+        location
+      )
+      values ($1, $2, $3, $4, $5, $6)
+      `,
+      [
+        tenantId,
+        brandId,
+        leadId,
+        textDetail(details, "rentalItemType"),
+        boolDetail(details, "deliveryNeeded"),
+        textDetail(details, "location")
+      ]
+    );
+  }
+
+  if (leadType === "demo") {
+    await queryPostgres(
+      `
+      insert into public.software_lead_details (
+        tenant_id,
+        brand_id,
+        lead_id,
+        company_name,
+        role,
+        current_system,
+        demo_requested
+      )
+      values ($1, $2, $3, $4, $5, $6, true)
+      `,
+      [
+        tenantId,
+        brandId,
+        leadId,
+        textDetail(details, "companyName"),
+        textDetail(details, "role"),
+        textDetail(details, "currentSystem")
+      ]
+    );
+  }
+
+  if (leadType === "buyer" || leadType === "seller") {
+    await queryPostgres(
+      `
+      insert into public.marketplace_lead_details (
+        tenant_id,
+        brand_id,
+        lead_id,
+        intent,
+        asset_category,
+        location
+      )
+      values ($1, $2, $3, $4, $5, $6)
+      `,
+      [tenantId, brandId, leadId, leadType, textDetail(details, "assetCategory"), textDetail(details, "location")]
+    );
+  }
+
+  if (leadType === "case_intake") {
+    await queryPostgres(
+      `
+      insert into public.legal_lead_details (
+        tenant_id,
+        brand_id,
+        lead_id,
+        case_type,
+        state,
+        injury_type,
+        has_attorney,
+        treatment_received,
+        legal_disclaimer_acknowledged
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `,
+      [
+        tenantId,
+        brandId,
+        leadId,
+        textDetail(details, "caseType"),
+        textDetail(details, "state") ?? textDetail(details, "location"),
+        textDetail(details, "injuryType"),
+        boolDetail(details, "hasAttorney"),
+        boolDetail(details, "treatmentReceived"),
+        Boolean(details.legalDisclaimerAcknowledged)
+      ]
+    );
   }
 }

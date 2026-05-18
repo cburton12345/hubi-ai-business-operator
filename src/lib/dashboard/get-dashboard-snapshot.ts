@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { internalBrands, starterRecommendations, starterTasks } from "@/lib/dashboard/demo-data";
 import type { BrandSummary } from "@/types/core";
+import { queryPostgres } from "@/lib/db/postgres";
 
 type BrandRow = {
   name: string;
@@ -15,6 +16,53 @@ export async function getDashboardSnapshot() {
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
+    const brandResult = await queryPostgres<BrandRow>(
+      `
+      select name, slug, business_model, industry, primary_goal, risk_profile
+      from public.brands
+      where tenant_id = $1
+      order by name
+      `,
+      ["11111111-1111-4111-8111-111111111111"]
+    );
+    const countResult = await queryPostgres<{
+      open_leads: string;
+      pending_drafts: string;
+      pending_approvals: string;
+    }>(
+      `
+      select
+        (select count(*) from public.leads where status = 'new') as open_leads,
+        (select count(*) from public.ai_drafts where status = 'needs_review') as pending_drafts,
+        (select count(*) from public.approvals where status = 'pending') as pending_approvals
+      `
+    );
+
+    if (brandResult) {
+      const brands = brandResult.rows.map((brand) => ({
+        name: brand.name,
+        slug: brand.slug,
+        businessModel: brand.business_model,
+        industry: brand.industry ?? "Uncategorized",
+        primaryGoal: brand.primary_goal ?? "No primary goal set.",
+        riskProfile: brand.risk_profile
+      }));
+      const counts = countResult?.rows[0];
+
+      return {
+        tenantName: "AI Business Operator",
+        brands,
+        recommendations: starterRecommendations,
+        tasks: starterTasks,
+        metrics: {
+          brands: brands.length,
+          openLeads: Number(counts?.open_leads ?? 0),
+          pendingDrafts: Number(counts?.pending_drafts ?? 0),
+          pendingApprovals: Number(counts?.pending_approvals ?? 0)
+        }
+      };
+    }
+
     return {
       tenantName: "Internal Portfolio",
       brands: internalBrands,

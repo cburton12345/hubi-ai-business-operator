@@ -1,5 +1,6 @@
 import { internalBrands } from "@/lib/dashboard/demo-data";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { queryPostgres } from "@/lib/db/postgres";
 import type { BrandSummary } from "@/types/core";
 
 type TenantRow = {
@@ -19,6 +20,44 @@ type BrandRow = {
 
 export async function getTenantOverview(tenantSlug: string) {
   const supabase = createSupabaseAdminClient();
+
+  if (!supabase) {
+    const tenantResult = await queryPostgres<TenantRow>(
+      `
+      select id, name, slug
+      from public.tenants
+      where slug = $1
+      limit 1
+      `,
+      [tenantSlug]
+    );
+    const tenant = tenantResult?.rows[0];
+
+    if (tenant) {
+      const brandResult = await queryPostgres<BrandRow>(
+        `
+        select name, slug, business_model, industry, primary_goal, risk_profile
+        from public.brands
+        where tenant_id = $1
+        order by name
+        `,
+        [tenant.id]
+      );
+
+      return {
+        name: tenant.name,
+        slug: tenant.slug,
+        brands: (brandResult?.rows ?? []).map((brand) => ({
+          name: brand.name,
+          slug: brand.slug,
+          businessModel: brand.business_model,
+          industry: brand.industry ?? "Uncategorized",
+          primaryGoal: brand.primary_goal ?? "No primary goal set.",
+          riskProfile: brand.risk_profile
+        }))
+      };
+    }
+  }
 
   if (supabase) {
     const { data: tenant } = await supabase

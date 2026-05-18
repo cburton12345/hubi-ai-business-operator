@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { demoLeadDetails } from "@/lib/leads/demo-leads";
+import { queryPostgres } from "@/lib/db/postgres";
 
 export type LeadEventRow = {
   id: string;
@@ -61,6 +62,77 @@ type EventRow = {
 
 export async function getLeadDetail(leadId: string) {
   const supabase = createSupabaseAdminClient();
+
+  if (!supabase) {
+    const leadResult = await queryPostgres<
+      Omit<LeadRow, "brands"> & {
+        brand_name: string;
+      }
+    >(
+      `
+      select
+        l.id,
+        l.lead_type,
+        l.status,
+        l.qualification_status,
+        l.priority,
+        l.name,
+        l.email,
+        l.phone,
+        l.message,
+        l.source,
+        l.source_detail,
+        l.consent_to_contact,
+        l.metadata_json,
+        l.created_at,
+        b.name as brand_name
+      from public.leads l
+      join public.brands b on b.id = l.brand_id
+      where l.tenant_id = $1 and l.id = $2
+      limit 1
+      `,
+      ["11111111-1111-4111-8111-111111111111", leadId]
+    );
+    const lead = leadResult?.rows[0];
+
+    if (!lead) {
+      return demoLeadDetails.find((item) => item.id === leadId) ?? null;
+    }
+
+    const eventsResult = await queryPostgres<EventRow>(
+      `
+      select id, type, body, created_at
+      from public.lead_events
+      where tenant_id = $1 and lead_id = $2
+      order by created_at desc
+      `,
+      ["11111111-1111-4111-8111-111111111111", leadId]
+    );
+
+    return {
+      id: lead.id,
+      brandName: lead.brand_name,
+      leadType: lead.lead_type,
+      status: lead.status,
+      qualificationStatus: lead.qualification_status,
+      priority: lead.priority,
+      name: lead.name ?? "Unknown",
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
+      message: lead.message ?? "",
+      source: lead.source ?? "",
+      sourceDetail: lead.source_detail ?? "",
+      consentToContact: lead.consent_to_contact,
+      metadata: lead.metadata_json ?? {},
+      createdAt: lead.created_at,
+      events: (eventsResult?.rows ?? []).map((event) => ({
+        id: event.id,
+        type: event.type,
+        body: event.body ?? "",
+        createdAt: event.created_at
+      }))
+    };
+  }
 
   if (!supabase) {
     return demoLeadDetails.find((lead) => lead.id === leadId) ?? null;

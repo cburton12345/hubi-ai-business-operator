@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { brandProfileUpdateSchema, emptyToNull } from "@/lib/brands/brand-profile-schema";
+import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export async function updateBrandProfile(formData: FormData) {
@@ -37,7 +38,117 @@ export async function updateBrandProfile(formData: FormData) {
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
-    return;
+    const brandResult = await queryPostgres<{ id: string; tenant_id: string; slug: string }>(
+      `
+      update public.brands
+      set
+        name = $2,
+        domain = $3,
+        phone = $4,
+        email = $5,
+        logo_url = $6,
+        industry = $7,
+        vertical = $8,
+        description = $9,
+        primary_goal = $10,
+        primary_location = $11,
+        risk_profile = $12,
+        status = $13,
+        updated_at = now()
+      where id = $1
+      returning id, tenant_id, slug
+      `,
+      [
+        parsed.data.brandId,
+        parsed.data.name.trim(),
+        emptyToNull(parsed.data.domain),
+        emptyToNull(parsed.data.phone),
+        emptyToNull(parsed.data.email),
+        emptyToNull(parsed.data.logoUrl),
+        emptyToNull(parsed.data.industry),
+        emptyToNull(parsed.data.vertical),
+        emptyToNull(parsed.data.description),
+        emptyToNull(parsed.data.primaryGoal),
+        emptyToNull(parsed.data.primaryLocation),
+        parsed.data.riskProfile,
+        parsed.data.status
+      ]
+    );
+
+    const brand = brandResult?.rows[0];
+
+    if (!brand) {
+      return;
+    }
+
+    await queryPostgres(
+      `
+      insert into public.brand_marketing_settings (
+        tenant_id,
+        brand_id,
+        target_customers,
+        cta_goals,
+        ad_goals,
+        seo_targets,
+        review_strategy,
+        follow_up_strategy,
+        tone_of_voice,
+        approval_mode,
+        updated_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+      on conflict (brand_id) do update
+      set
+        target_customers = excluded.target_customers,
+        cta_goals = excluded.cta_goals,
+        ad_goals = excluded.ad_goals,
+        seo_targets = excluded.seo_targets,
+        review_strategy = excluded.review_strategy,
+        follow_up_strategy = excluded.follow_up_strategy,
+        tone_of_voice = excluded.tone_of_voice,
+        approval_mode = excluded.approval_mode,
+        updated_at = now()
+      `,
+      [
+        brand.tenant_id,
+        brand.id,
+        emptyToNull(parsed.data.targetCustomers),
+        emptyToNull(parsed.data.ctaGoals),
+        emptyToNull(parsed.data.adGoals),
+        emptyToNull(parsed.data.seoTargets),
+        emptyToNull(parsed.data.reviewStrategy),
+        emptyToNull(parsed.data.followUpStrategy),
+        emptyToNull(parsed.data.toneOfVoice),
+        parsed.data.approvalMode
+      ]
+    );
+
+    await queryPostgres(
+      `
+      insert into public.activity_logs (
+        tenant_id,
+        brand_id,
+        actor_type,
+        action,
+        target_type,
+        target_id,
+        metadata_json
+      )
+      values ($1, $2, 'user', 'brand.profile_updated', 'brand', $2, $3::jsonb)
+      `,
+      [
+        brand.tenant_id,
+        brand.id,
+        JSON.stringify({
+          updatedFields: Object.keys(parsed.data).filter((key) => key !== "brandId")
+        })
+      ]
+    );
+
+    revalidatePath("/app/brands");
+    revalidatePath(`/app/brands/${brand.slug}`);
+    revalidatePath("/app/tasks");
+    redirect(`/app/brands/${brand.slug}?saved=1`);
   }
 
   const input = parsed.data;

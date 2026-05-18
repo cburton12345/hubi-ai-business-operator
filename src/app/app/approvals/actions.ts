@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const approvalDecisionSchema = z.object({
@@ -31,6 +32,80 @@ export async function decideApproval(formData: FormData) {
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
+    const approvalResult = await queryPostgres<ApprovalRecord>(
+      `
+      update public.approvals
+      set status = $2, reviewed_at = now()
+      where tenant_id = $1 and id = $3
+      returning id, tenant_id, brand_id, target_type, target_id, risk_level
+      `,
+      ["11111111-1111-4111-8111-111111111111", parsed.data.decision, parsed.data.approvalId]
+    );
+    const approval = approvalResult?.rows[0];
+
+    if (!approval) {
+      return;
+    }
+
+    if (approval.target_type === "ai_draft") {
+      await queryPostgres(
+        `
+        update public.ai_drafts
+        set status = $3, updated_at = now()
+        where tenant_id = $1 and id = $2
+        `,
+        [
+          approval.tenant_id,
+          approval.target_id,
+          parsed.data.decision === "approved" ? "approved" : parsed.data.decision === "rejected" ? "rejected" : "needs_review"
+        ]
+      );
+    }
+
+    if (approval.target_type === "recommendation") {
+      await queryPostgres(
+        `
+        update public.recommendations
+        set status = $3, updated_at = now()
+        where tenant_id = $1 and id = $2
+        `,
+        [
+          approval.tenant_id,
+          approval.target_id,
+          parsed.data.decision === "approved" ? "approved" : parsed.data.decision === "rejected" ? "rejected" : "open"
+        ]
+      );
+    }
+
+    await queryPostgres(
+      `
+      insert into public.activity_logs (
+        tenant_id,
+        brand_id,
+        actor_type,
+        action,
+        target_type,
+        target_id,
+        metadata_json
+      )
+      values ($1, $2, 'user', $3, $4, $5, $6::jsonb)
+      `,
+      [
+        approval.tenant_id,
+        approval.brand_id,
+        `approval.${parsed.data.decision}`,
+        approval.target_type,
+        approval.target_id,
+        JSON.stringify({
+          approvalId: approval.id,
+          riskLevel: approval.risk_level
+        })
+      ]
+    );
+
+    revalidatePath("/app/approvals");
+    revalidatePath("/app/drafts");
+    revalidatePath("/app/recommendations");
     return;
   }
 

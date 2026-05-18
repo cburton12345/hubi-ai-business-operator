@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { queryPostgres } from "@/lib/db/postgres";
 
 const internalTenantId = "11111111-1111-4111-8111-111111111111";
 
@@ -34,6 +35,44 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
   const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
+    const result = await queryPostgres<{
+      id: string;
+      brand_name: string;
+      brand_slug: string;
+      name: string;
+      slug: string;
+      public_key: string;
+      active: boolean;
+    }>(
+      `
+      select
+        f.id,
+        b.name as brand_name,
+        b.slug as brand_slug,
+        f.name,
+        f.slug,
+        f.public_key,
+        f.active
+      from public.forms f
+      join public.brands b on b.id = f.brand_id
+      where f.tenant_id = $1
+      order by f.slug
+      `,
+      [internalTenantId]
+    );
+
+    if (result) {
+      return result.rows.map((form) => ({
+        id: form.id,
+        brandName: form.brand_name,
+        brandSlug: form.brand_slug,
+        name: form.name,
+        slug: form.slug,
+        publicKey: form.public_key,
+        active: form.active
+      }));
+    }
+
     return [
       {
         id: "demo-ferocity-form",
