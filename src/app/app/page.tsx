@@ -17,6 +17,9 @@ export default async function AppDashboardPage() {
           <Link className="button secondary-button" href="/app/tenant/internal-portfolio">
             View Tenant
           </Link>
+          <Link className="button" href="/app/leads">
+            Leads
+          </Link>
         </div>
 
         <div className="grid">

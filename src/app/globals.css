@@ -197,6 +197,35 @@ h3 {
   border: 1px solid var(--line);
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+}
+
+th,
+td {
+  padding: 13px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+td strong,
+td span {
+  display: block;
+}
+
 @media (max-width: 860px) {
   .page-shell {
     padding: 16px;
