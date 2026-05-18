@@ -93,21 +93,21 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Brand Data Model
 
-- [ ] Brand profile editor
-- [ ] Domain settings
-- [ ] Phone/email settings
-- [ ] Logo upload strategy
+- [x] Brand profile editor
+- [x] Domain settings
+- [x] Phone/email settings
+- [x] Logo URL strategy
 - [ ] Services editor
 - [ ] Locations editor
 - [ ] Offers editor
-- [ ] Target customer settings
-- [ ] CTA goal settings
-- [ ] Ad goal settings
-- [ ] SEO target settings
-- [ ] Review strategy settings
-- [ ] Follow-up strategy settings
-- [ ] Tone-of-voice settings
-- [ ] Risk profile settings
+- [x] Target customer settings
+- [x] CTA goal settings
+- [x] Ad goal settings
+- [x] SEO target settings
+- [x] Review strategy settings
+- [x] Follow-up strategy settings
+- [x] Tone-of-voice settings
+- [x] Risk profile settings
 
 ## Lead Management
 

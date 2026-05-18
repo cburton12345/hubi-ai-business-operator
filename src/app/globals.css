@@ -307,6 +307,12 @@ pre {
   font-weight: 700;
 }
 
+.success-panel {
+  border-color: #9fd8cb;
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
 .honeypot {
   position: absolute;
   left: -10000px;
