@@ -307,6 +307,14 @@ pre {
   font-weight: 700;
 }
 
+.honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 .checkbox-row {
   grid-template-columns: auto 1fr;
   align-items: center;

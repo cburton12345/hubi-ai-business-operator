@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicLead } from "@/lib/leads/create-public-lead";
 import { publicLeadSchema } from "@/lib/leads/schemas";
+import { evaluateLeadSubmission } from "@/lib/leads/spam-guard";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -23,14 +24,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!parsed.data.email && !parsed.data.phone) {
-    return NextResponse.json({ error: "Either email or phone is required." }, { status: 400 });
-  }
-
-  const result = await createPublicLead(parsed.data, {
+  const requestMeta = {
     ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
     userAgent: request.headers.get("user-agent") ?? undefined
-  });
+  };
+  const guard = evaluateLeadSubmission(parsed.data, requestMeta);
+
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.reason }, { status: guard.status });
+  }
+
+  const result = await createPublicLead(parsed.data, requestMeta);
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });

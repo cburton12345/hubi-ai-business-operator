@@ -4,6 +4,17 @@ export const publicLeadSchema = z.object({
   formPublicKey: z.string().min(8),
   source: z.string().max(120).optional(),
   sourceDetail: z.string().max(240).optional(),
+  website: z.string().max(240).optional(),
+  submittedAt: z.string().datetime().optional(),
+  utm: z
+    .object({
+      source: z.string().max(120).optional(),
+      medium: z.string().max(120).optional(),
+      campaign: z.string().max(180).optional(),
+      term: z.string().max(180).optional(),
+      content: z.string().max(180).optional()
+    })
+    .default({}),
   name: z.string().max(160).optional(),
   email: z.string().email().optional(),
   phone: z.string().max(40).optional(),

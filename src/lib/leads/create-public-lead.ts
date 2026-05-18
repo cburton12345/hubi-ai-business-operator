@@ -71,7 +71,11 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
       qualification_status: input.leadType === "case_intake" ? "needs_review" : "unqualified",
       priority: input.leadType === "case_intake" ? "high" : "normal",
       consent_to_contact: input.consentToContact,
-      metadata_json: input.details
+      metadata_json: {
+        details: input.details,
+        utm: input.utm,
+        submittedAt: input.submittedAt ?? null
+      }
     })
     .select("id")
     .single<LeadRecord>();
@@ -106,7 +110,9 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
       message: input.message,
       leadType: input.leadType,
       consentToContact: input.consentToContact,
-      details: input.details
+      details: input.details,
+      utm: input.utm,
+      submittedAt: input.submittedAt ?? null
     },
     ip_address: requestMeta.ipAddress,
     user_agent: requestMeta.userAgent
@@ -121,7 +127,8 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     body: "Lead captured from public form.",
     metadata_json: {
       source: input.source ?? "website",
-      leadType: input.leadType
+      leadType: input.leadType,
+      utm: input.utm
     }
   });
 

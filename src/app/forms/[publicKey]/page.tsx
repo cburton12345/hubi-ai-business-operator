@@ -21,6 +21,16 @@ export default async function PublicLeadFormPage({
 
         <form action={submitPublicLeadForm} className="panel form-stack auth-panel">
           <input name="formPublicKey" type="hidden" value={publicKey} />
+          <input name="submittedAt" type="hidden" value={new Date().toISOString()} />
+          <input name="utmSource" type="hidden" value="" />
+          <input name="utmMedium" type="hidden" value="" />
+          <input name="utmCampaign" type="hidden" value="" />
+          <input name="utmTerm" type="hidden" value="" />
+          <input name="utmContent" type="hidden" value="" />
+          <label className="honeypot" aria-hidden="true">
+            Website
+            <input name="website" tabIndex={-1} autoComplete="off" />
+          </label>
           <label>
             Name
             <input name="name" autoComplete="name" />

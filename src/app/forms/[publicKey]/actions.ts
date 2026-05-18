@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createPublicLead } from "@/lib/leads/create-public-lead";
 import { publicLeadSchema } from "@/lib/leads/schemas";
+import { evaluateLeadSubmission } from "@/lib/leads/spam-guard";
 
 export async function submitPublicLeadForm(formData: FormData) {
   const publicKey = String(formData.get("formPublicKey") ?? "");
@@ -10,6 +11,15 @@ export async function submitPublicLeadForm(formData: FormData) {
     formPublicKey: publicKey,
     source: "public_form",
     sourceDetail: publicKey,
+    website: String(formData.get("website") ?? "") || undefined,
+    submittedAt: String(formData.get("submittedAt") ?? "") || undefined,
+    utm: {
+      source: String(formData.get("utmSource") ?? "") || undefined,
+      medium: String(formData.get("utmMedium") ?? "") || undefined,
+      campaign: String(formData.get("utmCampaign") ?? "") || undefined,
+      term: String(formData.get("utmTerm") ?? "") || undefined,
+      content: String(formData.get("utmContent") ?? "") || undefined
+    },
     name: String(formData.get("name") ?? "") || undefined,
     email: String(formData.get("email") ?? "") || undefined,
     phone: String(formData.get("phone") ?? "") || undefined,
@@ -31,7 +41,13 @@ export async function submitPublicLeadForm(formData: FormData) {
     }
   });
 
-  if (!parsed.success || (!parsed.data.email && !parsed.data.phone)) {
+  if (!parsed.success) {
+    redirect(`/forms/${encodeURIComponent(publicKey)}?error=1`);
+  }
+
+  const guard = evaluateLeadSubmission(parsed.data, {});
+
+  if (!guard.ok) {
     redirect(`/forms/${encodeURIComponent(publicKey)}?error=1`);
   }
 

@@ -111,12 +111,12 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Lead Management
 
-- [ ] Public lead capture endpoint hardening
-- [ ] Spam prevention
-- [ ] Rate limiting
+- [x] Public lead capture endpoint hardening
+- [x] Spam prevention
+- [x] Rate limiting
 - [ ] Form public key rotation
-- [ ] Source tracking
-- [ ] UTM tracking
+- [x] Source tracking
+- [x] UTM tracking
 - [ ] Lead scoring foundation
 - [ ] Lead assignment
 - [ ] Lead event timeline
