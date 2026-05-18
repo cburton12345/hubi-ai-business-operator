@@ -38,7 +38,7 @@ Brands must support multiple business models:
 - `rental`: trailer rental and similar request-driven businesses
 - `software`: property management software, SaaS demos
 - `marketplace`: auction marketplace, buyer/seller activity
-- `lead_generation`: CaseFlow / personal injury lead generation
+- `lead_generation`: Ferocity / personal injury lead generation
 
 AI workflows should branch by `business_model` and `risk_profile`, not by hardcoded brand names.
 
@@ -63,4 +63,4 @@ High-risk examples:
 - Major campaign launches
 - Reputation-sensitive public responses
 
-For CaseFlow and other legal-sensitive lead-generation brands, public-facing legal copy should default to `needs_review`.
+For Ferocity and other legal-sensitive lead-generation brands, public-facing legal copy should default to `needs_review`.

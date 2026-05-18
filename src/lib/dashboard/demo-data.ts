@@ -26,8 +26,24 @@ export const internalBrands: BrandSummary[] = [
     riskProfile: "normal"
   },
   {
-    name: "CaseFlow",
-    slug: "caseflow",
+    name: "Homes4Rent",
+    slug: "homes4rent",
+    businessModel: "marketplace",
+    industry: "Rental housing",
+    primaryGoal: "Capture rental housing demand and property owner opportunities.",
+    riskProfile: "normal"
+  },
+  {
+    name: "Storm Restoration",
+    slug: "storm-restoration",
+    businessModel: "local_service",
+    industry: "Roofing / storm restoration",
+    primaryGoal: "Generate qualified roofing and restoration estimate requests.",
+    riskProfile: "normal"
+  },
+  {
+    name: "Ferocity",
+    slug: "ferocity",
     businessModel: "lead_generation",
     industry: "Personal injury lead generation",
     primaryGoal: "Generate qualified, consent-based personal injury leads.",
@@ -42,7 +58,7 @@ export const starterRecommendations: RecommendationSummary[] = [
     riskLevel: "low"
   },
   {
-    title: "Mark CaseFlow copy as legal-sensitive",
+    title: "Mark Ferocity copy as legal-sensitive",
     summary: "Require review for public-facing legal claims and intake language.",
     riskLevel: "high"
   },

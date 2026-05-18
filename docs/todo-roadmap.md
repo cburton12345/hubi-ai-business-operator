@@ -12,7 +12,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Next.js app shell
 - [x] Admin dashboard placeholder
 - [x] Internal portfolio demo brands
-- [x] CaseFlow / personal injury lead-generation support in the model
+- [x] Ferocity / personal injury lead-generation support in the model
 - [x] Public lead capture API foundation
 - [x] Render deployment config
 - [x] GitHub repo and push workflow
@@ -28,7 +28,7 @@ The product should eventually act like an AI COO for local service, rental, soft
   - [ ] Preferred Trailer Rental
   - [ ] Homes4Rent
   - [ ] Roofing / storm restoration
-  - [ ] CaseFlow
+  - [ ] Ferocity
 - [ ] Create real tenant membership flow for first admin user
 - [ ] Add protected admin routes
 - [ ] Add tenant selector
@@ -116,9 +116,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Duplicate lead detection
 - [ ] New lead notifications
 
-## CaseFlow / Personal Injury Lead Generation
+## Ferocity / Personal Injury Lead Generation
 
-- [ ] CaseFlow brand seed
+- [ ] Ferocity brand seed
 - [ ] Legal-sensitive risk profile
 - [ ] Case intake fields
 - [ ] Consent capture
