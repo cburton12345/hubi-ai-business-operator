@@ -41,7 +41,11 @@ export async function queryPostgres<T extends pg.QueryResultRow>(text: string, v
 
   try {
     return await db.query<T>(text, values);
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      const message = error instanceof Error ? error.message : "Unknown database error";
+      console.error(`Postgres query failed: ${message}`);
+    }
     return null;
   }
 }
