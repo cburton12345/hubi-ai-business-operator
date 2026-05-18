@@ -2,6 +2,7 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { demoTaskRows } from "@/lib/queues/demo-queues";
 import { getTaskQueueRows, type TaskQueueRow } from "@/lib/queues/get-queue-data";
+import { queueWeeklyAiTasksAction } from "./actions";
 
 export default async function TasksPage() {
   const rows = await getTaskQueueRows(demoTaskRows);
@@ -12,6 +13,11 @@ export default async function TasksPage() {
       title="AI Task Queue"
       description="Work the AI should perform or prepare, scoped by tenant and brand."
     >
+      <form action={queueWeeklyAiTasksAction} className="button-row section-actions">
+        <button className="button" type="submit">
+          Queue weekly brand tasks
+        </button>
+      </form>
       <QueueTable<TaskQueueRow>
         rows={rows}
         columns={[

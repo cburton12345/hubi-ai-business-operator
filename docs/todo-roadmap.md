@@ -66,8 +66,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Phase 1 AI Scope
 
-- [ ] Define prompt context builder from tenant, brand, services, locations, offers, and marketing settings
-- [ ] Generate weekly draft tasks per active brand
+- [x] Define prompt context builder from tenant, brand, services, locations, offers, and marketing settings
+- [x] Generate weekly draft tasks per active brand
 - [ ] Generate draft content only, not auto-publish
 - [ ] Generate SEO recommendations
 - [ ] Generate campaign recommendations
