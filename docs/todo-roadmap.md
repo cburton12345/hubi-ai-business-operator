@@ -16,24 +16,30 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Public lead capture API foundation
 - [x] Render deployment config
 - [x] GitHub repo and push workflow
+- [x] Internal portfolio seed migration
+- [x] Ferocity rename completed
+- [x] Dashboard can read tenant-scoped Supabase data when env vars are configured
 
 ## Phase 1: Foundation
 
 - [ ] Apply Supabase migrations to a clean project
 - [ ] Verify RLS policies against real Supabase Auth users
-- [ ] Seed internal tenant
+- [x] Create seed migration for internal tenant
+- [ ] Apply seed migration for internal tenant
 - [ ] Seed internal brands:
-  - [ ] 4bid
-  - [ ] MarketplacePro
-  - [ ] Preferred Trailer Rental
-  - [ ] Homes4Rent
-  - [ ] Roofing / storm restoration
-  - [ ] Ferocity
+  - [x] Create seed for 4bid
+  - [x] Create seed for MarketplacePro
+  - [x] Create seed for Preferred Trailer Rental
+  - [x] Create seed for Homes4Rent
+  - [x] Create seed for Roofing / storm restoration
+  - [x] Create seed for Ferocity
+  - [ ] Apply internal brand seeds to Supabase
 - [ ] Create real tenant membership flow for first admin user
 - [ ] Add protected admin routes
 - [ ] Add tenant selector
 - [ ] Add brand selector
-- [ ] Replace demo dashboard data with tenant-scoped Supabase queries
+- [x] Add tenant-scoped Supabase dashboard query fallback
+- [ ] Replace remaining demo queues with real Supabase query tables
 - [ ] Build CRM-lite lead dashboard
 - [ ] Add lead detail view
 - [ ] Add lead status updates
