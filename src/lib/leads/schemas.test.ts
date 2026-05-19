@@ -25,4 +25,20 @@ describe("publicLeadSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("accepts marketplace bidder and consignor lead types", () => {
+    const bidder = publicLeadSchema.safeParse({
+      formPublicKey: "marketplace-primary-lead-form",
+      leadType: "bidder",
+      phone: "555-0101"
+    });
+    const consignor = publicLeadSchema.safeParse({
+      formPublicKey: "marketplace-primary-lead-form",
+      leadType: "consignor",
+      email: "seller@example.com"
+    });
+
+    expect(bidder.success).toBe(true);
+    expect(consignor.success).toBe(true);
+  });
 });

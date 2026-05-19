@@ -22,6 +22,23 @@ function boolDetail(details: Record<string, unknown>, key: string) {
   return typeof details[key] === "boolean" ? details[key] : null;
 }
 
+function dateDetail(details: Record<string, unknown>, key: string) {
+  const value = textDetail(details, key);
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function intDetail(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isInteger(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
+function numericDetail(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
 export async function createPublicLead(input: PublicLeadInput, requestMeta: { ipAddress?: string; userAgent?: string }) {
   const supabase = createSupabaseAdminClient();
 
@@ -324,6 +341,8 @@ async function insertLeadDetails({
       brand_id: brandId,
       lead_id: leadId,
       rental_item_type: textDetail(details, "rentalItemType"),
+      rental_start_date: dateDetail(details, "rentalStartDate"),
+      rental_end_date: dateDetail(details, "rentalEndDate"),
       delivery_needed: boolDetail(details, "deliveryNeeded"),
       location: textDetail(details, "location")
     });
@@ -337,17 +356,19 @@ async function insertLeadDetails({
       company_name: textDetail(details, "companyName"),
       role: textDetail(details, "role"),
       current_system: textDetail(details, "currentSystem"),
+      units_managed: intDetail(details, "unitsManaged"),
       demo_requested: true
     });
   }
 
-  if (leadType === "buyer" || leadType === "seller") {
+  if (leadType === "buyer" || leadType === "seller" || leadType === "bidder" || leadType === "consignor") {
     await supabase.from("marketplace_lead_details").insert({
       tenant_id: tenantId,
       brand_id: brandId,
       lead_id: leadId,
       intent: leadType,
       asset_category: textDetail(details, "assetCategory"),
+      estimated_value: numericDetail(details, "estimatedValue"),
       location: textDetail(details, "location")
     });
   }
@@ -358,6 +379,7 @@ async function insertLeadDetails({
       brand_id: brandId,
       lead_id: leadId,
       case_type: textDetail(details, "caseType"),
+      incident_date: dateDetail(details, "incidentDate"),
       state: textDetail(details, "state") ?? textDetail(details, "location"),
       injury_type: textDetail(details, "injuryType"),
       has_attorney: boolDetail(details, "hasAttorney"),
@@ -414,16 +436,20 @@ async function insertLeadDetailsWithPostgres({
         brand_id,
         lead_id,
         rental_item_type,
+        rental_start_date,
+        rental_end_date,
         delivery_needed,
         location
       )
-      values ($1, $2, $3, $4, $5, $6)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
       `,
       [
         tenantId,
         brandId,
         leadId,
         textDetail(details, "rentalItemType"),
+        dateDetail(details, "rentalStartDate"),
+        dateDetail(details, "rentalEndDate"),
         boolDetail(details, "deliveryNeeded"),
         textDetail(details, "location")
       ]
@@ -440,9 +466,10 @@ async function insertLeadDetailsWithPostgres({
         company_name,
         role,
         current_system,
+        units_managed,
         demo_requested
       )
-      values ($1, $2, $3, $4, $5, $6, true)
+      values ($1, $2, $3, $4, $5, $6, $7, true)
       `,
       [
         tenantId,
@@ -450,12 +477,13 @@ async function insertLeadDetailsWithPostgres({
         leadId,
         textDetail(details, "companyName"),
         textDetail(details, "role"),
-        textDetail(details, "currentSystem")
+        textDetail(details, "currentSystem"),
+        intDetail(details, "unitsManaged")
       ]
     );
   }
 
-  if (leadType === "buyer" || leadType === "seller") {
+  if (leadType === "buyer" || leadType === "seller" || leadType === "bidder" || leadType === "consignor") {
     await queryPostgres(
       `
       insert into public.marketplace_lead_details (
@@ -464,11 +492,20 @@ async function insertLeadDetailsWithPostgres({
         lead_id,
         intent,
         asset_category,
+        estimated_value,
         location
       )
-      values ($1, $2, $3, $4, $5, $6)
+      values ($1, $2, $3, $4, $5, $6, $7)
       `,
-      [tenantId, brandId, leadId, leadType, textDetail(details, "assetCategory"), textDetail(details, "location")]
+      [
+        tenantId,
+        brandId,
+        leadId,
+        leadType,
+        textDetail(details, "assetCategory"),
+        numericDetail(details, "estimatedValue"),
+        textDetail(details, "location")
+      ]
     );
   }
 
@@ -480,19 +517,21 @@ async function insertLeadDetailsWithPostgres({
         brand_id,
         lead_id,
         case_type,
+        incident_date,
         state,
         injury_type,
         has_attorney,
         treatment_received,
         legal_disclaimer_acknowledged
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       `,
       [
         tenantId,
         brandId,
         leadId,
         textDetail(details, "caseType"),
+        dateDetail(details, "incidentDate"),
         textDetail(details, "state") ?? textDetail(details, "location"),
         textDetail(details, "injuryType"),
         boolDetail(details, "hasAttorney"),

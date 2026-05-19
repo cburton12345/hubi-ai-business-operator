@@ -153,29 +153,29 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Rental Businesses
 
-- [ ] Rental date fields
-- [ ] Delivery-needed fields
-- [ ] Rental item type fields
+- [x] Rental date fields
+- [x] Delivery-needed fields
+- [x] Rental item type fields
 - [ ] Quote request status workflow
 - [ ] Local rental SEO draft recommendations
 
 ## Software Businesses
 
-- [ ] Demo request lead type
-- [ ] Company and role fields
-- [ ] Current system field
-- [ ] Units/accounts managed field
+- [x] Demo request lead type
+- [x] Company and role fields
+- [x] Current system field
+- [x] Units/accounts managed field
 - [ ] Demo nurture content drafts
 - [ ] Comparison page recommendations
 
 ## Marketplace Businesses
 
-- [ ] Buyer lead type
-- [ ] Seller lead type
-- [ ] Bidder lead type
-- [ ] Consignor lead type
-- [ ] Asset category fields
-- [ ] Estimated value fields
+- [x] Buyer lead type
+- [x] Seller lead type
+- [x] Bidder lead type
+- [x] Consignor lead type
+- [x] Asset category fields
+- [x] Estimated value fields
 - [ ] Buyer/seller campaign recommendations
 - [ ] Auction content draft workflow
 

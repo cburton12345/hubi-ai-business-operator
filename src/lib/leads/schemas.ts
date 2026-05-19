@@ -20,7 +20,7 @@ export const publicLeadSchema = z.object({
   phone: z.string().max(40).optional(),
   message: z.string().max(4000).optional(),
   leadType: z
-    .enum(["general", "appointment", "quote", "demo", "buyer", "seller", "rental_request", "case_intake"])
+    .enum(["general", "appointment", "quote", "demo", "buyer", "seller", "bidder", "consignor", "rental_request", "case_intake"])
     .default("general"),
   consentToContact: z.boolean().default(false),
   details: z.record(z.string(), z.unknown()).default({})

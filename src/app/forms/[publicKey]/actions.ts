@@ -30,13 +30,22 @@ export async function submitPublicLeadForm(formData: FormData) {
       serviceInterest: String(formData.get("serviceInterest") ?? "") || undefined,
       location: String(formData.get("location") ?? "") || undefined,
       rentalItemType: String(formData.get("rentalItemType") ?? "") || undefined,
+      rentalStartDate: String(formData.get("rentalStartDate") ?? "") || undefined,
+      rentalEndDate: String(formData.get("rentalEndDate") ?? "") || undefined,
+      deliveryNeeded: formData.get("deliveryNeeded") === "on",
       companyName: String(formData.get("companyName") ?? "") || undefined,
       role: String(formData.get("role") ?? "") || undefined,
+      currentSystem: String(formData.get("currentSystem") ?? "") || undefined,
+      unitsManaged: String(formData.get("unitsManaged") ?? "") || undefined,
       intent: String(formData.get("intent") ?? "") || undefined,
       assetCategory: String(formData.get("assetCategory") ?? "") || undefined,
+      estimatedValue: String(formData.get("estimatedValue") ?? "") || undefined,
       caseType: String(formData.get("caseType") ?? "") || undefined,
+      incidentDate: String(formData.get("incidentDate") ?? "") || undefined,
       state: String(formData.get("state") ?? "") || undefined,
       injuryType: String(formData.get("injuryType") ?? "") || undefined,
+      hasAttorney: formData.get("hasAttorney") === "on",
+      treatmentReceived: formData.get("treatmentReceived") === "on",
       legalDisclaimerAcknowledged: formData.get("legalDisclaimerAcknowledged") === "on"
     }
   });

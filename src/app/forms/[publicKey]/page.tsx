@@ -67,6 +67,8 @@ export default async function PublicLeadFormPage({
               <option value="demo">Software demo</option>
               <option value="buyer">Marketplace buyer</option>
               <option value="seller">Marketplace seller</option>
+              <option value="bidder">Marketplace bidder</option>
+              <option value="consignor">Marketplace consignor</option>
               <option value="rental_request">Rental request</option>
               <option value="case_intake">Legal intake</option>
             </select>
@@ -80,10 +82,24 @@ export default async function PublicLeadFormPage({
             <input name="location" />
           </label>
           {profile?.businessModel === "rental" ? (
-            <label>
-              Rental item type
-              <input name="rentalItemType" placeholder="Trailer, equipment, or rental need" />
-            </label>
+            <>
+              <label>
+                Rental item type
+                <input name="rentalItemType" placeholder="Trailer, equipment, or rental need" />
+              </label>
+              <label>
+                Rental start date
+                <input name="rentalStartDate" type="date" />
+              </label>
+              <label>
+                Rental end date
+                <input name="rentalEndDate" type="date" />
+              </label>
+              <label className="checkbox-row">
+                <input name="deliveryNeeded" type="checkbox" />
+                Delivery is needed.
+              </label>
+            </>
           ) : null}
           {profile?.businessModel === "software" ? (
             <>
@@ -95,13 +111,27 @@ export default async function PublicLeadFormPage({
                 Role
                 <input name="role" />
               </label>
+              <label>
+                Current system
+                <input name="currentSystem" placeholder="Spreadsheet, AppFolio, custom software" />
+              </label>
+              <label>
+                Units or accounts managed
+                <input name="unitsManaged" min="0" type="number" />
+              </label>
             </>
           ) : null}
           {profile?.businessModel === "marketplace" ? (
-            <label>
-              Asset category
-              <input name="assetCategory" placeholder="Property, auction item, listing type" />
-            </label>
+            <>
+              <label>
+                Asset category
+                <input name="assetCategory" placeholder="Property, auction item, listing type" />
+              </label>
+              <label>
+                Estimated value
+                <input name="estimatedValue" min="0" step="0.01" type="number" />
+              </label>
+            </>
           ) : null}
           {profile?.businessModel === "lead_generation" ? (
             <>
@@ -112,6 +142,18 @@ export default async function PublicLeadFormPage({
               <label>
                 Injury type
                 <input name="injuryType" />
+              </label>
+              <label>
+                Incident date
+                <input name="incidentDate" type="date" />
+              </label>
+              <label className="checkbox-row">
+                <input name="hasAttorney" type="checkbox" />
+                I already have an attorney.
+              </label>
+              <label className="checkbox-row">
+                <input name="treatmentReceived" type="checkbox" />
+                I have received treatment.
               </label>
             </>
           ) : null}
