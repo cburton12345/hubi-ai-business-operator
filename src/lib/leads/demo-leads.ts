@@ -15,7 +15,11 @@ export const demoLeads: LeadDashboardRow[] = [
     name: "Sample Legal Intake",
     email: "intake@example.com",
     phone: "",
-    createdAt: now
+    createdAt: now,
+    score: 0,
+    grade: "unscored",
+    assignedTo: "Unassigned",
+    duplicateKey: "intake@example.com"
   },
   {
     id: "demo-trailer-quote",
@@ -28,7 +32,11 @@ export const demoLeads: LeadDashboardRow[] = [
     name: "Sample Rental Lead",
     email: "",
     phone: "(555) 010-0000",
-    createdAt: now
+    createdAt: now,
+    score: 0,
+    grade: "unscored",
+    assignedTo: "Unassigned",
+    duplicateKey: "(555) 010-0000"
   }
 ];
 
@@ -43,6 +51,8 @@ export const demoLeadDetails: LeadDetail[] = [
       caseType: "personal_injury",
       legalDisclaimerAcknowledged: true
     },
+    score: null,
+    assignment: null,
     intelligence: null,
     events: [
       {
@@ -63,6 +73,8 @@ export const demoLeadDetails: LeadDetail[] = [
       rentalItemType: "utility_trailer",
       deliveryNeeded: false
     },
+    score: null,
+    assignment: null,
     intelligence: null,
     events: [
       {

@@ -26,6 +26,15 @@ export type LeadDetail = {
   consentToContact: boolean;
   metadata: Record<string, unknown>;
   createdAt: string;
+  score: {
+    score: number;
+    grade: string;
+    reasons: string[];
+  } | null;
+  assignment: {
+    assignedTo: string;
+    notes: string;
+  } | null;
   events: LeadEventRow[];
   intelligence: {
     summary: string;
@@ -80,6 +89,17 @@ type LeadIntelligenceRow = {
   suggested_next_action: string | null;
   draft_reply: string | null;
   created_at: string;
+};
+
+type LeadScoreRow = {
+  score: number;
+  grade: string;
+  reasons_json: string[] | null;
+};
+
+type LeadAssignmentRow = {
+  assigned_to: string | null;
+  notes: string | null;
 };
 
 function mapIntelligence(row: LeadIntelligenceRow | undefined) {
@@ -155,6 +175,23 @@ export async function getLeadDetail(leadId: string) {
       `,
       [workspaceId, leadId]
     );
+    const scoreResult = await queryPostgres<LeadScoreRow>(
+      "select score, grade, reasons_json from public.lead_scores where tenant_id = $1 and lead_id = $2 limit 1",
+      [workspaceId, leadId]
+    );
+    const assignmentResult = await queryPostgres<LeadAssignmentRow>(
+      `
+      select u.name as assigned_to, la.notes
+      from public.lead_assignments la
+      left join public.users u on u.id = la.assigned_user_id
+      where la.tenant_id = $1 and la.lead_id = $2 and la.status = 'active'
+      order by la.created_at desc
+      limit 1
+      `,
+      [workspaceId, leadId]
+    );
+    const score = scoreResult?.rows[0];
+    const assignment = assignmentResult?.rows[0];
 
     return {
       id: lead.id,
@@ -172,6 +209,8 @@ export async function getLeadDetail(leadId: string) {
       consentToContact: lead.consent_to_contact,
       metadata: lead.metadata_json ?? {},
       createdAt: lead.created_at,
+      score: score ? { score: score.score, grade: score.grade, reasons: score.reasons_json ?? [] } : null,
+      assignment: assignment ? { assignedTo: assignment.assigned_to ?? "Unassigned", notes: assignment.notes ?? "" } : null,
       intelligence: mapIntelligence(intelligenceResult?.rows[0]),
       events: (eventsResult?.rows ?? []).map((event) => ({
         id: event.id,
@@ -246,6 +285,8 @@ export async function getLeadDetail(leadId: string) {
     consentToContact: lead.consent_to_contact,
     metadata: lead.metadata_json ?? {},
     createdAt: lead.created_at,
+    score: null,
+    assignment: null,
     intelligence: mapIntelligence(intelligence ?? undefined),
     events: ((events as EventRow[] | null) ?? []).map((event) => ({
       id: event.id,

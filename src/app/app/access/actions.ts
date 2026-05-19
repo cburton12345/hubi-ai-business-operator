@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -14,6 +15,8 @@ const schema = z.object({
 });
 
 export async function createWorkspaceUserAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+
   const parsed = schema.safeParse({
     email: formData.get("email"),
     name: formData.get("name"),

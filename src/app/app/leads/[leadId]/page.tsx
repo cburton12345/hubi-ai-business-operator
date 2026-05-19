@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
+import { assignLeadAction, calculateLeadScoreAction, generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
@@ -20,7 +20,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
             <p className="eyebrow">Lead Detail</p>
             <h1>{lead.name}</h1>
             <p className="muted">
-              {lead.brandName} · {lead.leadType} · {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(lead.createdAt))}
+              {lead.brandName} / {lead.leadType} / {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(lead.createdAt))}
             </p>
           </div>
           <Link className="button secondary-button" href="/app/leads">
@@ -32,33 +32,17 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
           <section className="panel span-8">
             <h2>Lead Information</h2>
             <dl className="detail-grid">
-              <div>
-                <dt>Email</dt>
-                <dd>{lead.email || "Not provided"}</dd>
-              </div>
-              <div>
-                <dt>Phone</dt>
-                <dd>{lead.phone || "Not provided"}</dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd>
-                  <span className="pill">{lead.status}</span>
-                </dd>
-              </div>
-              <div>
-                <dt>Qualification</dt>
-                <dd>{lead.qualificationStatus}</dd>
-              </div>
-              <div>
-                <dt>Priority</dt>
-                <dd>
-                  <span className={`pill ${lead.priority === "high" ? "high" : ""}`}>{lead.priority}</span>
-                </dd>
-              </div>
-              <div>
-                <dt>Consent</dt>
-                <dd>{lead.consentToContact ? "Yes" : "No"}</dd>
+              <Detail label="Email" value={lead.email || "Not provided"} />
+              <Detail label="Phone" value={lead.phone || "Not provided"} />
+              <Detail label="Status" value={lead.status} />
+              <Detail label="Qualification" value={lead.qualificationStatus} />
+              <Detail label="Priority" value={lead.priority} />
+              <Detail label="Consent" value={lead.consentToContact ? "Yes" : "No"} />
+              <Detail label="Lead Score" value={lead.score ? `${lead.score.score} / ${lead.score.grade}` : "Not scored"} />
+              <Detail label="Assigned To" value={lead.assignment?.assignedTo ?? "Unassigned"} />
+              <div className="detail-wide">
+                <dt>Score Reasons</dt>
+                <dd>{lead.score?.reasons.join(", ") || "No score reasons yet."}</dd>
               </div>
               <div className="detail-wide">
                 <dt>Message</dt>
@@ -73,7 +57,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
             </dl>
           </section>
 
-          <section className="panel span-4">
+          <section className="panel span-4 form-stack">
             <h2>Update Workflow</h2>
             <form action={updateLeadWorkflow} className="form-stack">
               <input name="leadId" type="hidden" value={lead.id} />
@@ -81,9 +65,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 Status
                 <select name="status" defaultValue={lead.status}>
                   {leadStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
+                    <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
               </label>
@@ -91,9 +73,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 Qualification
                 <select name="qualificationStatus" defaultValue={lead.qualificationStatus}>
                   {qualificationStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
+                    <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
               </label>
@@ -101,9 +81,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 Priority
                 <select name="priority" defaultValue={lead.priority}>
                   {leadPriorities.map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priority}
-                    </option>
+                    <option key={priority} value={priority}>{priority}</option>
                   ))}
                 </select>
               </label>
@@ -111,9 +89,23 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 Note
                 <textarea name="note" placeholder="Optional internal note" rows={4} />
               </label>
-              <button className="button" type="submit">
-                Save Update
-              </button>
+              <button className="button" type="submit">Save update</button>
+            </form>
+            <form action={calculateLeadScoreAction}>
+              <input name="leadId" type="hidden" value={lead.id} />
+              <button className="button secondary-button" type="submit">Calculate score</button>
+            </form>
+            <form action={assignLeadAction} className="form-stack">
+              <input name="leadId" type="hidden" value={lead.id} />
+              <label>
+                Assign to workspace user email
+                <input name="assigneeEmail" type="email" placeholder="operator@example.com" />
+              </label>
+              <label>
+                Assignment notes
+                <textarea name="notes" rows={3} defaultValue={lead.assignment?.notes ?? ""} />
+              </label>
+              <button className="button secondary-button" type="submit">Save assignment</button>
             </form>
           </section>
 
@@ -125,9 +117,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               </div>
               <form action={generateLeadIntelligenceAction}>
                 <input name="leadId" type="hidden" value={lead.id} />
-                <button className="button" type="submit">
-                  Generate intelligence
-                </button>
+                <button className="button" type="submit">Generate intelligence</button>
               </form>
             </div>
             {lead.intelligence ? (
@@ -136,33 +126,17 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                   <dt>Summary</dt>
                   <dd>{lead.intelligence.summary}</dd>
                 </div>
-                <div>
-                  <dt>Urgency</dt>
-                  <dd>
-                    <span className={`pill ${lead.intelligence.urgency === "high" ? "high" : ""}`}>{lead.intelligence.urgency}</span>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Likely spam</dt>
-                  <dd>{lead.intelligence.likelySpam ? "Yes" : "No"}</dd>
-                </div>
-                <div>
-                  <dt>Suggested service</dt>
-                  <dd>{lead.intelligence.suggestedService || "Not classified"}</dd>
-                </div>
-                <div>
-                  <dt>Category</dt>
-                  <dd>{lead.intelligence.suggestedCategory || "Not classified"}</dd>
-                </div>
+                <Detail label="Urgency" value={lead.intelligence.urgency} />
+                <Detail label="Likely spam" value={lead.intelligence.likelySpam ? "Yes" : "No"} />
+                <Detail label="Suggested service" value={lead.intelligence.suggestedService || "Not classified"} />
+                <Detail label="Category" value={lead.intelligence.suggestedCategory || "Not classified"} />
                 <div className="detail-wide">
                   <dt>Next action</dt>
                   <dd>{lead.intelligence.suggestedNextAction}</dd>
                 </div>
                 <div className="detail-wide">
                   <dt>Manual reply draft</dt>
-                  <dd>
-                    <pre>{lead.intelligence.draftReply}</pre>
-                  </dd>
+                  <dd><pre>{lead.intelligence.draftReply}</pre></dd>
                 </div>
               </dl>
             ) : (
@@ -187,5 +161,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
         </div>
       </section>
     </main>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }

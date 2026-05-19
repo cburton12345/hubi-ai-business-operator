@@ -30,6 +30,11 @@ export type BrandProfile = {
     toneOfVoice: string;
     approvalMode: "manual" | "low_risk_auto" | "recommend_only";
   };
+  services: { id: string; name: string; slug: string; description: string; priority: number; active: boolean }[];
+  locations: { id: string; serviceAreaName: string; city: string; state: string; priority: number; active: boolean }[];
+  offers: { id: string; title: string; description: string; active: boolean }[];
+  landingPages: { id: string; title: string; slug: string; pageType: string; primaryKeyword: string; status: string }[];
+  seoKeywords: { id: string; keyword: string; intent: string; priority: number; targetUrl: string }[];
 };
 
 type BrandProfileRow = {
@@ -79,6 +84,71 @@ function first<T>(value: T | T[] | null | undefined) {
 
 function clean(value: string | null | undefined) {
   return value ?? "";
+}
+
+async function loadBrandOperations(tenantId: string, brandId: string) {
+  const [services, locations, offers, pages, keywords] = await Promise.all([
+    queryPostgres<{ id: string; name: string; slug: string; description: string | null; priority: number; active: boolean }>(
+      "select id, name, slug, description, priority, active from public.brand_services where tenant_id = $1 and brand_id = $2 order by active desc, priority desc, name",
+      [tenantId, brandId]
+    ),
+    queryPostgres<{ id: string; service_area_name: string | null; city: string | null; state: string | null; priority: number; active: boolean }>(
+      "select id, service_area_name, city, state, priority, active from public.brand_locations where tenant_id = $1 and brand_id = $2 order by active desc, priority desc, service_area_name",
+      [tenantId, brandId]
+    ),
+    queryPostgres<{ id: string; title: string; description: string | null; active: boolean }>(
+      "select id, title, description, active from public.brand_offers where tenant_id = $1 and brand_id = $2 order by active desc, created_at desc",
+      [tenantId, brandId]
+    ),
+    queryPostgres<{ id: string; title: string; slug: string; page_type: string; primary_keyword: string | null; status: string }>(
+      "select id, title, slug, page_type, primary_keyword, status from public.brand_landing_pages where tenant_id = $1 and brand_id = $2 order by title",
+      [tenantId, brandId]
+    ),
+    queryPostgres<{ id: string; keyword: string; intent: string; priority: number; target_url: string | null }>(
+      "select id, keyword, intent, priority, target_url from public.brand_seo_keywords where tenant_id = $1 and brand_id = $2 order by priority desc, keyword",
+      [tenantId, brandId]
+    )
+  ]);
+
+  return {
+    services: (services?.rows ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      description: clean(row.description),
+      priority: row.priority,
+      active: row.active
+    })),
+    locations: (locations?.rows ?? []).map((row) => ({
+      id: row.id,
+      serviceAreaName: clean(row.service_area_name),
+      city: clean(row.city),
+      state: clean(row.state),
+      priority: row.priority,
+      active: row.active
+    })),
+    offers: (offers?.rows ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: clean(row.description),
+      active: row.active
+    })),
+    landingPages: (pages?.rows ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      slug: row.slug,
+      pageType: row.page_type,
+      primaryKeyword: clean(row.primary_keyword),
+      status: row.status
+    })),
+    seoKeywords: (keywords?.rows ?? []).map((row) => ({
+      id: row.id,
+      keyword: row.keyword,
+      intent: row.intent,
+      priority: row.priority,
+      targetUrl: clean(row.target_url)
+    }))
+  };
 }
 
 export async function getBrandProfile(brandSlug: string): Promise<BrandProfile | null> {
@@ -138,6 +208,8 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
       return null;
     }
 
+    const operations = await loadBrandOperations(data.tenant_id, data.id);
+
     return {
       id: data.id,
       tenantId: data.tenant_id,
@@ -164,7 +236,8 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
         followUpStrategy: clean(data.follow_up_strategy),
         toneOfVoice: clean(data.tone_of_voice),
         approvalMode: data.approval_mode ?? "manual"
-      }
+      },
+      ...operations
     };
   }
 
@@ -182,6 +255,7 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
   }
 
   const marketing = first(data.brand_marketing_settings);
+  const operations = await loadBrandOperations(data.tenant_id, data.id);
 
   return {
     id: data.id,
@@ -209,6 +283,7 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
       followUpStrategy: clean(marketing?.follow_up_strategy),
       toneOfVoice: clean(marketing?.tone_of_voice),
       approvalMode: marketing?.approval_mode ?? "manual"
-    }
+    },
+    ...operations
   };
 }

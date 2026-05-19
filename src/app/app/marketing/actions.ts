@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateWeeklyMarketingPlans } from "@/lib/ai/phase2-marketing-operator";
 import { getCurrentAppSession } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -23,6 +24,8 @@ const draftUpdateSchema = z.object({
 });
 
 export async function generateWeeklyMarketingPlansAction() {
+  await requirePermission("ai:queue");
+
   await generateWeeklyMarketingPlans(await getCurrentWorkspaceId());
   revalidatePath("/app");
   revalidatePath("/app/marketing");
@@ -34,6 +37,8 @@ export async function generateWeeklyMarketingPlansAction() {
 }
 
 export async function updateCalendarItemAction(formData: FormData) {
+  await requirePermission("approval:review_low");
+
   const parsed = calendarUpdateSchema.safeParse({
     itemId: formData.get("itemId"),
     status: formData.get("status"),
@@ -82,6 +87,8 @@ export async function updateCalendarItemAction(formData: FormData) {
 }
 
 export async function updateDraftReviewAction(formData: FormData) {
+  await requirePermission("approval:review_low");
+
   const parsed = draftUpdateSchema.safeParse({
     draftId: formData.get("draftId"),
     title: formData.get("title"),

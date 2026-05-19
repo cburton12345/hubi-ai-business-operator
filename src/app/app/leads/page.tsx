@@ -9,6 +9,10 @@ export default async function LeadsPage({
 }) {
   const params = await searchParams;
   const allLeads = await getLeadDashboardRows();
+  const duplicateCounts = allLeads.reduce<Record<string, number>>((counts, lead) => {
+    if (lead.duplicateKey) counts[lead.duplicateKey] = (counts[lead.duplicateKey] ?? 0) + 1;
+    return counts;
+  }, {});
   const brandOptions = [...new Map(allLeads.map((lead) => [lead.brandSlug || lead.brandName, lead.brandName])).entries()];
   const leads = allLeads.filter((lead) => {
     const query = params.q?.trim().toLowerCase();
@@ -33,6 +37,9 @@ export default async function LeadsPage({
           </div>
           <Link className="button secondary-button" href="/app">
             Dashboard
+          </Link>
+          <Link className="button secondary-button" href="/app/leads/export">
+            CSV export
           </Link>
         </div>
 
@@ -103,6 +110,9 @@ export default async function LeadsPage({
                   <th>Status</th>
                   <th>Qualification</th>
                   <th>Priority</th>
+                  <th>Score</th>
+                  <th>Assigned</th>
+                  <th>Duplicate</th>
                   <th>Created</th>
                 </tr>
               </thead>
@@ -124,6 +134,12 @@ export default async function LeadsPage({
                     <td>
                       <span className={`pill ${lead.priority === "high" ? "high" : ""}`}>{lead.priority}</span>
                     </td>
+                    <td>
+                      <span className={`pill ${lead.grade === "hot" ? "high" : ""}`}>{lead.score || "not scored"}</span>
+                      <span className="muted">{lead.grade}</span>
+                    </td>
+                    <td>{lead.assignedTo}</td>
+                    <td>{lead.duplicateKey && duplicateCounts[lead.duplicateKey] > 1 ? <span className="pill medium">possible duplicate</span> : "Unique"}</td>
                     <td>{new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(lead.createdAt))}</td>
                   </tr>
                 ))}

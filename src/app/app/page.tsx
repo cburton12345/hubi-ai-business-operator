@@ -110,13 +110,19 @@ export default async function AppDashboardPage() {
               <Link className="button secondary-button" href="/app/exports">
                 Exports
               </Link>
-              <Link className="button secondary-button" href="/app/reports">
-                Reports
-              </Link>
-              <Link className="button secondary-button" href="/app/integrations">
-                Integrations
-              </Link>
-            </div>
+            <Link className="button secondary-button" href="/app/reports">
+              Reports
+            </Link>
+            <Link className="button secondary-button" href="/app/workflows">
+              Workflows
+            </Link>
+            <Link className="button secondary-button" href="/app/integrations">
+              Integrations
+            </Link>
+            <Link className="button secondary-button" href="/app/settings">
+              Settings
+            </Link>
+          </div>
             <ul className="list">
               {snapshot.tasks.map((task) => (
                 <li className="list-row" key={task.title}>

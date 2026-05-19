@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -21,6 +22,8 @@ type ApprovalRecord = {
 };
 
 export async function decideApproval(formData: FormData) {
+  await requirePermission("approval:review_low");
+
   const parsed = approvalDecisionSchema.safeParse({
     approvalId: formData.get("approvalId"),
     decision: formData.get("decision")

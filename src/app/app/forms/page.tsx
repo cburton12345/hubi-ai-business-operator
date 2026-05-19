@@ -2,6 +2,7 @@ import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { getPublicFormRows, type PublicFormRow } from "@/lib/forms/get-public-forms";
+import { rotateFormPublicKeyAction } from "./actions";
 
 export default async function FormsPage() {
   const rows = await getPublicFormRows();
@@ -23,7 +24,19 @@ export default async function FormsPage() {
           },
           { key: "brand", label: "Brand", render: (row) => row.brandName },
           { key: "slug", label: "Slug", render: (row) => row.slug },
-          { key: "status", label: "Status", render: (row) => <span className="pill">{row.active ? "active" : "paused"}</span> }
+          { key: "status", label: "Status", render: (row) => <span className="pill">{row.active ? "active" : "paused"}</span> },
+          {
+            key: "rotate",
+            label: "Key Safety",
+            render: (row) => (
+              <form action={rotateFormPublicKeyAction}>
+                <input name="formId" type="hidden" value={row.id} />
+                <button className="mini-button danger-button" type="submit">
+                  Rotate key
+                </button>
+              </form>
+            )
+          }
         ]}
       />
     </QueuePageShell>

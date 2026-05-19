@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBrandProfile } from "@/lib/brands/get-brand-profile";
-import { updateBrandProfile } from "./actions";
+import {
+  addBrandKeywordAction,
+  addBrandLandingPageAction,
+  addBrandLocationAction,
+  addBrandOfferAction,
+  addBrandServiceAction,
+  updateBrandProfile
+} from "./actions";
 
 export default async function BrandProfilePage({
   params,
@@ -159,7 +166,95 @@ export default async function BrandProfilePage({
             </button>
           </section>
         </form>
+
+        <div className="grid">
+          <OperationsPanel
+            title="Services"
+            rows={brand.services.map((service) => `${service.name} (${service.priority})${service.active ? "" : " paused"}`)}
+          >
+            <form action={addBrandServiceAction} className="compact-form">
+              <input name="brandId" type="hidden" value={brand.id} />
+              <input name="name" placeholder="Service name" required />
+              <input name="description" placeholder="Description" />
+              <input name="priority" type="number" min="0" max="100" defaultValue="10" />
+              <button className="mini-button" type="submit">Add</button>
+            </form>
+          </OperationsPanel>
+
+          <OperationsPanel
+            title="Service Areas"
+            rows={brand.locations.map((location) => `${location.serviceAreaName || [location.city, location.state].filter(Boolean).join(", ")} (${location.priority})`)}
+          >
+            <form action={addBrandLocationAction} className="compact-form">
+              <input name="brandId" type="hidden" value={brand.id} />
+              <input name="serviceAreaName" placeholder="Service area" required />
+              <input name="city" placeholder="City" />
+              <input name="state" placeholder="State" />
+              <input name="priority" type="number" min="0" max="100" defaultValue="10" />
+              <button className="mini-button" type="submit">Add</button>
+            </form>
+          </OperationsPanel>
+
+          <OperationsPanel title="Offers" rows={brand.offers.map((offer) => `${offer.title}${offer.active ? "" : " paused"}`)}>
+            <form action={addBrandOfferAction} className="compact-form">
+              <input name="brandId" type="hidden" value={brand.id} />
+              <input name="title" placeholder="Offer title" required />
+              <input name="description" placeholder="Description" />
+              <button className="mini-button" type="submit">Add</button>
+            </form>
+          </OperationsPanel>
+
+          <OperationsPanel title="SEO Keywords" rows={brand.seoKeywords.map((keyword) => `${keyword.keyword} / ${keyword.intent} (${keyword.priority})`)}>
+            <form action={addBrandKeywordAction} className="compact-form">
+              <input name="brandId" type="hidden" value={brand.id} />
+              <input name="keyword" placeholder="Keyword" required />
+              <select name="intent" defaultValue="service">
+                <option value="service">service</option>
+                <option value="local">local</option>
+                <option value="comparison">comparison</option>
+                <option value="education">education</option>
+                <option value="brand">brand</option>
+                <option value="commercial">commercial</option>
+              </select>
+              <input name="priority" type="number" min="0" max="100" defaultValue="10" />
+              <button className="mini-button" type="submit">Add</button>
+            </form>
+          </OperationsPanel>
+
+          <OperationsPanel title="Landing Pages" rows={brand.landingPages.map((page) => `${page.title} / ${page.pageType} / ${page.status}`)}>
+            <form action={addBrandLandingPageAction} className="compact-form">
+              <input name="brandId" type="hidden" value={brand.id} />
+              <input name="title" placeholder="Page title" required />
+              <select name="pageType" defaultValue="service_page">
+                <option value="landing_page">landing page</option>
+                <option value="city_page">city page</option>
+                <option value="service_page">service page</option>
+                <option value="homepage">homepage</option>
+                <option value="other">other</option>
+              </select>
+              <input name="primaryKeyword" placeholder="Primary keyword" />
+              <button className="mini-button" type="submit">Add</button>
+            </form>
+          </OperationsPanel>
+        </div>
       </section>
     </main>
+  );
+}
+
+function OperationsPanel({ title, rows, children }: { title: string; rows: string[]; children: React.ReactNode }) {
+  return (
+    <section className="panel span-6 form-stack">
+      <h2>{title}</h2>
+      {children}
+      <ul className="list">
+        {rows.slice(0, 8).map((row) => (
+          <li className="list-row" key={row}>
+            <span>{row}</span>
+          </li>
+        ))}
+        {rows.length === 0 ? <li className="list-row"><span className="muted">No records yet</span></li> : null}
+      </ul>
+    </section>
   );
 }

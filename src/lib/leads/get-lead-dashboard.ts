@@ -15,6 +15,10 @@ export type LeadDashboardRow = {
   email: string;
   phone: string;
   createdAt: string;
+  score: number;
+  grade: string;
+  assignedTo: string;
+  duplicateKey: string;
 };
 
 type LeadRow = {
@@ -56,6 +60,9 @@ export async function getLeadDashboardRows() {
       email: string | null;
       phone: string | null;
       created_at: string;
+      score: number | null;
+      grade: string | null;
+      assigned_to: string | null;
     }>(
       `
       select
@@ -69,9 +76,21 @@ export async function getLeadDashboardRows() {
         l.name,
         l.email,
         l.phone,
-        l.created_at
+        l.created_at,
+        ls.score,
+        ls.grade,
+        u.name as assigned_to
       from public.leads l
       join public.brands b on b.id = l.brand_id
+      left join public.lead_scores ls on ls.lead_id = l.id
+      left join lateral (
+        select users.name
+        from public.lead_assignments la
+        left join public.users users on users.id = la.assigned_user_id
+        where la.lead_id = l.id and la.status = 'active'
+        order by la.created_at desc
+        limit 1
+      ) u on true
       where l.tenant_id = $1
       order by l.created_at desc
       limit 100
@@ -91,7 +110,11 @@ export async function getLeadDashboardRows() {
         name: lead.name ?? "Unknown",
         email: lead.email ?? "",
         phone: lead.phone ?? "",
-        createdAt: lead.created_at
+        createdAt: lead.created_at,
+        score: Number(lead.score ?? 0),
+        grade: lead.grade ?? "unscored",
+        assignedTo: lead.assigned_to ?? "Unassigned",
+        duplicateKey: (lead.email || lead.phone || "").toLowerCase()
       }));
     }
 
@@ -136,7 +159,11 @@ export async function getLeadDashboardRows() {
       name: lead.name ?? "Unknown",
       email: lead.email ?? "",
       phone: lead.phone ?? "",
-      createdAt: lead.created_at
+      createdAt: lead.created_at,
+      score: 0,
+      grade: "unscored",
+      assignedTo: "Unassigned",
+      duplicateKey: (lead.email || lead.phone || "").toLowerCase()
     };
   });
 }

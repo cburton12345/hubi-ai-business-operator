@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -12,6 +13,8 @@ const recommendationDecisionSchema = z.object({
 });
 
 export async function updateRecommendationStatus(formData: FormData) {
+  await requirePermission("approval:review_low");
+
   const parsed = recommendationDecisionSchema.safeParse({
     recommendationId: formData.get("recommendationId"),
     status: formData.get("status")
