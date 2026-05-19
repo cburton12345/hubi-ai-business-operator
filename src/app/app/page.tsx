@@ -122,6 +122,12 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/settings">
               Settings
             </Link>
+            <Link className="button secondary-button" href="/app/qa">
+              QA
+            </Link>
+            <Link className="button secondary-button" href="/app/safety">
+              Safety
+            </Link>
           </div>
             <ul className="list">
               {snapshot.tasks.map((task) => (
