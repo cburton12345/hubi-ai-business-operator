@@ -5,6 +5,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 export type LeadDashboardRow = {
   id: string;
   brandName: string;
+  brandSlug: string;
   leadType: string;
   status: string;
   qualificationStatus: string;
@@ -28,9 +29,11 @@ type LeadRow = {
   brands:
     | {
         name: string;
+        slug: string;
       }
     | {
         name: string;
+        slug: string;
       }[]
     | null;
 };
@@ -42,6 +45,7 @@ export async function getLeadDashboardRows() {
     const result = await queryPostgres<{
       id: string;
       brand_name: string;
+      brand_slug: string;
       lead_type: string;
       status: string;
       qualification_status: string;
@@ -55,6 +59,7 @@ export async function getLeadDashboardRows() {
       select
         l.id,
         b.name as brand_name,
+        b.slug as brand_slug,
         l.lead_type,
         l.status,
         l.qualification_status,
@@ -76,6 +81,7 @@ export async function getLeadDashboardRows() {
       return result.rows.map((lead) => ({
         id: lead.id,
         brandName: lead.brand_name,
+        brandSlug: lead.brand_slug,
         leadType: lead.lead_type,
         status: lead.status,
         qualificationStatus: lead.qualification_status,
@@ -103,7 +109,7 @@ export async function getLeadDashboardRows() {
       email,
       phone,
       created_at,
-      brands:brand_id(name)
+      brands:brand_id(name, slug)
     `
     )
     .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
@@ -120,6 +126,7 @@ export async function getLeadDashboardRows() {
     return {
       id: lead.id,
       brandName: brand?.name ?? "Unknown brand",
+      brandSlug: brand?.slug ?? "",
       leadType: lead.lead_type,
       status: lead.status,
       qualificationStatus: lead.qualification_status,

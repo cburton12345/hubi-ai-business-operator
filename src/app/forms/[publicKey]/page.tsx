@@ -1,4 +1,13 @@
 import { submitPublicLeadForm } from "@/app/forms/[publicKey]/actions";
+import { getPublicFormProfile } from "@/lib/forms/get-public-form-profile";
+
+function defaultLeadType(businessModel: string) {
+  if (businessModel === "rental") return "rental_request";
+  if (businessModel === "software") return "demo";
+  if (businessModel === "marketplace") return "seller";
+  if (businessModel === "lead_generation") return "case_intake";
+  return "quote";
+}
 
 export default async function PublicLeadFormPage({
   params,
@@ -9,14 +18,20 @@ export default async function PublicLeadFormPage({
 }) {
   const { publicKey } = await params;
   const query = await searchParams;
+  const profile = await getPublicFormProfile(publicKey);
+  const leadType = defaultLeadType(profile?.businessModel ?? "local_service");
 
   return (
     <main className="page-shell">
       <section className="workspace auth-workspace">
         <div>
           <p className="eyebrow">Lead Capture</p>
-          <h1>Request information.</h1>
-          <p className="muted">This reusable form routes the submission to the correct tenant and brand.</p>
+          <h1>{profile ? profile.ctaGoals : "Request information"}</h1>
+          <p className="muted">
+            {profile
+              ? `${profile.brandName} - ${profile.primaryGoal}`
+              : "This reusable form routes the submission to the correct tenant and brand."}
+          </p>
         </div>
 
         <form action={submitPublicLeadForm} className="panel form-stack auth-panel">
@@ -45,7 +60,7 @@ export default async function PublicLeadFormPage({
           </label>
           <label>
             Lead type
-            <select name="leadType" defaultValue="general">
+            <select name="leadType" defaultValue={leadType}>
               <option value="general">General</option>
               <option value="appointment">Appointment</option>
               <option value="quote">Quote</option>
@@ -58,12 +73,48 @@ export default async function PublicLeadFormPage({
           </label>
           <label>
             Service or interest
-            <input name="serviceInterest" />
+            <input name="serviceInterest" placeholder={profile?.industry ?? "Service or interest"} />
           </label>
           <label>
             Location / state
             <input name="location" />
           </label>
+          {profile?.businessModel === "rental" ? (
+            <label>
+              Rental item type
+              <input name="rentalItemType" placeholder="Trailer, equipment, or rental need" />
+            </label>
+          ) : null}
+          {profile?.businessModel === "software" ? (
+            <>
+              <label>
+                Company
+                <input name="companyName" autoComplete="organization" />
+              </label>
+              <label>
+                Role
+                <input name="role" />
+              </label>
+            </>
+          ) : null}
+          {profile?.businessModel === "marketplace" ? (
+            <label>
+              Asset category
+              <input name="assetCategory" placeholder="Property, auction item, listing type" />
+            </label>
+          ) : null}
+          {profile?.businessModel === "lead_generation" ? (
+            <>
+              <label>
+                Case type
+                <input name="caseType" placeholder="Personal injury, accident, or incident type" />
+              </label>
+              <label>
+                Injury type
+                <input name="injuryType" />
+              </label>
+            </>
+          ) : null}
           <label>
             Message
             <textarea name="message" rows={5} />

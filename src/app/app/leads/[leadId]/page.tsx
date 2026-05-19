@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { updateLeadWorkflow } from "@/app/app/leads/actions";
-import { leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
+import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ leadId: string }> }) {
@@ -93,6 +93,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                   {qualificationStatuses.map((status) => (
                     <option key={status} value={status}>
                       {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Priority
+                <select name="priority" defaultValue={lead.priority}>
+                  {leadPriorities.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
                     </option>
                   ))}
                 </select>

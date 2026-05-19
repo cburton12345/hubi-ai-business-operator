@@ -7,6 +7,7 @@ export const demoLeads: LeadDashboardRow[] = [
   {
     id: "demo-ferocity-intake",
     brandName: "Ferocity",
+    brandSlug: "ferocity",
     leadType: "case_intake",
     status: "new",
     qualificationStatus: "needs_review",
@@ -19,6 +20,7 @@ export const demoLeads: LeadDashboardRow[] = [
   {
     id: "demo-trailer-quote",
     brandName: "Preferred Trailer Rental",
+    brandSlug: "preferred-trailer-rental",
     leadType: "rental_request",
     status: "new",
     qualificationStatus: "unqualified",

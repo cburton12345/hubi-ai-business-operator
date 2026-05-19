@@ -1,4 +1,5 @@
 import { buildBrandPromptContext, buildWeeklyAiTaskPlans, getWeeklyPeriodKey, type BrandPromptContext } from "@/lib/ai/prompt-context";
+import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const internalTenantId = "11111111-1111-4111-8111-111111111111";
@@ -83,13 +84,7 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
   const periodKey = getWeeklyPeriodKey();
 
   if (!supabase) {
-    return {
-      ok: false,
-      periodKey,
-      inserted: 0,
-      skipped: 0,
-      message: "Supabase admin environment is not configured."
-    };
+    return queueWeeklyAiTasksWithPostgres(tenantId, periodKey);
   }
 
   const [{ data: tenant }, { data: brands }, { data: services }, { data: locations }, { data: offers }, { data: settings }] =
@@ -232,5 +227,163 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
     inserted: taskRows.length,
     skipped: 0,
     message: `Queued ${taskRows.length} weekly AI tasks for ${typedBrands.length} active brands.`
+  };
+}
+
+async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: string): Promise<QueueWeeklyAiTasksResult> {
+  const result = await queryPostgres<{
+    tenant_id: string;
+    tenant_name: string;
+    tenant_slug: string;
+    account_type: string;
+    plan_key: string | null;
+    brand_id: string;
+    brand_name: string;
+    brand_slug: string;
+    domain: string | null;
+    business_model: BrandPromptContext["brand"]["businessModel"];
+    industry: string | null;
+    vertical: string | null;
+    description: string | null;
+    primary_goal: string | null;
+    primary_location: string | null;
+    risk_profile: BrandPromptContext["brand"]["riskProfile"];
+    target_customers: string | null;
+    cta_goals: string | null;
+    ad_goals: string | null;
+    seo_targets: string | null;
+    review_strategy: string | null;
+    follow_up_strategy: string | null;
+    tone_of_voice: string | null;
+    approval_mode: BrandPromptContext["marketing"]["approvalMode"];
+  }>(
+    `
+    select
+      t.id as tenant_id,
+      t.name as tenant_name,
+      t.slug as tenant_slug,
+      t.account_type,
+      t.plan_key,
+      b.id as brand_id,
+      b.name as brand_name,
+      b.slug as brand_slug,
+      b.domain,
+      b.business_model,
+      b.industry,
+      b.vertical,
+      b.description,
+      b.primary_goal,
+      b.primary_location,
+      b.risk_profile,
+      s.target_customers,
+      s.cta_goals,
+      s.ad_goals,
+      s.seo_targets,
+      s.review_strategy,
+      s.follow_up_strategy,
+      s.tone_of_voice,
+      coalesce(s.approval_mode, 'manual') as approval_mode
+    from public.tenants t
+    join public.brands b on b.tenant_id = t.id
+    left join public.brand_marketing_settings s on s.brand_id = b.id
+    where t.id = $1 and b.status = 'active'
+    order by b.name
+    `,
+    [tenantId]
+  );
+
+  const rows = result?.rows ?? [];
+
+  if (rows.length === 0) {
+    return {
+      ok: false,
+      periodKey,
+      inserted: 0,
+      skipped: 0,
+      message: "No tenant or active brands found."
+    };
+  }
+
+  let inserted = 0;
+
+  for (const row of rows) {
+    const context = buildBrandPromptContext({
+      tenant: {
+        id: row.tenant_id,
+        name: row.tenant_name,
+        slug: row.tenant_slug,
+        accountType: row.account_type,
+        planKey: row.plan_key
+      },
+      brand: {
+        id: row.brand_id,
+        tenantId: row.tenant_id,
+        name: row.brand_name,
+        slug: row.brand_slug,
+        domain: row.domain,
+        businessModel: row.business_model,
+        industry: row.industry,
+        vertical: row.vertical,
+        description: row.description,
+        primaryGoal: row.primary_goal,
+        primaryLocation: row.primary_location,
+        riskProfile: row.risk_profile
+      },
+      marketing: {
+        targetCustomers: row.target_customers,
+        ctaGoals: row.cta_goals,
+        adGoals: row.ad_goals,
+        seoTargets: row.seo_targets,
+        reviewStrategy: row.review_strategy,
+        followUpStrategy: row.follow_up_strategy,
+        toneOfVoice: row.tone_of_voice,
+        approvalMode: row.approval_mode
+      }
+    });
+
+    for (const task of buildWeeklyAiTaskPlans(context, periodKey)) {
+      const existing = await queryPostgres(
+        `
+        select id
+        from public.ai_tasks
+        where tenant_id = $1
+          and brand_id = $2
+          and type = $3
+          and prompt_context_json->'workflow'->>'periodKey' = $4
+        limit 1
+        `,
+        [row.tenant_id, row.brand_id, task.type, periodKey]
+      );
+
+      if ((existing?.rowCount ?? 0) > 0) {
+        continue;
+      }
+
+      await queryPostgres(
+        `
+        insert into public.ai_tasks (
+          tenant_id,
+          brand_id,
+          type,
+          title,
+          prompt_context_json,
+          status,
+          priority,
+          created_by
+        )
+        values ($1, $2, $3, $4, $5::jsonb, 'queued', $6, 'system')
+        `,
+        [row.tenant_id, row.brand_id, task.type, task.title, JSON.stringify(task.promptContext), task.priority]
+      );
+      inserted += 1;
+    }
+  }
+
+  return {
+    ok: true,
+    periodKey,
+    inserted,
+    skipped: rows.length * 4 - inserted,
+    message: `Queued ${inserted} weekly AI tasks for ${rows.length} active brands.`
   };
 }
