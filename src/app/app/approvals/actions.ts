@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const approvalDecisionSchema = z.object({
   approvalId: z.string().min(1),
@@ -30,6 +31,7 @@ export async function decideApproval(formData: FormData) {
   }
 
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const approvalResult = await queryPostgres<ApprovalRecord>(
@@ -39,7 +41,7 @@ export async function decideApproval(formData: FormData) {
       where tenant_id = $1 and id = $3
       returning id, tenant_id, brand_id, target_type, target_id, risk_level
       `,
-      ["11111111-1111-4111-8111-111111111111", parsed.data.decision, parsed.data.approvalId]
+      [workspaceId, parsed.data.decision, parsed.data.approvalId]
     );
     const approval = approvalResult?.rows[0];
 
@@ -117,7 +119,7 @@ export async function decideApproval(formData: FormData) {
       status: decision,
       reviewed_at: new Date().toISOString()
     })
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("id", approvalId)
     .select("id, tenant_id, brand_id, target_type, target_id, risk_level")
     .single<ApprovalRecord>();

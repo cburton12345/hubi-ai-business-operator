@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { internalBrands, starterRecommendations, starterTasks } from "@/lib/dashboard/demo-data";
 import type { BrandSummary } from "@/types/core";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 
 type BrandRow = {
   name: string;
@@ -19,6 +20,7 @@ type BreakdownRow = {
 
 export async function getDashboardSnapshot() {
   const supabase = createSupabaseAdminClient();
+  const workspace = await getCurrentWorkspace();
 
   if (!supabase) {
     const brandResult = await queryPostgres<BrandRow>(
@@ -28,7 +30,7 @@ export async function getDashboardSnapshot() {
       where tenant_id = $1
       order by name
       `,
-      ["11111111-1111-4111-8111-111111111111"]
+      [workspace.id]
     );
     const countResult = await queryPostgres<{
       open_leads: string;
@@ -40,13 +42,14 @@ export async function getDashboardSnapshot() {
     }>(
       `
       select
-        (select count(*) from public.leads where status = 'new') as open_leads,
-        (select count(*) from public.ai_drafts where status = 'needs_review') as pending_drafts,
-        (select count(*) from public.approvals where status = 'pending') as pending_approvals,
-        (select count(*) from public.ai_drafts where created_at >= date_trunc('week', now())) as content_created_this_week,
-        (select count(*) from public.recommendations where status in ('open', 'approved')) as ai_recommendations,
-        (select count(*) from public.leads where status in ('new', 'contacted') and created_at < now() - interval '3 days') as stale_leads
-      `
+        (select count(*) from public.leads where tenant_id = $1 and status = 'new') as open_leads,
+        (select count(*) from public.ai_drafts where tenant_id = $1 and status = 'needs_review') as pending_drafts,
+        (select count(*) from public.approvals where tenant_id = $1 and status = 'pending') as pending_approvals,
+        (select count(*) from public.ai_drafts where tenant_id = $1 and created_at >= date_trunc('week', now())) as content_created_this_week,
+        (select count(*) from public.recommendations where tenant_id = $1 and status in ('open', 'approved')) as ai_recommendations,
+        (select count(*) from public.leads where tenant_id = $1 and status in ('new', 'contacted') and created_at < now() - interval '3 days') as stale_leads
+      `,
+      [workspace.id]
     );
     const [leadsByBrand, leadsBySource, leadsByCampaign] = await Promise.all([
       queryPostgres<BreakdownRow>(
@@ -59,7 +62,7 @@ export async function getDashboardSnapshot() {
         order by count(*) desc, b.name
         limit 8
         `,
-        ["11111111-1111-4111-8111-111111111111"]
+        [workspace.id]
       ),
       queryPostgres<BreakdownRow>(
         `
@@ -70,7 +73,7 @@ export async function getDashboardSnapshot() {
         order by count(*) desc, label
         limit 8
         `,
-        ["11111111-1111-4111-8111-111111111111"]
+        [workspace.id]
       ),
       queryPostgres<BreakdownRow>(
         `
@@ -81,7 +84,7 @@ export async function getDashboardSnapshot() {
         order by count(*) desc, label
         limit 8
         `,
-        ["11111111-1111-4111-8111-111111111111"]
+        [workspace.id]
       )
     ]);
 
@@ -97,7 +100,7 @@ export async function getDashboardSnapshot() {
       const counts = countResult?.rows[0];
 
       return {
-        tenantName: "AI Business Operator",
+        tenantName: workspace.name,
         brands,
         recommendations: starterRecommendations,
         tasks: starterTasks,
@@ -145,11 +148,11 @@ export async function getDashboardSnapshot() {
       supabase
         .from("brands")
         .select("name, slug, business_model, industry, primary_goal, risk_profile", { count: "exact" })
-        .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+        .eq("tenant_id", workspace.id)
         .order("name"),
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "new"),
-      supabase.from("ai_drafts").select("id", { count: "exact", head: true }).eq("status", "needs_review"),
-      supabase.from("approvals").select("id", { count: "exact", head: true }).eq("status", "pending")
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("tenant_id", workspace.id).eq("status", "new"),
+      supabase.from("ai_drafts").select("id", { count: "exact", head: true }).eq("tenant_id", workspace.id).eq("status", "needs_review"),
+      supabase.from("approvals").select("id", { count: "exact", head: true }).eq("tenant_id", workspace.id).eq("status", "pending")
     ]);
 
   const brands = ((brandRows as BrandRow[] | null) ?? []).map((brand) => ({
@@ -162,7 +165,7 @@ export async function getDashboardSnapshot() {
   }));
 
   return {
-    tenantName: "AI Business Operator",
+    tenantName: workspace.name,
     brands: brands.length > 0 ? brands : internalBrands,
     recommendations: starterRecommendations,
     tasks: starterTasks,

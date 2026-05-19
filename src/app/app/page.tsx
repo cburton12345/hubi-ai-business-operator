@@ -10,14 +10,11 @@ export default async function AppDashboardPage() {
       <section className="workspace">
         <div className="topbar">
           <div>
-            <p className="eyebrow">Admin Workspace</p>
+            <p className="eyebrow">Workspace Home</p>
             <h1>{snapshot.tenantName}</h1>
             <p className="muted">Workspace command center for brands, leads, AI marketing plans, drafts, recommendations, and approvals.</p>
           </div>
           <div className="button-row">
-            <Link className="button secondary-button" href="/app/tenant/internal-portfolio">
-              Workspace
-            </Link>
             <Link className="button secondary-button" href="/app/tenants">
               Organizations
             </Link>
@@ -109,6 +106,15 @@ export default async function AppDashboardPage() {
               </Link>
               <Link className="button secondary-button" href="/app/review">
                 Review
+              </Link>
+              <Link className="button secondary-button" href="/app/exports">
+                Exports
+              </Link>
+              <Link className="button secondary-button" href="/app/reports">
+                Reports
+              </Link>
+              <Link className="button secondary-button" href="/app/integrations">
+                Integrations
               </Link>
             </div>
             <ul className="list">

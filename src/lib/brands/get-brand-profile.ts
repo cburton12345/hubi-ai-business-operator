@@ -1,8 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
 import type { BusinessModel, RiskProfile } from "@/types/core";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type BrandProfile = {
   id: string;
@@ -84,6 +83,7 @@ function clean(value: string | null | undefined) {
 
 export async function getBrandProfile(brandSlug: string): Promise<BrandProfile | null> {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<
@@ -129,7 +129,7 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
       where b.tenant_id = $1 and b.slug = $2
       limit 1
       `,
-      [internalTenantId, brandSlug]
+      [workspaceId, brandSlug]
     );
 
     const data = result?.rows[0];
@@ -173,7 +173,7 @@ export async function getBrandProfile(brandSlug: string): Promise<BrandProfile |
     .select(
       "id, tenant_id, name, slug, domain, phone, email, logo_url, business_model, industry, vertical, description, primary_goal, primary_location, risk_profile, status, brand_marketing_settings(target_customers, cta_goals, ad_goals, seo_targets, review_strategy, follow_up_strategy, tone_of_voice, approval_mode)"
     )
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .eq("slug", brandSlug)
     .maybeSingle<BrandProfileRow>();
 

@@ -2,8 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { internalBrands } from "@/lib/dashboard/demo-data";
 import type { BrandSummary } from "@/types/core";
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type BrandRow = {
   id: string;
@@ -25,6 +24,7 @@ export type BrandSelectorRow = BrandSummary & {
 
 export async function getBrandSelectorRows(): Promise<BrandSelectorRow[]> {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -44,7 +44,7 @@ export async function getBrandSelectorRows(): Promise<BrandSelectorRow[]> {
       where tenant_id = $1
       order by name
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -72,7 +72,7 @@ export async function getBrandSelectorRows(): Promise<BrandSelectorRow[]> {
   const { data, error } = await supabase
     .from("brands")
     .select("id, name, slug, domain, business_model, industry, primary_goal, risk_profile, status")
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("name");
 
   if (error || !data) {

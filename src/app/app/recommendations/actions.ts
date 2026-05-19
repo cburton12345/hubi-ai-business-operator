@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const recommendationDecisionSchema = z.object({
   recommendationId: z.string().min(1),
@@ -22,6 +23,7 @@ export async function updateRecommendationStatus(formData: FormData) {
 
   const { recommendationId, status } = parsed.data;
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{ tenant_id: string; brand_id: string }>(
@@ -31,7 +33,7 @@ export async function updateRecommendationStatus(formData: FormData) {
       where tenant_id = $1 and id = $2
       returning tenant_id, brand_id
       `,
-      ["11111111-1111-4111-8111-111111111111", recommendationId, status]
+      [workspaceId, recommendationId, status]
     );
     const recommendation = result?.rows[0];
 
@@ -59,7 +61,7 @@ export async function updateRecommendationStatus(formData: FormData) {
   const { data } = await supabase
     .from("recommendations")
     .update({ status, updated_at: new Date().toISOString() })
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("id", recommendationId)
     .select("tenant_id, brand_id")
     .single<{ tenant_id: string; brand_id: string }>();

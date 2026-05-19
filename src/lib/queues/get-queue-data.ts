@@ -1,7 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type TaskQueueRow = {
   id: string;
@@ -98,6 +97,7 @@ function brandName(relation: BrandRelation) {
 
 export async function getTaskQueueRows(fallback: TaskQueueRow[]) {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -117,7 +117,7 @@ export async function getTaskQueueRows(fallback: TaskQueueRow[]) {
       order by t.created_at desc
       limit 100
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -138,7 +138,7 @@ export async function getTaskQueueRows(fallback: TaskQueueRow[]) {
   const { data, error } = await supabase
     .from("ai_tasks")
     .select("id, type, title, status, priority, created_at, brands:brand_id(name)")
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -159,6 +159,7 @@ export async function getTaskQueueRows(fallback: TaskQueueRow[]) {
 
 export async function getDraftQueueRows(fallback: DraftQueueRow[]) {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -178,7 +179,7 @@ export async function getDraftQueueRows(fallback: DraftQueueRow[]) {
       order by d.created_at desc
       limit 100
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -199,7 +200,7 @@ export async function getDraftQueueRows(fallback: DraftQueueRow[]) {
   const { data, error } = await supabase
     .from("ai_drafts")
     .select("id, content_type, title, status, risk_level, created_at, brands:brand_id(name)")
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -220,6 +221,7 @@ export async function getDraftQueueRows(fallback: DraftQueueRow[]) {
 
 export async function getRecommendationQueueRows(fallback: RecommendationQueueRow[]) {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -242,7 +244,7 @@ export async function getRecommendationQueueRows(fallback: RecommendationQueueRo
       order by r.created_at desc
       limit 100
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -268,7 +270,7 @@ export async function getRecommendationQueueRows(fallback: RecommendationQueueRo
     .select(
       "id, category, title, summary, status, risk_level, impact_estimate, effort_estimate, created_at, brands:brand_id(name)"
     )
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -292,6 +294,7 @@ export async function getRecommendationQueueRows(fallback: RecommendationQueueRo
 
 export async function getApprovalQueueRows(fallback: ApprovalQueueRow[]) {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -311,7 +314,7 @@ export async function getApprovalQueueRows(fallback: ApprovalQueueRow[]) {
       order by a.created_at desc
       limit 100
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -332,7 +335,7 @@ export async function getApprovalQueueRows(fallback: ApprovalQueueRow[]) {
   const { data, error } = await supabase
     .from("approvals")
     .select("id, target_type, status, risk_level, notes, created_at, brands:brand_id(name)")
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
 

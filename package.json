@@ -9,6 +9,7 @@
     "db:migrate": "node scripts/run-migrations.mjs",
     "db:verify-rls": "node scripts/verify-rls.mjs",
     "start": "next start",
+    "start:render": "npm run db:migrate && next start",
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "node scripts/clean-next-types.mjs && tsc --noEmit"

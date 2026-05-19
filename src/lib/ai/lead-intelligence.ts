@@ -1,6 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type LeadContextRow = {
   tenant_id: string;
@@ -86,7 +85,7 @@ function draftReply(row: LeadContextRow, service: string) {
     .join("\n");
 }
 
-async function loadLeadContext(leadId: string) {
+async function loadLeadContext(leadId: string, workspaceId: string) {
   const result = await queryPostgres<LeadContextRow>(
     `
     select
@@ -127,14 +126,14 @@ async function loadLeadContext(leadId: string) {
     where l.tenant_id = $1 and l.id = $2
     limit 1
     `,
-    [internalTenantId, leadId]
+    [workspaceId, leadId]
   );
 
   return result?.rows[0] ?? null;
 }
 
 export async function generateLeadIntelligence(leadId: string): Promise<LeadIntelligenceResult> {
-  const row = await loadLeadContext(leadId);
+  const row = await loadLeadContext(leadId, await getCurrentWorkspaceId());
 
   if (!row) {
     return { ok: false, leadId, message: "Lead not found." };

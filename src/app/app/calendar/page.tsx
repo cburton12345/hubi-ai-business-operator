@@ -28,7 +28,7 @@ export default async function MarketingCalendarPage() {
                 <td>
                   <strong>{row.title}</strong>
                   <span className="muted">
-                    {row.itemType} · {row.notes}
+                    {row.itemType} / {row.notes}
                   </span>
                 </td>
                 <td>{row.brandName}</td>

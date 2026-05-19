@@ -1,4 +1,5 @@
 import { getWeeklyPeriodKey, type BrandPromptContext } from "@/lib/ai/prompt-context";
+import { generateJsonWithProvider } from "@/lib/ai/model-provider";
 import { queryPostgres } from "@/lib/db/postgres";
 import type { RiskLevel } from "@/types/core";
 
@@ -390,6 +391,69 @@ function scheduledFor(periodKey: string, offsetDays: number) {
   return date.toISOString();
 }
 
+function isPlanItem(value: unknown): value is PlanItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<PlanItem>;
+  return Boolean(
+    item.key &&
+      item.kind &&
+      item.title &&
+      item.summary &&
+      item.riskLevel &&
+      typeof item.scheduledOffsetDays === "number" &&
+      (item.draft || item.recommendation)
+  );
+}
+
+async function generatePlanItems(row: BrandContextRow, periodKey: string): Promise<PlanItem[]> {
+  const fallback = { items: planItems(row) };
+  const context = brandContextSummary(row);
+  const generated = await generateJsonWithProvider<{ items: PlanItem[] }>({
+    tenantId: row.tenant_id,
+    brandId: row.brand_id,
+    runType: "weekly_marketing_plan",
+    fallback,
+    system: [
+      "You are an AI marketing operator for external business workspaces.",
+      "Return JSON only with an items array matching the provided structure.",
+      "Use the brand facts only. Avoid fake guarantees, fake pricing, invented reviews, unverified licensing, legal or medical claims, and misleading results.",
+      "Do not publish, send messages, change budgets, or call external APIs."
+    ].join(" "),
+    user: JSON.stringify({
+      periodKey,
+      brand: {
+        name: row.brand_name,
+        businessType: row.business_model,
+        industry: row.industry,
+        services: row.services,
+        serviceAreas: row.locations,
+        targetCustomer: row.target_customers,
+        tone: row.tone_of_voice,
+        phone: row.phone,
+        email: row.email,
+        cta: row.cta_goals,
+        offers: row.offers,
+        landingPages: row.landing_pages,
+        seoKeywords: row.seo_keywords,
+        safety: safetyNote(row)
+      },
+      requiredMix: {
+        seoOrSocialIdeas: 3,
+        landingPageIdea: 1,
+        adCampaignIdea: 1,
+        followUpOrReviewRequestIdea: 1,
+        improvementAlert: 1
+      },
+      fallbackItems: fallback.items,
+      context
+    })
+  });
+
+  return Array.isArray(generated.items) && generated.items.length >= 7 && generated.items.every(isPlanItem)
+    ? generated.items
+    : fallback.items;
+}
+
 async function loadBrandRows(tenantId: string) {
   const result = await queryPostgres<BrandContextRow>(
     `
@@ -479,7 +543,7 @@ export async function generateWeeklyMarketingPlans(tenantId = internalTenantId, 
   let calendarItemsCreated = 0;
 
   for (const row of rows) {
-    const items = planItems(row);
+    const items = await generatePlanItems(row, periodKey);
     const summary = `Weekly operator plan for ${row.brand_name}: ${items
       .map((item) => item.title)
       .slice(0, 4)

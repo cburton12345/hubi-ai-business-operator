@@ -6,6 +6,7 @@ import { generateLeadIntelligence } from "@/lib/ai/lead-intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const statusUpdateSchema = z.object({
   leadId: z.string().min(1),
@@ -29,6 +30,7 @@ export async function updateLeadWorkflow(formData: FormData) {
   }
 
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   const { leadId, status, qualificationStatus, priority, note } = parsed.data;
 
@@ -40,7 +42,7 @@ export async function updateLeadWorkflow(formData: FormData) {
       where tenant_id = $1 and id = $2
       returning tenant_id, brand_id
       `,
-      ["11111111-1111-4111-8111-111111111111", leadId, status, qualificationStatus, priority]
+      [workspaceId, leadId, status, qualificationStatus, priority]
     );
     const lead = leadResult?.rows[0];
 
@@ -83,7 +85,7 @@ export async function updateLeadWorkflow(formData: FormData) {
       priority,
       updated_at: new Date().toISOString()
     })
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("id", leadId)
     .select("tenant_id, brand_id")
     .single<{ tenant_id: string; brand_id: string }>();

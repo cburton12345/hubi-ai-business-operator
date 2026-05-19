@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateWeeklyMarketingPlans } from "@/lib/ai/phase2-marketing-operator";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const calendarUpdateSchema = z.object({
   itemId: z.string().min(1),
@@ -23,7 +23,7 @@ const draftUpdateSchema = z.object({
 });
 
 export async function generateWeeklyMarketingPlansAction() {
-  await generateWeeklyMarketingPlans();
+  await generateWeeklyMarketingPlans(await getCurrentWorkspaceId());
   revalidatePath("/app");
   revalidatePath("/app/marketing");
   revalidatePath("/app/calendar");
@@ -45,6 +45,7 @@ export async function updateCalendarItemAction(formData: FormData) {
 
   const scheduledFor = parsed.data.scheduledFor ? new Date(parsed.data.scheduledFor).toISOString() : null;
   const publishedAt = parsed.data.status === "published" ? new Date().toISOString() : null;
+  const workspaceId = await getCurrentWorkspaceId();
   const result = await queryPostgres<{ tenant_id: string; brand_id: string }>(
     `
     update public.marketing_calendar_items
@@ -56,7 +57,7 @@ export async function updateCalendarItemAction(formData: FormData) {
     where tenant_id = $1 and id = $2
     returning tenant_id, brand_id
     `,
-    [internalTenantId, parsed.data.itemId, parsed.data.status, scheduledFor, publishedAt, parsed.data.notes ?? ""]
+    [workspaceId, parsed.data.itemId, parsed.data.status, scheduledFor, publishedAt, parsed.data.notes ?? ""]
   );
   const item = result?.rows[0];
 
@@ -90,6 +91,8 @@ export async function updateDraftReviewAction(formData: FormData) {
   });
 
   if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
 
   const result = await queryPostgres<{ tenant_id: string; brand_id: string }>(
     `
@@ -98,11 +101,79 @@ export async function updateDraftReviewAction(formData: FormData) {
     where tenant_id = $1 and id = $2
     returning tenant_id, brand_id
     `,
-    [internalTenantId, parsed.data.draftId, parsed.data.title, parsed.data.body, parsed.data.status]
+    [workspaceId, parsed.data.draftId, parsed.data.title, parsed.data.body, parsed.data.status]
   );
   const draft = result?.rows[0];
 
   if (draft) {
+    await queryPostgres(
+      `
+      insert into public.content_versions (
+        tenant_id,
+        brand_id,
+        draft_id,
+        version_number,
+        title,
+        body,
+        status,
+        created_by_user_id
+      )
+      values (
+        $1,
+        $2,
+        $3,
+        coalesce((select max(version_number) + 1 from public.content_versions where draft_id = $3), 1),
+        $4,
+        $5,
+        $6,
+        $7
+      )
+      on conflict (draft_id, version_number) do nothing
+      `,
+      [
+        draft.tenant_id,
+        draft.brand_id,
+        parsed.data.draftId,
+        parsed.data.title,
+        parsed.data.body,
+        parsed.data.status,
+        session?.userId ?? null
+      ]
+    );
+
+    if (parsed.data.notes) {
+      await queryPostgres(
+        `
+        insert into public.content_comments (tenant_id, brand_id, draft_id, user_id, body)
+        values ($1, $2, $3, $4, $5)
+        `,
+        [draft.tenant_id, draft.brand_id, parsed.data.draftId, session?.userId ?? null, parsed.data.notes]
+      );
+    }
+
+    await queryPostgres(
+      `
+      insert into public.approval_audit_events (
+        tenant_id,
+        brand_id,
+        target_type,
+        target_id,
+        action,
+        user_id,
+        metadata_json
+      )
+      values ($1, $2, 'ai_draft', $3, $4, $5, $6::jsonb)
+      `,
+      [
+        draft.tenant_id,
+        draft.brand_id,
+        parsed.data.draftId,
+        `ai_draft.${parsed.data.status}`,
+        session?.userId ?? null,
+        JSON.stringify({ status: parsed.data.status, notes: parsed.data.notes ?? "" })
+      ]
+    );
+
     await queryPostgres(
       `
       insert into public.activity_logs (tenant_id, brand_id, actor_type, action, target_type, target_id, metadata_json)

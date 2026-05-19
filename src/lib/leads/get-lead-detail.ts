@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { demoLeadDetails } from "@/lib/leads/demo-leads";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type LeadEventRow = {
   id: string;
@@ -98,6 +99,7 @@ function mapIntelligence(row: LeadIntelligenceRow | undefined) {
 
 export async function getLeadDetail(leadId: string) {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const leadResult = await queryPostgres<
@@ -127,7 +129,7 @@ export async function getLeadDetail(leadId: string) {
       where l.tenant_id = $1 and l.id = $2
       limit 1
       `,
-      ["11111111-1111-4111-8111-111111111111", leadId]
+      [workspaceId, leadId]
     );
     const lead = leadResult?.rows[0];
 
@@ -142,7 +144,7 @@ export async function getLeadDetail(leadId: string) {
       where tenant_id = $1 and lead_id = $2
       order by created_at desc
       `,
-      ["11111111-1111-4111-8111-111111111111", leadId]
+      [workspaceId, leadId]
     );
     const intelligenceResult = await queryPostgres<LeadIntelligenceRow>(
       `
@@ -151,7 +153,7 @@ export async function getLeadDetail(leadId: string) {
       where tenant_id = $1 and lead_id = $2
       limit 1
       `,
-      ["11111111-1111-4111-8111-111111111111", leadId]
+      [workspaceId, leadId]
     );
 
     return {
@@ -205,7 +207,7 @@ export async function getLeadDetail(leadId: string) {
       brands:brand_id(name)
     `
     )
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("id", leadId)
     .maybeSingle<LeadRow>();
 
@@ -216,13 +218,13 @@ export async function getLeadDetail(leadId: string) {
   const { data: events } = await supabase
     .from("lead_events")
     .select("id, type, body, created_at")
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
   const { data: intelligence } = await supabase
     .from("lead_intelligence")
     .select("summary, urgency, likely_spam, suggested_service, suggested_category, suggested_next_action, draft_reply, created_at")
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .eq("lead_id", leadId)
     .maybeSingle<LeadIntelligenceRow>();
 

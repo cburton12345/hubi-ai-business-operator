@@ -1,6 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type MarketingPlanRow = {
   id: string;
@@ -34,6 +33,7 @@ export type ReviewDraftRow = {
 };
 
 export async function getMarketingPlanRows() {
+  const workspaceId = await getCurrentWorkspaceId();
   const result = await queryPostgres<{
     id: string;
     brand_name: string;
@@ -50,7 +50,7 @@ export async function getMarketingPlanRows() {
     order by p.created_at desc
     limit 50
     `,
-    [internalTenantId]
+    [workspaceId]
   );
 
   return (result?.rows ?? []).map((row) => ({
@@ -64,6 +64,7 @@ export async function getMarketingPlanRows() {
 }
 
 export async function getMarketingCalendarRows() {
+  const workspaceId = await getCurrentWorkspaceId();
   const result = await queryPostgres<{
     id: string;
     brand_name: string;
@@ -82,7 +83,7 @@ export async function getMarketingCalendarRows() {
     order by coalesce(c.scheduled_for, c.created_at) asc
     limit 150
     `,
-    [internalTenantId]
+    [workspaceId]
   );
 
   return (result?.rows ?? []).map((row) => ({
@@ -98,6 +99,7 @@ export async function getMarketingCalendarRows() {
 }
 
 export async function getReviewDraftRows() {
+  const workspaceId = await getCurrentWorkspaceId();
   const result = await queryPostgres<{
     id: string;
     brand_name: string;
@@ -116,7 +118,7 @@ export async function getReviewDraftRows() {
     order by d.created_at desc
     limit 50
     `,
-    [internalTenantId]
+    [workspaceId]
   );
 
   return (result?.rows ?? []).map((row) => ({

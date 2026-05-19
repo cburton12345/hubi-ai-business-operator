@@ -1,7 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
-
-const internalTenantId = "11111111-1111-4111-8111-111111111111";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type PublicFormRow = {
   id: string;
@@ -33,6 +32,7 @@ type FormRow = {
 
 export async function getPublicFormRows(): Promise<PublicFormRow[]> {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -58,7 +58,7 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
       where f.tenant_id = $1
       order by f.slug
       `,
-      [internalTenantId]
+      [workspaceId]
     );
 
     if (result) {
@@ -89,7 +89,7 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
   const { data, error } = await supabase
     .from("forms")
     .select("id, name, slug, public_key, active, brands:brand_id(name, slug)")
-    .eq("tenant_id", internalTenantId)
+    .eq("tenant_id", workspaceId)
     .order("slug");
 
   if (error || !data) {

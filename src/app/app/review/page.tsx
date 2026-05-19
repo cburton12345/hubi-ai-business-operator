@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getReviewDraftRows } from "@/lib/marketing/get-phase2-dashboard";
 import { updateDraftReviewAction } from "@/app/app/marketing/actions";
@@ -11,6 +12,11 @@ export default async function MarketingReviewPage() {
       title="AI Generated Item Review"
       description="Review, edit, approve, reject, publish, or archive generated content. External publishing is intentionally not connected."
     >
+      <div className="button-row section-actions">
+        <Link className="button secondary-button" href="/app/exports">
+          Create manual export packages
+        </Link>
+      </div>
       <ul className="review-list">
         {drafts.map((draft) => (
           <li className="panel" key={draft.id}>
@@ -20,7 +26,7 @@ export default async function MarketingReviewPage() {
                 <div>
                   <h3>{draft.brandName}</h3>
                   <p className="muted">
-                    {draft.contentType} · {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(draft.createdAt))}
+                    {draft.contentType} / {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(draft.createdAt))}
                   </p>
                 </div>
                 <div className="inline-actions">

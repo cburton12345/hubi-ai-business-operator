@@ -13,7 +13,7 @@ export function QueuePageShell({
 }) {
   return (
     <main className="page-shell">
-      <section className="workspace">
+      <section className="workspace page-section">
         <div className="topbar">
           <div>
             <p className="eyebrow">{eyebrow}</p>

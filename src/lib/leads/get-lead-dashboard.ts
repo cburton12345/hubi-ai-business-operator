@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { demoLeads } from "@/lib/leads/demo-leads";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type LeadDashboardRow = {
   id: string;
@@ -40,6 +41,7 @@ type LeadRow = {
 
 export async function getLeadDashboardRows() {
   const supabase = createSupabaseAdminClient();
+  const workspaceId = await getCurrentWorkspaceId();
 
   if (!supabase) {
     const result = await queryPostgres<{
@@ -74,7 +76,7 @@ export async function getLeadDashboardRows() {
       order by l.created_at desc
       limit 100
       `,
-      ["11111111-1111-4111-8111-111111111111"]
+      [workspaceId]
     );
 
     if (result) {
@@ -112,7 +114,7 @@ export async function getLeadDashboardRows() {
       brands:brand_id(name, slug)
     `
     )
-    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("tenant_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
 

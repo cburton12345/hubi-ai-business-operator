@@ -1,6 +1,7 @@
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { getAccessOverviewRows, type AccessOverviewRow } from "@/lib/auth/get-access-overview";
+import { createWorkspaceUserAction } from "./actions";
 
 export default async function AccessPage() {
   const rows = await getAccessOverviewRows();
@@ -11,6 +12,36 @@ export default async function AccessPage() {
       title="Access Control"
       description="Organization membership, platform roles, and workspace permissions for internal and future customer accounts."
     >
+      <form action={createWorkspaceUserAction} className="panel form-stack section-actions">
+        <h2>Create Workspace User</h2>
+        <p className="muted">Create an account for the currently selected organization. Messages are not sent automatically.</p>
+        <div className="filter-bar">
+          <label>
+            Name
+            <input name="name" placeholder="Jane Operator" required />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" placeholder="jane@example.com" required />
+          </label>
+          <label>
+            Temporary password
+            <input name="password" type="password" minLength={8} required />
+          </label>
+          <label>
+            Role
+            <select name="role" defaultValue="operator">
+              <option value="owner">owner</option>
+              <option value="admin">admin</option>
+              <option value="operator">operator</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <button className="button" type="submit">
+            Create user
+          </button>
+        </div>
+      </form>
       <QueueTable<AccessOverviewRow>
         rows={rows}
         columns={[
