@@ -7,6 +7,7 @@ export type TenantSelectorRow = {
   slug: string;
   accountType: string;
   status: string;
+  onboardingStatus: string;
 };
 
 export async function getTenantSelectorRows(): Promise<TenantSelectorRow[]> {
@@ -19,9 +20,10 @@ export async function getTenantSelectorRows(): Promise<TenantSelectorRow[]> {
       slug: string;
       account_type: string;
       status: string;
+      onboarding_status: string;
     }>(
       `
-      select id, name, slug, account_type, status
+      select id, name, slug, account_type, status, onboarding_status
       from public.tenants
       order by name
       `
@@ -33,7 +35,8 @@ export async function getTenantSelectorRows(): Promise<TenantSelectorRow[]> {
         name: tenant.name,
         slug: tenant.slug,
         accountType: tenant.account_type,
-        status: tenant.status
+        status: tenant.status,
+        onboardingStatus: tenant.onboarding_status
       }));
     }
 
@@ -43,14 +46,15 @@ export async function getTenantSelectorRows(): Promise<TenantSelectorRow[]> {
         name: "Internal Portfolio",
         slug: "internal-portfolio",
         accountType: "internal",
-        status: "active"
+        status: "active",
+        onboardingStatus: "completed"
       }
     ];
   }
 
   const { data, error } = await supabase
     .from("tenants")
-    .select("id, name, slug, account_type, status")
+    .select("id, name, slug, account_type, status, onboarding_status")
     .order("name");
 
   if (error || !data) {
@@ -62,6 +66,7 @@ export async function getTenantSelectorRows(): Promise<TenantSelectorRow[]> {
     name: tenant.name,
     slug: tenant.slug,
     accountType: tenant.account_type,
-    status: tenant.status
+    status: tenant.status,
+    onboardingStatus: tenant.onboarding_status
   }));
 }

@@ -8,6 +8,11 @@ export default async function TenantsPage() {
 
   return (
     <QueuePageShell eyebrow="SaaS Platform" title="Organization Selector" description="Separate workspaces for internal brands and future customer accounts.">
+      <div className="button-row section-actions">
+        <Link className="button" href="/app/onboarding">
+          Create organization workspace
+        </Link>
+      </div>
       <QueueTable<TenantSelectorRow>
         rows={rows}
         columns={[
@@ -22,7 +27,8 @@ export default async function TenantsPage() {
             )
           },
           { key: "type", label: "Type", render: (row) => row.accountType },
-          { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> }
+          { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
+          { key: "onboarding", label: "Onboarding", render: (row) => <span className="pill">{row.onboardingStatus}</span> }
         ]}
       />
     </QueuePageShell>

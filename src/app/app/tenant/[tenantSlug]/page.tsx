@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getTenantOverview } from "@/lib/dashboard/get-tenant-overview";
+import { generateWorkspaceMarketingPlanAction } from "./actions";
 
 export default async function TenantPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const { tenantSlug } = await params;
@@ -18,9 +19,24 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantS
             <h1>{tenant.name}</h1>
             <p className="muted">Workspace-scoped operating context. Future customer organizations use this same shape.</p>
           </div>
+          <form action={generateWorkspaceMarketingPlanAction}>
+            <input name="workspaceSlug" type="hidden" value={tenant.slug} />
+            <button className="button" type="submit">
+              Generate workspace marketing plan
+            </button>
+          </form>
         </div>
 
         <div className="grid">
+          <section className="panel span-12">
+            <h2>Workspace Readiness</h2>
+            <div className="button-row">
+              <span className="pill">{tenant.accountType}</span>
+              <span className="pill">{tenant.status}</span>
+              <span className="pill">{tenant.onboardingStatus}</span>
+            </div>
+          </section>
+
           <section className="panel span-8">
             <h2>Brand Portfolio</h2>
             <ul className="list">

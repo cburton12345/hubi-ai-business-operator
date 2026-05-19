@@ -7,6 +7,9 @@ type TenantRow = {
   id: string;
   name: string;
   slug: string;
+  account_type: string;
+  status: string;
+  onboarding_status: string;
 };
 
 type BrandRow = {
@@ -24,7 +27,7 @@ export async function getTenantOverview(tenantSlug: string) {
   if (!supabase) {
     const tenantResult = await queryPostgres<TenantRow>(
       `
-      select id, name, slug
+      select id, name, slug, account_type, status, onboarding_status
       from public.tenants
       where slug = $1
       limit 1
@@ -47,6 +50,9 @@ export async function getTenantOverview(tenantSlug: string) {
       return {
         name: tenant.name,
         slug: tenant.slug,
+        accountType: tenant.account_type,
+        status: tenant.status,
+        onboardingStatus: tenant.onboarding_status,
         brands: (brandResult?.rows ?? []).map((brand) => ({
           name: brand.name,
           slug: brand.slug,
@@ -62,7 +68,7 @@ export async function getTenantOverview(tenantSlug: string) {
   if (supabase) {
     const { data: tenant } = await supabase
       .from("tenants")
-      .select("id, name, slug")
+      .select("id, name, slug, account_type, status, onboarding_status")
       .eq("slug", tenantSlug)
       .maybeSingle<TenantRow>();
 
@@ -88,6 +94,9 @@ export async function getTenantOverview(tenantSlug: string) {
     return {
       name: tenant.name,
       slug: tenant.slug,
+      accountType: tenant.account_type,
+      status: tenant.status,
+      onboardingStatus: tenant.onboarding_status,
       brands
     };
   }
@@ -99,6 +108,9 @@ export async function getTenantOverview(tenantSlug: string) {
   return {
     name: "Internal Portfolio",
     slug: tenantSlug,
+    accountType: "internal",
+    status: "active",
+    onboardingStatus: "completed",
     brands: internalBrands
   };
 }
