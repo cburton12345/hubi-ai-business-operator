@@ -8,6 +8,7 @@
     "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
     "db:migrate": "node scripts/run-migrations.mjs",
     "db:verify-rls": "node scripts/verify-rls.mjs",
+    "beta:smoke": "node scripts/beta-smoke.mjs",
     "start": "next start",
     "start:render": "npm run db:migrate && next start",
     "lint": "next lint",

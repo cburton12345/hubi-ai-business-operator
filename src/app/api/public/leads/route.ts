@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createPublicLead } from "@/lib/leads/create-public-lead";
 import { publicLeadSchema } from "@/lib/leads/schemas";
 import { evaluateLeadSubmission } from "@/lib/leads/spam-guard";
+import { logAppError } from "@/lib/observability/log-error";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
   const result = await createPublicLead(parsed.data, requestMeta);
 
   if (!result.ok) {
+    await logAppError({
+      source: "api.public.leads",
+      message: result.error ?? "Unable to create lead.",
+      severity: result.status >= 500 ? "error" : "warning",
+      metadata: { formPublicKey: parsed.data.formPublicKey, status: result.status }
+    });
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 

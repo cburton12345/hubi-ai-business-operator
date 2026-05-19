@@ -29,7 +29,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/app/exports">Exports</Link>
             <Link href="/app/reports">Reports</Link>
             <Link href="/app/workflows">Workflows</Link>
+            <Link href="/app/beta">Beta</Link>
+            <Link href="/app/billing">Billing</Link>
             <Link href="/app/integrations">Integrations</Link>
+            <Link href="/app/webhooks">Webhooks</Link>
             <Link href="/app/settings">Settings</Link>
             <Link href="/app/access">Access</Link>
           </nav>
