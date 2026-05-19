@@ -29,7 +29,7 @@ export default async function LeadsPage({
           <div>
             <p className="eyebrow">CRM Lite</p>
             <h1>Lead Management</h1>
-            <p className="muted">Tenant-scoped lead intake across local service, rental, software, marketplace, and lead-gen brands.</p>
+            <p className="muted">Workspace-scoped lead intake across local service, rental, software, marketplace, and lead-gen brands.</p>
           </div>
           <Link className="button secondary-button" href="/app">
             Dashboard

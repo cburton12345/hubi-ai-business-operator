@@ -26,6 +26,16 @@ export type LeadDetail = {
   metadata: Record<string, unknown>;
   createdAt: string;
   events: LeadEventRow[];
+  intelligence: {
+    summary: string;
+    urgency: string;
+    likelySpam: boolean;
+    suggestedService: string;
+    suggestedCategory: string;
+    suggestedNextAction: string;
+    draftReply: string;
+    createdAt: string;
+  } | null;
 };
 
 type LeadRow = {
@@ -59,6 +69,32 @@ type EventRow = {
   body: string | null;
   created_at: string;
 };
+
+type LeadIntelligenceRow = {
+  summary: string;
+  urgency: string;
+  likely_spam: boolean;
+  suggested_service: string | null;
+  suggested_category: string | null;
+  suggested_next_action: string | null;
+  draft_reply: string | null;
+  created_at: string;
+};
+
+function mapIntelligence(row: LeadIntelligenceRow | undefined) {
+  if (!row) return null;
+
+  return {
+    summary: row.summary,
+    urgency: row.urgency,
+    likelySpam: row.likely_spam,
+    suggestedService: row.suggested_service ?? "",
+    suggestedCategory: row.suggested_category ?? "",
+    suggestedNextAction: row.suggested_next_action ?? "",
+    draftReply: row.draft_reply ?? "",
+    createdAt: row.created_at
+  };
+}
 
 export async function getLeadDetail(leadId: string) {
   const supabase = createSupabaseAdminClient();
@@ -108,6 +144,15 @@ export async function getLeadDetail(leadId: string) {
       `,
       ["11111111-1111-4111-8111-111111111111", leadId]
     );
+    const intelligenceResult = await queryPostgres<LeadIntelligenceRow>(
+      `
+      select summary, urgency, likely_spam, suggested_service, suggested_category, suggested_next_action, draft_reply, created_at
+      from public.lead_intelligence
+      where tenant_id = $1 and lead_id = $2
+      limit 1
+      `,
+      ["11111111-1111-4111-8111-111111111111", leadId]
+    );
 
     return {
       id: lead.id,
@@ -125,6 +170,7 @@ export async function getLeadDetail(leadId: string) {
       consentToContact: lead.consent_to_contact,
       metadata: lead.metadata_json ?? {},
       createdAt: lead.created_at,
+      intelligence: mapIntelligence(intelligenceResult?.rows[0]),
       events: (eventsResult?.rows ?? []).map((event) => ({
         id: event.id,
         type: event.type,
@@ -173,6 +219,12 @@ export async function getLeadDetail(leadId: string) {
     .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
+  const { data: intelligence } = await supabase
+    .from("lead_intelligence")
+    .select("summary, urgency, likely_spam, suggested_service, suggested_category, suggested_next_action, draft_reply, created_at")
+    .eq("tenant_id", "11111111-1111-4111-8111-111111111111")
+    .eq("lead_id", leadId)
+    .maybeSingle<LeadIntelligenceRow>();
 
   const brand = Array.isArray(lead.brands) ? lead.brands[0] : lead.brands;
 
@@ -192,6 +244,7 @@ export async function getLeadDetail(leadId: string) {
     consentToContact: lead.consent_to_contact,
     metadata: lead.metadata_json ?? {},
     createdAt: lead.created_at,
+    intelligence: mapIntelligence(intelligence ?? undefined),
     events: ((events as EventRow[] | null) ?? []).map((event) => ({
       id: event.id,
       type: event.type,

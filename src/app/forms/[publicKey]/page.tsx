@@ -30,7 +30,7 @@ export default async function PublicLeadFormPage({
           <p className="muted">
             {profile
               ? `${profile.brandName} - ${profile.primaryGoal}`
-              : "This reusable form routes the submission to the correct tenant and brand."}
+              : "This reusable form routes the submission to the correct workspace and brand."}
           </p>
         </div>
 

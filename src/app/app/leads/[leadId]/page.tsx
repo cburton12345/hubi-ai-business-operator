@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateLeadWorkflow } from "@/app/app/leads/actions";
+import { generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
@@ -115,6 +115,59 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 Save Update
               </button>
             </form>
+          </section>
+
+          <section className="panel span-12">
+            <div className="topbar">
+              <div>
+                <h2>AI Lead Intelligence</h2>
+                <p className="muted">Summarize the lead, classify urgency, detect likely spam, suggest a service, and draft a reply for manual review.</p>
+              </div>
+              <form action={generateLeadIntelligenceAction}>
+                <input name="leadId" type="hidden" value={lead.id} />
+                <button className="button" type="submit">
+                  Generate intelligence
+                </button>
+              </form>
+            </div>
+            {lead.intelligence ? (
+              <dl className="detail-grid">
+                <div className="detail-wide">
+                  <dt>Summary</dt>
+                  <dd>{lead.intelligence.summary}</dd>
+                </div>
+                <div>
+                  <dt>Urgency</dt>
+                  <dd>
+                    <span className={`pill ${lead.intelligence.urgency === "high" ? "high" : ""}`}>{lead.intelligence.urgency}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Likely spam</dt>
+                  <dd>{lead.intelligence.likelySpam ? "Yes" : "No"}</dd>
+                </div>
+                <div>
+                  <dt>Suggested service</dt>
+                  <dd>{lead.intelligence.suggestedService || "Not classified"}</dd>
+                </div>
+                <div>
+                  <dt>Category</dt>
+                  <dd>{lead.intelligence.suggestedCategory || "Not classified"}</dd>
+                </div>
+                <div className="detail-wide">
+                  <dt>Next action</dt>
+                  <dd>{lead.intelligence.suggestedNextAction}</dd>
+                </div>
+                <div className="detail-wide">
+                  <dt>Manual reply draft</dt>
+                  <dd>
+                    <pre>{lead.intelligence.draftReply}</pre>
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="muted">No lead intelligence generated yet.</p>
+            )}
           </section>
 
           <section className="panel span-12">

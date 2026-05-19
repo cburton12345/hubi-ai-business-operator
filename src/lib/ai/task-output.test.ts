@@ -19,6 +19,8 @@ function contextFor(riskProfile: "normal" | "regulated" | "legal_sensitive") {
       name: riskProfile === "legal_sensitive" ? "Ferocity" : "Storm Restoration",
       slug: riskProfile === "legal_sensitive" ? "ferocity" : "storm-restoration",
       domain: null,
+      phone: null,
+      email: null,
       businessModel: riskProfile === "legal_sensitive" ? "lead_generation" : "local_service",
       industry: riskProfile === "legal_sensitive" ? "Personal injury lead generation" : "Roofing / storm restoration",
       vertical: riskProfile === "legal_sensitive" ? "personal_injury" : "roofing",
@@ -58,7 +60,7 @@ describe("AI task output generation", () => {
     expect(output.recommendations).toHaveLength(0);
     expect(output.drafts[0].status).toBe("needs_review");
     expect(output.drafts[0].metadata_json).toMatchObject({
-      generator: "phase1_deterministic_operator",
+      generator: "phase2_deterministic_operator",
       outputKind: "content_draft"
     });
   });

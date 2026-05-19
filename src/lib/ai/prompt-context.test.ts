@@ -15,6 +15,8 @@ const brand = {
   name: "Ferocity",
   slug: "ferocity",
   domain: null,
+  phone: null,
+  email: null,
   businessModel: "lead_generation" as const,
   industry: "Personal injury lead generation",
   vertical: "personal_injury",
@@ -36,7 +38,7 @@ describe("AI prompt context", () => {
       }
     });
 
-    expect(context.schemaVersion).toBe("phase1.brand_prompt_context.v1");
+    expect(context.schemaVersion).toBe("phase2.brand_prompt_context.v1");
     expect(context.safety.requiresHumanReview).toBe(true);
     expect(context.safety.publicPublishingAllowed).toBe(false);
     expect(context.phaseScope.draftOnly).toBe(true);

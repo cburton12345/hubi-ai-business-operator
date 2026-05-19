@@ -71,7 +71,7 @@ export function classifyTaskRisk(context: BrandPromptContext, taskType: AiTaskTy
 
 function metadata(input: AiTaskOutputInput, outputKind: string) {
   return {
-    generator: "phase1_deterministic_operator",
+    generator: "phase2_deterministic_operator",
     outputKind,
     periodKey: input.promptContext.workflow?.periodKey ?? null,
     requestedOutput: input.promptContext.workflow?.requestedOutput ?? null,

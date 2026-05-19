@@ -6,10 +6,10 @@ export default function HomePage() {
       <section className="workspace">
         <div className="topbar">
           <div>
-            <p className="eyebrow">Hubi Phase 1</p>
-            <h1>AI Business Operator foundation for multi-tenant growth.</h1>
+            <p className="eyebrow">Hubi Phase 2</p>
+            <h1>AI Business Operator for multi-workspace growth.</h1>
             <p className="muted">
-              Tenant isolation, multi-brand operations, lead capture, AI draft queues, recommendations, and approvals.
+              Workspace isolation, multi-brand operations, lead capture, weekly AI marketing plans, drafts, recommendations, and approvals.
             </p>
           </div>
           <Link className="button" href="/app">
@@ -18,8 +18,8 @@ export default function HomePage() {
         </div>
         <div className="grid">
           <div className="panel span-4">
-            <h2>Tenant First</h2>
-            <p className="muted">Every operational record is scoped by tenant, then brand.</p>
+            <h2>Workspace First</h2>
+            <p className="muted">Every operational record is scoped by organization workspace, then brand.</p>
           </div>
           <div className="panel span-4">
             <h2>Multi-Model</h2>

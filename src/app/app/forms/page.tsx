@@ -7,7 +7,7 @@ export default async function FormsPage() {
   const rows = await getPublicFormRows();
 
   return (
-    <QueuePageShell eyebrow="Lead Capture" title="Public Lead Forms" description="Reusable form keys route incoming leads to the correct tenant and brand.">
+    <QueuePageShell eyebrow="Lead Capture" title="Public Lead Forms" description="Reusable form keys route incoming leads to the correct workspace and brand.">
       <QueueTable<PublicFormRow>
         rows={rows}
         columns={[

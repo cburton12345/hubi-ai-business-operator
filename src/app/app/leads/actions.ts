@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { generateLeadIntelligence } from "@/lib/ai/lead-intelligence";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
@@ -122,4 +123,13 @@ export async function updateLeadWorkflow(formData: FormData) {
   revalidatePath(`/app/leads/${leadId}`);
 
   return;
+}
+
+export async function generateLeadIntelligenceAction(formData: FormData) {
+  const leadId = formData.get("leadId")?.toString();
+  if (!leadId) return;
+
+  await generateLeadIntelligence(leadId);
+  revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app");
 }

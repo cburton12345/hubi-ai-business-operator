@@ -14,9 +14,9 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantS
       <section className="workspace">
         <div className="topbar">
           <div>
-            <p className="eyebrow">Tenant</p>
+            <p className="eyebrow">Workspace</p>
             <h1>{tenant.name}</h1>
-            <p className="muted">Tenant-scoped operating context. Future customer workspaces use this same shape.</p>
+            <p className="muted">Workspace-scoped operating context. Future customer organizations use this same shape.</p>
           </div>
         </div>
 
@@ -41,7 +41,7 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantS
           <section className="panel span-4">
             <h2>Isolation Rule</h2>
             <p className="muted">
-              Tenant access is the security boundary. Brand access is the operating context inside that boundary.
+              Workspace access is the security boundary. Brand access is the operating context inside that boundary.
             </p>
           </section>
         </div>

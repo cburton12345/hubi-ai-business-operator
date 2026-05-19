@@ -7,13 +7,13 @@ export default async function TenantsPage() {
   const rows = await getTenantSelectorRows();
 
   return (
-    <QueuePageShell eyebrow="SaaS Platform" title="Tenant Selector" description="Separate workspaces for internal brands and future customer accounts.">
+    <QueuePageShell eyebrow="SaaS Platform" title="Organization Selector" description="Separate workspaces for internal brands and future customer accounts.">
       <QueueTable<TenantSelectorRow>
         rows={rows}
         columns={[
           {
             key: "name",
-            label: "Tenant",
+            label: "Organization",
             render: (row) => (
               <Link href={`/app/tenant/${row.slug}`}>
                 <strong>{row.name}</strong>

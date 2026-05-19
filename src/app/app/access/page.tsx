@@ -9,7 +9,7 @@ export default async function AccessPage() {
     <QueuePageShell
       eyebrow="SaaS Platform"
       title="Access Control"
-      description="Tenant membership, platform roles, and workspace permissions for internal and future customer accounts."
+      description="Organization membership, platform roles, and workspace permissions for internal and future customer accounts."
     >
       <QueueTable<AccessOverviewRow>
         rows={rows}
@@ -25,8 +25,8 @@ export default async function AccessPage() {
             )
           },
           {
-            key: "tenant",
-            label: "Tenant",
+            key: "organization",
+            label: "Organization",
             render: (row) => (
               <>
                 <strong>{row.tenantName}</strong>
@@ -35,7 +35,7 @@ export default async function AccessPage() {
             )
           },
           { key: "platformRole", label: "Platform", render: (row) => <span className="pill">{row.platformRole}</span> },
-          { key: "tenantRole", label: "Tenant Role", render: (row) => <span className="pill">{row.tenantRole}</span> },
+          { key: "tenantRole", label: "Workspace Role", render: (row) => <span className="pill">{row.tenantRole}</span> },
           { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
           { key: "description", label: "Permission Scope", render: (row) => row.roleDescription }
         ]}

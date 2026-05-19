@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, FileCheck2, Inbox, Lightbulb, ShieldCheck } from "lucide-react";
+import { BarChart3, Building2, CalendarDays, FileCheck2, Inbox, Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
 
 export default async function AppDashboardPage() {
@@ -12,14 +12,14 @@ export default async function AppDashboardPage() {
           <div>
             <p className="eyebrow">Admin Workspace</p>
             <h1>{snapshot.tenantName}</h1>
-            <p className="muted">Phase 1 command center for brands, leads, AI drafts, recommendations, and approvals.</p>
+            <p className="muted">Workspace command center for brands, leads, AI marketing plans, drafts, recommendations, and approvals.</p>
           </div>
           <div className="button-row">
             <Link className="button secondary-button" href="/app/tenant/internal-portfolio">
-              View Tenant
+              Workspace
             </Link>
             <Link className="button secondary-button" href="/app/tenants">
-              Tenants
+              Organizations
             </Link>
             <Link className="button secondary-button" href="/app/brands">
               Brands
@@ -33,6 +33,9 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/access">
               Access
             </Link>
+            <Link className="button" href="/app/marketing">
+              <Sparkles size={16} /> AI Operator
+            </Link>
           </div>
         </div>
 
@@ -41,6 +44,9 @@ export default async function AppDashboardPage() {
           <Metric icon={<Inbox size={20} />} label="Open Leads" value={snapshot.metrics.openLeads} />
           <Metric icon={<FileCheck2 size={20} />} label="Drafts" value={snapshot.metrics.pendingDrafts} />
           <Metric icon={<ShieldCheck size={20} />} label="Approvals" value={snapshot.metrics.pendingApprovals} />
+          <Metric icon={<CalendarDays size={20} />} label="Content This Week" value={snapshot.metrics.contentCreatedThisWeek} />
+          <Metric icon={<Lightbulb size={20} />} label="AI Recommendations" value={snapshot.metrics.aiRecommendations} />
+          <Metric icon={<BarChart3 size={20} />} label="Stale Leads" value={snapshot.metrics.staleLeads} />
         </div>
 
         <div className="grid">
@@ -74,6 +80,10 @@ export default async function AppDashboardPage() {
             </ul>
           </section>
 
+          <Breakdown title="Leads by Brand" rows={snapshot.reporting.leadsByBrand} />
+          <Breakdown title="Leads by Source" rows={snapshot.reporting.leadsBySource} />
+          <Breakdown title="Leads by Campaign" rows={snapshot.reporting.leadsByCampaign} />
+
           <section className="panel span-12">
             <h2>
               <Lightbulb size={18} /> AI Task Queue
@@ -90,6 +100,12 @@ export default async function AppDashboardPage() {
               </Link>
               <Link className="button secondary-button" href="/app/approvals">
                 Approvals
+              </Link>
+              <Link className="button secondary-button" href="/app/calendar">
+                Calendar
+              </Link>
+              <Link className="button secondary-button" href="/app/review">
+                Review
               </Link>
             </div>
             <ul className="list">
@@ -116,6 +132,27 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
       {icon}
       <span className="muted">{label}</span>
       <strong>{value}</strong>
+    </section>
+  );
+}
+
+function Breakdown({ title, rows }: { title: string; rows: { label: string; count: number }[] }) {
+  return (
+    <section className="panel span-4">
+      <h2>{title}</h2>
+      <ul className="list">
+        {rows.map((row) => (
+          <li className="list-row" key={row.label}>
+            <strong>{row.label}</strong>
+            <span className="pill">{row.count}</span>
+          </li>
+        ))}
+        {rows.length === 0 ? (
+          <li className="list-row">
+            <span className="muted">No lead data yet</span>
+          </li>
+        ) : null}
+      </ul>
     </section>
   );
 }

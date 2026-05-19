@@ -16,6 +16,8 @@ export type PromptBrand = {
   name: string;
   slug: string;
   domain: string | null;
+  phone: string | null;
+  email: string | null;
   businessModel: BusinessModel;
   industry: string | null;
   vertical: string | null;
@@ -34,6 +36,14 @@ export type PromptMarketingSettings = {
   followUpStrategy: string | null;
   toneOfVoice: string | null;
   approvalMode: "manual" | "low_risk_auto" | "recommend_only";
+  autoCreateLowRiskDrafts: boolean;
+  autoWeeklySeoPosts: boolean;
+  autoGbpPostDrafts: boolean;
+  autoFacebookPostDrafts: boolean;
+  autoReviewRequestDrafts: boolean;
+  autoFollowUpDrafts: boolean;
+  autoLandingPageSuggestions: boolean;
+  highRiskApprovalRules: Record<string, boolean>;
 };
 
 export type PromptService = {
@@ -55,14 +65,32 @@ export type PromptOffer = {
   description: string | null;
 };
 
+export type PromptLandingPage = {
+  title: string;
+  slug: string;
+  url: string | null;
+  pageType: "landing_page" | "city_page" | "service_page" | "homepage" | "other";
+  primaryKeyword: string | null;
+  status: "planned" | "draft" | "published" | "archived";
+};
+
+export type PromptSeoKeyword = {
+  keyword: string;
+  intent: "service" | "local" | "comparison" | "education" | "brand" | "commercial";
+  priority: number;
+  targetUrl: string | null;
+};
+
 export type BrandPromptContext = {
-  schemaVersion: "phase1.brand_prompt_context.v1";
+  schemaVersion: "phase2.brand_prompt_context.v1";
   generatedAt: string;
   tenant: PromptTenant;
   brand: PromptBrand;
   services: PromptService[];
   locations: PromptLocation[];
   offers: PromptOffer[];
+  landingPages: PromptLandingPage[];
+  seoKeywords: PromptSeoKeyword[];
   marketing: PromptMarketingSettings;
   safety: {
     riskProfile: RiskProfile;
@@ -72,7 +100,7 @@ export type BrandPromptContext = {
     prohibitedActions: string[];
   };
   phaseScope: {
-    phase: "phase_1";
+    phase: "phase_2";
     draftOnly: true;
     canRecommendCampaigns: true;
     canRecommendSeo: true;
@@ -102,7 +130,23 @@ const defaultMarketing: PromptMarketingSettings = {
   reviewStrategy: null,
   followUpStrategy: null,
   toneOfVoice: null,
-  approvalMode: "manual"
+  approvalMode: "manual",
+  autoCreateLowRiskDrafts: true,
+  autoWeeklySeoPosts: true,
+  autoGbpPostDrafts: true,
+  autoFacebookPostDrafts: true,
+  autoReviewRequestDrafts: true,
+  autoFollowUpDrafts: true,
+  autoLandingPageSuggestions: true,
+  highRiskApprovalRules: {
+    publishingLive: true,
+    adBudgetChanges: true,
+    legalSensitiveClaims: true,
+    pricingChanges: true,
+    majorHomepageChanges: true,
+    deletingPages: true,
+    publicReviewResponses: true
+  }
 };
 
 export function buildBrandPromptContext(input: {
@@ -111,6 +155,8 @@ export function buildBrandPromptContext(input: {
   services?: PromptService[];
   locations?: PromptLocation[];
   offers?: PromptOffer[];
+  landingPages?: PromptLandingPage[];
+  seoKeywords?: PromptSeoKeyword[];
   marketing?: Partial<PromptMarketingSettings> | null;
   generatedAt?: string;
 }): BrandPromptContext {
@@ -118,7 +164,7 @@ export function buildBrandPromptContext(input: {
   const requiresHumanReview = input.brand.riskProfile !== "normal" || marketing.approvalMode !== "low_risk_auto";
 
   return {
-    schemaVersion: "phase1.brand_prompt_context.v1",
+    schemaVersion: "phase2.brand_prompt_context.v1",
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     tenant: input.tenant,
     brand: input.brand,
@@ -127,6 +173,8 @@ export function buildBrandPromptContext(input: {
       (a, b) => b.priority - a.priority || (a.serviceAreaName ?? a.city ?? "").localeCompare(b.serviceAreaName ?? b.city ?? "")
     ),
     offers: input.offers ?? [],
+    landingPages: [...(input.landingPages ?? [])].sort((a, b) => a.title.localeCompare(b.title)),
+    seoKeywords: [...(input.seoKeywords ?? [])].sort((a, b) => b.priority - a.priority || a.keyword.localeCompare(b.keyword)),
     marketing,
     safety: {
       riskProfile: input.brand.riskProfile,
@@ -136,13 +184,17 @@ export function buildBrandPromptContext(input: {
       prohibitedActions: [
         "Do not publish content automatically.",
         "Do not change ad budgets.",
+        "Do not make legal, medical, or outcome claims.",
+        "Do not invent reviews or testimonials.",
+        "Do not say licensed or insured unless it exists in the brand profile.",
+        "Do not invent prices unless the brand profile or offer includes them.",
         "Do not make pricing changes.",
         "Do not delete or materially rewrite important pages.",
         "Do not send customer messages automatically."
       ]
     },
     phaseScope: {
-      phase: "phase_1",
+      phase: "phase_2",
       draftOnly: true,
       canRecommendCampaigns: true,
       canRecommendSeo: true,

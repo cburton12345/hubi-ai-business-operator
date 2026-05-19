@@ -43,6 +43,7 @@ export const demoLeadDetails: LeadDetail[] = [
       caseType: "personal_injury",
       legalDisclaimerAcknowledged: true
     },
+    intelligence: null,
     events: [
       {
         id: "demo-event-ferocity-1",
@@ -62,6 +63,7 @@ export const demoLeadDetails: LeadDetail[] = [
       rentalItemType: "utility_trailer",
       deliveryNeeded: false
     },
+    intelligence: null,
     events: [
       {
         id: "demo-event-trailer-1",

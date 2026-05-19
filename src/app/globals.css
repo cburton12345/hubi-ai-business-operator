@@ -198,6 +198,11 @@ h3 {
   gap: 10px;
 }
 
+.button svg,
+.secondary-button svg {
+  margin-right: 7px;
+}
+
 .section-actions {
   margin-bottom: 14px;
 }
@@ -366,6 +371,36 @@ pre {
   gap: 6px;
 }
 
+.compact-form {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(170px, 1fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.compact-form input,
+.compact-form select {
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.review-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flush-row {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .mini-button {
   min-height: 30px;
   padding: 0 9px;
@@ -404,6 +439,10 @@ pre {
   }
 
   .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-form {
     grid-template-columns: 1fr;
   }
 }

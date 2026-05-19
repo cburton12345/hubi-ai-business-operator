@@ -7,7 +7,7 @@ export default async function BrandsPage() {
   const rows = await getBrandSelectorRows();
 
   return (
-    <QueuePageShell eyebrow="Multi-Brand" title="Brand Selector" description="Brand-level operating contexts inside the current tenant.">
+    <QueuePageShell eyebrow="Multi-Brand" title="Brand Selector" description="Brand-level operating contexts inside the current workspace.">
       <QueueTable<BrandSelectorRow>
         rows={rows}
         columns={[

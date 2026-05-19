@@ -11,7 +11,7 @@ export default async function TasksPage() {
     <QueuePageShell
       eyebrow="AI Operator"
       title="AI Task Queue"
-      description="Work the AI should perform or prepare, scoped by tenant and brand."
+      description="Work the AI should perform or prepare, scoped by workspace and brand."
     >
       <form action={queueWeeklyAiTasksAction} className="button-row section-actions">
         <button className="button" type="submit">

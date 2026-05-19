@@ -18,6 +18,8 @@ type BrandRow = {
   name: string;
   slug: string;
   domain: string | null;
+  phone: string | null;
+  email: string | null;
   business_model: BrandPromptContext["brand"]["businessModel"];
   industry: string | null;
   vertical: string | null;
@@ -59,6 +61,14 @@ type MarketingRow = {
   follow_up_strategy: string | null;
   tone_of_voice: string | null;
   approval_mode: BrandPromptContext["marketing"]["approvalMode"];
+  auto_create_low_risk_drafts?: boolean;
+  auto_weekly_seo_posts?: boolean;
+  auto_gbp_post_drafts?: boolean;
+  auto_facebook_post_drafts?: boolean;
+  auto_review_request_drafts?: boolean;
+  auto_follow_up_drafts?: boolean;
+  auto_landing_page_suggestions?: boolean;
+  high_risk_approval_rules?: Record<string, boolean>;
 };
 
 export type QueueWeeklyAiTasksResult = {
@@ -93,7 +103,7 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
       supabase
         .from("brands")
         .select(
-          "id, tenant_id, name, slug, domain, business_model, industry, vertical, description, primary_goal, primary_location, risk_profile"
+          "id, tenant_id, name, slug, domain, phone, email, business_model, industry, vertical, description, primary_goal, primary_location, risk_profile"
         )
         .eq("tenant_id", tenantId)
         .eq("status", "active")
@@ -112,7 +122,7 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
       supabase
         .from("brand_marketing_settings")
         .select(
-          "brand_id, target_customers, cta_goals, ad_goals, seo_targets, review_strategy, follow_up_strategy, tone_of_voice, approval_mode"
+          "brand_id, target_customers, cta_goals, ad_goals, seo_targets, review_strategy, follow_up_strategy, tone_of_voice, approval_mode, auto_create_low_risk_drafts, auto_weekly_seo_posts, auto_gbp_post_drafts, auto_facebook_post_drafts, auto_review_request_drafts, auto_follow_up_drafts, auto_landing_page_suggestions, high_risk_approval_rules"
         )
         .eq("tenant_id", tenantId)
     ]);
@@ -149,6 +159,8 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
         name: brand.name,
         slug: brand.slug,
         domain: brand.domain,
+        phone: brand.phone,
+        email: brand.email,
         businessModel: brand.business_model,
         industry: brand.industry,
         vertical: brand.vertical,
@@ -182,7 +194,15 @@ export async function queueWeeklyAiTasks(tenantId = internalTenantId): Promise<Q
             reviewStrategy: settingsByBrand.get(brand.id)!.review_strategy,
             followUpStrategy: settingsByBrand.get(brand.id)!.follow_up_strategy,
             toneOfVoice: settingsByBrand.get(brand.id)!.tone_of_voice,
-            approvalMode: settingsByBrand.get(brand.id)!.approval_mode
+            approvalMode: settingsByBrand.get(brand.id)!.approval_mode,
+            autoCreateLowRiskDrafts: settingsByBrand.get(brand.id)!.auto_create_low_risk_drafts ?? true,
+            autoWeeklySeoPosts: settingsByBrand.get(brand.id)!.auto_weekly_seo_posts ?? true,
+            autoGbpPostDrafts: settingsByBrand.get(brand.id)!.auto_gbp_post_drafts ?? true,
+            autoFacebookPostDrafts: settingsByBrand.get(brand.id)!.auto_facebook_post_drafts ?? true,
+            autoReviewRequestDrafts: settingsByBrand.get(brand.id)!.auto_review_request_drafts ?? true,
+            autoFollowUpDrafts: settingsByBrand.get(brand.id)!.auto_follow_up_drafts ?? true,
+            autoLandingPageSuggestions: settingsByBrand.get(brand.id)!.auto_landing_page_suggestions ?? true,
+            highRiskApprovalRules: settingsByBrand.get(brand.id)!.high_risk_approval_rules ?? {}
           }
         : null
     });
@@ -241,6 +261,8 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
     brand_name: string;
     brand_slug: string;
     domain: string | null;
+    phone: string | null;
+    email: string | null;
     business_model: BrandPromptContext["brand"]["businessModel"];
     industry: string | null;
     vertical: string | null;
@@ -256,6 +278,14 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
     follow_up_strategy: string | null;
     tone_of_voice: string | null;
     approval_mode: BrandPromptContext["marketing"]["approvalMode"];
+    auto_create_low_risk_drafts: boolean;
+    auto_weekly_seo_posts: boolean;
+    auto_gbp_post_drafts: boolean;
+    auto_facebook_post_drafts: boolean;
+    auto_review_request_drafts: boolean;
+    auto_follow_up_drafts: boolean;
+    auto_landing_page_suggestions: boolean;
+    high_risk_approval_rules: Record<string, boolean>;
   }>(
     `
     select
@@ -268,6 +298,8 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
       b.name as brand_name,
       b.slug as brand_slug,
       b.domain,
+      b.phone,
+      b.email,
       b.business_model,
       b.industry,
       b.vertical,
@@ -282,7 +314,15 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
       s.review_strategy,
       s.follow_up_strategy,
       s.tone_of_voice,
-      coalesce(s.approval_mode, 'manual') as approval_mode
+      coalesce(s.approval_mode, 'manual') as approval_mode,
+      coalesce(s.auto_create_low_risk_drafts, true) as auto_create_low_risk_drafts,
+      coalesce(s.auto_weekly_seo_posts, true) as auto_weekly_seo_posts,
+      coalesce(s.auto_gbp_post_drafts, true) as auto_gbp_post_drafts,
+      coalesce(s.auto_facebook_post_drafts, true) as auto_facebook_post_drafts,
+      coalesce(s.auto_review_request_drafts, true) as auto_review_request_drafts,
+      coalesce(s.auto_follow_up_drafts, true) as auto_follow_up_drafts,
+      coalesce(s.auto_landing_page_suggestions, true) as auto_landing_page_suggestions,
+      coalesce(s.high_risk_approval_rules, '{}'::jsonb) as high_risk_approval_rules
     from public.tenants t
     join public.brands b on b.tenant_id = t.id
     left join public.brand_marketing_settings s on s.brand_id = b.id
@@ -321,6 +361,8 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
         name: row.brand_name,
         slug: row.brand_slug,
         domain: row.domain,
+        phone: row.phone,
+        email: row.email,
         businessModel: row.business_model,
         industry: row.industry,
         vertical: row.vertical,
@@ -337,7 +379,15 @@ async function queueWeeklyAiTasksWithPostgres(tenantId: string, periodKey: strin
         reviewStrategy: row.review_strategy,
         followUpStrategy: row.follow_up_strategy,
         toneOfVoice: row.tone_of_voice,
-        approvalMode: row.approval_mode
+        approvalMode: row.approval_mode,
+        autoCreateLowRiskDrafts: row.auto_create_low_risk_drafts,
+        autoWeeklySeoPosts: row.auto_weekly_seo_posts,
+        autoGbpPostDrafts: row.auto_gbp_post_drafts,
+        autoFacebookPostDrafts: row.auto_facebook_post_drafts,
+        autoReviewRequestDrafts: row.auto_review_request_drafts,
+        autoFollowUpDrafts: row.auto_follow_up_drafts,
+        autoLandingPageSuggestions: row.auto_landing_page_suggestions,
+        highRiskApprovalRules: row.high_risk_approval_rules
       }
     });
 
