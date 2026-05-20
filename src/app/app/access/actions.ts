@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { hashPassword } from "@/lib/auth/password";
+import { hashPassword, hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -11,6 +13,11 @@ const schema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(160),
   password: z.string().min(8).max(200),
+  role: z.enum(["owner", "admin", "operator", "viewer"])
+});
+
+const inviteSchema = z.object({
+  email: z.string().email(),
   role: z.enum(["owner", "admin", "operator", "viewer"])
 });
 
@@ -74,4 +81,35 @@ export async function createWorkspaceUserAction(formData: FormData) {
   );
 
   revalidatePath("/app/access");
+}
+
+export async function createWorkspaceInviteAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = inviteSchema.safeParse({
+    email: formData.get("inviteEmail"),
+    role: formData.get("inviteRole")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const token = randomSessionToken();
+  await queryPostgres(
+    `
+    insert into public.workspace_invites (tenant_id, email, role, status, invited_by_user_id, invite_token_hash, expires_at, updated_at)
+    values ($1, lower($2), $3, 'pending', $4, $5, now() + interval '14 days', now())
+    on conflict (tenant_id, email) do update
+    set role = excluded.role,
+        status = 'pending',
+        invited_by_user_id = excluded.invited_by_user_id,
+        invite_token_hash = excluded.invite_token_hash,
+        expires_at = excluded.expires_at,
+        revoked_at = null,
+        updated_at = now()
+    `,
+    [workspaceId, parsed.data.email, parsed.data.role, session?.userId ?? null, hashSessionToken(token)]
+  );
+
+  revalidatePath("/app/access");
+  redirect(`/app/access?invite=${encodeURIComponent(token)}`);
 }
