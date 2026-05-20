@@ -204,11 +204,11 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Alerts And Monitoring
 
-- [ ] Lead volume drop alerts
+- [x] Lead volume drop alerts
 - [ ] Conversion problem alerts
 - [ ] Bad review alerts
 - [ ] Ad performance drop alerts
-- [ ] Failed form alerts
+- [x] Failed form alerts
 - [ ] Payment failure alerts
 - [ ] SEO ranking drop alerts
 - [ ] Listing problem alerts

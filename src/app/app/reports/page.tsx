@@ -20,6 +20,7 @@ export default async function ReportsPage() {
         <Metric label="Fallback runs" value={report.fallbackRuns} />
         <Metric label="Exports created" value={report.exportsCreated} />
         <Metric label="Content versions" value={report.contentVersions} />
+        <Metric label="Active alerts" value={report.activeAlerts} />
       </div>
 
       <div className="grid">

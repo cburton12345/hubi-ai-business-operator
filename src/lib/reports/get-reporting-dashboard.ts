@@ -8,6 +8,7 @@ export type ReportingDashboard = {
   contentVersions: number;
   analyticsEvents: number;
   integrationsReady: number;
+  activeAlerts: number;
   recentEvents: {
     id: string;
     type: string;
@@ -27,6 +28,7 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
       content_versions: string;
       analytics_events: string;
       integrations_ready: string;
+      active_alerts: string;
     }>(
       `
       select
@@ -35,7 +37,8 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
         (select count(*) from public.content_exports where tenant_id = $1) as exports_created,
         (select count(*) from public.content_versions where tenant_id = $1) as content_versions,
         (select count(*) from public.analytics_events where tenant_id = $1) as analytics_events,
-        (select count(*) from public.integration_connections where tenant_id = $1 and status in ('planned', 'connected')) as integrations_ready
+        (select count(*) from public.integration_connections where tenant_id = $1 and status in ('planned', 'connected')) as integrations_ready,
+        (select count(*) from public.operator_alerts where tenant_id = $1 and status = 'active') as active_alerts
       `,
       [workspaceId]
     ),
@@ -65,6 +68,7 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
     contentVersions: Number(row?.content_versions ?? 0),
     analyticsEvents: Number(row?.analytics_events ?? 0),
     integrationsReady: Number(row?.integrations_ready ?? 0),
+    activeAlerts: Number(row?.active_alerts ?? 0),
     recentEvents: (events?.rows ?? []).map((event) => ({
       id: event.id,
       type: event.event_type,
