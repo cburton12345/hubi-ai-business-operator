@@ -126,6 +126,23 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Duplicate lead detection
 - [ ] New lead notifications
 
+## Field Service Operating Core
+
+- [x] Customer records
+- [x] Lead/customer service operations foundation
+- [x] Estimate builder foundation
+- [x] Invoice/payment placeholders
+- [x] Appointment/job scheduling foundation
+- [x] Team/technician assignment placeholder
+- [x] Service business dashboard
+- [x] Manual estimate follow-up drafts
+- [x] Manual payment notes
+- [ ] Customer portal
+- [ ] Route planning
+- [ ] Recurring service plans
+- [ ] Technician mobile workflow
+- [ ] Inventory/equipment tracking
+
 ## Ferocity / Personal Injury Lead Generation
 
 - [x] Ferocity brand seed

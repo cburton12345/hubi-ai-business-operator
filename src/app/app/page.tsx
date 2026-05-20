@@ -24,6 +24,9 @@ export default async function AppDashboardPage() {
             <Link className="button" href="/app/leads">
               Leads
             </Link>
+            <Link className="button secondary-button" href="/app/service">
+              Service Ops
+            </Link>
             <Link className="button secondary-button" href="/app/forms">
               Forms
             </Link>
@@ -110,28 +113,31 @@ export default async function AppDashboardPage() {
               <Link className="button secondary-button" href="/app/exports">
                 Exports
               </Link>
-            <Link className="button secondary-button" href="/app/reports">
-              Reports
-            </Link>
-            <Link className="button secondary-button" href="/app/alerts">
-              Alerts
-            </Link>
-            <Link className="button secondary-button" href="/app/workflows">
-              Workflows
-            </Link>
-            <Link className="button secondary-button" href="/app/integrations">
-              Integrations
-            </Link>
-            <Link className="button secondary-button" href="/app/settings">
-              Settings
-            </Link>
-            <Link className="button secondary-button" href="/app/qa">
-              QA
-            </Link>
-            <Link className="button secondary-button" href="/app/safety">
-              Safety
-            </Link>
-          </div>
+              <Link className="button secondary-button" href="/app/service">
+                Service Ops
+              </Link>
+              <Link className="button secondary-button" href="/app/reports">
+                Reports
+              </Link>
+              <Link className="button secondary-button" href="/app/alerts">
+                Alerts
+              </Link>
+              <Link className="button secondary-button" href="/app/workflows">
+                Workflows
+              </Link>
+              <Link className="button secondary-button" href="/app/integrations">
+                Integrations
+              </Link>
+              <Link className="button secondary-button" href="/app/settings">
+                Settings
+              </Link>
+              <Link className="button secondary-button" href="/app/qa">
+                QA
+              </Link>
+              <Link className="button secondary-button" href="/app/safety">
+                Safety
+              </Link>
+            </div>
             <ul className="list">
               {snapshot.tasks.map((task) => (
                 <li className="list-row" key={task.title}>
