@@ -216,14 +216,14 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Future Automation
 
-- [ ] Recurring SEO posts
-- [ ] Google Business Profile posts
-- [ ] Facebook posts
-- [ ] Review request campaigns
-- [ ] Follow-up sequences
-- [ ] Nurture messaging
-- [ ] Reporting summaries
-- [ ] Low-risk content publishing
+- [x] Recurring SEO post draft automation
+- [x] Google Business Profile post draft automation
+- [x] Facebook post draft automation
+- [x] Review request draft campaigns
+- [x] Follow-up draft sequences
+- [x] Nurture draft messaging
+- [x] Reporting summary automation runs
+- [x] Low-risk content draft automation; public publishing remains disabled
 - [x] Human approval for high-risk actions
 
 ## Alerts And Monitoring

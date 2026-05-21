@@ -25,6 +25,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/app/leads">Leads</Link>
             <Link href="/app/service">Service Ops</Link>
             <Link href="/app/marketing">AI Operator</Link>
+            <Link href="/app/automation">Automation</Link>
             <Link href="/app/calendar">Calendar</Link>
             <Link href="/app/review">Review</Link>
             <Link href="/app/exports">Exports</Link>
