@@ -549,6 +549,19 @@ pre {
   gap: 6px;
 }
 
+.approval-actions {
+  max-width: 340px;
+}
+
+.approval-actions textarea {
+  flex: 1 0 100%;
+  min-height: 54px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
 .compact-form {
   display: grid;
   grid-template-columns: minmax(110px, 0.8fr) minmax(170px, 1fr) minmax(90px, 0.4fr) minmax(110px, 0.5fr) auto;
@@ -571,6 +584,19 @@ pre {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.json-block {
+  max-height: 640px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .flush-row {

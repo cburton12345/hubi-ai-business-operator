@@ -35,8 +35,9 @@ export default async function ApprovalsPage() {
             label: "Actions",
             render: (row) =>
               row.status === "pending" ? (
-                <form action={decideApproval} className="inline-actions">
+                <form action={decideApproval} className="inline-actions approval-actions">
                   <input name="approvalId" type="hidden" value={row.id} />
+                  <textarea name="notes" placeholder="Optional approval, rejection, or change-request notes" rows={2} />
                   <button className="mini-button" name="decision" type="submit" value="approved">
                     Approve
                   </button>

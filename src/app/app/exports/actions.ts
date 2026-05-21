@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 const schema = z.object({
   draftId: z.string().min(1)
@@ -76,4 +77,119 @@ export async function createExportFromDraftAction(formData: FormData) {
 
   revalidatePath("/app/exports");
   revalidatePath("/app/review");
+}
+
+async function getRows(tableName: string, workspaceId: string) {
+  const result = await queryPostgres<Record<string, unknown>>(
+    `
+    select to_jsonb(source.*) as record
+    from (
+      select *
+      from public.${tableName}
+      where tenant_id = $1
+      order by created_at desc
+      limit 5000
+    ) source
+    `,
+    [workspaceId]
+  );
+
+  return (result?.rows ?? []).map((row) => row.record);
+}
+
+export async function createWorkspaceDataExportAction() {
+  const actor = await requirePermission("tenant:manage");
+  const workspaceId = await getCurrentWorkspaceId();
+
+  const [
+    brands,
+    brandServices,
+    brandLocations,
+    brandOffers,
+    forms,
+    leads,
+    aiTasks,
+    aiDrafts,
+    recommendations,
+    approvals,
+    contentExports,
+    customers,
+    serviceEstimates,
+    serviceJobs,
+    serviceInvoices
+  ] = await Promise.all([
+    getRows("brands", workspaceId),
+    getRows("brand_services", workspaceId),
+    getRows("brand_locations", workspaceId),
+    getRows("brand_offers", workspaceId),
+    getRows("forms", workspaceId),
+    getRows("leads", workspaceId),
+    getRows("ai_tasks", workspaceId),
+    getRows("ai_drafts", workspaceId),
+    getRows("recommendations", workspaceId),
+    getRows("approvals", workspaceId),
+    getRows("content_exports", workspaceId),
+    getRows("customers", workspaceId),
+    getRows("service_estimates", workspaceId),
+    getRows("service_jobs", workspaceId),
+    getRows("service_invoices", workspaceId)
+  ]);
+
+  const packageJson = {
+    generatedAt: new Date().toISOString(),
+    workspaceId,
+    exportVersion: 1,
+    retention: "Manual JSON package retained in the workspace database until archived.",
+    counts: {
+      brands: brands.length,
+      brandServices: brandServices.length,
+      brandLocations: brandLocations.length,
+      brandOffers: brandOffers.length,
+      forms: forms.length,
+      leads: leads.length,
+      aiTasks: aiTasks.length,
+      aiDrafts: aiDrafts.length,
+      recommendations: recommendations.length,
+      approvals: approvals.length,
+      contentExports: contentExports.length,
+      customers: customers.length,
+      serviceEstimates: serviceEstimates.length,
+      serviceJobs: serviceJobs.length,
+      serviceInvoices: serviceInvoices.length
+    },
+    data: {
+      brands,
+      brandServices,
+      brandLocations,
+      brandOffers,
+      forms,
+      leads,
+      aiTasks,
+      aiDrafts,
+      recommendations,
+      approvals,
+      contentExports,
+      customers,
+      serviceEstimates,
+      serviceJobs,
+      serviceInvoices
+    }
+  };
+
+  await queryPostgres(
+    `
+    insert into public.workspace_data_exports (
+      tenant_id,
+      status,
+      package_json,
+      requested_by_user_id,
+      completed_at,
+      expires_at
+    )
+    values ($1, 'ready', $2::jsonb, $3, now(), now() + interval '30 days')
+    `,
+    [workspaceId, JSON.stringify(packageJson), actor.userId === "admin-token" ? null : actor.userId]
+  );
+
+  revalidatePath("/app/exports");
 }

@@ -89,7 +89,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Plan/billing placeholders
 - [x] Usage tracking placeholders
 - [x] External customer onboarding checklist
-- [ ] Tenant data export path
+- [x] Workspace data export path
 
 ## Brand Data Model
 
@@ -209,7 +209,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Medium-risk approval
 - [x] High-risk approval
 - [x] Changes-requested workflow
-- [ ] Rejection notes
+- [x] Rejection notes
 - [x] Approval audit log
 - [x] Published/ready status distinction
 - [x] Admin-only public action controls

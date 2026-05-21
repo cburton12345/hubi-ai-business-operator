@@ -9,7 +9,8 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const approvalDecisionSchema = z.object({
   approvalId: z.string().min(1),
-  decision: z.enum(["approved", "rejected", "changes_requested"])
+  decision: z.enum(["approved", "rejected", "changes_requested"]),
+  notes: z.string().max(1000).transform((value) => value.trim()).optional()
 });
 
 type ApprovalRecord = {
@@ -26,7 +27,8 @@ export async function decideApproval(formData: FormData) {
 
   const parsed = approvalDecisionSchema.safeParse({
     approvalId: formData.get("approvalId"),
-    decision: formData.get("decision")
+    decision: formData.get("decision"),
+    notes: String(formData.get("notes") ?? "")
   });
 
   if (!parsed.success) {
@@ -40,11 +42,11 @@ export async function decideApproval(formData: FormData) {
     const approvalResult = await queryPostgres<ApprovalRecord>(
       `
       update public.approvals
-      set status = $2, reviewed_at = now()
+      set status = $2, notes = coalesce(nullif($4, ''), notes), reviewed_at = now()
       where tenant_id = $1 and id = $3
       returning id, tenant_id, brand_id, target_type, target_id, risk_level
       `,
-      [workspaceId, parsed.data.decision, parsed.data.approvalId]
+      [workspaceId, parsed.data.decision, parsed.data.approvalId, parsed.data.notes ?? ""]
     );
     const approval = approvalResult?.rows[0];
 
@@ -103,7 +105,8 @@ export async function decideApproval(formData: FormData) {
         approval.target_id,
         JSON.stringify({
           approvalId: approval.id,
-          riskLevel: approval.risk_level
+          riskLevel: approval.risk_level,
+          reviewNote: parsed.data.notes ?? ""
         })
       ]
     );
@@ -120,6 +123,7 @@ export async function decideApproval(formData: FormData) {
     .from("approvals")
     .update({
       status: decision,
+      ...(parsed.data.notes ? { notes: parsed.data.notes } : {}),
       reviewed_at: new Date().toISOString()
     })
     .eq("tenant_id", workspaceId)
@@ -162,7 +166,8 @@ export async function decideApproval(formData: FormData) {
     target_id: approval.target_id,
     metadata_json: {
       approvalId: approval.id,
-      riskLevel: approval.risk_level
+      riskLevel: approval.risk_level,
+      reviewNote: parsed.data.notes ?? ""
     }
   });
 
