@@ -58,11 +58,11 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Add approve/reject/change-request actions
 - [x] Log important admin actions to `activity_logs`
 - [x] Add basic tests for lead capture and approval workflow
-- [ ] Deploy first Render preview
+- [x] Deploy first Render preview
   - [x] Validate `render.yaml` against Render workspace
-  - [ ] Connect GitHub repo access in Render or make the repo fetchable by Render
-  - [ ] Add missing Supabase runtime secrets in Render
-  - [ ] Trigger and verify first live deploy
+  - [x] Connect GitHub repo access in Render or make the repo fetchable by Render
+  - [x] Add missing Supabase runtime secrets in Render
+  - [x] Trigger and verify first live deploy
 
 ## Phase 1 AI Scope
 
@@ -240,6 +240,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Integrations Later
 
+These remain intentionally unconnected until explicit integration phases. Current product behavior uses manual exports, manual review, and draft-only automation.
+
 - [ ] Supabase Auth
 - [ ] Stripe billing
 - [ ] Google Business Profile
@@ -270,12 +272,12 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Supabase usage monitoring
 - [x] Security review before external customers
 
-## Do Not Do Yet
+## Active Guardrails
 
-- [ ] Do not auto-publish public content
-- [ ] Do not auto-change ad budgets
-- [ ] Do not delete pages automatically
-- [ ] Do not launch major campaigns automatically
-- [ ] Do not respond publicly to sensitive reviews automatically
-- [ ] Do not build a giant website builder before the operating core works
-- [ ] Do not hardcode the system around one business
+- [x] Do not auto-publish public content
+- [x] Do not auto-change ad budgets
+- [x] Do not delete pages automatically
+- [x] Do not launch major campaigns automatically
+- [x] Do not respond publicly to sensitive reviews automatically
+- [x] Do not build a giant website builder before the operating core works
+- [x] Do not hardcode the system around one business
