@@ -242,7 +242,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 These remain intentionally unconnected until explicit integration phases. Current product behavior uses manual exports, manual review, and draft-only automation.
 
-- [ ] Supabase Auth
+- [x] Supabase Auth
 - [ ] Stripe billing
 - [ ] Google Business Profile
 - [ ] Facebook / Meta

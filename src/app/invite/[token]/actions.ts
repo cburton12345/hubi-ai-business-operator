@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { appSessionCookieName } from "@/lib/auth/session";
 import { hashPassword, hashSessionToken, randomSessionToken } from "@/lib/auth/password";
+import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 
 const acceptInviteSchema = z.object({
@@ -40,15 +41,22 @@ export async function acceptInviteAction(formData: FormData) {
   const invite = inviteResult?.rows[0];
   if (!invite) redirect("/login?error=invite");
 
+  const supabaseIdentity = await ensureSupabaseAuthUser({
+    email: invite.email,
+    password: parsed.data.password,
+    name: parsed.data.name.trim()
+  });
   const userResult = await queryPostgres<{ id: string }>(
     `
-    insert into public.users (email, name, platform_role)
-    values (lower($1), $2, 'user')
+    insert into public.users (email, name, platform_role, auth_user_id)
+    values (lower($1), $2, 'user', $3)
     on conflict (email) do update
-    set name = excluded.name, updated_at = now()
+    set name = excluded.name,
+        auth_user_id = coalesce(public.users.auth_user_id, excluded.auth_user_id),
+        updated_at = now()
     returning id
     `,
-    [invite.email, parsed.data.name.trim()]
+    [invite.email, parsed.data.name.trim(), supabaseIdentity?.authUserId ?? null]
   );
   const userId = userResult?.rows[0]?.id;
   if (!userId) redirect("/login?error=invite");

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { adminSessionCookieName, isAdminTokenValid } from "@/lib/auth/admin-session";
 import { appSessionCookieName } from "@/lib/auth/session";
 import { hashSessionToken, randomSessionToken, verifyPassword } from "@/lib/auth/password";
+import { signInWithSupabasePassword } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 
 const loginSchema = z.object({
@@ -45,18 +46,21 @@ export async function loginUser(formData: FormData) {
     redirect(`/login?error=credentials`);
   }
 
+  const supabaseIdentity = await signInWithSupabasePassword(parsed.data.email, parsed.data.password);
   const userResult = await queryPostgres<{
     user_id: string;
     email: string;
-    password_hash: string;
-    password_salt: string;
-    password_iterations: number;
+    auth_user_id: string | null;
+    password_hash: string | null;
+    password_salt: string | null;
+    password_iterations: number | null;
     selected_tenant_id: string | null;
   }>(
     `
     select
       u.id as user_id,
       u.email,
+      u.auth_user_id,
       c.password_hash,
       c.password_salt,
       c.password_iterations,
@@ -68,21 +72,38 @@ export async function loginUser(formData: FormData) {
         limit 1
       ) as selected_tenant_id
     from public.users u
-    join public.user_password_credentials c on c.user_id = u.id
-    where lower(u.email) = lower($1)
+    left join public.user_password_credentials c on c.user_id = u.id
+    where lower(u.email) = lower($1) or u.auth_user_id = $2
     limit 1
     `,
-    [parsed.data.email]
+    [parsed.data.email, supabaseIdentity?.authUserId ?? null]
   );
   const user = userResult?.rows[0];
 
-  if (!user || !verifyPassword({
-    password: parsed.data.password,
-    hash: user.password_hash,
-    salt: user.password_salt,
-    iterations: user.password_iterations
-  })) {
+  const localPasswordValid = Boolean(
+    user?.password_hash &&
+      user.password_salt &&
+      verifyPassword({
+        password: parsed.data.password,
+        hash: user.password_hash,
+        salt: user.password_salt,
+        iterations: user.password_iterations ?? undefined
+      })
+  );
+
+  if (!user || (!supabaseIdentity && !localPasswordValid)) {
     redirect(`/login?error=credentials&next=${encodeURIComponent(parsed.data.next ?? "/app")}`);
+  }
+
+  if (supabaseIdentity && user.auth_user_id !== supabaseIdentity.authUserId) {
+    await queryPostgres(
+      `
+      update public.users
+      set auth_user_id = $2, updated_at = now()
+      where id = $1 and (auth_user_id is null or auth_user_id = $2)
+      `,
+      [user.user_id, supabaseIdentity.authUserId]
+    );
   }
 
   const token = randomSessionToken();

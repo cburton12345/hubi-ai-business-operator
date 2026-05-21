@@ -6,6 +6,7 @@ import { z } from "zod";
 import { hashPassword, hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
+import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -41,15 +42,22 @@ export async function createWorkspaceUserAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  const supabaseIdentity = await ensureSupabaseAuthUser({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    name: parsed.data.name
+  });
   const userResult = await queryPostgres<{ id: string }>(
     `
-    insert into public.users (email, name, platform_role)
-    values (lower($1), $2, 'user')
+    insert into public.users (email, name, platform_role, auth_user_id)
+    values (lower($1), $2, 'user', $3)
     on conflict (email) do update
-    set name = excluded.name, updated_at = now()
+    set name = excluded.name,
+        auth_user_id = coalesce(public.users.auth_user_id, excluded.auth_user_id),
+        updated_at = now()
     returning id
     `,
-    [parsed.data.email, parsed.data.name]
+    [parsed.data.email, parsed.data.name, supabaseIdentity?.authUserId ?? null]
   );
   const userId = userResult?.rows[0]?.id;
   if (!userId) return;
@@ -84,7 +92,7 @@ export async function createWorkspaceUserAction(formData: FormData) {
     insert into public.activity_logs (tenant_id, user_id, actor_type, action, target_type, target_id, metadata_json)
     values ($1, $2, 'user', 'workspace_user.created', 'user', $2, $3::jsonb)
     `,
-    [workspaceId, userId, JSON.stringify({ role: parsed.data.role, email: parsed.data.email })]
+    [workspaceId, userId, JSON.stringify({ role: parsed.data.role, email: parsed.data.email, supabaseAuthLinked: Boolean(supabaseIdentity) })]
   );
 
   revalidatePath("/app/access");
