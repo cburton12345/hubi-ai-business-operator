@@ -148,7 +148,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Route planning
 - [x] Recurring service plans
 - [x] Technician mobile workflow
-- [ ] Inventory/equipment tracking
+- [x] Inventory/equipment tracking
 
 ## Ferocity / Personal Injury Lead Generation
 

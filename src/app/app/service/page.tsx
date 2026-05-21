@@ -15,6 +15,7 @@ export default async function ServiceOpsPage() {
       <div className="section-actions button-row">
         <Link className="button secondary-button" href="/app/service/routes">Route planning</Link>
         <Link className="button secondary-button" href="/app/service/tech">Technician workflow</Link>
+        <Link className="button secondary-button" href="/app/service/inventory">Inventory</Link>
       </div>
 
       <div className="grid section-actions">

@@ -111,6 +111,17 @@ const recurringPlanSchema = z.object({
   notes: z.string().max(1200).optional()
 });
 
+const inventoryItemSchema = z.object({
+  name: z.string().min(1).max(180),
+  category: z.enum(["part", "material", "equipment", "tool", "vehicle", "other"]),
+  status: z.enum(["available", "reserved", "in_use", "maintenance", "retired"]),
+  quantity: z.coerce.number().min(0).max(999999).default(0),
+  reorderThreshold: z.coerce.number().min(0).max(999999).default(0),
+  unit: z.string().max(40).optional(),
+  location: z.string().max(180).optional(),
+  notes: z.string().max(1200).optional()
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
@@ -698,4 +709,49 @@ export async function createRecurringPlanAction(formData: FormData) {
   );
   revalidatePath("/app/service");
   revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function createInventoryItemAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = inventoryItemSchema.safeParse({
+    name: formData.get("name"),
+    category: formData.get("category"),
+    status: formData.get("status"),
+    quantity: formData.get("quantity") ?? 0,
+    reorderThreshold: formData.get("reorderThreshold") ?? 0,
+    unit: String(formData.get("unit") ?? ""),
+    location: String(formData.get("location") ?? ""),
+    notes: String(formData.get("notes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.service_inventory_items (
+      tenant_id,
+      name,
+      category,
+      status,
+      quantity,
+      reorder_threshold,
+      unit,
+      location,
+      notes
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `,
+    [
+      workspaceId,
+      parsed.data.name.trim(),
+      parsed.data.category,
+      parsed.data.status,
+      parsed.data.quantity,
+      parsed.data.reorderThreshold,
+      emptyToNull(parsed.data.unit),
+      emptyToNull(parsed.data.location),
+      emptyToNull(parsed.data.notes)
+    ]
+  );
+  revalidatePath("/app/service/inventory");
 }
