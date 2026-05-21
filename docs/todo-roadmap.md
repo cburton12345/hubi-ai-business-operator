@@ -253,7 +253,7 @@ These remain intentionally unconnected until explicit integration phases. Curren
 - [ ] SMS provider
 - [ ] Review platform integrations
 - [ ] Calendar/appointment integrations
-- [ ] Webhook framework
+- [x] Webhook framework
 
 ## Production Readiness
 
