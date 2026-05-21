@@ -90,7 +90,8 @@ export default async function ServiceOpsPage() {
             id: estimate.id,
             title: estimate.title,
             meta: `${estimate.customerName} / ${estimate.total}`,
-            pill: estimate.status
+            pill: estimate.status,
+            href: estimate.href
           }))}
         />
         <ListPanel
@@ -99,7 +100,8 @@ export default async function ServiceOpsPage() {
             id: job.id,
             title: job.title,
             meta: `${job.customerName} / ${job.schedule} / ${job.assignedTo}`,
-            pill: job.status
+            pill: job.status,
+            href: job.href
           }))}
         />
         <ListPanel
@@ -108,7 +110,8 @@ export default async function ServiceOpsPage() {
             id: invoice.id,
             title: invoice.title,
             meta: `${invoice.customerName} / ${invoice.total} / due ${invoice.dueDate}`,
-            pill: invoice.status
+            pill: invoice.status,
+            href: invoice.href
           }))}
         />
       </div>

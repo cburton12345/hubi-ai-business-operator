@@ -33,6 +33,32 @@ const jobSchema = z.object({
   dispatcherNotes: z.string().max(1200).optional()
 });
 
+const estimateStatusSchema = z.object({
+  estimateId: z.string().uuid(),
+  status: z.enum(["draft", "sent_manually", "approved", "declined", "expired"]),
+  internalNotes: z.string().max(1200).optional(),
+  followUpDraft: z.string().max(2000).optional()
+});
+
+const jobStatusSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.enum(["unscheduled", "scheduled", "in_progress", "completed", "canceled", "lost"]),
+  scheduledStart: z.string().optional(),
+  scheduledEnd: z.string().optional(),
+  dispatcherNotes: z.string().max(1200).optional(),
+  completionNotes: z.string().max(1200).optional(),
+  nextAction: z.string().max(1200).optional()
+});
+
+const invoiceStatusSchema = z.object({
+  invoiceId: z.string().uuid(),
+  status: z.enum(["draft", "sent_manually", "partially_paid", "paid", "void", "overdue"]),
+  amountPaidCents: z.number().int().min(0),
+  dueDate: z.string().optional(),
+  internalNotes: z.string().max(1200).optional(),
+  paymentNotes: z.string().max(1200).optional()
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
@@ -186,4 +212,124 @@ export async function createInvoiceAction(formData: FormData) {
     [workspaceId, invoice.id, parsed.data.lineItem.trim(), parsed.data.amountCents]
   );
   revalidatePath("/app/service");
+}
+
+export async function updateEstimateAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = estimateStatusSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    status: formData.get("status"),
+    internalNotes: String(formData.get("internalNotes") ?? ""),
+    followUpDraft: String(formData.get("followUpDraft") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_estimates
+    set status = $3,
+        internal_notes = $4,
+        manual_follow_up_draft = $5,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [
+      workspaceId,
+      parsed.data.estimateId,
+      parsed.data.status,
+      emptyToNull(parsed.data.internalNotes),
+      emptyToNull(parsed.data.followUpDraft)
+    ]
+  );
+  const row = result?.rows[0];
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+  if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function updateJobAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = jobStatusSchema.safeParse({
+    jobId: formData.get("jobId"),
+    status: formData.get("status"),
+    scheduledStart: String(formData.get("scheduledStart") ?? ""),
+    scheduledEnd: String(formData.get("scheduledEnd") ?? ""),
+    dispatcherNotes: String(formData.get("dispatcherNotes") ?? ""),
+    completionNotes: String(formData.get("completionNotes") ?? ""),
+    nextAction: String(formData.get("nextAction") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_jobs
+    set status = $3,
+        scheduled_start = $4,
+        scheduled_end = $5,
+        dispatcher_notes = $6,
+        completion_notes = $7,
+        ai_next_action = $8,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [
+      workspaceId,
+      parsed.data.jobId,
+      parsed.data.status,
+      dateTimeOrNull(parsed.data.scheduledStart),
+      dateTimeOrNull(parsed.data.scheduledEnd),
+      emptyToNull(parsed.data.dispatcherNotes),
+      emptyToNull(parsed.data.completionNotes),
+      emptyToNull(parsed.data.nextAction)
+    ]
+  );
+  const row = result?.rows[0];
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
+  if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function updateInvoiceAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = invoiceStatusSchema.safeParse({
+    invoiceId: formData.get("invoiceId"),
+    status: formData.get("status"),
+    amountPaidCents: dollarsToCents(formData.get("amountPaid")),
+    dueDate: String(formData.get("dueDate") ?? ""),
+    internalNotes: String(formData.get("internalNotes") ?? ""),
+    paymentNotes: String(formData.get("paymentNotes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_invoices
+    set status = $3,
+        amount_paid_cents = $4,
+        due_date = $5,
+        internal_notes = $6,
+        manual_payment_notes = $7,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [
+      workspaceId,
+      parsed.data.invoiceId,
+      parsed.data.status,
+      parsed.data.amountPaidCents,
+      parsed.data.dueDate || null,
+      emptyToNull(parsed.data.internalNotes),
+      emptyToNull(parsed.data.paymentNotes)
+    ]
+  );
+  const row = result?.rows[0];
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+  if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
 }

@@ -134,6 +134,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Estimate builder foundation
 - [x] Invoice/payment placeholders
 - [x] Appointment/job scheduling foundation
+- [x] Estimate workflow detail pages
+- [x] Job workflow detail pages
+- [x] Invoice workflow detail pages
 - [x] Team/technician assignment placeholder
 - [x] Service business dashboard
 - [x] Manual estimate follow-up drafts

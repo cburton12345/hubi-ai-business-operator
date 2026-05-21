@@ -39,9 +39,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
         </section>
 
-        <ListPanel title="Estimates" rows={customer.estimates.map((row) => ({ id: row.id, title: row.title, meta: row.total, pill: row.status }))} />
-        <ListPanel title="Jobs" rows={customer.jobs.map((row) => ({ id: row.id, title: row.title, meta: `${row.schedule} / ${row.nextAction || "No next action"}`, pill: row.status }))} />
-        <ListPanel title="Invoices" rows={customer.invoices.map((row) => ({ id: row.id, title: row.title, meta: `${row.total} / due ${row.dueDate}`, pill: row.status }))} />
+        <ListPanel title="Estimates" rows={customer.estimates.map((row) => ({ id: row.id, title: row.title, meta: row.total, pill: row.status, href: row.href }))} />
+        <ListPanel title="Jobs" rows={customer.jobs.map((row) => ({ id: row.id, title: row.title, meta: `${row.schedule} / ${row.nextAction || "No next action"}`, pill: row.status, href: row.href }))} />
+        <ListPanel title="Invoices" rows={customer.invoices.map((row) => ({ id: row.id, title: row.title, meta: `${row.total} / due ${row.dueDate}`, pill: row.status, href: row.href }))} />
       </div>
     </QueuePageShell>
   );
@@ -56,7 +56,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ListPanel({ title, rows }: { title: string; rows: { id: string; title: string; meta: string; pill: string }[] }) {
+function ListPanel({ title, rows }: { title: string; rows: { id: string; title: string; meta: string; pill: string; href: string }[] }) {
   return (
     <section className="panel span-6">
       <h2>{title}</h2>
@@ -64,7 +64,7 @@ function ListPanel({ title, rows }: { title: string; rows: { id: string; title: 
         {rows.map((row) => (
           <li className="list-row" key={row.id}>
             <div>
-              <h3>{row.title}</h3>
+              <h3><Link href={row.href}>{row.title}</Link></h3>
               <p className="muted">{row.meta}</p>
             </div>
             <span className="pill">{row.pill}</span>

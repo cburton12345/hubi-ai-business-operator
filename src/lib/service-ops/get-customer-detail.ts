@@ -12,9 +12,9 @@ export type CustomerDetail = {
   notes: string;
   aiSummary: string;
   sourceLeadId: string;
-  estimates: { id: string; title: string; status: string; total: string }[];
-  jobs: { id: string; title: string; status: string; schedule: string; nextAction: string }[];
-  invoices: { id: string; title: string; status: string; total: string; dueDate: string }[];
+  estimates: { id: string; title: string; status: string; total: string; href: string }[];
+  jobs: { id: string; title: string; status: string; schedule: string; nextAction: string; href: string }[];
+  invoices: { id: string; title: string; status: string; total: string; dueDate: string; href: string }[];
 };
 
 function formatDate(value: Date | null) {
@@ -90,21 +90,24 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       id: estimate.id,
       title: estimate.title,
       status: estimate.status,
-      total: formatMoney(estimate.total_cents)
+      total: formatMoney(estimate.total_cents),
+      href: `/app/service/estimates/${estimate.id}`
     })),
     jobs: (jobsResult?.rows ?? []).map((job) => ({
       id: job.id,
       title: job.title,
       status: job.status,
       schedule: formatDate(job.scheduled_start),
-      nextAction: job.ai_next_action ?? ""
+      nextAction: job.ai_next_action ?? "",
+      href: `/app/service/jobs/${job.id}`
     })),
     invoices: (invoicesResult?.rows ?? []).map((invoice) => ({
       id: invoice.id,
       title: invoice.title,
       status: invoice.status,
       total: formatMoney(invoice.total_cents),
-      dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date"
+      dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date",
+      href: `/app/service/invoices/${invoice.id}`
     }))
   };
 }

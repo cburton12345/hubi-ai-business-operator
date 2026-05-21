@@ -26,6 +26,7 @@ export type ServiceOpsDashboard = {
     status: string;
     total: string;
     followUpDraft: string;
+    href: string;
   }[];
   jobs: {
     id: string;
@@ -35,6 +36,7 @@ export type ServiceOpsDashboard = {
     schedule: string;
     assignedTo: string;
     nextAction: string;
+    href: string;
   }[];
   invoices: {
     id: string;
@@ -43,6 +45,7 @@ export type ServiceOpsDashboard = {
     status: string;
     total: string;
     dueDate: string;
+    href: string;
   }[];
 };
 
@@ -166,7 +169,8 @@ export async function getServiceOpsDashboard(): Promise<ServiceOpsDashboard> {
       customerName: estimate.customer_name,
       status: estimate.status,
       total: formatMoney(estimate.total_cents),
-      followUpDraft: estimate.manual_follow_up_draft ?? ""
+      followUpDraft: estimate.manual_follow_up_draft ?? "",
+      href: `/app/service/estimates/${estimate.id}`
     })),
     jobs: (jobs?.rows ?? []).map((job) => ({
       id: job.id,
@@ -175,7 +179,8 @@ export async function getServiceOpsDashboard(): Promise<ServiceOpsDashboard> {
       status: job.status,
       schedule: formatDate(job.scheduled_start),
       assignedTo: job.assigned_to ?? "Unassigned",
-      nextAction: job.ai_next_action ?? ""
+      nextAction: job.ai_next_action ?? "",
+      href: `/app/service/jobs/${job.id}`
     })),
     invoices: (invoices?.rows ?? []).map((invoice) => ({
       id: invoice.id,
@@ -183,7 +188,8 @@ export async function getServiceOpsDashboard(): Promise<ServiceOpsDashboard> {
       customerName: invoice.customer_name,
       status: invoice.status,
       total: formatMoney(invoice.total_cents),
-      dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date"
+      dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date",
+      href: `/app/service/invoices/${invoice.id}`
     }))
   };
 }
