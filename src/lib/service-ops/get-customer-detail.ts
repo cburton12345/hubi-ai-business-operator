@@ -12,6 +12,11 @@ export type CustomerDetail = {
   notes: string;
   aiSummary: string;
   sourceLeadId: string;
+  portal: {
+    enabled: boolean;
+    url: string;
+    lastViewedAt: string;
+  } | null;
   estimates: { id: string; title: string; status: string; total: string; href: string }[];
   jobs: { id: string; title: string; status: string; schedule: string; nextAction: string; href: string }[];
   invoices: { id: string; title: string; status: string; total: string; dueDate: string; href: string }[];
@@ -61,7 +66,16 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
   const customer = customerResult?.rows[0];
   if (!customer) return null;
 
-  const [sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult] = await Promise.all([
+  const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult] = await Promise.all([
+    queryPostgres<{ public_token: string; enabled: boolean; last_viewed_at: Date | null }>(
+      `
+      select public_token, enabled, last_viewed_at
+      from public.customer_portal_access
+      where tenant_id = $1 and customer_id = $2
+      limit 1
+      `,
+      [workspaceId, customerId]
+    ),
     customer.source_lead_id
       ? queryPostgres<{
           id: string;
@@ -124,6 +138,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
   const estimates = estimatesResult?.rows ?? [];
   const jobs = jobsResult?.rows ?? [];
   const invoices = invoicesResult?.rows ?? [];
+  const portalAccess = portalResult?.rows[0];
   const sourceLead = sourceLeadResult?.rows[0];
   const leadEvents = leadEventsResult?.rows ?? [];
   const timeline = [
@@ -202,6 +217,13 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
     notes: customer.notes ?? "",
     aiSummary: customer.ai_summary ?? "",
     sourceLeadId: customer.source_lead_id ?? "",
+    portal: portalAccess
+      ? {
+          enabled: portalAccess.enabled,
+          url: `/portal/${portalAccess.public_token}`,
+          lastViewedAt: portalAccess.last_viewed_at ? formatTimelineDate(portalAccess.last_viewed_at) : "Not viewed yet"
+        }
+      : null,
     estimates: estimates.map((estimate) => ({
       id: estimate.id,
       title: estimate.title,

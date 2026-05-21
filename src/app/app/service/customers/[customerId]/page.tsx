@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { disableCustomerPortalAction, enableCustomerPortalAction } from "@/app/app/service/actions";
 import { getCustomerDetail } from "@/lib/service-ops/get-customer-detail";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ customerId: string }> }) {
@@ -37,6 +38,33 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {customer.sourceLeadId ? (
             <Link className="button secondary-button section-actions" href={`/app/leads/${customer.sourceLeadId}`}>View source lead</Link>
           ) : null}
+        </section>
+
+        <section className="panel span-6">
+          <h2>Customer portal</h2>
+          <p className="muted">Read-only portal for customer-facing estimates, jobs, and invoices. Share manually only after review.</p>
+          {customer.portal?.enabled ? (
+            <div className="form-stack">
+              <label>
+                Portal link
+                <input readOnly value={customer.portal.url} />
+              </label>
+              <p className="muted">Last viewed: {customer.portal.lastViewedAt}</p>
+              <div className="button-row">
+                <Link className="button secondary-button" href={customer.portal.url}>Open portal</Link>
+                <form action={disableCustomerPortalAction}>
+                  <input type="hidden" name="customerId" value={customer.id} />
+                  <button className="button secondary-button" type="submit">Disable portal</button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <form action={enableCustomerPortalAction} className="form-stack">
+              <input type="hidden" name="customerId" value={customer.id} />
+              <p>No active portal link yet.</p>
+              <button className="button" type="submit">Create portal link</button>
+            </form>
+          )}
         </section>
 
         <ListPanel title="Estimates" rows={customer.estimates.map((row) => ({ id: row.id, title: row.title, meta: row.total, pill: row.status, href: row.href }))} />

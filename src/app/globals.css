@@ -41,6 +41,27 @@ textarea {
   padding: 24px;
 }
 
+.public-page {
+  min-height: 100vh;
+  padding: 32px 20px;
+}
+
+.public-shell {
+  display: grid;
+  gap: 20px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.public-shell h1 {
+  margin: 0;
+  font-size: 38px;
+}
+
+.portal-summary {
+  align-items: start;
+}
+
 .workspace {
   display: grid;
   gap: 18px;

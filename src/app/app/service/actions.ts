@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
@@ -85,6 +86,10 @@ const deleteEstimateLineItemSchema = z.object({
 const deleteInvoiceLineItemSchema = z.object({
   invoiceId: z.string().uuid(),
   itemId: z.string().uuid()
+});
+
+const customerPortalSchema = z.object({
+  customerId: z.string().uuid()
 });
 
 function emptyToNull(value: string | undefined) {
@@ -550,4 +555,40 @@ export async function deleteInvoiceLineItemAction(formData: FormData) {
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
   if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
+}
+
+export async function enableCustomerPortalAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerPortalSchema.safeParse({
+    customerId: formData.get("customerId")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const token = randomBytes(24).toString("base64url");
+  await queryPostgres(
+    `
+    insert into public.customer_portal_access (tenant_id, customer_id, public_token, enabled)
+    values ($1, $2, $3, true)
+    on conflict (tenant_id, customer_id)
+    do update set enabled = true, public_token = excluded.public_token, updated_at = now()
+    `,
+    [workspaceId, parsed.data.customerId, token]
+  );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function disableCustomerPortalAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerPortalSchema.safeParse({
+    customerId: formData.get("customerId")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    "update public.customer_portal_access set enabled = false, updated_at = now() where tenant_id = $1 and customer_id = $2",
+    [workspaceId, parsed.data.customerId]
+  );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
 }
