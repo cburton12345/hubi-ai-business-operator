@@ -114,7 +114,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Public lead capture endpoint hardening
 - [x] Spam prevention
 - [x] Rate limiting
-- [ ] Form public key rotation
+- [x] Form public key rotation
 - [x] Source tracking
 - [x] UTM tracking
 - [x] Lead scoring foundation

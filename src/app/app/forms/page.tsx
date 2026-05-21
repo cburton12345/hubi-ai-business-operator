@@ -26,6 +26,16 @@ export default async function FormsPage() {
           { key: "slug", label: "Slug", render: (row) => row.slug },
           { key: "status", label: "Status", render: (row) => <span className="pill">{row.active ? "active" : "paused"}</span> },
           {
+            key: "rotation",
+            label: "Last Rotation",
+            render: (row) => (
+              <>
+                <strong>{row.lastRotatedAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(row.lastRotatedAt)) : "Never"}</strong>
+                <span className="muted">{row.lastRotatedBy}</span>
+              </>
+            )
+          },
+          {
             key: "rotate",
             label: "Key Safety",
             render: (row) => (

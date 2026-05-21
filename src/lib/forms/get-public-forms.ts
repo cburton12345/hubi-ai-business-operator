@@ -10,6 +10,8 @@ export type PublicFormRow = {
   slug: string;
   publicKey: string;
   active: boolean;
+  lastRotatedAt: string;
+  lastRotatedBy: string;
 };
 
 type FormRow = {
@@ -43,6 +45,8 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
       slug: string;
       public_key: string;
       active: boolean;
+      last_rotated_at: string | null;
+      last_rotated_by: string | null;
     }>(
       `
       select
@@ -52,9 +56,19 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
         f.name,
         f.slug,
         f.public_key,
-        f.active
+        f.active,
+        r.rotated_at as last_rotated_at,
+        u.email as last_rotated_by
       from public.forms f
       join public.brands b on b.id = f.brand_id
+      left join lateral (
+        select rotated_at, rotated_by_user_id
+        from public.form_key_rotations
+        where tenant_id = f.tenant_id and form_id = f.id
+        order by rotated_at desc
+        limit 1
+      ) r on true
+      left join public.users u on u.id = r.rotated_by_user_id
       where f.tenant_id = $1
       order by f.slug
       `,
@@ -69,7 +83,9 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
         name: form.name,
         slug: form.slug,
         publicKey: form.public_key,
-        active: form.active
+        active: form.active,
+        lastRotatedAt: form.last_rotated_at ?? "",
+        lastRotatedBy: form.last_rotated_by ?? "Not rotated"
       }));
     }
 
@@ -81,7 +97,9 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
         name: "Primary Lead Form",
         slug: "primary-lead-form",
         publicKey: "internal-ferocity-primary-lead-form",
-        active: true
+        active: true,
+        lastRotatedAt: "",
+        lastRotatedBy: "Not rotated"
       }
     ];
   }
@@ -106,7 +124,9 @@ export async function getPublicFormRows(): Promise<PublicFormRow[]> {
       name: form.name,
       slug: form.slug,
       publicKey: form.public_key,
-      active: form.active
+      active: form.active,
+      lastRotatedAt: "",
+      lastRotatedBy: "Not rotated"
     };
   });
 }
