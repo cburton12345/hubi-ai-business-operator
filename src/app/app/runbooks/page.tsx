@@ -13,6 +13,11 @@ const runbooks = [
     summary: "Secrets, backups, migration rollback, error handling, and verification."
   },
   {
+    title: "Production readiness",
+    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase45-production-readiness.md",
+    summary: "Environment policy, RLS, API validation, deploy smoke checks, monitoring, and security review."
+  },
+  {
     title: "Beta launch",
     href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase15-16-beta-and-launch-readiness.md",
     summary: "Beta QA sequence and manual-only launch rules."

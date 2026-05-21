@@ -9,6 +9,8 @@
     "db:migrate": "node scripts/run-migrations.mjs",
     "db:verify-rls": "node scripts/verify-rls.mjs",
     "beta:smoke": "node scripts/beta-smoke.mjs",
+    "prod:check": "node scripts/production-readiness-check.mjs",
+    "render:smoke": "node scripts/render-smoke.mjs",
     "start": "next start",
     "start:render": "npm run db:migrate && next start",
     "lint": "next lint",

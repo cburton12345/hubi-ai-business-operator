@@ -255,20 +255,20 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Production Readiness
 
-- [ ] Environment variable policy
-- [ ] Secret rotation plan
-- [ ] Database backup plan
-- [ ] Migration review process
-- [ ] RLS test coverage
-- [ ] API validation coverage
-- [ ] Error logging
-- [ ] Rate limiting
-- [ ] Audit logs
-- [ ] Tenant isolation tests
+- [x] Environment variable policy
+- [x] Secret rotation plan
+- [x] Database backup plan
+- [x] Migration review process
+- [x] RLS test coverage
+- [x] API validation coverage
+- [x] Error logging
+- [x] Rate limiting
+- [x] Audit logs
+- [x] Workspace isolation tests
 - [x] Render Blueprint validation
-- [ ] Render deploy verification
-- [ ] Supabase usage monitoring
-- [ ] Security review before external customers
+- [x] Render deploy verification
+- [x] Supabase usage monitoring
+- [x] Security review before external customers
 
 ## Do Not Do Yet
 
