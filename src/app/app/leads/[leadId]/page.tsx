@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, generateLeadIntelligenceAction, qualifyLegalLeadAction, updateLeadWorkflow } from "@/app/app/leads/actions";
+import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, createLegalRoutingReviewAction, generateLeadIntelligenceAction, qualifyLegalLeadAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
@@ -108,13 +108,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               <button className="button secondary-button" type="submit">Save assignment</button>
             </form>
             {lead.leadType === "case_intake" ? (
-              <form action={qualifyLegalLeadAction} className="form-stack">
-                <input name="leadId" type="hidden" value={lead.id} />
-                <h2>Legal qualification</h2>
-                <p className="muted">Classify this case intake using disclaimer, attorney, treatment, and contact signals. External routing still requires manual approval.</p>
-                <textarea name="note" rows={3} placeholder="Optional qualification note" />
-                <button className="button secondary-button" type="submit">Run legal qualification</button>
-              </form>
+              <>
+                <form action={qualifyLegalLeadAction} className="form-stack">
+                  <input name="leadId" type="hidden" value={lead.id} />
+                  <h2>Legal qualification</h2>
+                  <p className="muted">Classify this case intake using disclaimer, attorney, treatment, and contact signals. External routing still requires manual approval.</p>
+                  <textarea name="note" rows={3} placeholder="Optional qualification note" />
+                  <button className="button secondary-button" type="submit">Run legal qualification</button>
+                </form>
+                <form action={createLegalRoutingReviewAction} className="form-stack">
+                  <input name="leadId" type="hidden" value={lead.id} />
+                  <h2>Routing review</h2>
+                  <input name="suggestedBuyerProfile" placeholder="Suggested buyer profile" />
+                  <textarea name="routingNotes" rows={3} placeholder="Manual routing notes" />
+                  <button className="button secondary-button" type="submit">Prepare routing review</button>
+                </form>
+              </>
             ) : null}
             <form action={convertLeadToServiceCustomerAction} className="form-stack">
               <input name="leadId" type="hidden" value={lead.id} />
@@ -142,6 +151,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 <Detail label="Has attorney" value={lead.legalDetails.hasAttorney === null ? "Unknown" : lead.legalDetails.hasAttorney ? "Yes" : "No"} />
                 <Detail label="Treatment received" value={lead.legalDetails.treatmentReceived === null ? "Unknown" : lead.legalDetails.treatmentReceived ? "Yes" : "No"} />
                 <Detail label="Disclaimer acknowledged" value={lead.legalDetails.disclaimerAcknowledged ? "Yes" : "No"} />
+              </dl>
+            </section>
+          ) : null}
+
+          {lead.routingReview ? (
+            <section className="panel span-12">
+              <h2>Routing Review</h2>
+              <dl className="detail-grid">
+                <Detail label="Status" value={lead.routingReview.status} />
+                <Detail label="Approval required" value={lead.routingReview.approvalRequired ? "Yes" : "No"} />
+                <div className="detail-wide">
+                  <dt>Suggested buyer profile</dt>
+                  <dd>{lead.routingReview.suggestedBuyerProfile || "Not provided"}</dd>
+                </div>
+                <div className="detail-wide">
+                  <dt>Routing notes</dt>
+                  <dd>{lead.routingReview.routingNotes || "No notes yet."}</dd>
+                </div>
               </dl>
             </section>
           ) : null}

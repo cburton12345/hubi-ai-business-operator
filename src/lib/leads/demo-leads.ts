@@ -54,6 +54,7 @@ export const demoLeadDetails: LeadDetail[] = [
     score: null,
     assignment: null,
     intelligence: null,
+    routingReview: null,
     legalDetails: {
       caseType: "personal_injury",
       incidentDate: "",
@@ -86,6 +87,7 @@ export const demoLeadDetails: LeadDetail[] = [
     assignment: null,
     intelligence: null,
     legalDetails: null,
+    routingReview: null,
     events: [
       {
         id: "demo-event-trailer-1",

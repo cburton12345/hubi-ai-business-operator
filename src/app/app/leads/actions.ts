@@ -34,6 +34,12 @@ const legalQualificationSchema = z.object({
   note: z.string().max(1000).optional()
 });
 
+const routingReviewSchema = z.object({
+  leadId: z.string().min(1),
+  suggestedBuyerProfile: z.string().max(600).optional(),
+  routingNotes: z.string().max(1000).optional()
+});
+
 function scoreLead(input: {
   status: string;
   qualificationStatus: string;
@@ -420,6 +426,72 @@ export async function qualifyLegalLeadAction(formData: FormData) {
       parsed.data.leadId,
       parsed.data.note || `Legal lead reviewed as ${qualificationStatus} with ${priority} priority. Manual approval required before any external routing.`,
       JSON.stringify({ qualificationStatus, priority, score: scored.score, reasons: scored.reasons })
+    ]
+  );
+  revalidatePath("/app/leads");
+  revalidatePath(`/app/leads/${parsed.data.leadId}`);
+}
+
+export async function createLegalRoutingReviewAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = routingReviewSchema.safeParse({
+    leadId: formData.get("leadId"),
+    suggestedBuyerProfile: String(formData.get("suggestedBuyerProfile") ?? ""),
+    routingNotes: String(formData.get("routingNotes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const leadResult = await queryPostgres<{ tenant_id: string; brand_id: string; lead_type: string }>(
+    "select tenant_id, brand_id, lead_type from public.leads where tenant_id = $1 and id = $2 limit 1",
+    [workspaceId, parsed.data.leadId]
+  );
+  const lead = leadResult?.rows[0];
+  if (!lead || lead.lead_type !== "case_intake") return;
+
+  await queryPostgres(
+    `
+    insert into public.lead_routing_reviews (
+      tenant_id,
+      brand_id,
+      lead_id,
+      routing_type,
+      status,
+      suggested_buyer_profile,
+      routing_notes,
+      approval_required
+    )
+    values ($1, $2, $3, 'legal_buyer_review', 'needs_approval', $4, $5, true)
+    on conflict (tenant_id, lead_id, routing_type) do update
+    set status = 'needs_approval',
+        suggested_buyer_profile = excluded.suggested_buyer_profile,
+        routing_notes = excluded.routing_notes,
+        approval_required = true,
+        updated_at = now()
+    `,
+    [
+      lead.tenant_id,
+      lead.brand_id,
+      parsed.data.leadId,
+      parsed.data.suggestedBuyerProfile?.trim() || null,
+      parsed.data.routingNotes?.trim() || "Manual approval required before any external legal lead routing."
+    ]
+  );
+  await queryPostgres(
+    `
+    insert into public.lead_events (tenant_id, brand_id, lead_id, type, body, metadata_json)
+    values ($1, $2, $3, 'qualification', $4, $5::jsonb)
+    `,
+    [
+      lead.tenant_id,
+      lead.brand_id,
+      parsed.data.leadId,
+      "Legal routing review prepared. Manual approval is required before external routing.",
+      JSON.stringify({
+        suggestedBuyerProfile: parsed.data.suggestedBuyerProfile ?? "",
+        routingNotes: parsed.data.routingNotes ?? "",
+        approvalRequired: true
+      })
     ]
   );
   revalidatePath("/app/leads");

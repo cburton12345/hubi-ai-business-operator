@@ -55,6 +55,12 @@ export type LeadDetail = {
     treatmentReceived: boolean | null;
     disclaimerAcknowledged: boolean;
   } | null;
+  routingReview: {
+    status: string;
+    suggestedBuyerProfile: string;
+    routingNotes: string;
+    approvalRequired: boolean;
+  } | null;
 };
 
 type LeadRow = {
@@ -119,6 +125,13 @@ type LegalLeadDetailsRow = {
   has_attorney: boolean | null;
   treatment_received: boolean | null;
   legal_disclaimer_acknowledged: boolean;
+};
+
+type RoutingReviewRow = {
+  status: string;
+  suggested_buyer_profile: string | null;
+  routing_notes: string | null;
+  approval_required: boolean;
 };
 
 function mapIntelligence(row: LeadIntelligenceRow | undefined) {
@@ -218,9 +231,20 @@ export async function getLeadDetail(leadId: string) {
       `,
       [workspaceId, leadId]
     );
+    const routingReviewResult = await queryPostgres<RoutingReviewRow>(
+      `
+      select status, suggested_buyer_profile, routing_notes, approval_required
+      from public.lead_routing_reviews
+      where tenant_id = $1 and lead_id = $2
+      order by created_at desc
+      limit 1
+      `,
+      [workspaceId, leadId]
+    );
     const score = scoreResult?.rows[0];
     const assignment = assignmentResult?.rows[0];
     const legalDetails = legalDetailsResult?.rows[0];
+    const routingReview = routingReviewResult?.rows[0];
 
     return {
       id: lead.id,
@@ -250,6 +274,14 @@ export async function getLeadDetail(leadId: string) {
             hasAttorney: legalDetails.has_attorney,
             treatmentReceived: legalDetails.treatment_received,
             disclaimerAcknowledged: legalDetails.legal_disclaimer_acknowledged
+        }
+        : null,
+      routingReview: routingReview
+        ? {
+            status: routingReview.status,
+            suggestedBuyerProfile: routingReview.suggested_buyer_profile ?? "",
+            routingNotes: routingReview.routing_notes ?? "",
+            approvalRequired: routingReview.approval_required
           }
         : null,
       events: (eventsResult?.rows ?? []).map((event) => ({
@@ -329,6 +361,7 @@ export async function getLeadDetail(leadId: string) {
     assignment: null,
     intelligence: mapIntelligence(intelligence ?? undefined),
     legalDetails: null,
+    routingReview: null,
     events: ((events as EventRow[] | null) ?? []).map((event) => ({
       id: event.id,
       type: event.type,

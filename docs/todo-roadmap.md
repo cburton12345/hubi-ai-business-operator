@@ -162,8 +162,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Attorney relationship disclaimer handling
 - [x] Qualification status workflow
 - [x] Lead scoring rules
-- [ ] Buyer/routing model foundation
-- [ ] Manual approval before external routing
+- [x] Buyer/routing model foundation
+- [x] Manual approval before external routing
 
 ## Local Service Businesses
 
