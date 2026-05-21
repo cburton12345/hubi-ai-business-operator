@@ -17,16 +17,21 @@ function addIf(candidates: AlertCandidate[], condition: boolean, candidate: Aler
 
 export async function runWorkspaceAlertScan() {
   const workspaceId = await getCurrentWorkspaceId();
-  const result = await queryPostgres<{
+  const [result, signalResult] = await Promise.all([
+    queryPostgres<{
     stale_leads: string;
     current_leads: string;
     previous_leads: string;
     new_leads: string;
+    conversion_leads: string;
+    won_leads: string;
+    quiet_contacted_leads: string;
     pending_approvals: string;
     failed_forms: string;
     app_errors: string;
     ai_fallbacks: string;
     pending_exports: string;
+    overdue_invoices: string;
   }>(
     `
     select
@@ -34,25 +39,69 @@ export async function runWorkspaceAlertScan() {
       (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '7 days') as current_leads,
       (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '14 days' and created_at < now() - interval '7 days') as previous_leads,
       (select count(*) from public.leads where tenant_id = $1 and status = 'new' and created_at >= now() - interval '24 hours') as new_leads,
+      (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '30 days' and status in ('contacted', 'qualified', 'won', 'lost')) as conversion_leads,
+      (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '30 days' and status = 'won') as won_leads,
+      (
+        select count(*)
+        from public.leads l
+        where l.tenant_id = $1
+          and l.status in ('new', 'contacted', 'qualified')
+          and l.created_at < now() - interval '7 days'
+          and not exists (
+            select 1
+            from public.lead_events e
+            where e.lead_id = l.id
+              and e.type in ('call', 'email', 'text', 'note', 'status_change')
+              and e.created_at >= now() - interval '7 days'
+          )
+      ) as quiet_contacted_leads,
       (select count(*) from public.approvals where tenant_id = $1 and status = 'pending') as pending_approvals,
       (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and source = 'api.public.leads' and created_at >= now() - interval '7 days') as failed_forms,
       (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and severity in ('error', 'critical') and created_at >= now() - interval '7 days') as app_errors,
       (select count(*) from public.ai_generation_runs where tenant_id = $1 and fallback_used = true and created_at >= now() - interval '7 days') as ai_fallbacks,
-      (select count(*) from public.content_exports where tenant_id = $1 and status in ('pending', 'processing')) as pending_exports
+      (select count(*) from public.content_exports where tenant_id = $1 and status in ('pending', 'processing')) as pending_exports,
+      (select count(*) from public.service_invoices where tenant_id = $1 and status = 'overdue') as overdue_invoices
     `,
     [workspaceId]
-  );
+    ),
+    queryPostgres<{
+      id: string;
+      signal_type: string;
+      severity: "low" | "medium" | "high";
+      title: string;
+      summary: string;
+      action_href: string | null;
+      source: string;
+      source_ref: string | null;
+      metadata_json: Record<string, unknown>;
+    }>(
+      `
+      select id, signal_type, severity, title, summary, action_href, source, source_ref, metadata_json
+      from public.operator_alert_signals
+      where tenant_id = $1 and status = 'active'
+      order by detected_at desc
+      limit 50
+      `,
+      [workspaceId]
+    )
+  ]);
   const row = result?.rows[0];
   const staleLeads = Number(row?.stale_leads ?? 0);
   const currentLeads = Number(row?.current_leads ?? 0);
   const previousLeads = Number(row?.previous_leads ?? 0);
   const newLeads = Number(row?.new_leads ?? 0);
+  const conversionLeads = Number(row?.conversion_leads ?? 0);
+  const wonLeads = Number(row?.won_leads ?? 0);
+  const quietContactedLeads = Number(row?.quiet_contacted_leads ?? 0);
   const pendingApprovals = Number(row?.pending_approvals ?? 0);
   const failedForms = Number(row?.failed_forms ?? 0);
   const appErrors = Number(row?.app_errors ?? 0);
   const aiFallbacks = Number(row?.ai_fallbacks ?? 0);
   const pendingExports = Number(row?.pending_exports ?? 0);
+  const overdueInvoices = Number(row?.overdue_invoices ?? 0);
   const leadVolumeDropped = previousLeads >= 3 && currentLeads < Math.ceil(previousLeads / 2);
+  const conversionRate = conversionLeads > 0 ? wonLeads / conversionLeads : 0;
+  const conversionProblem = conversionLeads >= 8 && conversionRate < 0.08;
   const candidates: AlertCandidate[] = [];
 
   addIf(candidates, newLeads > 0, {
@@ -83,6 +132,26 @@ export async function runWorkspaceAlertScan() {
     summary: `Lead volume is ${currentLeads} this week compared with ${previousLeads} in the prior week.`,
     actionHref: "/app/reports",
     metadata: { currentLeads, previousLeads }
+  });
+
+  addIf(candidates, conversionProblem, {
+    key: "conversion-problem",
+    category: "lead",
+    severity: conversionLeads >= 20 && wonLeads === 0 ? "high" : "medium",
+    title: "Lead conversion needs attention",
+    summary: `${wonLeads} of ${conversionLeads} active leads converted in the last 30 days. Review lead quality, follow-up speed, and offers.`,
+    actionHref: "/app/reports",
+    metadata: { conversionLeads, wonLeads, conversionRate }
+  });
+
+  addIf(candidates, quietContactedLeads > 0, {
+    key: "customer-communication-failure",
+    category: "lead",
+    severity: quietContactedLeads >= 5 ? "high" : "medium",
+    title: "Customer communication may be stalled",
+    summary: `${quietContactedLeads} active lead${quietContactedLeads === 1 ? "" : "s"} have no recent call, email, text, note, or status activity.`,
+    actionHref: "/app/leads",
+    metadata: { quietContactedLeads }
   });
 
   addIf(candidates, pendingApprovals > 0, {
@@ -134,6 +203,34 @@ export async function runWorkspaceAlertScan() {
     actionHref: "/app/exports",
     metadata: { pendingExports }
   });
+
+  addIf(candidates, overdueInvoices > 0, {
+    key: "payment-failure",
+    category: "billing",
+    severity: overdueInvoices >= 3 ? "high" : "medium",
+    title: "Manual payment follow-up needed",
+    summary: `${overdueInvoices} invoice${overdueInvoices === 1 ? "" : "s"} are marked overdue. Review invoices before contacting customers.`,
+    actionHref: "/app/service",
+    metadata: { overdueInvoices }
+  });
+
+  for (const signal of signalResult?.rows ?? []) {
+    candidates.push({
+      key: `${signal.signal_type}-${signal.id}`,
+      category: signal.signal_type === "payment_failure" ? "billing" : "integration",
+      severity: signal.severity,
+      title: signal.title,
+      summary: signal.summary,
+      actionHref: signal.action_href ?? "/app/alerts",
+      metadata: {
+        ...signal.metadata_json,
+        signalId: signal.id,
+        signalType: signal.signal_type,
+        source: signal.source,
+        sourceRef: signal.source_ref
+      }
+    });
+  }
 
   for (const alert of candidates) {
     await queryPostgres(
