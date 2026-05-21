@@ -167,9 +167,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Local Service Businesses
 
-- [ ] Service-area lead forms
-- [ ] Quote request flow
-- [ ] Appointment request flow
+- [x] Service-area lead forms
+- [x] Quote request flow
+- [x] Appointment request flow
 - [x] City/service page recommendation model
 - [x] Google Business Profile post drafts
 - [x] Review request draft campaigns
