@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceOpsDashboard } from "@/lib/service-ops/get-service-ops-dashboard";
 import { createCustomerAction, createEstimateAction, createInvoiceAction, createJobAction } from "./actions";
@@ -79,7 +80,8 @@ export default async function ServiceOpsPage() {
             id: customer.id,
             title: customer.name,
             meta: `${customer.contact} / ${customer.location}`,
-            pill: customer.status
+            pill: customer.status,
+            href: customer.href
           }))}
         />
         <ListPanel
@@ -167,7 +169,7 @@ function ListPanel({
   rows
 }: {
   title: string;
-  rows: { id: string; title: string; meta: string; pill: string }[];
+  rows: { id: string; title: string; meta: string; pill: string; href?: string }[];
 }) {
   return (
     <section className="panel span-6">
@@ -176,7 +178,7 @@ function ListPanel({
         {rows.map((row) => (
           <li className="list-row" key={row.id}>
             <div>
-              <h3>{row.title}</h3>
+              <h3>{row.href ? <Link href={row.href}>{row.title}</Link> : row.title}</h3>
               <p className="muted">{row.meta}</p>
             </div>
             <span className="pill">{row.pill}</span>

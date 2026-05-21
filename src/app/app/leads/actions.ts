@@ -23,6 +23,12 @@ const assignmentSchema = z.object({
   notes: z.string().max(1000).optional()
 });
 
+const convertLeadSchema = z.object({
+  leadId: z.string().min(1),
+  createEstimate: z.boolean().default(false),
+  createJob: z.boolean().default(false)
+});
+
 function scoreLead(input: {
   status: string;
   qualificationStatus: string;
@@ -308,4 +314,147 @@ export async function assignLeadAction(formData: FormData) {
 
   revalidatePath("/app/leads");
   revalidatePath(`/app/leads/${parsed.data.leadId}`);
+}
+
+export async function convertLeadToServiceCustomerAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = convertLeadSchema.safeParse({
+    leadId: formData.get("leadId"),
+    createEstimate: formData.get("createEstimate") === "on",
+    createJob: formData.get("createJob") === "on"
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const leadResult = await queryPostgres<{
+    id: string;
+    tenant_id: string;
+    brand_id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    message: string | null;
+    lead_type: string;
+    metadata_json: { details?: Record<string, unknown> } | null;
+  }>(
+    `
+    select id, tenant_id, brand_id, name, email, phone, message, lead_type, metadata_json
+    from public.leads
+    where tenant_id = $1 and id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.leadId]
+  );
+  const lead = leadResult?.rows[0];
+  if (!lead) return;
+
+  const details = lead.metadata_json?.details ?? {};
+  const location = typeof details.location === "string" ? details.location : "";
+  const existingCustomer = await queryPostgres<{ id: string }>(
+    "select id from public.customers where tenant_id = $1 and source_lead_id = $2 limit 1",
+    [workspaceId, lead.id]
+  );
+  let customerId = existingCustomer?.rows[0]?.id;
+
+  if (!customerId) {
+    const customerResult = await queryPostgres<{ id: string }>(
+      `
+      insert into public.customers (tenant_id, brand_id, source_lead_id, name, email, phone, city, notes, ai_summary)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      returning id
+      `,
+      [
+        lead.tenant_id,
+        lead.brand_id,
+        lead.id,
+        lead.name ?? "Unknown customer",
+        lead.email,
+        lead.phone,
+        location || null,
+        lead.message,
+        `Created from ${lead.lead_type} lead. Review contact details, service need, and next action before sending any customer message.`
+      ]
+    );
+    customerId = customerResult?.rows[0]?.id;
+  }
+
+  if (!customerId) return;
+
+  if (parsed.data.createEstimate) {
+    const estimateResult = await queryPostgres<{ id: string }>(
+      `
+      insert into public.service_estimates (tenant_id, brand_id, customer_id, source_lead_id, title, customer_summary, internal_notes, manual_follow_up_draft)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      returning id
+      `,
+      [
+        lead.tenant_id,
+        lead.brand_id,
+        customerId,
+        lead.id,
+        `${lead.name ?? "Customer"} estimate draft`,
+        "Estimate draft created from lead intake. Add line items and confirm scope before sending manually.",
+        lead.message,
+        "Hi, thanks for reaching out. I am preparing an estimate based on your request and will confirm the details before anything is finalized."
+      ]
+    );
+    const estimate = estimateResult?.rows[0];
+    if (estimate) {
+      await queryPostgres(
+        `
+        insert into public.estimate_line_items (tenant_id, estimate_id, name, description, quantity, unit_price_cents, total_cents)
+        values ($1, $2, 'Scope review', 'Placeholder line item. Replace with real pricing before sharing.', 1, 0, 0)
+        `,
+        [lead.tenant_id, estimate.id]
+      );
+    }
+  }
+
+  if (parsed.data.createJob) {
+    await queryPostgres(
+      `
+      insert into public.service_jobs (tenant_id, brand_id, customer_id, source_lead_id, title, status, service_area, dispatcher_notes, ai_next_action)
+      values ($1, $2, $3, $4, $5, 'unscheduled', $6, $7, $8)
+      `,
+      [
+        lead.tenant_id,
+        lead.brand_id,
+        customerId,
+        lead.id,
+        `${lead.name ?? "Customer"} service job`,
+        location || null,
+        lead.message,
+        "Schedule the job, assign a team member, and confirm service details manually."
+      ]
+    );
+  }
+
+  await queryPostgres(
+    `
+    update public.leads
+    set qualification_status = 'qualified',
+        status = case when status = 'new' then 'contacted' else status end,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    `,
+    [workspaceId, lead.id]
+  );
+  await queryPostgres(
+    `
+    insert into public.lead_events (tenant_id, brand_id, lead_id, type, body, metadata_json)
+    values ($1, $2, $3, 'qualification', $4, $5::jsonb)
+    `,
+    [
+      lead.tenant_id,
+      lead.brand_id,
+      lead.id,
+      "Lead converted into a service customer record.",
+      JSON.stringify({ customerId, createEstimate: parsed.data.createEstimate, createJob: parsed.data.createJob })
+    ]
+  );
+
+  revalidatePath("/app/leads");
+  revalidatePath(`/app/leads/${lead.id}`);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/customers/${customerId}`);
 }

@@ -130,6 +130,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 - [x] Customer records
 - [x] Lead/customer service operations foundation
+- [x] Lead-to-customer conversion flow
 - [x] Estimate builder foundation
 - [x] Invoice/payment placeholders
 - [x] Appointment/job scheduling foundation

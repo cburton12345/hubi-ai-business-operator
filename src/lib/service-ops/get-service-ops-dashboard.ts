@@ -17,6 +17,7 @@ export type ServiceOpsDashboard = {
     contact: string;
     location: string;
     status: string;
+    href: string;
   }[];
   estimates: {
     id: string;
@@ -156,7 +157,8 @@ export async function getServiceOpsDashboard(): Promise<ServiceOpsDashboard> {
       name: customer.name,
       contact: customer.email || customer.phone || "No contact",
       location: [customer.city, customer.state].filter(Boolean).join(", ") || "No location",
-      status: customer.status
+      status: customer.status,
+      href: `/app/service/customers/${customer.id}`
     })),
     estimates: (estimates?.rows ?? []).map((estimate) => ({
       id: estimate.id,

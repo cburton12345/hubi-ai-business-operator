@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { assignLeadAction, calculateLeadScoreAction, generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
+import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
@@ -106,6 +106,19 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
                 <textarea name="notes" rows={3} defaultValue={lead.assignment?.notes ?? ""} />
               </label>
               <button className="button secondary-button" type="submit">Save assignment</button>
+            </form>
+            <form action={convertLeadToServiceCustomerAction} className="form-stack">
+              <input name="leadId" type="hidden" value={lead.id} />
+              <h2>Convert to service ops</h2>
+              <label className="checkbox-row">
+                <input name="createEstimate" type="checkbox" />
+                Create estimate draft
+              </label>
+              <label className="checkbox-row">
+                <input name="createJob" type="checkbox" />
+                Create unscheduled job
+              </label>
+              <button className="button secondary-button" type="submit">Convert lead</button>
             </form>
           </section>
 
