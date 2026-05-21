@@ -117,13 +117,13 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Form public key rotation
 - [x] Source tracking
 - [x] UTM tracking
-- [ ] Lead scoring foundation
-- [ ] Lead assignment
-- [ ] Lead event timeline
-- [ ] Lead filters
-- [ ] Lead search
-- [ ] CSV export
-- [ ] Duplicate lead detection
+- [x] Lead scoring foundation
+- [x] Lead assignment
+- [x] Lead event timeline
+- [x] Lead filters
+- [x] Lead search
+- [x] CSV export
+- [x] Duplicate lead detection
 - [ ] New lead notifications
 
 ## Field Service Operating Core
