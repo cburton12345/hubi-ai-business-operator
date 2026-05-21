@@ -75,20 +75,20 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Default legal-sensitive brands to review-required
 - [x] Store AI input context and output metadata for auditability
 
-## Tenant And SaaS Platform
+## Workspace And SaaS Platform
 
 - [x] Platform admin role
 - [x] Tenant owner role
 - [x] Tenant admin role
 - [x] Tenant operator role
 - [x] Tenant viewer role
-- [ ] Tenant workspace settings
+- [x] Workspace settings
 - [ ] Brand-level access rules
 - [x] User invites
-- [ ] Client onboarding flow
-- [ ] Plan/billing placeholders
-- [ ] Usage tracking placeholders
-- [ ] External customer onboarding checklist
+- [x] Client onboarding flow
+- [x] Plan/billing placeholders
+- [x] Usage tracking placeholders
+- [x] External customer onboarding checklist
 - [ ] Tenant data export path
 
 ## Brand Data Model
