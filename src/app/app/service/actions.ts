@@ -59,12 +59,80 @@ const invoiceStatusSchema = z.object({
   paymentNotes: z.string().max(1200).optional()
 });
 
+const estimateLineItemSchema = z.object({
+  estimateId: z.string().uuid(),
+  itemId: z.string().uuid().optional(),
+  name: z.string().min(1).max(180),
+  description: z.string().max(600).optional(),
+  quantity: z.coerce.number().min(0).max(9999).default(1),
+  unitPriceCents: z.number().int().min(0)
+});
+
+const invoiceLineItemSchema = z.object({
+  invoiceId: z.string().uuid(),
+  itemId: z.string().uuid().optional(),
+  name: z.string().min(1).max(180),
+  description: z.string().max(600).optional(),
+  quantity: z.coerce.number().min(0).max(9999).default(1),
+  unitPriceCents: z.number().int().min(0)
+});
+
+const deleteEstimateLineItemSchema = z.object({
+  estimateId: z.string().uuid(),
+  itemId: z.string().uuid()
+});
+
+const deleteInvoiceLineItemSchema = z.object({
+  invoiceId: z.string().uuid(),
+  itemId: z.string().uuid()
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
 
 function dateTimeOrNull(value: string | undefined) {
   return value?.trim() ? new Date(value).toISOString() : null;
+}
+
+async function recalculateEstimateTotal(workspaceId: string, estimateId: string) {
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_estimates
+    set subtotal_cents = totals.total_cents,
+        total_cents = greatest(0, totals.total_cents - discount_cents + tax_cents),
+        updated_at = now()
+    from (
+      select coalesce(sum(total_cents), 0)::integer as total_cents
+      from public.estimate_line_items
+      where tenant_id = $1 and estimate_id = $2
+    ) totals
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [workspaceId, estimateId]
+  );
+  return result?.rows[0]?.customer_id ?? null;
+}
+
+async function recalculateInvoiceTotal(workspaceId: string, invoiceId: string) {
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_invoices
+    set subtotal_cents = totals.total_cents,
+        total_cents = greatest(0, totals.total_cents - discount_cents + tax_cents),
+        updated_at = now()
+    from (
+      select coalesce(sum(total_cents), 0)::integer as total_cents
+      from public.invoice_line_items
+      where tenant_id = $1 and invoice_id = $2
+    ) totals
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [workspaceId, invoiceId]
+  );
+  return result?.rows[0]?.customer_id ?? null;
 }
 
 export async function createCustomerAction(formData: FormData) {
@@ -332,4 +400,154 @@ export async function updateInvoiceAction(formData: FormData) {
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function saveEstimateLineItemAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = estimateLineItemSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    itemId: String(formData.get("itemId") ?? "") || undefined,
+    name: formData.get("name"),
+    description: String(formData.get("description") ?? ""),
+    quantity: formData.get("quantity") ?? 1,
+    unitPriceCents: dollarsToCents(formData.get("unitPrice"))
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const totalCents = Math.round(parsed.data.quantity * parsed.data.unitPriceCents);
+  if (parsed.data.itemId) {
+    await queryPostgres(
+      `
+      update public.estimate_line_items
+      set name = $4, description = $5, quantity = $6, unit_price_cents = $7, total_cents = $8
+      where tenant_id = $1 and estimate_id = $2 and id = $3
+      `,
+      [
+        workspaceId,
+        parsed.data.estimateId,
+        parsed.data.itemId,
+        parsed.data.name.trim(),
+        emptyToNull(parsed.data.description),
+        parsed.data.quantity,
+        parsed.data.unitPriceCents,
+        totalCents
+      ]
+    );
+  } else {
+    await queryPostgres(
+      `
+      insert into public.estimate_line_items (tenant_id, estimate_id, name, description, quantity, unit_price_cents, total_cents)
+      values ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        workspaceId,
+        parsed.data.estimateId,
+        parsed.data.name.trim(),
+        emptyToNull(parsed.data.description),
+        parsed.data.quantity,
+        parsed.data.unitPriceCents,
+        totalCents
+      ]
+    );
+  }
+  const customerId = await recalculateEstimateTotal(workspaceId, parsed.data.estimateId);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+  if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
+}
+
+export async function deleteEstimateLineItemAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = deleteEstimateLineItemSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    itemId: formData.get("itemId")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres("delete from public.estimate_line_items where tenant_id = $1 and estimate_id = $2 and id = $3", [
+    workspaceId,
+    parsed.data.estimateId,
+    parsed.data.itemId
+  ]);
+  const customerId = await recalculateEstimateTotal(workspaceId, parsed.data.estimateId);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+  if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
+}
+
+export async function saveInvoiceLineItemAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = invoiceLineItemSchema.safeParse({
+    invoiceId: formData.get("invoiceId"),
+    itemId: String(formData.get("itemId") ?? "") || undefined,
+    name: formData.get("name"),
+    description: String(formData.get("description") ?? ""),
+    quantity: formData.get("quantity") ?? 1,
+    unitPriceCents: dollarsToCents(formData.get("unitPrice"))
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const totalCents = Math.round(parsed.data.quantity * parsed.data.unitPriceCents);
+  if (parsed.data.itemId) {
+    await queryPostgres(
+      `
+      update public.invoice_line_items
+      set name = $4, description = $5, quantity = $6, unit_price_cents = $7, total_cents = $8
+      where tenant_id = $1 and invoice_id = $2 and id = $3
+      `,
+      [
+        workspaceId,
+        parsed.data.invoiceId,
+        parsed.data.itemId,
+        parsed.data.name.trim(),
+        emptyToNull(parsed.data.description),
+        parsed.data.quantity,
+        parsed.data.unitPriceCents,
+        totalCents
+      ]
+    );
+  } else {
+    await queryPostgres(
+      `
+      insert into public.invoice_line_items (tenant_id, invoice_id, name, description, quantity, unit_price_cents, total_cents)
+      values ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        workspaceId,
+        parsed.data.invoiceId,
+        parsed.data.name.trim(),
+        emptyToNull(parsed.data.description),
+        parsed.data.quantity,
+        parsed.data.unitPriceCents,
+        totalCents
+      ]
+    );
+  }
+  const customerId = await recalculateInvoiceTotal(workspaceId, parsed.data.invoiceId);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+  if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
+}
+
+export async function deleteInvoiceLineItemAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = deleteInvoiceLineItemSchema.safeParse({
+    invoiceId: formData.get("invoiceId"),
+    itemId: formData.get("itemId")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres("delete from public.invoice_line_items where tenant_id = $1 and invoice_id = $2 and id = $3", [
+    workspaceId,
+    parsed.data.invoiceId,
+    parsed.data.itemId
+  ]);
+  const customerId = await recalculateInvoiceTotal(workspaceId, parsed.data.invoiceId);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+  if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
 }

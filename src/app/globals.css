@@ -456,7 +456,7 @@ pre {
 
 .compact-form {
   display: grid;
-  grid-template-columns: minmax(110px, 0.8fr) minmax(170px, 1fr) minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(170px, 1fr) minmax(90px, 0.4fr) minmax(110px, 0.5fr) auto;
   gap: 8px;
   align-items: center;
 }

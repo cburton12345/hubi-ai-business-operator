@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceInvoiceDetail } from "@/lib/service-ops/get-service-record-detail";
-import { updateInvoiceAction } from "../../actions";
+import { deleteInvoiceLineItemAction, saveInvoiceLineItemAction, updateInvoiceAction } from "../../actions";
 
 const statuses = ["draft", "sent_manually", "partially_paid", "paid", "void", "overdue"];
 
@@ -19,14 +19,32 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <ul className="list">
             {invoice.lineItems.map((item) => (
               <li className="list-row" key={item.id}>
-                <div>
-                  <h3>{item.name}</h3>
-                  <p className="muted">{item.description || "No description"} / qty {item.quantity} / {item.unitPrice}</p>
-                </div>
+                <form action={saveInvoiceLineItemAction} className="compact-form">
+                  <input name="invoiceId" type="hidden" value={invoice.id} />
+                  <input name="itemId" type="hidden" value={item.id} />
+                  <input name="name" defaultValue={item.name} />
+                  <input name="description" defaultValue={item.description} placeholder="Description" />
+                  <input name="quantity" defaultValue={item.quantity} inputMode="decimal" />
+                  <input name="unitPrice" defaultValue={item.unitPriceValue} inputMode="decimal" />
+                  <button className="mini-button" type="submit">Save</button>
+                </form>
                 <span className="pill">{item.total}</span>
+                <form action={deleteInvoiceLineItemAction}>
+                  <input name="invoiceId" type="hidden" value={invoice.id} />
+                  <input name="itemId" type="hidden" value={item.id} />
+                  <button className="mini-button danger-button" type="submit">Remove</button>
+                </form>
               </li>
             ))}
           </ul>
+          <form action={saveInvoiceLineItemAction} className="compact-form section-actions">
+            <input name="invoiceId" type="hidden" value={invoice.id} />
+            <input name="name" placeholder="New line item" required />
+            <input name="description" placeholder="Description" />
+            <input name="quantity" defaultValue="1" inputMode="decimal" />
+            <input name="unitPrice" placeholder="Unit price" inputMode="decimal" />
+            <button className="mini-button" type="submit">Add item</button>
+          </form>
           <dl className="detail-grid section-actions">
             <Detail label="Amount paid" value={invoice.amountPaid} />
             <Detail label="Due date" value={invoice.dueDate} />

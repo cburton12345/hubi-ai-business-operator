@@ -1,5 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
-import { formatMoney } from "@/lib/service-ops/money";
+import { centsToDollars, formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type ServiceEstimateDetail = {
@@ -12,7 +12,7 @@ export type ServiceEstimateDetail = {
   customerSummary: string;
   internalNotes: string;
   followUpDraft: string;
-  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; total: string }[];
+  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
 };
 
 export type ServiceJobDetail = {
@@ -39,7 +39,7 @@ export type ServiceInvoiceDetail = {
   dueDate: string;
   internalNotes: string;
   paymentNotes: string;
-  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; total: string }[];
+  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
 };
 
 function formatDateTime(start: Date | null, end: Date | null) {
@@ -101,6 +101,7 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       description: item.description ?? "",
       quantity: item.quantity,
       unitPrice: formatMoney(item.unit_price_cents),
+      unitPriceValue: centsToDollars(item.unit_price_cents),
       total: formatMoney(item.total_cents)
     }))
   };
@@ -201,6 +202,7 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       description: item.description ?? "",
       quantity: item.quantity,
       unitPrice: formatMoney(item.unit_price_cents),
+      unitPriceValue: centsToDollars(item.unit_price_cents),
       total: formatMoney(item.total_cents)
     }))
   };

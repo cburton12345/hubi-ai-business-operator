@@ -137,6 +137,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Estimate workflow detail pages
 - [x] Job workflow detail pages
 - [x] Invoice workflow detail pages
+- [x] Estimate line item editing
+- [x] Invoice line item editing
 - [x] Team/technician assignment placeholder
 - [x] Service business dashboard
 - [x] Manual estimate follow-up drafts
