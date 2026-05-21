@@ -12,6 +12,10 @@ export default async function ServiceOpsPage() {
       title="Field Service Command Center"
       description="Manage customers, estimates, scheduled jobs, invoices, and manual AI-assisted follow-up for the selected organization."
     >
+      <div className="section-actions button-row">
+        <Link className="button secondary-button" href="/app/service/routes">Route planning</Link>
+      </div>
+
       <div className="grid section-actions">
         <Metric label="Customers" value={dashboard.metrics.customers} />
         <Metric label="Open estimates" value={dashboard.metrics.openEstimates} />

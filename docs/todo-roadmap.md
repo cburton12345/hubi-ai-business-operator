@@ -145,7 +145,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Manual payment notes
 - [x] Customer timeline across leads, estimates, jobs, and invoices
 - [x] Customer portal
-- [ ] Route planning
+- [x] Route planning
 - [ ] Recurring service plans
 - [ ] Technician mobile workflow
 - [ ] Inventory/equipment tracking

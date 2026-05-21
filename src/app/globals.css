@@ -279,6 +279,43 @@ h3 {
   margin-top: 6px;
 }
 
+.route-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.route-stop {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.route-stop h3,
+.route-stop p {
+  margin: 0;
+}
+
+.route-stop p + p {
+  margin-top: 5px;
+}
+
+.route-stop-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
