@@ -180,7 +180,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Rental date fields
 - [x] Delivery-needed fields
 - [x] Rental item type fields
-- [ ] Quote request status workflow
+- [x] Quote request status workflow
 - [x] Local rental SEO draft recommendations
 
 ## Software Businesses
