@@ -16,7 +16,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       <section className="workspace">
         <header className="app-shell-header panel">
           <Link href="/app" className="brand-mark">
-            Hubi Operator
+            Ferocity Operator
           </Link>
           <nav className="app-nav">
             <Link href="/app/onboarding">Onboarding</Link>

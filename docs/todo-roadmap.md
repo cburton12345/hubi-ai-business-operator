@@ -1,4 +1,4 @@
-# Hubi AI Business Operator Todo Roadmap
+# Ferocity AI Business Operator Todo Roadmap
 
 This project is a multi-tenant SaaS AI Business Operator. It must support internal portfolio brands first, then external paying businesses without a rewrite.
 

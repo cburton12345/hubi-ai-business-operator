@@ -13,7 +13,7 @@ export default async function LoginPage({
       <section className="workspace auth-workspace">
         <div>
           <p className="eyebrow">Workspace Access</p>
-          <h1>Sign in to Hubi Operator.</h1>
+          <h1>Sign in to Ferocity Operator.</h1>
           <p className="muted">Use a workspace account. The admin token remains available for emergency internal access.</p>
         </div>
 

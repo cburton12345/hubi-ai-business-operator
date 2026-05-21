@@ -9,7 +9,7 @@ function getBearerToken(request: Request) {
     return authorization.slice(7).trim();
   }
 
-  return request.headers.get("x-hubi-webhook-token")?.trim() ?? "";
+  return request.headers.get("x-ferocity-webhook-token")?.trim() ?? request.headers.get("x-hubi-webhook-token")?.trim() ?? "";
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ endpointId: string }> }) {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hubi AI Business Operator",
+  title: "Ferocity AI Business Operator",
   description: "Multi-workspace SaaS platform for AI-assisted business operations."
 };
 

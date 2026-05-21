@@ -8,7 +8,7 @@ Phase 47 connects the existing workspace session model to Supabase Auth without 
 - If Supabase Auth succeeds, the local `users.auth_user_id` field is linked for RLS-compatible identity mapping.
 - Existing local password credentials remain as a fallback so current workspace accounts keep working.
 - Workspace user creation and invite acceptance now create confirmed Supabase Auth users when service-role auth config is available.
-- Invite acceptance still creates a Hubi app session and selects the invited workspace.
+- Invite acceptance still creates a Ferocity app session and selects the invited workspace.
 
 ## Guardrails
 

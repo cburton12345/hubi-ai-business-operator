@@ -11,11 +11,18 @@ export type IntegrationRow = {
 };
 
 const plannedConnections = [
+  { provider: "supabase_auth", displayName: "Supabase Auth", notes: "Connected as an additive bridge. Local sessions remain available during rollout." },
   { provider: "google_ads", displayName: "Google Ads", notes: "Campaign and budget sync later. No API connection in this phase." },
   { provider: "facebook", displayName: "Facebook / Meta", notes: "Social publishing and ads later. Drafts remain manual for now." },
   { provider: "google_business_profile", displayName: "Google Business Profile", notes: "GBP post publishing later. Drafts remain internal." },
+  { provider: "search_console", displayName: "Google Search Console", notes: "SEO reporting and ranking signals later. Manual SEO recommendations are available now." },
+  { provider: "analytics", displayName: "Analytics", notes: "Traffic and conversion reporting later. Lead source and campaign attribution are tracked internally now." },
+  { provider: "email_provider", displayName: "Email Provider", notes: "Email delivery later. Follow-up messages are draft-only now." },
   { provider: "twilio", displayName: "Twilio", notes: "SMS delivery later. Lead replies are draft-only now." },
+  { provider: "review_platform", displayName: "Review Platform", notes: "Review ingestion and response workflows later. Public review responses require manual approval." },
+  { provider: "calendar_provider", displayName: "Calendar / Appointments", notes: "Calendar sync later. Jobs and appointment requests are tracked internally now." },
   { provider: "stripe", displayName: "Stripe Billing", notes: "Billing later. Workspace plans are tracked without Stripe." },
+  { provider: "webhook_framework", displayName: "Webhook Framework", notes: "Inbound authenticated webhook events are available. Outbound delivery remains disabled." },
   { provider: "external_publishing", displayName: "External Publishing", notes: "CMS/social publishing later. Export packages are manual." }
 ];
 

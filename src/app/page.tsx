@@ -6,7 +6,7 @@ export default function HomePage() {
       <section className="workspace">
         <div className="topbar">
           <div>
-            <p className="eyebrow">Hubi Phase 2</p>
+            <p className="eyebrow">Ferocity Operator</p>
             <h1>AI Business Operator for multi-workspace growth.</h1>
             <p className="muted">
               Workspace isolation, multi-brand operations, lead capture, weekly AI marketing plans, drafts, recommendations, and approvals.
