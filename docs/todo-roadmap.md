@@ -205,14 +205,14 @@ The product should eventually act like an AI COO for local service, rental, soft
 
 ## Approval Workflow
 
-- [ ] Low-risk draft review
-- [ ] Medium-risk approval
-- [ ] High-risk approval
-- [ ] Changes-requested workflow
+- [x] Low-risk draft review
+- [x] Medium-risk approval
+- [x] High-risk approval
+- [x] Changes-requested workflow
 - [ ] Rejection notes
-- [ ] Approval audit log
-- [ ] Published/ready status distinction
-- [ ] Admin-only public action controls
+- [x] Approval audit log
+- [x] Published/ready status distinction
+- [x] Admin-only public action controls
 
 ## Future Automation
 
@@ -224,7 +224,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Nurture messaging
 - [ ] Reporting summaries
 - [ ] Low-risk content publishing
-- [ ] Human approval for high-risk actions
+- [x] Human approval for high-risk actions
 
 ## Alerts And Monitoring
 
