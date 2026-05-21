@@ -21,6 +21,7 @@ export async function runWorkspaceAlertScan() {
     stale_leads: string;
     current_leads: string;
     previous_leads: string;
+    new_leads: string;
     pending_approvals: string;
     failed_forms: string;
     app_errors: string;
@@ -32,6 +33,7 @@ export async function runWorkspaceAlertScan() {
       (select count(*) from public.leads where tenant_id = $1 and status in ('new', 'contacted') and created_at < now() - interval '3 days') as stale_leads,
       (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '7 days') as current_leads,
       (select count(*) from public.leads where tenant_id = $1 and created_at >= now() - interval '14 days' and created_at < now() - interval '7 days') as previous_leads,
+      (select count(*) from public.leads where tenant_id = $1 and status = 'new' and created_at >= now() - interval '24 hours') as new_leads,
       (select count(*) from public.approvals where tenant_id = $1 and status = 'pending') as pending_approvals,
       (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and source = 'api.public.leads' and created_at >= now() - interval '7 days') as failed_forms,
       (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and severity in ('error', 'critical') and created_at >= now() - interval '7 days') as app_errors,
@@ -44,6 +46,7 @@ export async function runWorkspaceAlertScan() {
   const staleLeads = Number(row?.stale_leads ?? 0);
   const currentLeads = Number(row?.current_leads ?? 0);
   const previousLeads = Number(row?.previous_leads ?? 0);
+  const newLeads = Number(row?.new_leads ?? 0);
   const pendingApprovals = Number(row?.pending_approvals ?? 0);
   const failedForms = Number(row?.failed_forms ?? 0);
   const appErrors = Number(row?.app_errors ?? 0);
@@ -51,6 +54,16 @@ export async function runWorkspaceAlertScan() {
   const pendingExports = Number(row?.pending_exports ?? 0);
   const leadVolumeDropped = previousLeads >= 3 && currentLeads < Math.ceil(previousLeads / 2);
   const candidates: AlertCandidate[] = [];
+
+  addIf(candidates, newLeads > 0, {
+    key: "new-leads-today",
+    category: "lead",
+    severity: newLeads >= 5 ? "high" : "medium",
+    title: "New leads need review",
+    summary: `${newLeads} new lead${newLeads === 1 ? "" : "s"} arrived in the last 24 hours. Review and assign manually.`,
+    actionHref: "/app/leads?status=new",
+    metadata: { newLeads }
+  });
 
   addIf(candidates, staleLeads > 0, {
     key: "stale-leads",

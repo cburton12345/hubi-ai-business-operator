@@ -124,7 +124,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Lead search
 - [x] CSV export
 - [x] Duplicate lead detection
-- [ ] New lead notifications
+- [x] New lead notifications
 
 ## Field Service Operating Core
 
