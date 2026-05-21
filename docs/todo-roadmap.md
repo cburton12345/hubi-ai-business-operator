@@ -157,9 +157,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Case intake fields
 - [x] Consent capture
 - [x] Disclaimer acknowledgement
-- [ ] No-legal-advice content guardrails
-- [ ] No compensation guarantee guardrails
-- [ ] Attorney relationship disclaimer handling
+- [x] No-legal-advice content guardrails
+- [x] No compensation guarantee guardrails
+- [x] Attorney relationship disclaimer handling
 - [ ] Qualification status workflow
 - [ ] Lead scoring rules
 - [ ] Buyer/routing model foundation
@@ -170,10 +170,10 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [ ] Service-area lead forms
 - [ ] Quote request flow
 - [ ] Appointment request flow
-- [ ] City/service page recommendation model
-- [ ] Google Business Profile post drafts
-- [ ] Review request draft campaigns
-- [ ] Follow-up text/email drafts
+- [x] City/service page recommendation model
+- [x] Google Business Profile post drafts
+- [x] Review request draft campaigns
+- [x] Follow-up text/email drafts
 
 ## Rental Businesses
 
@@ -181,7 +181,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Delivery-needed fields
 - [x] Rental item type fields
 - [ ] Quote request status workflow
-- [ ] Local rental SEO draft recommendations
+- [x] Local rental SEO draft recommendations
 
 ## Software Businesses
 
@@ -189,8 +189,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Company and role fields
 - [x] Current system field
 - [x] Units/accounts managed field
-- [ ] Demo nurture content drafts
-- [ ] Comparison page recommendations
+- [x] Demo nurture content drafts
+- [x] Comparison page recommendations
 
 ## Marketplace Businesses
 
@@ -200,8 +200,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Consignor lead type
 - [x] Asset category fields
 - [x] Estimated value fields
-- [ ] Buyer/seller campaign recommendations
-- [ ] Auction content draft workflow
+- [x] Buyer/seller campaign recommendations
+- [x] Auction content draft workflow
 
 ## Approval Workflow
 
