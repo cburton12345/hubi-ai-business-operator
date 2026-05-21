@@ -42,6 +42,23 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <ListPanel title="Estimates" rows={customer.estimates.map((row) => ({ id: row.id, title: row.title, meta: row.total, pill: row.status, href: row.href }))} />
         <ListPanel title="Jobs" rows={customer.jobs.map((row) => ({ id: row.id, title: row.title, meta: `${row.schedule} / ${row.nextAction || "No next action"}`, pill: row.status, href: row.href }))} />
         <ListPanel title="Invoices" rows={customer.invoices.map((row) => ({ id: row.id, title: row.title, meta: `${row.total} / due ${row.dueDate}`, pill: row.status, href: row.href }))} />
+
+        <section className="panel span-12">
+          <h2>Customer timeline</h2>
+          <ul className="timeline-list">
+            {customer.timeline.map((item) => (
+              <li className="timeline-item" key={item.id}>
+                <div>
+                  <p className="eyebrow">{item.type}</p>
+                  <h3>{item.href ? <Link href={item.href}>{item.title}</Link> : item.title}</h3>
+                  <p>{item.body}</p>
+                  <p className="muted">{item.occurredAt}</p>
+                </div>
+                {item.status ? <span className="pill">{item.status}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </QueuePageShell>
   );

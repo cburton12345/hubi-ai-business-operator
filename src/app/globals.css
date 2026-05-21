@@ -231,6 +231,33 @@ h3 {
   background: #fbfcfd;
 }
 
+.timeline-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.timeline-item h3,
+.timeline-item p {
+  margin: 0;
+}
+
+.timeline-item p + p {
+  margin-top: 6px;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

@@ -143,6 +143,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Service business dashboard
 - [x] Manual estimate follow-up drafts
 - [x] Manual payment notes
+- [x] Customer timeline across leads, estimates, jobs, and invoices
 - [ ] Customer portal
 - [ ] Route planning
 - [ ] Recurring service plans
