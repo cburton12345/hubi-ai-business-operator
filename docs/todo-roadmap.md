@@ -160,8 +160,8 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] No-legal-advice content guardrails
 - [x] No compensation guarantee guardrails
 - [x] Attorney relationship disclaimer handling
-- [ ] Qualification status workflow
-- [ ] Lead scoring rules
+- [x] Qualification status workflow
+- [x] Lead scoring rules
 - [ ] Buyer/routing model foundation
 - [ ] Manual approval before external routing
 

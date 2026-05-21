@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, generateLeadIntelligenceAction, updateLeadWorkflow } from "@/app/app/leads/actions";
+import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, generateLeadIntelligenceAction, qualifyLegalLeadAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
 
@@ -107,6 +107,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               </label>
               <button className="button secondary-button" type="submit">Save assignment</button>
             </form>
+            {lead.leadType === "case_intake" ? (
+              <form action={qualifyLegalLeadAction} className="form-stack">
+                <input name="leadId" type="hidden" value={lead.id} />
+                <h2>Legal qualification</h2>
+                <p className="muted">Classify this case intake using disclaimer, attorney, treatment, and contact signals. External routing still requires manual approval.</p>
+                <textarea name="note" rows={3} placeholder="Optional qualification note" />
+                <button className="button secondary-button" type="submit">Run legal qualification</button>
+              </form>
+            ) : null}
             <form action={convertLeadToServiceCustomerAction} className="form-stack">
               <input name="leadId" type="hidden" value={lead.id} />
               <h2>Convert to service ops</h2>
@@ -121,6 +130,21 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               <button className="button secondary-button" type="submit">Convert lead</button>
             </form>
           </section>
+
+          {lead.legalDetails ? (
+            <section className="panel span-12">
+              <h2>Legal Intake Details</h2>
+              <dl className="detail-grid">
+                <Detail label="Case type" value={lead.legalDetails.caseType || "Not provided"} />
+                <Detail label="Incident date" value={lead.legalDetails.incidentDate || "Not provided"} />
+                <Detail label="State" value={lead.legalDetails.state || "Not provided"} />
+                <Detail label="Injury type" value={lead.legalDetails.injuryType || "Not provided"} />
+                <Detail label="Has attorney" value={lead.legalDetails.hasAttorney === null ? "Unknown" : lead.legalDetails.hasAttorney ? "Yes" : "No"} />
+                <Detail label="Treatment received" value={lead.legalDetails.treatmentReceived === null ? "Unknown" : lead.legalDetails.treatmentReceived ? "Yes" : "No"} />
+                <Detail label="Disclaimer acknowledged" value={lead.legalDetails.disclaimerAcknowledged ? "Yes" : "No"} />
+              </dl>
+            </section>
+          ) : null}
 
           <section className="panel span-12">
             <div className="topbar">

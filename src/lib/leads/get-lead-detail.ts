@@ -46,6 +46,15 @@ export type LeadDetail = {
     draftReply: string;
     createdAt: string;
   } | null;
+  legalDetails: {
+    caseType: string;
+    incidentDate: string;
+    state: string;
+    injuryType: string;
+    hasAttorney: boolean | null;
+    treatmentReceived: boolean | null;
+    disclaimerAcknowledged: boolean;
+  } | null;
 };
 
 type LeadRow = {
@@ -100,6 +109,16 @@ type LeadScoreRow = {
 type LeadAssignmentRow = {
   assigned_to: string | null;
   notes: string | null;
+};
+
+type LegalLeadDetailsRow = {
+  case_type: string | null;
+  incident_date: string | null;
+  state: string | null;
+  injury_type: string | null;
+  has_attorney: boolean | null;
+  treatment_received: boolean | null;
+  legal_disclaimer_acknowledged: boolean;
 };
 
 function mapIntelligence(row: LeadIntelligenceRow | undefined) {
@@ -190,8 +209,18 @@ export async function getLeadDetail(leadId: string) {
       `,
       [workspaceId, leadId]
     );
+    const legalDetailsResult = await queryPostgres<LegalLeadDetailsRow>(
+      `
+      select case_type, incident_date, state, injury_type, has_attorney, treatment_received, legal_disclaimer_acknowledged
+      from public.legal_lead_details
+      where tenant_id = $1 and lead_id = $2
+      limit 1
+      `,
+      [workspaceId, leadId]
+    );
     const score = scoreResult?.rows[0];
     const assignment = assignmentResult?.rows[0];
+    const legalDetails = legalDetailsResult?.rows[0];
 
     return {
       id: lead.id,
@@ -212,6 +241,17 @@ export async function getLeadDetail(leadId: string) {
       score: score ? { score: score.score, grade: score.grade, reasons: score.reasons_json ?? [] } : null,
       assignment: assignment ? { assignedTo: assignment.assigned_to ?? "Unassigned", notes: assignment.notes ?? "" } : null,
       intelligence: mapIntelligence(intelligenceResult?.rows[0]),
+      legalDetails: legalDetails
+        ? {
+            caseType: legalDetails.case_type ?? "",
+            incidentDate: legalDetails.incident_date ?? "",
+            state: legalDetails.state ?? "",
+            injuryType: legalDetails.injury_type ?? "",
+            hasAttorney: legalDetails.has_attorney,
+            treatmentReceived: legalDetails.treatment_received,
+            disclaimerAcknowledged: legalDetails.legal_disclaimer_acknowledged
+          }
+        : null,
       events: (eventsResult?.rows ?? []).map((event) => ({
         id: event.id,
         type: event.type,
@@ -288,6 +328,7 @@ export async function getLeadDetail(leadId: string) {
     score: null,
     assignment: null,
     intelligence: mapIntelligence(intelligence ?? undefined),
+    legalDetails: null,
     events: ((events as EventRow[] | null) ?? []).map((event) => ({
       id: event.id,
       type: event.type,
