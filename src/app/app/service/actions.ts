@@ -92,6 +92,17 @@ const customerPortalSchema = z.object({
   customerId: z.string().uuid()
 });
 
+const recurringPlanSchema = z.object({
+  customerId: z.string().uuid(),
+  title: z.string().min(1).max(180),
+  serviceType: z.string().max(160).optional(),
+  frequency: z.enum(["weekly", "monthly", "quarterly", "annual", "custom"]),
+  status: z.enum(["active", "paused", "canceled"]).default("active"),
+  nextServiceDate: z.string().optional(),
+  priceCents: z.number().int().min(0),
+  notes: z.string().max(1200).optional()
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
@@ -590,5 +601,53 @@ export async function disableCustomerPortalAction(formData: FormData) {
     "update public.customer_portal_access set enabled = false, updated_at = now() where tenant_id = $1 and customer_id = $2",
     [workspaceId, parsed.data.customerId]
   );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function createRecurringPlanAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = recurringPlanSchema.safeParse({
+    customerId: formData.get("customerId"),
+    title: formData.get("title"),
+    serviceType: String(formData.get("serviceType") ?? ""),
+    frequency: formData.get("frequency"),
+    status: "active",
+    nextServiceDate: String(formData.get("nextServiceDate") ?? ""),
+    priceCents: dollarsToCents(formData.get("price")),
+    notes: String(formData.get("notes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.recurring_service_plans (
+      tenant_id,
+      customer_id,
+      title,
+      service_type,
+      frequency,
+      status,
+      next_service_date,
+      price_cents,
+      internal_notes,
+      ai_next_action
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `,
+    [
+      workspaceId,
+      parsed.data.customerId,
+      parsed.data.title.trim(),
+      emptyToNull(parsed.data.serviceType),
+      parsed.data.frequency,
+      parsed.data.status,
+      parsed.data.nextServiceDate || null,
+      parsed.data.priceCents,
+      emptyToNull(parsed.data.notes),
+      "Confirm the next service date manually and create a job when the visit is ready to schedule."
+    ]
+  );
+  revalidatePath("/app/service");
   revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
 }

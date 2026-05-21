@@ -58,6 +58,16 @@ export default async function CustomerPortalPage({ params }: { params: Promise<{
               status: invoice.status
             }))}
           />
+          <PortalList
+            title="Recurring Plans"
+            empty="No active recurring plans yet."
+            rows={portal.recurringPlans.map((plan) => ({
+              id: plan.id,
+              title: plan.title,
+              meta: `${plan.frequency} / next ${plan.nextServiceDate} / ${plan.price}`,
+              status: "active"
+            }))}
+          />
         </div>
       </section>
     </main>

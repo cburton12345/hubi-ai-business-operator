@@ -20,6 +20,7 @@ export type CustomerDetail = {
   estimates: { id: string; title: string; status: string; total: string; href: string }[];
   jobs: { id: string; title: string; status: string; schedule: string; nextAction: string; href: string }[];
   invoices: { id: string; title: string; status: string; total: string; dueDate: string; href: string }[];
+  recurringPlans: { id: string; title: string; status: string; frequency: string; nextServiceDate: string; price: string; nextAction: string }[];
   timeline: {
     id: string;
     type: string;
@@ -66,7 +67,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
   const customer = customerResult?.rows[0];
   if (!customer) return null;
 
-  const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult] = await Promise.all([
+  const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult, recurringPlansResult] = await Promise.all([
     queryPostgres<{ public_token: string; enabled: boolean; last_viewed_at: Date | null }>(
       `
       select public_token, enabled, last_viewed_at
@@ -132,12 +133,31 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       order by coalesce(due_date, created_at) desc
       `,
       [workspaceId, customerId]
+    ),
+    queryPostgres<{
+      id: string;
+      title: string;
+      status: string;
+      frequency: string;
+      next_service_date: Date | null;
+      price_cents: number;
+      ai_next_action: string | null;
+      created_at: Date;
+    }>(
+      `
+      select id, title, status, frequency, next_service_date, price_cents, ai_next_action, created_at
+      from public.recurring_service_plans
+      where tenant_id = $1 and customer_id = $2
+      order by coalesce(next_service_date, created_at) asc
+      `,
+      [workspaceId, customerId]
     )
   ]);
 
   const estimates = estimatesResult?.rows ?? [];
   const jobs = jobsResult?.rows ?? [];
   const invoices = invoicesResult?.rows ?? [];
+  const recurringPlans = recurringPlansResult?.rows ?? [];
   const portalAccess = portalResult?.rows[0];
   const sourceLead = sourceLeadResult?.rows[0];
   const leadEvents = leadEventsResult?.rows ?? [];
@@ -199,6 +219,15 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       occurredAtDate: invoice.due_date ?? invoice.created_at,
       href: `/app/service/invoices/${invoice.id}`,
       status: invoice.status
+    })),
+    ...recurringPlans.map((plan) => ({
+      id: `recurring-plan-${plan.id}`,
+      type: "recurring plan",
+      title: plan.title,
+      body: `${plan.frequency} service plan${plan.next_service_date ? `, next service ${new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(plan.next_service_date)}` : ""}.`,
+      occurredAtDate: plan.next_service_date ?? plan.created_at,
+      href: `/app/service/customers/${customer.id}`,
+      status: plan.status
     }))
   ]
     .sort((a, b) => b.occurredAtDate.getTime() - a.occurredAtDate.getTime())
@@ -246,6 +275,15 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       total: formatMoney(invoice.total_cents),
       dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date",
       href: `/app/service/invoices/${invoice.id}`
+    })),
+    recurringPlans: recurringPlans.map((plan) => ({
+      id: plan.id,
+      title: plan.title,
+      status: plan.status,
+      frequency: plan.frequency,
+      nextServiceDate: plan.next_service_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(plan.next_service_date) : "Not scheduled",
+      price: formatMoney(plan.price_cents),
+      nextAction: plan.ai_next_action ?? ""
     })),
     timeline
   };

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { disableCustomerPortalAction, enableCustomerPortalAction } from "@/app/app/service/actions";
+import { createRecurringPlanAction, disableCustomerPortalAction, enableCustomerPortalAction } from "@/app/app/service/actions";
 import { getCustomerDetail } from "@/lib/service-ops/get-customer-detail";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ customerId: string }> }) {
@@ -70,6 +70,41 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <ListPanel title="Estimates" rows={customer.estimates.map((row) => ({ id: row.id, title: row.title, meta: row.total, pill: row.status, href: row.href }))} />
         <ListPanel title="Jobs" rows={customer.jobs.map((row) => ({ id: row.id, title: row.title, meta: `${row.schedule} / ${row.nextAction || "No next action"}`, pill: row.status, href: row.href }))} />
         <ListPanel title="Invoices" rows={customer.invoices.map((row) => ({ id: row.id, title: row.title, meta: `${row.total} / due ${row.dueDate}`, pill: row.status, href: row.href }))} />
+
+        <section className="panel span-6">
+          <h2>Recurring service plans</h2>
+          <ul className="list section-actions">
+            {customer.recurringPlans.map((plan) => (
+              <li className="list-row" key={plan.id}>
+                <div>
+                  <h3>{plan.title}</h3>
+                  <p className="muted">{plan.frequency} / next {plan.nextServiceDate} / {plan.price}</p>
+                  {plan.nextAction ? <p>{plan.nextAction}</p> : null}
+                </div>
+                <span className="pill">{plan.status}</span>
+              </li>
+            ))}
+            {customer.recurringPlans.length === 0 ? <li className="list-row"><span className="muted">No recurring plans yet.</span></li> : null}
+          </ul>
+          <form action={createRecurringPlanAction} className="form-stack">
+            <input type="hidden" name="customerId" value={customer.id} />
+            <input name="title" placeholder="Monthly maintenance plan" required />
+            <input name="serviceType" placeholder="Service type" />
+            <div className="two-col">
+              <select name="frequency" defaultValue="monthly">
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="annual">Annual</option>
+                <option value="custom">Custom</option>
+              </select>
+              <input name="nextServiceDate" type="date" />
+            </div>
+            <input name="price" inputMode="decimal" placeholder="Plan price" />
+            <textarea name="notes" rows={3} placeholder="Internal plan notes" />
+            <button className="button" type="submit">Create recurring plan</button>
+          </form>
+        </section>
 
         <section className="panel span-12">
           <h2>Customer timeline</h2>

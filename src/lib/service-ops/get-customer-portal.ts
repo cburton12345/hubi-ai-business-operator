@@ -10,6 +10,7 @@ export type CustomerPortal = {
   estimates: { id: string; title: string; status: string; total: string; createdAt: string }[];
   jobs: { id: string; title: string; status: string; schedule: string; serviceAddress: string }[];
   invoices: { id: string; title: string; status: string; total: string; dueDate: string; amountPaid: string }[];
+  recurringPlans: { id: string; title: string; frequency: string; nextServiceDate: string; price: string }[];
 };
 
 function formatDate(value: Date | null) {
@@ -63,7 +64,7 @@ export async function getCustomerPortal(publicToken: string): Promise<CustomerPo
     publicToken
   ]);
 
-  const [estimatesResult, jobsResult, invoicesResult] = await Promise.all([
+  const [estimatesResult, jobsResult, invoicesResult, recurringPlansResult] = await Promise.all([
     queryPostgres<{ id: string; title: string; status: string; total_cents: number; created_at: Date }>(
       `
       select id, title, status, total_cents, created_at
@@ -91,6 +92,16 @@ export async function getCustomerPortal(publicToken: string): Promise<CustomerPo
       where tenant_id = $1 and customer_id = $2 and status <> 'void'
       order by coalesce(due_date, created_at) desc
       limit 20
+      `,
+      [access.tenant_id, access.customer_id]
+    ),
+    queryPostgres<{ id: string; title: string; frequency: string; next_service_date: Date | null; price_cents: number }>(
+      `
+      select id, title, frequency, next_service_date, price_cents
+      from public.recurring_service_plans
+      where tenant_id = $1 and customer_id = $2 and status = 'active'
+      order by coalesce(next_service_date, created_at) asc
+      limit 10
       `,
       [access.tenant_id, access.customer_id]
     )
@@ -123,6 +134,13 @@ export async function getCustomerPortal(publicToken: string): Promise<CustomerPo
       total: formatMoney(invoice.total_cents),
       dueDate: formatDay(invoice.due_date),
       amountPaid: formatMoney(invoice.amount_paid_cents)
+    })),
+    recurringPlans: (recurringPlansResult?.rows ?? []).map((plan) => ({
+      id: plan.id,
+      title: plan.title,
+      frequency: plan.frequency,
+      nextServiceDate: formatDay(plan.next_service_date),
+      price: formatMoney(plan.price_cents)
     }))
   };
 }
