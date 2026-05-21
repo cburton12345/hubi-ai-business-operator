@@ -1,11 +1,17 @@
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
-import { getAccessOverviewRows, type AccessOverviewRow } from "@/lib/auth/get-access-overview";
+import { getAccessOverviewRows, getBrandAccessOptions, getBrandAccessRows, type AccessOverviewRow, type BrandAccessRow } from "@/lib/auth/get-access-overview";
 import { getWorkspaceInviteRows, type WorkspaceInviteRow } from "@/lib/auth/get-workspace-invites";
-import { createWorkspaceInviteAction, createWorkspaceUserAction } from "./actions";
+import { createWorkspaceInviteAction, createWorkspaceUserAction, grantBrandAccessAction } from "./actions";
 
 export default async function AccessPage({ searchParams }: { searchParams: Promise<{ invite?: string }> }) {
-  const [rows, invites, query] = await Promise.all([getAccessOverviewRows(), getWorkspaceInviteRows(), searchParams]);
+  const [rows, invites, brandAccessRows, options, query] = await Promise.all([
+    getAccessOverviewRows(),
+    getWorkspaceInviteRows(),
+    getBrandAccessRows(),
+    getBrandAccessOptions(),
+    searchParams
+  ]);
   const inviteUrl = query.invite ? `/invite/${query.invite}` : "";
 
   return (
@@ -101,6 +107,54 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
           { key: "description", label: "Permission Scope", render: (row) => row.roleDescription }
         ]}
       />
+      <section className="panel section-actions form-stack">
+        <h2>Brand Access Rules</h2>
+        <p className="muted">Restrict or prepare brand-specific access inside this organization. Workspace owners and admins still retain full control.</p>
+        <form action={grantBrandAccessAction} className="filter-bar">
+          <label>
+            Brand
+            <select name="brandId" required>
+              <option value="">Select brand</option>
+              {options.brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>{brand.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            User
+            <select name="userId" required>
+              <option value="">Select user</option>
+              {options.users.map((user) => (
+                <option key={user.id} value={user.id}>{user.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Brand role
+            <select name="brandRole" defaultValue="operator">
+              <option value="owner">owner</option>
+              <option value="admin">admin</option>
+              <option value="operator">operator</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <label>
+            Notes
+            <input name="notes" placeholder="Optional scope notes" />
+          </label>
+          <button className="button" type="submit">Grant access</button>
+        </form>
+        <QueueTable<BrandAccessRow>
+          rows={brandAccessRows}
+          columns={[
+            { key: "brand", label: "Brand", render: (row) => <><strong>{row.brandName}</strong><span className="muted">{row.brandSlug}</span></> },
+            { key: "user", label: "User", render: (row) => <><strong>{row.userName}</strong><span className="muted">{row.userEmail}</span></> },
+            { key: "role", label: "Brand Role", render: (row) => <span className="pill">{row.role}</span> },
+            { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
+            { key: "notes", label: "Notes", render: (row) => row.notes || "No notes" }
+          ]}
+        />
+      </section>
       <section className="panel section-actions">
         <h2>Invite Links</h2>
         <QueueTable<WorkspaceInviteRow>

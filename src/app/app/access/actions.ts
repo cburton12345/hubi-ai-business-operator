@@ -21,6 +21,13 @@ const inviteSchema = z.object({
   role: z.enum(["owner", "admin", "operator", "viewer"])
 });
 
+const brandAccessSchema = z.object({
+  brandId: z.string().uuid(),
+  userId: z.string().uuid(),
+  role: z.enum(["owner", "admin", "operator", "viewer"]),
+  notes: z.string().max(600).optional()
+});
+
 export async function createWorkspaceUserAction(formData: FormData) {
   await requirePermission("tenant:manage");
 
@@ -112,4 +119,42 @@ export async function createWorkspaceInviteAction(formData: FormData) {
 
   revalidatePath("/app/access");
   redirect(`/app/access?invite=${encodeURIComponent(token)}`);
+}
+
+export async function grantBrandAccessAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = brandAccessSchema.safeParse({
+    brandId: formData.get("brandId"),
+    userId: formData.get("userId"),
+    role: formData.get("brandRole"),
+    notes: String(formData.get("notes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.brand_user_access (tenant_id, brand_id, user_id, role, status, notes, updated_at)
+    values ($1, $2, $3, $4, 'active', $5, now())
+    on conflict (tenant_id, brand_id, user_id) do update
+    set role = excluded.role,
+        status = 'active',
+        notes = excluded.notes,
+        updated_at = now()
+    `,
+    [workspaceId, parsed.data.brandId, parsed.data.userId, parsed.data.role, parsed.data.notes?.trim() || null]
+  );
+  await queryPostgres(
+    `
+    insert into public.activity_logs (tenant_id, user_id, actor_type, action, target_type, target_id, metadata_json)
+    values ($1, $2, 'user', 'brand_access.granted', 'brand', $3, $4::jsonb)
+    `,
+    [
+      workspaceId,
+      parsed.data.userId,
+      parsed.data.brandId,
+      JSON.stringify({ role: parsed.data.role, notes: parsed.data.notes ?? "" })
+    ]
+  );
+  revalidatePath("/app/access");
 }

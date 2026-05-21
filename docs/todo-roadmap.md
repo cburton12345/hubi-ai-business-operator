@@ -83,7 +83,7 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Tenant operator role
 - [x] Tenant viewer role
 - [x] Workspace settings
-- [ ] Brand-level access rules
+- [x] Brand-level access rules
 - [x] User invites
 - [x] Client onboarding flow
 - [x] Plan/billing placeholders

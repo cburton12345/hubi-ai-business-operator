@@ -16,6 +16,22 @@ export type AccessOverviewRow = {
   roleDescription: string;
 };
 
+export type BrandAccessRow = {
+  id: string;
+  brandName: string;
+  brandSlug: string;
+  userEmail: string;
+  userName: string;
+  role: TenantRole;
+  status: string;
+  notes: string;
+};
+
+export type AccessAssignableOption = {
+  id: string;
+  label: string;
+};
+
 type TenantUserRow = {
   role: TenantRole;
   status: string;
@@ -98,4 +114,81 @@ export async function getAccessOverviewRows(): Promise<AccessOverviewRow[]> {
       roleDescription: describeTenantRole(row.role)
     };
   });
+}
+
+export async function getBrandAccessRows(): Promise<BrandAccessRow[]> {
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{
+    id: string;
+    brand_name: string;
+    brand_slug: string;
+    user_email: string;
+    user_name: string | null;
+    role: TenantRole;
+    status: string;
+    notes: string | null;
+  }>(
+    `
+    select
+      bua.id,
+      b.name as brand_name,
+      b.slug as brand_slug,
+      u.email as user_email,
+      u.name as user_name,
+      bua.role,
+      bua.status,
+      bua.notes
+    from public.brand_user_access bua
+    join public.brands b on b.id = bua.brand_id
+    join public.users u on u.id = bua.user_id
+    where bua.tenant_id = $1
+    order by b.name, u.email
+    `,
+    [workspaceId]
+  );
+
+  return (result?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    brandSlug: row.brand_slug,
+    userEmail: row.user_email,
+    userName: row.user_name ?? row.user_email,
+    role: row.role,
+    status: row.status,
+    notes: row.notes ?? ""
+  }));
+}
+
+export async function getBrandAccessOptions(): Promise<{
+  brands: AccessAssignableOption[];
+  users: AccessAssignableOption[];
+}> {
+  const workspaceId = await getCurrentWorkspaceId();
+  const [brandsResult, usersResult] = await Promise.all([
+    queryPostgres<{ id: string; name: string; slug: string }>(
+      "select id, name, slug from public.brands where tenant_id = $1 order by name",
+      [workspaceId]
+    ),
+    queryPostgres<{ id: string; email: string; name: string | null; role: TenantRole }>(
+      `
+      select u.id, u.email, u.name, tu.role
+      from public.tenant_users tu
+      join public.users u on u.id = tu.user_id
+      where tu.tenant_id = $1 and tu.status = 'active'
+      order by u.email
+      `,
+      [workspaceId]
+    )
+  ]);
+
+  return {
+    brands: (brandsResult?.rows ?? []).map((brand) => ({
+      id: brand.id,
+      label: `${brand.name} (${brand.slug})`
+    })),
+    users: (usersResult?.rows ?? []).map((user) => ({
+      id: user.id,
+      label: `${user.name ?? user.email} / ${user.email} / ${user.role}`
+    }))
+  };
 }
