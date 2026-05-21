@@ -316,6 +316,16 @@ h3 {
   background: var(--surface-muted);
 }
 
+.tech-job-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tech-job-card {
+  display: grid;
+  gap: 14px;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

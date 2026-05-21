@@ -51,6 +51,14 @@ const jobStatusSchema = z.object({
   nextAction: z.string().max(1200).optional()
 });
 
+const technicianJobSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.enum(["scheduled", "in_progress", "completed", "canceled"]),
+  dispatcherNotes: z.string().max(1200).optional(),
+  completionNotes: z.string().max(1200).optional(),
+  nextAction: z.string().max(1200).optional()
+});
+
 const invoiceStatusSchema = z.object({
   invoiceId: z.string().uuid(),
   status: z.enum(["draft", "sent_manually", "partially_paid", "paid", "void", "overdue"]),
@@ -373,6 +381,46 @@ export async function updateJobAction(formData: FormData) {
   );
   const row = result?.rows[0];
   revalidatePath("/app/service");
+  revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
+  if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function updateTechnicianJobAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = technicianJobSchema.safeParse({
+    jobId: formData.get("jobId"),
+    status: formData.get("status"),
+    dispatcherNotes: String(formData.get("dispatcherNotes") ?? ""),
+    completionNotes: String(formData.get("completionNotes") ?? ""),
+    nextAction: String(formData.get("nextAction") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    update public.service_jobs
+    set status = $3,
+        dispatcher_notes = $4,
+        completion_notes = $5,
+        ai_next_action = $6,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    returning customer_id
+    `,
+    [
+      workspaceId,
+      parsed.data.jobId,
+      parsed.data.status,
+      emptyToNull(parsed.data.dispatcherNotes),
+      emptyToNull(parsed.data.completionNotes),
+      emptyToNull(parsed.data.nextAction)
+    ]
+  );
+  const row = result?.rows[0];
+  revalidatePath("/app/service");
+  revalidatePath("/app/service/routes");
+  revalidatePath("/app/service/tech");
   revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
 }
