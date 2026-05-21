@@ -97,9 +97,9 @@ The product should eventually act like an AI COO for local service, rental, soft
 - [x] Domain settings
 - [x] Phone/email settings
 - [x] Logo URL strategy
-- [ ] Services editor
-- [ ] Locations editor
-- [ ] Offers editor
+- [x] Services editor
+- [x] Locations editor
+- [x] Offers editor
 - [x] Target customer settings
 - [x] CTA goal settings
 - [x] Ad goal settings
