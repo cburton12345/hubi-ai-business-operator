@@ -18,9 +18,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/app" className="brand-mark">
             Ferocity Operator
           </Link>
-          <nav className="app-nav">
+          <nav className="app-nav" aria-label="Ferocity workspace navigation">
             <Link href="/app/onboarding">Onboarding</Link>
-            <Link href="/app/tenants">Organizations</Link>
+            <Link href="/app/workspaces">Workspaces</Link>
             <Link href="/app/brands">Brands</Link>
             <Link href="/app/leads">Leads</Link>
             <Link href="/app/service">Service Ops</Link>

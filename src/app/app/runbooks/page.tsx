@@ -23,6 +23,11 @@ const runbooks = [
     summary: "GitHub rename, Render service rename, custom domain, DNS, and callback URL steps."
   },
   {
+    title: "Final non-key readiness",
+    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase53-final-non-key-readiness.md",
+    summary: "Workspace routes, UI polish, security headers, operational QA, and key-gated launch notes."
+  },
+  {
     title: "Beta launch",
     href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase15-16-beta-and-launch-readiness.md",
     summary: "Beta QA sequence and manual-only launch rules."

@@ -86,9 +86,14 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.app-nav a {
+  padding: 5px 0;
 }
 
 .app-nav a:hover {
@@ -415,6 +420,8 @@ h3 {
 
 .table-wrap {
   overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 table {
@@ -432,14 +439,25 @@ td {
 }
 
 th {
+  background: #f8fafc;
   color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
 }
 
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 td strong,
 td span {
   display: block;
+}
+
+.empty-table-cell {
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .detail-grid {

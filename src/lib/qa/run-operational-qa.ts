@@ -33,6 +33,8 @@ export async function runOperationalQa(userId?: string | null) {
     workflows: string;
     billing: string;
     integrations: string;
+    live_integrations: string;
+    integration_callbacks: string;
   }>(
     `
     select
@@ -46,7 +48,9 @@ export async function runOperationalQa(userId?: string | null) {
       (select count(*) from public.workspace_settings where tenant_id = $1) as settings,
       (select count(*) from public.business_workflow_configs where tenant_id = $1 and active = true) as workflows,
       (select count(*) from public.billing_subscriptions where tenant_id = $1) as billing,
-      (select count(*) from public.integration_connections where tenant_id = $1) as integrations
+      (select count(*) from public.integration_connections where tenant_id = $1) as integrations,
+      (select count(*) from public.integration_connections where tenant_id = $1 and coalesce((metadata_json->>'liveActionsEnabled')::boolean, false) = true) as live_integrations,
+      (select count(*) from public.integration_connections where tenant_id = $1 and metadata_json->>'callbackPath' is not null) as integration_callbacks
     `,
     [workspaceId]
   );
@@ -62,7 +66,14 @@ export async function runOperationalQa(userId?: string | null) {
     check("settings", "Workspace settings exist", Number(row?.settings ?? 0)),
     check("workflows", "Business workflows exist", Number(row?.workflows ?? 0)),
     check("billing", "Billing placeholder exists", Number(row?.billing ?? 0)),
-    check("integrations", "Integration placeholders exist", Number(row?.integrations ?? 0), 3)
+    check("integrations", "Integration placeholders exist", Number(row?.integrations ?? 0), 3),
+    {
+      key: "live-integrations-disabled",
+      label: "Live provider actions are disabled",
+      passed: Number(row?.live_integrations ?? 0) === 0,
+      detail: `${Number(row?.live_integrations ?? 0)} live provider connections enabled; expected 0 before keys and final approval.`
+    },
+    check("integration-callbacks", "Provider callback stubs exist", Number(row?.integration_callbacks ?? 0), 3)
   ];
   const passed = checks.every((item) => item.passed);
 

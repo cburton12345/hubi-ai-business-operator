@@ -15,8 +15,8 @@ export default async function AppDashboardPage() {
             <p className="muted">Workspace command center for brands, leads, AI marketing plans, drafts, recommendations, and approvals.</p>
           </div>
           <div className="button-row">
-            <Link className="button secondary-button" href="/app/tenants">
-              Organizations
+            <Link className="button secondary-button" href="/app/workspaces">
+              Workspaces
             </Link>
             <Link className="button secondary-button" href="/app/brands">
               Brands

@@ -196,7 +196,7 @@ export default async function WorkspaceOnboardingPage() {
           <button className="button" type="submit">
             <CheckCircle2 size={16} /> Create workspace
           </button>
-          <Link className="button secondary-button" href="/app/tenants">
+          <Link className="button secondary-button" href="/app/workspaces">
             View organizations
           </Link>
         </section>
@@ -208,7 +208,7 @@ export default async function WorkspaceOnboardingPage() {
           {rows.map((row) => (
             <li className="list-row" key={row.id}>
               <div>
-                <Link href={`/app/tenant/${row.slug}`}>
+                <Link href={`/app/workspace/${row.slug}`}>
                   <h3>{row.name}</h3>
                 </Link>
                 <p className="muted">

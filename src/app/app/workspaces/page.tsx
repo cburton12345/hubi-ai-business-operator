@@ -3,11 +3,11 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { getTenantSelectorRows, type TenantSelectorRow } from "@/lib/tenancy/get-tenant-selector";
 
-export default async function TenantsPage() {
+export default async function WorkspacesPage() {
   const rows = await getTenantSelectorRows();
 
   return (
-    <QueuePageShell eyebrow="SaaS Platform" title="Organization Selector" description="Separate workspaces for internal brands and future customer accounts.">
+    <QueuePageShell eyebrow="SaaS Platform" title="Workspace Selector" description="Separate organization workspaces for customer accounts, internal brands, and future client teams.">
       <div className="button-row section-actions">
         <Link className="button" href="/app/onboarding">
           Create organization workspace
@@ -15,10 +15,11 @@ export default async function TenantsPage() {
       </div>
       <QueueTable<TenantSelectorRow>
         rows={rows}
+        emptyMessage="No organization workspaces have been created yet."
         columns={[
           {
             key: "name",
-            label: "Organization",
+            label: "Workspace",
             render: (row) => (
               <Link href={`/app/workspace/${row.slug}`}>
                 <strong>{row.name}</strong>

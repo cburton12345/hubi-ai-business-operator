@@ -31,6 +31,7 @@ export async function generateWorkspaceMarketingPlanAction(formData: FormData) {
 
   await generateWeeklyMarketingPlans(workspace.id);
   revalidatePath(`/app/tenant/${workspace.slug}`);
+  revalidatePath(`/app/workspace/${workspace.slug}`);
   revalidatePath("/app/marketing");
   revalidatePath("/app/calendar");
   revalidatePath("/app/review");
