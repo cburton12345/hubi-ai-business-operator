@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { missingEnvVars } from "@/lib/env";
 
 export type IntegrationRow = {
   id: string;
@@ -12,9 +13,12 @@ export type IntegrationRow = {
   setupItems: string[];
   callbackPath: string | null;
   riskLevel: string;
+  missingEnvVars: string[];
+  configuredEnvVars: string[];
+  liveActionsEnabled: boolean;
 };
 
-const plannedConnections = [
+export const plannedConnections = [
   {
     provider: "supabase_auth",
     displayName: "Supabase Auth",
@@ -156,7 +160,8 @@ export async function ensurePlannedIntegrationConnections() {
           envVars: connection.envVars,
           setupItems: connection.setupItems,
           callbackPath: connection.callbackPath,
-          riskLevel: connection.riskLevel
+          riskLevel: connection.riskLevel,
+          liveActionsEnabled: false
         })
       ]
     );
@@ -178,6 +183,7 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       setupItems?: string[];
       callbackPath?: string | null;
       riskLevel?: string;
+      liveActionsEnabled?: boolean;
     } | null;
   }>(
     `
@@ -189,16 +195,24 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
     [workspaceId]
   );
 
-  return (result?.rows ?? []).map((row) => ({
-    id: row.id,
-    provider: row.provider,
-    displayName: row.display_name,
-    status: row.status,
-    credentialsStatus: row.credentials_status,
-    notes: row.metadata_json?.notes ?? "Prepared for a later integration phase.",
-    envVars: row.metadata_json?.envVars ?? [],
-    setupItems: row.metadata_json?.setupItems ?? [],
-    callbackPath: row.metadata_json?.callbackPath ?? null,
-    riskLevel: row.metadata_json?.riskLevel ?? "medium"
-  }));
+  return (result?.rows ?? []).map((row) => {
+    const envVars = row.metadata_json?.envVars ?? [];
+    const missing = missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
+
+    return {
+      id: row.id,
+      provider: row.provider,
+      displayName: row.display_name,
+      status: row.status,
+      credentialsStatus: missing.length === 0 && envVars.length > 0 ? "configured" : row.credentials_status,
+      notes: row.metadata_json?.notes ?? "Prepared for a later integration phase.",
+      envVars,
+      setupItems: row.metadata_json?.setupItems ?? [],
+      callbackPath: row.metadata_json?.callbackPath ?? null,
+      riskLevel: row.metadata_json?.riskLevel ?? "medium",
+      missingEnvVars: missing,
+      configuredEnvVars: envVars.filter((key) => !missing.includes(key as never)),
+      liveActionsEnabled: row.metadata_json?.liveActionsEnabled === true
+    };
+  });
 }

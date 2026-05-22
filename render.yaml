@@ -19,3 +19,55 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GA4_PROPERTY_ID
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_OAUTH_REDIRECT_URI
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: REVIEW_PROVIDER
+        sync: false
+      - key: REVIEW_API_KEY
+        sync: false
+      - key: CALENDAR_PROVIDER
+        sync: false
+      - key: CALENDAR_CLIENT_ID
+        sync: false
+      - key: CALENDAR_CLIENT_SECRET
+        sync: false
+      - key: CALENDAR_OAUTH_REDIRECT_URI
+        sync: false
+      - key: CMS_PROVIDER
+        sync: false
+      - key: CMS_API_KEY
+        sync: false

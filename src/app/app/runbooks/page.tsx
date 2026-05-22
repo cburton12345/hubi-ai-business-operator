@@ -18,6 +18,11 @@ const runbooks = [
     summary: "Environment policy, RLS, API validation, deploy smoke checks, monitoring, and security review."
   },
   {
+    title: "Ferocity domain and rename",
+    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/ferocity-domain-and-rename-runbook.md",
+    summary: "GitHub rename, Render service rename, custom domain, DNS, and callback URL steps."
+  },
+  {
     title: "Beta launch",
     href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase15-16-beta-and-launch-readiness.md",
     summary: "Beta QA sequence and manual-only launch rules."
