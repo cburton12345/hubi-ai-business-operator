@@ -26,7 +26,19 @@ export default async function IntegrationsPage() {
           },
           { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
           { key: "credentials", label: "Credentials", render: (row) => <span className="pill">{row.credentialsStatus}</span> },
-          { key: "notes", label: "Notes", render: (row) => row.notes }
+          { key: "risk", label: "Risk", render: (row) => <span className={`pill ${row.riskLevel}`}>{row.riskLevel}</span> },
+          {
+            key: "setup",
+            label: "Setup",
+            render: (row) => (
+              <>
+                <span className="muted">{row.notes}</span>
+                <span className="muted">Env: {row.envVars.length > 0 ? row.envVars.join(", ") : "No new env vars"}</span>
+                <span className="muted">Callback: {row.callbackPath ?? "None"}</span>
+                <span className="muted">Checklist: {row.setupItems.join(" / ")}</span>
+              </>
+            )
+          }
         ]}
       />
     </QueuePageShell>
