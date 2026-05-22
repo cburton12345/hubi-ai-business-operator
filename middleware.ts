@@ -7,6 +7,15 @@ export function middleware(request: NextRequest) {
   const token = process.env.ADMIN_ACCESS_TOKEN;
   const isProduction = process.env.NODE_ENV === "production";
 
+  if (request.nextUrl.pathname === "/app/tenants" || request.nextUrl.pathname.startsWith("/app/tenant/")) {
+    const workspaceUrl = new URL(request.url);
+    workspaceUrl.pathname =
+      request.nextUrl.pathname === "/app/tenants"
+        ? "/app/workspaces"
+        : request.nextUrl.pathname.replace(/^\/app\/tenant/, "/app/workspace");
+    return NextResponse.redirect(workspaceUrl);
+  }
+
   if (!request.nextUrl.pathname.startsWith("/app")) {
     return NextResponse.next();
   }
