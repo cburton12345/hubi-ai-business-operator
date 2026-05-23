@@ -28,6 +28,11 @@ const runbooks = [
     summary: "Workspace routes, UI polish, security headers, operational QA, and key-gated launch notes."
   },
   {
+    title: "SEO autopilot foundation",
+    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase54-seo-autopilot-foundation.md",
+    summary: "Draft-only SEO topic clusters, content drafts, metadata, internal links, and refresh recommendations."
+  },
+  {
     title: "Beta launch",
     href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase15-16-beta-and-launch-readiness.md",
     summary: "Beta QA sequence and manual-only launch rules."
