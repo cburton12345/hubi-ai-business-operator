@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, GitBranch, RefreshCw, ShieldAlert } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getActionQueueDashboard } from "@/lib/actions-queue/get-action-queue";
 import { scanActionQueueAction, updateOutboundActionStatusAction } from "./actions";
@@ -6,6 +6,15 @@ import { scanActionQueueAction, updateOutboundActionStatusAction } from "./actio
 function dateLabel(value: string | null) {
   if (!value) return "Not scheduled";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function providerOwnerLabel(value: string) {
+  return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
+}
+
+function usageLabel(used: number, included: number | null) {
+  if (!included) return `${used.toLocaleString()} used`;
+  return `${used.toLocaleString()} of ${included.toLocaleString()} included`;
 }
 
 export default async function ActionsPage() {
@@ -108,7 +117,7 @@ export default async function ActionsPage() {
 
         <section className="panel span-6">
           <h2>Provider Accounts</h2>
-          <p className="muted">Live actions should stay off until credentials and rules are truly ready.</p>
+          <p className="muted">Use Ferocity managed defaults early. Switch to customer-owned accounts when setup is ready.</p>
           <ul className="list">
             {dashboard.providers.map((provider) => (
               <li className="list-row" key={provider.providerKey}>
@@ -117,10 +126,44 @@ export default async function ActionsPage() {
                   <p className="muted">
                     {provider.providerKey} / {provider.status} / {provider.credentialsStatus}
                   </p>
+                  <p className="muted">
+                    {providerOwnerLabel(provider.ownershipMode)} / {provider.senderIdentity ?? "No sender yet"} /{" "}
+                    {usageLabel(provider.monthlyUsedUnits, provider.monthlyIncludedUnits)}
+                  </p>
                 </div>
-                <span className="pill">{provider.liveActionsEnabled ? "live on" : "live off"}</span>
+                <div className="inline-actions">
+                  <span className="pill">{provider.overagePolicy}</span>
+                  <span className="pill">{provider.liveActionsEnabled ? "live on" : "live off"}</span>
+                </div>
               </li>
             ))}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>
+            <GitBranch size={18} /> Provider Routes
+          </h2>
+          <p className="muted">Routes decide which provider Ferocity should use for each kind of action.</p>
+          <ul className="list">
+            {dashboard.routingRules.map((route) => (
+              <li className="list-row" key={route.id}>
+                <div>
+                  <h3>{route.actionType}</h3>
+                  <p className="muted">
+                    {route.defaultProviderKey} / {providerOwnerLabel(route.ownershipMode)} / fallback:{" "}
+                    {route.fallbackProviderKey ?? "none"}
+                  </p>
+                  <p>{route.rule}</p>
+                </div>
+                <span className="pill">{route.status}</span>
+              </li>
+            ))}
+            {dashboard.routingRules.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No routes configured yet. Run migrations to enable managed and bring-your-own routing.</span>
+              </li>
+            ) : null}
           </ul>
         </section>
 

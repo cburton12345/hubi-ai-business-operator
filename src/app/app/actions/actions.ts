@@ -41,6 +41,44 @@ async function logDelivery(input: {
   );
 }
 
+async function logProviderUsage(input: {
+  tenantId: string;
+  queueId: string;
+  providerKey: string;
+  actionType: string;
+  billingStatus: "included" | "billable" | "blocked" | "manual";
+  metadata?: Record<string, unknown>;
+}) {
+  await queryPostgres(
+    `
+    insert into public.provider_usage_events (
+      tenant_id, provider_account_id, provider_key, action_type, unit_count, billing_status, source_queue_id, metadata_json
+    )
+    select $1, pa.id, $3, $4, 1, $5, $2, $6::jsonb
+    from (select 1) seed
+    left join public.provider_accounts pa on pa.tenant_id = $1 and pa.provider_key = $3
+    `,
+    [
+      input.tenantId,
+      input.queueId,
+      input.providerKey,
+      input.actionType,
+      input.billingStatus,
+      JSON.stringify(input.metadata ?? {})
+    ]
+  );
+
+  await queryPostgres(
+    `
+    update public.provider_accounts
+    set monthly_used_units = monthly_used_units + 1,
+        updated_at = now()
+    where tenant_id = $1 and provider_key = $2
+    `,
+    [input.tenantId, input.providerKey]
+  );
+}
+
 export async function scanActionQueueAction() {
   await requirePermission("ai:queue");
   const workspaceId = await getCurrentWorkspaceId();
@@ -92,8 +130,8 @@ export async function scanActionQueueAction() {
       subject, recipient_label, payload_json, policy_id, metadata_json
     )
     select m.tenant_id, m.brand_id,
-      case when m.channel = 'sms' then 'sms_send' else 'email_send' end,
-      case when m.channel = 'sms' then 'twilio' else 'email_provider' end,
+      coalesce(route.action_type, case when m.channel = 'sms' then 'sms_send' else 'email_send' end),
+      coalesce(route.default_provider_key, case when m.channel = 'sms' then 'twilio_shared' else 'resend_shared' end),
       'needs_review',
       'high',
       'communication_message',
@@ -102,11 +140,29 @@ export async function scanActionQueueAction() {
       coalesce(m.recipient_label, l.phone, l.email),
       jsonb_build_object('body', m.body, 'channel', m.channel, 'visibility', m.visibility),
       p.id,
-      jsonb_build_object('createdByScan', 'action_queue', 'sendDisabledUntilProviderConnected', true)
+      jsonb_build_object(
+        'createdByScan', 'action_queue',
+        'sendDisabledUntilProviderConnected', true,
+        'ownershipMode', coalesce(route.ownership_mode, 'ferocity_managed'),
+        'fallbackProviderKey', route.fallback_provider_key
+      )
     from public.communication_messages m
     join public.communication_threads t on t.id = m.thread_id
     left join public.leads l on l.id = t.lead_id
-    left join public.live_action_policies p on p.tenant_id = m.tenant_id and p.action_key = case when m.channel = 'sms' then 'sms_send' else 'email_send' end
+    left join lateral (
+      select
+        case when m.channel = 'sms' then 'sms_send' else 'email_send' end as action_type,
+        r.default_provider_key,
+        r.ownership_mode,
+        r.fallback_provider_key
+      from public.provider_routing_rules r
+      where r.tenant_id = m.tenant_id
+        and r.action_type = case when m.channel = 'sms' then 'sms_send' else 'email_send' end
+        and r.status = 'active'
+      limit 1
+    ) route on true
+    left join public.live_action_policies p on p.tenant_id = m.tenant_id
+      and p.action_key = coalesce(route.action_type, case when m.channel = 'sms' then 'sms_send' else 'email_send' end)
     where m.tenant_id = $1
       and m.direction = 'draft'
       and m.visibility = 'customer_visible'
@@ -128,7 +184,10 @@ export async function scanActionQueueAction() {
     )
     select q.tenant_id, q.brand_id,
       case when q.target_platform = 'google_business_profile' then 'publish_content' else 'publish_content' end,
-      case when q.target_platform = 'google_business_profile' then 'google_business_profile' else 'external_publishing' end,
+      case
+        when q.target_platform = 'google_business_profile' then 'google_business_profile'
+        else coalesce(route.default_provider_key, 'external_publishing')
+      end,
       'needs_review',
       'high',
       'publishing_queue',
@@ -137,10 +196,18 @@ export async function scanActionQueueAction() {
       q.scheduled_for,
       jsonb_build_object('targetPlatform', q.target_platform, 'queueStatus', q.queue_status),
       p.id,
-      jsonb_build_object('createdByScan', 'action_queue', 'publishingRequiresApproval', true)
+      jsonb_build_object(
+        'createdByScan', 'action_queue',
+        'publishingRequiresApproval', true,
+        'ownershipMode', coalesce(route.ownership_mode, 'workspace'),
+        'fallbackProviderKey', route.fallback_provider_key
+      )
     from public.publishing_queue q
     left join public.ai_drafts d on d.id = q.draft_id
     left join public.marketing_calendar_items c on c.id = q.calendar_item_id
+    left join public.provider_routing_rules route on route.tenant_id = q.tenant_id
+      and route.action_type = 'publish_content'
+      and route.status = 'active'
     left join public.live_action_policies p on p.tenant_id = q.tenant_id and p.action_key = case when q.target_platform = 'google_business_profile' then 'gbp_publish' else 'publish_content' end
     where q.tenant_id = $1
       and q.queue_status in ('approved', 'scheduled', 'needs_approval')
@@ -159,12 +226,20 @@ export async function scanActionQueueAction() {
       tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
       subject, scheduled_for, payload_json, policy_id, metadata_json
     )
-    select r.tenant_id, r.brand_id, 'review_request', 'twilio', 'needs_review', 'high',
+    select r.tenant_id, r.brand_id, 'review_request', coalesce(route.default_provider_key, 'twilio_shared'), 'needs_review', 'high',
       'review_request_workflow', r.id, 'Review request', r.scheduled_for,
       jsonb_build_object('channel', r.channel, 'triggerEvent', r.trigger_event, 'negativeInterceptionStatus', r.negative_interception_status),
       p.id,
-      jsonb_build_object('createdByScan', 'action_queue', 'requiresServiceRecoveryCheck', true)
+      jsonb_build_object(
+        'createdByScan', 'action_queue',
+        'requiresServiceRecoveryCheck', true,
+        'ownershipMode', coalesce(route.ownership_mode, 'ferocity_managed'),
+        'fallbackProviderKey', route.fallback_provider_key
+      )
     from public.review_request_workflows r
+    left join public.provider_routing_rules route on route.tenant_id = r.tenant_id
+      and route.action_type = 'review_request'
+      and route.status = 'active'
     left join public.live_action_policies p on p.tenant_id = r.tenant_id and p.action_key = 'review_request'
     where r.tenant_id = $1
       and r.status in ('draft', 'scheduled')
@@ -183,12 +258,20 @@ export async function scanActionQueueAction() {
       tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
       subject, scheduled_for, payload_json, policy_id, metadata_json
     )
-    select e.tenant_id, e.brand_id, 'calendar_sync', 'calendar_provider', 'needs_review', 'medium',
+    select e.tenant_id, e.brand_id, 'calendar_sync', coalesce(route.default_provider_key, 'calendar_provider'), 'needs_review', 'medium',
       'operator_schedule_event', e.id, e.title, e.starts_at,
       jsonb_build_object('eventType', e.event_type, 'startsAt', e.starts_at, 'endsAt', e.ends_at, 'location', e.location),
       p.id,
-      jsonb_build_object('createdByScan', 'action_queue', 'autoBookingDisabled', true)
+      jsonb_build_object(
+        'createdByScan', 'action_queue',
+        'autoBookingDisabled', true,
+        'ownershipMode', coalesce(route.ownership_mode, 'workspace'),
+        'fallbackProviderKey', route.fallback_provider_key
+      )
     from public.operator_schedule_events e
+    left join public.provider_routing_rules route on route.tenant_id = e.tenant_id
+      and route.action_type = 'calendar_sync'
+      and route.status = 'active'
     left join public.live_action_policies p on p.tenant_id = e.tenant_id and p.action_key = 'calendar_sync'
     where e.tenant_id = $1
       and e.status = 'scheduled'
@@ -222,7 +305,7 @@ export async function updateOutboundActionStatusAction(formData: FormData) {
   if (!parsed.success) return;
 
   const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
-  const result = await queryPostgres<{ provider_key: string }>(
+  const result = await queryPostgres<{ provider_key: string; action_type: string }>(
     `
     update public.outbound_action_queue
     set status = $3,
@@ -232,7 +315,7 @@ export async function updateOutboundActionStatusAction(formData: FormData) {
         metadata_json = metadata_json || $5::jsonb,
         updated_at = now()
     where tenant_id = $1 and id = $2
-    returning provider_key
+    returning provider_key, action_type
     `,
     [
       workspaceId,
@@ -253,6 +336,17 @@ export async function updateOutboundActionStatusAction(formData: FormData) {
       message: parsed.data.note ?? "",
       metadata: { status: parsed.data.status }
     });
+
+    if (parsed.data.status === "queued" || parsed.data.status === "sent_manually") {
+      await logProviderUsage({
+        tenantId: workspaceId,
+        queueId: parsed.data.actionId,
+        providerKey: row.provider_key,
+        actionType: row.action_type,
+        billingStatus: parsed.data.status === "sent_manually" ? "manual" : "included",
+        metadata: { status: parsed.data.status, note: parsed.data.note ?? "" }
+      });
+    }
   }
 
   revalidatePath("/app/actions");

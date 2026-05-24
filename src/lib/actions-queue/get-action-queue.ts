@@ -26,6 +26,21 @@ export type ProviderAccountRow = {
   status: string;
   credentialsStatus: string;
   liveActionsEnabled: boolean;
+  ownershipMode: string;
+  senderIdentity: string | null;
+  monthlyIncludedUnits: number | null;
+  monthlyUsedUnits: number;
+  overagePolicy: string;
+};
+
+export type ProviderRoutingRuleRow = {
+  id: string;
+  actionType: string;
+  defaultProviderKey: string;
+  ownershipMode: string;
+  fallbackProviderKey: string | null;
+  status: string;
+  rule: string;
 };
 
 export type LivePolicyRow = {
@@ -54,6 +69,7 @@ export type ActionQueueDashboard = {
   metrics: ActionQueueMetric[];
   actions: OutboundActionRow[];
   providers: ProviderAccountRow[];
+  routingRules: ProviderRoutingRuleRow[];
   policies: LivePolicyRow[];
   consents: ConsentRow[];
 };
@@ -64,7 +80,7 @@ function num(value: string | number | null | undefined) {
 
 export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [metricsResult, actionResult, providerResult, policyResult, consentResult] = await Promise.all([
+  const [metricsResult, actionResult, providerResult, routingResult, policyResult, consentResult] = await Promise.all([
     queryPostgres<{
       needs_review: string;
       approved: string;
@@ -120,12 +136,35 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       status: string;
       credentials_status: string;
       live_actions_enabled: boolean;
+      ownership_mode: string;
+      sender_identity: string | null;
+      monthly_included_units: number | null;
+      monthly_used_units: number;
+      overage_policy: string;
     }>(
       `
-      select provider_key, display_name, status, credentials_status, live_actions_enabled
+      select provider_key, display_name, status, credentials_status, live_actions_enabled,
+        ownership_mode, sender_identity, monthly_included_units, monthly_used_units, overage_policy
       from public.provider_accounts
       where tenant_id = $1
-      order by display_name
+      order by ownership_mode, display_name
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      action_type: string;
+      default_provider_key: string;
+      ownership_mode: string;
+      fallback_provider_key: string | null;
+      status: string;
+      plain_language_rule: string;
+    }>(
+      `
+      select id, action_type, default_provider_key, ownership_mode, fallback_provider_key, status, plain_language_rule
+      from public.provider_routing_rules
+      where tenant_id = $1
+      order by action_type
       `,
       [workspaceId]
     ),
@@ -197,7 +236,21 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       displayName: row.display_name,
       status: row.status,
       credentialsStatus: row.credentials_status,
-      liveActionsEnabled: row.live_actions_enabled
+      liveActionsEnabled: row.live_actions_enabled,
+      ownershipMode: row.ownership_mode,
+      senderIdentity: row.sender_identity,
+      monthlyIncludedUnits: row.monthly_included_units,
+      monthlyUsedUnits: row.monthly_used_units,
+      overagePolicy: row.overage_policy
+    })),
+    routingRules: (routingResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      actionType: row.action_type,
+      defaultProviderKey: row.default_provider_key,
+      ownershipMode: row.ownership_mode,
+      fallbackProviderKey: row.fallback_provider_key,
+      status: row.status,
+      rule: row.plain_language_rule
     })),
     policies: (policyResult?.rows ?? []).map((row) => ({
       id: row.id,
