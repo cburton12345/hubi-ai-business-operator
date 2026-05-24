@@ -297,6 +297,37 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
 
     for (const [index, topic] of topics.entries()) {
       const contentType = topic.type === "service_page" ? "service_page" : topic.type === "city_page" ? "city_page" : "blog";
+      const sourceResult = await queryPostgres<{ id: string }>(
+        `
+        insert into public.growth_sources (
+          tenant_id,
+          brand_id,
+          source_family,
+          source_name,
+          campaign_name,
+          service_focus,
+          city_focus,
+          landing_url,
+          tracking_code,
+          metadata_json
+        )
+        values ($1, $2, 'organic', $3, 'SEO autopilot', $4, $5, $6, $7, $8::jsonb)
+        on conflict (tenant_id, brand_id, source_family, source_name, campaign_name, service_focus, city_focus)
+        do update set updated_at = now(), landing_url = excluded.landing_url, tracking_code = excluded.tracking_code
+        returning id
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          topic.keyword,
+          serviceName(row),
+          areaName(row),
+          `/${slugify(topic.title)}`,
+          `seo:${row.brand_slug}:${slugify(topic.keyword)}`,
+          JSON.stringify({ generator: "seo_autopilot_foundation", topicType: topic.type, draftOnly: true })
+        ]
+      );
+      const sourceId = sourceResult?.rows[0]?.id ?? null;
       const draftResult = await queryPostgres<{ id: string }>(
         `
         insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, metadata_json, status, risk_level)
@@ -314,6 +345,7 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
             keyword: topic.keyword,
             topicType: topic.type,
             slugSuggestion: slugify(topic.title),
+            growthSourceId: sourceId,
             draftOnly: true,
             noExternalPublishing: true
           }),
@@ -354,6 +386,90 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
         ]
       );
       calendarItemsCreated += 1;
+
+      await queryPostgres(
+        `
+        insert into public.content_quality_reviews (
+          tenant_id,
+          brand_id,
+          draft_id,
+          quality_status,
+          usefulness_score,
+          local_relevance_score,
+          originality_score,
+          conversion_clarity_score,
+          risk_flags,
+          metadata_json
+        )
+        values ($1, $2, $3, 'needs_review', 72, 74, 68, 70, array[]::text[], $4::jsonb)
+        on conflict (draft_id) do nothing
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          draftId,
+          JSON.stringify({
+            generator: "seo_autopilot_foundation",
+            qualityGate: "operator_review_required",
+            spamGuardrail: true
+          })
+        ]
+      );
+
+      await queryPostgres(
+        `
+        insert into public.publishing_queue (
+          tenant_id,
+          brand_id,
+          draft_id,
+          target_platform,
+          provider_status,
+          queue_status,
+          scheduled_for,
+          metadata_json
+        )
+        values ($1, $2, $3, $4, 'not_connected', 'draft', now() + ($5::int * interval '1 day'), $6::jsonb)
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          draftId,
+          contentType === "blog" || contentType === "service_page" || contentType === "city_page" ? "website" : "manual",
+          index + 1,
+          JSON.stringify({
+            generator: "seo_autopilot_foundation",
+            providerReadyOnly: true,
+            requiresQualityReview: true
+          })
+        ]
+      );
+
+      await queryPostgres(
+        `
+        insert into public.operator_timeline_events (
+          tenant_id,
+          brand_id,
+          event_family,
+          event_type,
+          title,
+          body,
+          primary_entity_type,
+          primary_entity_id,
+          source_table,
+          source_id,
+          metadata_json
+        )
+        values ($1, $2, 'seo', 'draft_created', $3, $4, 'draft', $5, 'ai_drafts', $5, $6::jsonb)
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          `SEO draft created: ${topic.title}`,
+          `Draft-only growth asset for ${topic.keyword}. Quality review and manual approval required before publishing.`,
+          draftId,
+          JSON.stringify({ sourceId, contentType, topicType: topic.type })
+        ]
+      );
     }
 
     await queryPostgres(

@@ -27,6 +27,9 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/service">
               Service Ops
             </Link>
+            <Link className="button" href="/app/growth">
+              Growth Loop
+            </Link>
             <Link className="button secondary-button" href="/app/forms">
               Forms
             </Link>
@@ -106,6 +109,9 @@ export default async function AppDashboardPage() {
               </Link>
               <Link className="button secondary-button" href="/app/seo">
                 SEO Autopilot
+              </Link>
+              <Link className="button secondary-button" href="/app/growth">
+                Growth Loop
               </Link>
               <Link className="button secondary-button" href="/app/approvals">
                 Approvals
