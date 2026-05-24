@@ -24,6 +24,9 @@ export default async function AppDashboardPage() {
             <Link className="button" href="/app/leads">
               Leads
             </Link>
+            <Link className="button" href="/app/operator">
+              Operator Console
+            </Link>
             <Link className="button secondary-button" href="/app/service">
               Service Ops
             </Link>
@@ -127,6 +130,9 @@ export default async function AppDashboardPage() {
               </Link>
               <Link className="button secondary-button" href="/app/service">
                 Service Ops
+              </Link>
+              <Link className="button secondary-button" href="/app/operator">
+                Operator Console
               </Link>
               <Link className="button secondary-button" href="/app/reports">
                 Reports
