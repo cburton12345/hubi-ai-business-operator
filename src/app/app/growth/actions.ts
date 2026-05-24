@@ -81,6 +81,7 @@ export async function scanGrowthLoopAction() {
     approved_without_queue: string;
     completed_jobs_without_reviews: string;
     unattributed_leads: string;
+    overdue_invoices: string;
   }>(
     `
     select
@@ -116,7 +117,15 @@ export async function scanGrowthLoopAction() {
             from public.growth_attribution_events e
             where e.entity_type = 'lead' and e.entity_id = l.id
           )
-      ) as unattributed_leads
+      ) as unattributed_leads,
+      (
+        select count(*)
+        from public.service_invoices i
+        where i.tenant_id = $1
+          and i.status in ('sent_manually', 'partially_paid', 'overdue')
+          and coalesce(i.due_date, i.created_at::date) <= current_date
+          and i.amount_paid_cents < i.total_cents
+      ) as overdue_invoices
     `,
     [workspaceId]
   );
@@ -171,6 +180,16 @@ export async function scanGrowthLoopAction() {
       title: "Leads need closed-loop attribution",
       summary: "Ferocity cannot learn which SEO pages and campaigns produce revenue unless leads are tied to growth sources.",
       recommendation: "Map lead source, source detail, city, service, and campaign into attribution events.",
+      actionHref: "/app/growth"
+    },
+    {
+      key: "invoice-follow-up-needed",
+      type: "invoice_followup",
+      severity: Number(row?.overdue_invoices ?? 0) > 5 ? "high" : "medium",
+      count: Number(row?.overdue_invoices ?? 0),
+      title: "Invoices need payment follow-up",
+      summary: "Unpaid invoices at or past their due date should become reviewed follow-up work, not memory work.",
+      recommendation: "Create invoice follow-up workflows, review the message, then send manually or through a connected provider.",
       actionHref: "/app/growth"
     }
   ];
@@ -272,6 +291,33 @@ export async function scanGrowthLoopAction() {
 
   await queryPostgres(
     `
+    insert into public.follow_up_workflows (
+      tenant_id, brand_id, customer_id, invoice_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
+    )
+    select i.tenant_id, i.brand_id, i.customer_id, i.id, 'invoice_followup', 'manual', 'open', now(),
+      'Follow up politely about the unpaid invoice. Mention the invoice title, balance due, and one clear next step for payment or questions.',
+      jsonb_build_object(
+        'createdByScan', 'growth_loop',
+        'invoiceStatus', i.status,
+        'balanceDueCents', greatest(i.total_cents - i.amount_paid_cents, 0),
+        'dueDate', i.due_date
+      )
+    from public.service_invoices i
+    where i.tenant_id = $1
+      and i.status in ('sent_manually', 'partially_paid', 'overdue')
+      and coalesce(i.due_date, i.created_at::date) <= current_date
+      and i.amount_paid_cents < i.total_cents
+      and not exists (
+        select 1 from public.follow_up_workflows f
+        where f.tenant_id = i.tenant_id and f.invoice_id = i.id and f.workflow_type = 'invoice_followup' and f.status in ('open', 'scheduled')
+      )
+    limit 100
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
     insert into public.review_request_workflows (
       tenant_id, brand_id, customer_id, lead_id, job_id, trigger_event, channel, status, scheduled_for, negative_interception_status, metadata_json
     )
@@ -291,7 +337,7 @@ export async function scanGrowthLoopAction() {
     family: "marketing",
     type: "growth_loop_scan",
     title: "Growth loop scan completed",
-    body: "Ferocity checked content quality, publishing readiness, stale lead recovery, review flow, and attribution gaps.",
+    body: "Ferocity checked content quality, publishing readiness, stale lead recovery, invoice follow-up, review flow, and attribution gaps.",
     metadata: row ?? {}
   });
 

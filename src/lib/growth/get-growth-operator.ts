@@ -44,7 +44,7 @@ export type PublishingQueueRow = {
 export type FollowUpWorkflowRow = {
   id: string;
   brandName: string | null;
-  leadName: string;
+  contactName: string;
   workflowType: string;
   status: string;
   channel: string;
@@ -202,7 +202,7 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     queryPostgres<{
       id: string;
       brand_name: string | null;
-      lead_name: string | null;
+      contact_name: string | null;
       workflow_type: string;
       status: string;
       channel: string;
@@ -210,11 +210,14 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       ai_suggested_message: string | null;
     }>(
       `
-      select f.id, b.name as brand_name, coalesce(l.name, l.email, l.phone, 'Unnamed lead') as lead_name,
+      select f.id, b.name as brand_name,
+        coalesce(l.name, c.name, i.title, l.email, l.phone, 'Follow-up') as contact_name,
         f.workflow_type, f.status, f.channel, f.due_at, f.ai_suggested_message
       from public.follow_up_workflows f
       left join public.brands b on b.id = f.brand_id
       left join public.leads l on l.id = f.lead_id
+      left join public.customers c on c.id = f.customer_id
+      left join public.service_invoices i on i.id = f.invoice_id
       where f.tenant_id = $1 and f.status in ('open', 'scheduled', 'missed')
       order by coalesce(f.due_at, f.created_at) asc
       limit 20
@@ -335,7 +338,7 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     followUps: (followUpResult?.rows ?? []).map((row) => ({
       id: row.id,
       brandName: row.brand_name,
-      leadName: row.lead_name ?? "Unnamed lead",
+      contactName: row.contact_name ?? "Follow-up",
       workflowType: row.workflow_type,
       status: row.status,
       channel: row.channel,

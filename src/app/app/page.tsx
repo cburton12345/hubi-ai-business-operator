@@ -1,6 +1,26 @@
 import Link from "next/link";
-import { BarChart3, Building2, CalendarDays, FileCheck2, Inbox, Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  CreditCard,
+  FileCheck2,
+  Inbox,
+  Lightbulb,
+  MousePointerClick,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles
+} from "lucide-react";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
+import { scanActionQueueAction } from "./actions/actions";
+import { scanGrowthLoopAction } from "./growth/actions";
+
+function dateLabel(value: string | null) {
+  if (!value) return "Due now";
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
 
 export default async function AppDashboardPage() {
   const snapshot = await getDashboardSnapshot();
@@ -12,18 +32,19 @@ export default async function AppDashboardPage() {
           <div>
             <p className="eyebrow">Workspace Home</p>
             <h1>{snapshot.tenantName}</h1>
-            <p className="muted">Workspace command center for brands, leads, AI marketing plans, drafts, recommendations, and approvals.</p>
+            <p className="muted">Plain view of what needs attention, what is making money, and what Ferocity can help with next.</p>
           </div>
           <div className="button-row">
-            <Link className="button secondary-button" href="/app/workspaces">
-              Workspaces
-            </Link>
-            <Link className="button secondary-button" href="/app/brands">
-              Brands
-            </Link>
-            <Link className="button" href="/app/leads">
-              Leads
-            </Link>
+            <form action={scanGrowthLoopAction}>
+              <button className="button" type="submit">
+                <RefreshCw size={16} /> Find follow-ups
+              </button>
+            </form>
+            <form action={scanActionQueueAction}>
+              <button className="button secondary-button" type="submit">
+                <CheckCircle2 size={16} /> Review actions
+              </button>
+            </form>
             <Link className="button" href="/app/operator">
               Operator Console
             </Link>
@@ -33,41 +54,89 @@ export default async function AppDashboardPage() {
             <Link className="button" href="/app/growth">
               Growth Loop
             </Link>
-            <Link className="button secondary-button" href="/app/forms">
-              Forms
-            </Link>
-            <Link className="button secondary-button" href="/app/access">
-              Access
-            </Link>
-            <Link className="button secondary-button" href="/app/onboarding">
-              Onboarding
-            </Link>
             <Link className="button secondary-button" href="/app/setup">
               Setup
-            </Link>
-            <Link className="button secondary-button" href="/app/actions">
-              Action Queue
-            </Link>
-            <Link className="button" href="/app/marketing">
-              <Sparkles size={16} /> AI Operator
-            </Link>
-            <Link className="button secondary-button" href="/app/seo">
-              SEO Autopilot
             </Link>
           </div>
         </div>
 
         <div className="grid">
-          <Metric icon={<Building2 size={20} />} label="Brands" value={snapshot.metrics.brands} />
-          <Metric icon={<Inbox size={20} />} label="Open Leads" value={snapshot.metrics.openLeads} />
-          <Metric icon={<FileCheck2 size={20} />} label="Drafts" value={snapshot.metrics.pendingDrafts} />
-          <Metric icon={<ShieldCheck size={20} />} label="Approvals" value={snapshot.metrics.pendingApprovals} />
-          <Metric icon={<CalendarDays size={20} />} label="Content This Week" value={snapshot.metrics.contentCreatedThisWeek} />
-          <Metric icon={<Lightbulb size={20} />} label="AI Recommendations" value={snapshot.metrics.aiRecommendations} />
-          <Metric icon={<BarChart3 size={20} />} label="Stale Leads" value={snapshot.metrics.staleLeads} />
+          <Metric icon={<Inbox size={20} />} label="Open leads" value={snapshot.metrics.openLeads} href="/app/leads" />
+          <Metric icon={<MousePointerClick size={20} />} label="Need follow-up" value={snapshot.metrics.followUpsDue} href="/app/growth" />
+          <Metric icon={<CreditCard size={20} />} label="Unpaid invoices" value={snapshot.metrics.unpaidInvoices} href="/app/service" />
+          <Metric icon={<ShieldCheck size={20} />} label="Actions to review" value={snapshot.metrics.actionQueue} href="/app/actions" />
+          <Metric icon={<BarChart3 size={20} />} label="Pipeline" value={snapshot.metrics.pipelineValue} href="/app/operator" />
+          <Metric icon={<CreditCard size={20} />} label="Payments made" value={snapshot.metrics.paymentsCollected} href="/app/service" />
+          <Metric icon={<BarChart3 size={20} />} label="Visitors 30d" value={snapshot.metrics.visitors} href="/app/growth" />
+          <Metric icon={<BarChart3 size={20} />} label="Ad spend 30d" value={snapshot.metrics.adSpend} href="/app/growth" />
         </div>
 
         <div className="grid">
+          <section className="panel span-6">
+            <div className="list-row flush-row">
+              <div>
+                <h2>Needs Follow-Up</h2>
+                <p className="muted">Leads, invoices, estimates, and callbacks Ferocity found from real records.</p>
+              </div>
+              <Link className="mini-button" href="/app/growth">
+                Follow up
+              </Link>
+            </div>
+            <ul className="list">
+              {snapshot.operator.followUps.map((item) => (
+                <li className="list-row" key={item.id}>
+                  <div>
+                    <h3>{item.contactName}</h3>
+                    <p className="muted">
+                      {item.workflowType} / {item.channel} / {dateLabel(item.dueAt)}
+                    </p>
+                    {item.suggestedMessage ? <p>{item.suggestedMessage}</p> : null}
+                  </div>
+                  <Link className="mini-button" href="/app/growth">
+                    Open
+                  </Link>
+                </li>
+              ))}
+              {snapshot.operator.followUps.length === 0 ? (
+                <li className="list-row">
+                  <span className="muted">No follow-ups due. Run a scan after new leads, invoices, jobs, or estimates change.</span>
+                </li>
+              ) : null}
+            </ul>
+          </section>
+
+          <section className="panel span-6">
+            <div className="list-row flush-row">
+              <div>
+                <h2>Invoice Follow-Up</h2>
+                <p className="muted">Open balances that may need a polite payment reminder.</p>
+              </div>
+              <Link className="mini-button" href="/app/service">
+                Invoices
+              </Link>
+            </div>
+            <ul className="list">
+              {snapshot.operator.invoiceFollowUps.map((invoice) => (
+                <li className="list-row" key={invoice.id}>
+                  <div>
+                    <h3>{invoice.title}</h3>
+                    <p className="muted">
+                      {invoice.customerName} / {invoice.balanceDue} due / {invoice.dueDate ?? "No due date"}
+                    </p>
+                  </div>
+                  <Link className="mini-button" href={`/app/service/invoices/${invoice.id}`}>
+                    Open
+                  </Link>
+                </li>
+              ))}
+              {snapshot.operator.invoiceFollowUps.length === 0 ? (
+                <li className="list-row">
+                  <span className="muted">No unpaid invoice follow-ups right now.</span>
+                </li>
+              ) : null}
+            </ul>
+          </section>
+
           <section className="panel span-6">
             <h2>Brands</h2>
             <ul className="list">
@@ -107,35 +176,29 @@ export default async function AppDashboardPage() {
               <Lightbulb size={18} /> AI Task Queue
             </h2>
             <div className="button-row section-actions">
-              <Link className="button secondary-button" href="/app/tasks">
-                Tasks
-              </Link>
-              <Link className="button secondary-button" href="/app/drafts">
-                Drafts
-              </Link>
-              <Link className="button secondary-button" href="/app/recommendations">
-                Recommendations
-              </Link>
-              <Link className="button secondary-button" href="/app/seo">
-                SEO Autopilot
+              <Link className="button secondary-button" href="/app/leads">
+                Leads
               </Link>
               <Link className="button secondary-button" href="/app/growth">
                 Growth Loop
               </Link>
-              <Link className="button secondary-button" href="/app/approvals">
-                Approvals
-              </Link>
-              <Link className="button secondary-button" href="/app/calendar">
-                Calendar
-              </Link>
-              <Link className="button secondary-button" href="/app/review">
-                Review
-              </Link>
-              <Link className="button secondary-button" href="/app/exports">
-                Exports
+              <Link className="button secondary-button" href="/app/actions">
+                Action Queue
               </Link>
               <Link className="button secondary-button" href="/app/service">
                 Service Ops
+              </Link>
+              <Link className="button secondary-button" href="/app/seo">
+                SEO Autopilot
+              </Link>
+              <Link className="button secondary-button" href="/app/marketing">
+                <Sparkles size={16} /> AI Operator
+              </Link>
+              <Link className="button secondary-button" href="/app/drafts">
+                Drafts
+              </Link>
+              <Link className="button secondary-button" href="/app/approvals">
+                Approvals
               </Link>
               <Link className="button secondary-button" href="/app/operator">
                 Operator Console
@@ -149,23 +212,8 @@ export default async function AppDashboardPage() {
               <Link className="button secondary-button" href="/app/workflows">
                 Workflows
               </Link>
-              <Link className="button secondary-button" href="/app/setup">
-                Setup
-              </Link>
-              <Link className="button secondary-button" href="/app/actions">
-                Action Queue
-              </Link>
               <Link className="button secondary-button" href="/app/integrations">
                 Integrations
-              </Link>
-              <Link className="button secondary-button" href="/app/settings">
-                Settings
-              </Link>
-              <Link className="button secondary-button" href="/app/qa">
-                QA
-              </Link>
-              <Link className="button secondary-button" href="/app/safety">
-                Safety
               </Link>
             </div>
             <ul className="list">
@@ -186,13 +234,13 @@ export default async function AppDashboardPage() {
   );
 }
 
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function Metric({ icon, label, value, href }: { icon: React.ReactNode; label: string; value: React.ReactNode; href: string }) {
   return (
-    <section className="panel span-3 metric">
+    <Link className="panel span-3 metric" href={href}>
       {icon}
       <span className="muted">{label}</span>
-      <strong>{value}</strong>
-    </section>
+      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+    </Link>
   );
 }
 

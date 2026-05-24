@@ -217,7 +217,7 @@ export default async function GrowthOperatorPage() {
             {dashboard.followUps.map((followUp) => (
               <li className="list-row" key={followUp.id}>
                 <div>
-                  <h3>{followUp.leadName}</h3>
+                  <h3>{followUp.contactName}</h3>
                   <p className="muted">
                     {followUp.brandName ?? "Workspace"} / {followUp.workflowType} / due {dateLabel(followUp.dueAt)}
                   </p>
