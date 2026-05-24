@@ -45,6 +45,9 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/setup">
               Setup
             </Link>
+            <Link className="button secondary-button" href="/app/actions">
+              Action Queue
+            </Link>
             <Link className="button" href="/app/marketing">
               <Sparkles size={16} /> AI Operator
             </Link>
@@ -148,6 +151,9 @@ export default async function AppDashboardPage() {
               </Link>
               <Link className="button secondary-button" href="/app/setup">
                 Setup
+              </Link>
+              <Link className="button secondary-button" href="/app/actions">
+                Action Queue
               </Link>
               <Link className="button secondary-button" href="/app/integrations">
                 Integrations
