@@ -8,6 +8,7 @@ export type IntegrationRow = {
   displayName: string;
   status: string;
   credentialsStatus: string;
+  ownershipMode: string;
   notes: string;
   envVars: string[];
   setupItems: string[];
@@ -16,9 +17,30 @@ export type IntegrationRow = {
   missingEnvVars: string[];
   configuredEnvVars: string[];
   liveActionsEnabled: boolean;
+  accountStatus: string | null;
+  routeActions: string[];
+  fallbackForActions: string[];
 };
 
 export const plannedConnections = [
+  {
+    provider: "resend_shared",
+    displayName: "Ferocity Shared Email",
+    notes: "Starter email route managed by Ferocity. Customer-owned email can replace it after sender/domain setup.",
+    envVars: [],
+    setupItems: ["Review sender identity", "Keep approval required", "Switch to customer email when the domain is ready"],
+    callbackPath: null,
+    riskLevel: "medium"
+  },
+  {
+    provider: "twilio_shared",
+    displayName: "Ferocity Shared SMS",
+    notes: "Starter SMS route managed by Ferocity. Customer-owned Twilio can replace it after number and consent setup.",
+    envVars: [],
+    setupItems: ["Confirm consent rules", "Keep review required", "Switch to customer Twilio when compliance is ready"],
+    callbackPath: "/api/integrations/twilio/status",
+    riskLevel: "high"
+  },
   {
     provider: "supabase_auth",
     displayName: "Supabase Auth",
@@ -194,17 +216,50 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
     `,
     [workspaceId]
   );
+  const [accountResult, routeResult] = await Promise.all([
+    queryPostgres<{
+      provider_key: string;
+      status: string;
+      credentials_status: string;
+      ownership_mode: string;
+      live_actions_enabled: boolean;
+    }>(
+      `
+      select provider_key, status, credentials_status, ownership_mode, live_actions_enabled
+      from public.provider_accounts
+      where tenant_id = $1
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      action_type: string;
+      default_provider_key: string;
+      fallback_provider_key: string | null;
+    }>(
+      `
+      select action_type, default_provider_key, fallback_provider_key
+      from public.provider_routing_rules
+      where tenant_id = $1 and status = 'active'
+      `,
+      [workspaceId]
+    )
+  ]);
+
+  const accounts = new Map((accountResult?.rows ?? []).map((account) => [account.provider_key, account]));
+  const routes = routeResult?.rows ?? [];
 
   return (result?.rows ?? []).map((row) => {
     const envVars = row.metadata_json?.envVars ?? [];
     const missing = missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
+    const account = accounts.get(row.provider);
 
     return {
       id: row.id,
       provider: row.provider,
       displayName: row.display_name,
       status: row.status,
-      credentialsStatus: missing.length === 0 && envVars.length > 0 ? "configured" : row.credentials_status,
+      credentialsStatus: account?.credentials_status ?? (missing.length === 0 && envVars.length > 0 ? "configured" : row.credentials_status),
+      ownershipMode: account?.ownership_mode ?? (row.provider.endsWith("_shared") ? "ferocity_managed" : "workspace"),
       notes: row.metadata_json?.notes ?? "Prepared for a later integration phase.",
       envVars,
       setupItems: row.metadata_json?.setupItems ?? [],
@@ -212,7 +267,10 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       riskLevel: row.metadata_json?.riskLevel ?? "medium",
       missingEnvVars: missing,
       configuredEnvVars: envVars.filter((key) => !missing.includes(key as never)),
-      liveActionsEnabled: row.metadata_json?.liveActionsEnabled === true
+      liveActionsEnabled: account?.live_actions_enabled ?? row.metadata_json?.liveActionsEnabled === true,
+      accountStatus: account?.status ?? null,
+      routeActions: routes.filter((route) => route.default_provider_key === row.provider).map((route) => route.action_type),
+      fallbackForActions: routes.filter((route) => route.fallback_provider_key === row.provider).map((route) => route.action_type)
     };
   });
 }

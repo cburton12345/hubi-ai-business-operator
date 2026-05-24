@@ -1,63 +1,124 @@
+import { ArrowRight, KeyRound, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { QueueTable } from "@/components/admin/QueueTable";
-import { getIntegrationRows, type IntegrationRow } from "@/lib/integrations/get-integrations";
+import { getIntegrationRows } from "@/lib/integrations/get-integrations";
 import { updateIntegrationReadinessAction } from "./actions";
+
+function ownerLabel(value: string) {
+  return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
+}
 
 export default async function IntegrationsPage() {
   const rows = await getIntegrationRows();
+  const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
+  const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
 
   return (
     <QueuePageShell
-      eyebrow="Integration Readiness"
-      title="Prepared Connections"
-      description="Clean structures for future Google Ads, Facebook, Google Business Profile, Twilio, Stripe, and publishing integrations. No external APIs are connected."
+      eyebrow="Connect Tools"
+      title="Connect The Outside Tools"
+      description="Ferocity should route work to proven providers, not rebuild them. Use managed defaults when useful, then switch to customer-owned accounts when keys, permissions, and approval rules are ready."
     >
-      <QueueTable<IntegrationRow>
-        rows={rows}
-        columns={[
-          {
-            key: "name",
-            label: "Connection",
-            render: (row) => (
-              <>
-                <strong>{row.displayName}</strong>
-                <span className="muted">{row.provider}</span>
-              </>
-            )
-          },
-          { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
-          { key: "credentials", label: "Credentials", render: (row) => <span className="pill">{row.credentialsStatus}</span> },
-          { key: "risk", label: "Risk", render: (row) => <span className={`pill ${row.riskLevel}`}>{row.riskLevel}</span> },
-          {
-            key: "setup",
-            label: "Setup",
-            render: (row) => (
-              <>
-                <span className="muted">{row.notes}</span>
-                <span className="muted">Env: {row.envVars.length > 0 ? row.envVars.join(", ") : "No new env vars"}</span>
-                <span className="muted">Callback: {row.callbackPath ?? "None"}</span>
-                <span className="muted">Checklist: {row.setupItems.join(" / ")}</span>
-              </>
-            )
-          },
-          {
-            key: "controls",
-            label: "Controls",
-            render: (row) => (
-              <form action={updateIntegrationReadinessAction} className="inline-actions">
-                <input name="connectionId" type="hidden" value={row.id} />
-                <input name="liveActionsEnabled" type="hidden" value="false" />
-                <button className="mini-button" name="status" type="submit" value="planned">Plan</button>
-                <button className="mini-button" name="status" type="submit" value="paused">Pause</button>
-                <button className="mini-button" name="status" type="submit" value="connected" disabled={row.missingEnvVars.length > 0}>
-                  Mark ready
-                </button>
-                <span className="muted">{row.liveActionsEnabled ? "Live actions enabled" : "Live actions off"}</span>
-              </form>
-            )
-          }
-        ]}
-      />
+      <section className="panel span-12 section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <ShieldCheck size={18} /> Managed Defaults
+            </h2>
+            <p className="muted">Useful for early setup. These still flow through review, consent, and the Action Queue.</p>
+          </div>
+          <span className="pill">{managed.length} routes</span>
+        </div>
+        <div className="grid">
+          {managed.map((row) => (
+            <ProviderCard row={row} key={row.id} />
+          ))}
+        </div>
+      </section>
+
+      <section className="panel span-12 section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <KeyRound size={18} /> Bring Your Own Tools
+            </h2>
+            <p className="muted">Customer-owned accounts for billing, SMS, email, calendars, analytics, publishing, ads, and reviews.</p>
+          </div>
+          <span className="pill">{customerOwned.length} tools</span>
+        </div>
+        <div className="grid">
+          {customerOwned.map((row) => (
+            <ProviderCard row={row} key={row.id} />
+          ))}
+        </div>
+      </section>
     </QueuePageShell>
+  );
+}
+
+function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number] }) {
+  const canMarkReady = row.missingEnvVars.length === 0;
+  const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not the default route";
+  const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No fallback routes";
+
+  return (
+    <section className="span-4">
+      <div className="list-row flush-row">
+        <div>
+          <h3>{row.displayName}</h3>
+          <p className="muted">{row.provider}</p>
+        </div>
+        <span className={`pill ${row.riskLevel}`}>{row.riskLevel}</span>
+      </div>
+      <p>{row.notes}</p>
+      <ul className="list section-actions">
+        <li className="list-row">
+          <strong>Owner</strong>
+          <span className="pill">{ownerLabel(row.ownershipMode)}</span>
+        </li>
+        <li className="list-row">
+          <strong>Status</strong>
+          <span className="pill">{row.accountStatus ?? row.status}</span>
+        </li>
+        <li className="list-row">
+          <strong>Keys</strong>
+          <span className="pill">{row.envVars.length === 0 ? "No tenant key needed" : row.credentialsStatus}</span>
+        </li>
+        <li className="list-row">
+          <strong>Default for</strong>
+          <span className="muted">{activeRoutes}</span>
+        </li>
+        <li className="list-row">
+          <strong>Fallback for</strong>
+          <span className="muted">{fallbackRoutes}</span>
+        </li>
+      </ul>
+      <div className="form-stack section-actions">
+        <p className="muted">Setup steps</p>
+        <ul className="list">
+          {row.setupItems.map((item) => (
+            <li className="list-row" key={item}>
+              <ArrowRight size={14} />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="muted">Missing keys: {row.missingEnvVars.length > 0 ? row.missingEnvVars.join(", ") : "None"}</p>
+        <p className="muted">Callback: {row.callbackPath ?? "None"}</p>
+        <form action={updateIntegrationReadinessAction} className="inline-actions">
+          <input name="connectionId" type="hidden" value={row.id} />
+          <input name="liveActionsEnabled" type="hidden" value="false" />
+          <button className="mini-button" name="status" type="submit" value="planned">
+            Plan
+          </button>
+          <button className="mini-button" name="status" type="submit" value="paused">
+            Pause
+          </button>
+          <button className="mini-button" name="status" type="submit" value="connected" disabled={!canMarkReady}>
+            Mark ready
+          </button>
+          <span className="muted">{row.liveActionsEnabled ? "Live actions on" : "Live actions off"}</span>
+        </form>
+      </div>
+    </section>
   );
 }
