@@ -87,6 +87,20 @@ export const plannedConnections = [
     riskLevel: "high"
   },
   {
+    provider: "marketplacepro",
+    displayName: "MarketplacePro",
+    notes: "Optional bridge from MarketplacePro discovery and vendor leads into Ferocity operations. Ferocity stays the CRM/follow-up system.",
+    envVars: ["MARKETPLACEPRO_WEBHOOK_SECRET"],
+    setupItems: [
+      "Map MarketplacePro vendor to a Ferocity workspace or brand",
+      "Import leads with MarketplacePro source details",
+      "Send follow-up, estimates, jobs, and reviews from Ferocity",
+      "Keep outbound status sync paused until rules are reviewed"
+    ],
+    callbackPath: "/api/integrations/marketplacepro/leads",
+    riskLevel: "medium"
+  },
+  {
     provider: "search_console",
     displayName: "Google Search Console",
     notes: "SEO reporting and ranking signals later. Manual SEO recommendations are available now.",

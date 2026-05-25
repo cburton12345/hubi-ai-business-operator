@@ -28,7 +28,8 @@ const envSchema = z.object({
   CALENDAR_PROVIDER: z.string().min(1).optional(),
   CALENDAR_CLIENT_ID: z.string().min(1).optional(),
   CALENDAR_CLIENT_SECRET: z.string().min(1).optional(),
-  CALENDAR_OAUTH_REDIRECT_URI: z.string().url().optional()
+  CALENDAR_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  MARKETPLACEPRO_WEBHOOK_SECRET: z.string().min(16).optional()
 });
 
 export const env = envSchema.parse({
@@ -59,7 +60,8 @@ export const env = envSchema.parse({
   CALENDAR_PROVIDER: process.env.CALENDAR_PROVIDER,
   CALENDAR_CLIENT_ID: process.env.CALENDAR_CLIENT_ID,
   CALENDAR_CLIENT_SECRET: process.env.CALENDAR_CLIENT_SECRET,
-  CALENDAR_OAUTH_REDIRECT_URI: process.env.CALENDAR_OAUTH_REDIRECT_URI
+  CALENDAR_OAUTH_REDIRECT_URI: process.env.CALENDAR_OAUTH_REDIRECT_URI,
+  MARKETPLACEPRO_WEBHOOK_SECRET: process.env.MARKETPLACEPRO_WEBHOOK_SECRET
 });
 
 export function hasSupabaseBrowserConfig() {
