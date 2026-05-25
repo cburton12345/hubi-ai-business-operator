@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOperationalQaRuns } from "@/lib/qa/get-operational-qa";
 import { runOperationalQaAction } from "./actions";
@@ -11,9 +12,20 @@ export default async function OperationalQaPage() {
       title="Workspace Launch Checks"
       description="Run a database-backed readiness check for the selected organization before beta launch."
     >
-      <form action={runOperationalQaAction} className="section-actions">
-        <button className="button" type="submit">Run operational QA</button>
-      </form>
+      <div className="button-row section-actions">
+        <form action={runOperationalQaAction}>
+          <button className="button" type="submit">Run operational QA</button>
+        </form>
+        <Link className="button secondary-button" href="/api/health/supabase">
+          Check Supabase health
+        </Link>
+        <Link className="button secondary-button" href="/app/integrations">
+          Connect tools
+        </Link>
+        <Link className="button secondary-button" href="/app/actions">
+          Review actions
+        </Link>
+      </div>
       <ul className="review-list">
         {runs.map((run) => (
           <li className="panel" key={run.id}>

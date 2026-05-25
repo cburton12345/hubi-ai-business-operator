@@ -35,6 +35,13 @@ export async function runOperationalQa(userId?: string | null) {
     integrations: string;
     live_integrations: string;
     integration_callbacks: string;
+    provider_routes: string;
+    live_provider_accounts: string;
+    action_queue_items: string;
+    marketplacepro_provider: string;
+    marketplacepro_adapter_events: string;
+    marketplacepro_mappings: string;
+    health_query: string;
   }>(
     `
     select
@@ -50,7 +57,14 @@ export async function runOperationalQa(userId?: string | null) {
       (select count(*) from public.billing_subscriptions where tenant_id = $1) as billing,
       (select count(*) from public.integration_connections where tenant_id = $1) as integrations,
       (select count(*) from public.integration_connections where tenant_id = $1 and coalesce((metadata_json->>'liveActionsEnabled')::boolean, false) = true) as live_integrations,
-      (select count(*) from public.integration_connections where tenant_id = $1 and metadata_json->>'callbackPath' is not null) as integration_callbacks
+      (select count(*) from public.integration_connections where tenant_id = $1 and metadata_json->>'callbackPath' is not null) as integration_callbacks,
+      (select count(*) from public.provider_routing_rules where tenant_id = $1 and status = 'active') as provider_routes,
+      (select count(*) from public.provider_accounts where tenant_id = $1 and live_actions_enabled = true) as live_provider_accounts,
+      (select count(*) from public.outbound_action_queue where tenant_id = $1 and status in ('needs_review', 'approved', 'queued')) as action_queue_items,
+      (select count(*) from public.provider_accounts where tenant_id = $1 and provider_key = 'marketplacepro') as marketplacepro_provider,
+      (select count(*) from public.marketplacepro_sync_events where tenant_id = $1) as marketplacepro_adapter_events,
+      (select count(*) from public.marketplacepro_connections where tenant_id = $1) as marketplacepro_mappings,
+      (select count(*) from public.tenants where id = $1) as health_query
     `,
     [workspaceId]
   );
@@ -73,7 +87,28 @@ export async function runOperationalQa(userId?: string | null) {
       passed: Number(row?.live_integrations ?? 0) === 0,
       detail: `${Number(row?.live_integrations ?? 0)} live provider connections enabled; expected 0 before keys and final approval.`
     },
-    check("integration-callbacks", "Provider callback stubs exist", Number(row?.integration_callbacks ?? 0), 3)
+    {
+      key: "live-provider-accounts-disabled",
+      label: "Live provider accounts are disabled",
+      passed: Number(row?.live_provider_accounts ?? 0) === 0,
+      detail: `${Number(row?.live_provider_accounts ?? 0)} live provider accounts enabled; expected 0 before provider keys and final approval.`
+    },
+    check("integration-callbacks", "Provider callback stubs exist", Number(row?.integration_callbacks ?? 0), 3),
+    check("provider-routes", "Provider routing rules exist", Number(row?.provider_routes ?? 0), 5),
+    {
+      key: "action-queue-visible",
+      label: "Action queue is ready",
+      passed: Number(row?.action_queue_items ?? 0) >= 0,
+      detail: `${Number(row?.action_queue_items ?? 0)} reviewed or pending actions found.`
+    },
+    check("marketplacepro-provider", "MarketplacePro provider record exists", Number(row?.marketplacepro_provider ?? 0)),
+    {
+      key: "marketplacepro-adapter-ready",
+      label: "MarketplacePro adapter tables are ready",
+      passed: Number(row?.marketplacepro_adapter_events ?? 0) >= 0 && Number(row?.marketplacepro_mappings ?? 0) >= 0,
+      detail: `${Number(row?.marketplacepro_mappings ?? 0)} mappings and ${Number(row?.marketplacepro_adapter_events ?? 0)} sync events found. Zero is OK before live connection.`
+    },
+    check("health-query", "Supabase health query works", Number(row?.health_query ?? 0))
   ];
   const passed = checks.every((item) => item.passed);
 
