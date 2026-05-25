@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { queryPostgres } from "@/lib/db/postgres";
 import { appSessionCookieName, getCurrentAppSession } from "@/lib/auth/session";
 
-export const selectedWorkspaceCookieName = "hubi_selected_workspace";
+export const selectedWorkspaceCookieName = "ferocity_selected_workspace";
 export const fallbackWorkspaceId = "11111111-1111-4111-8111-111111111111";
 
 export type CurrentWorkspace = {

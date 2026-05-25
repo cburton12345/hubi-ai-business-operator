@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
-export const adminSessionCookieName = "hubi_admin_session";
+export const adminSessionCookieName = "ferocity_admin_session";
 
 export function isAdminTokenConfigured() {
   return Boolean(env.ADMIN_ACCESS_TOKEN);

@@ -3,7 +3,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { hashSessionToken } from "@/lib/auth/password";
 import type { PlatformRole } from "@/types/core";
 
-export const appSessionCookieName = "hubi_app_session";
+export const appSessionCookieName = "ferocity_app_session";
 
 export type CurrentAppSession = {
   sessionId: string;

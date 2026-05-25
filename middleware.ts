@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const adminCookieName = "hubi_admin_session";
-const appSessionCookieName = "hubi_app_session";
+const adminCookieName = "ferocity_admin_session";
+const appSessionCookieName = "ferocity_app_session";
 
 export function middleware(request: NextRequest) {
   const token = process.env.ADMIN_ACCESS_TOKEN;
@@ -45,7 +45,10 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  if (request.cookies.get(appSessionCookieName)?.value || request.cookies.get(adminCookieName)?.value === token) {
+  if (
+    request.cookies.get(appSessionCookieName)?.value ||
+    request.cookies.get(adminCookieName)?.value === token
+  ) {
     return NextResponse.next();
   }
 

@@ -4,37 +4,37 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 const runbooks = [
   {
     title: "Customer onboarding",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/customer-onboarding-runbook.md",
+    href: "/docs/customer-onboarding-runbook.md",
     summary: "Create organizations, brands, forms, users, and weekly operating routines."
   },
   {
     title: "Production safety",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/production-safety-runbook.md",
+    href: "/docs/production-safety-runbook.md",
     summary: "Secrets, backups, migration rollback, error handling, and verification."
   },
   {
     title: "Production readiness",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase45-production-readiness.md",
+    href: "/docs/phase45-production-readiness.md",
     summary: "Environment policy, RLS, API validation, deploy smoke checks, monitoring, and security review."
   },
   {
     title: "Ferocity domain and rename",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/ferocity-domain-and-rename-runbook.md",
+    href: "/docs/ferocity-domain-and-rename-runbook.md",
     summary: "GitHub rename, Render service rename, custom domain, DNS, and callback URL steps."
   },
   {
     title: "Final non-key readiness",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase53-final-non-key-readiness.md",
+    href: "/docs/phase53-final-non-key-readiness.md",
     summary: "Workspace routes, UI polish, security headers, operational QA, and key-gated launch notes."
   },
   {
     title: "SEO autopilot foundation",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase54-seo-autopilot-foundation.md",
+    href: "/docs/phase54-seo-autopilot-foundation.md",
     summary: "Draft-only SEO topic clusters, content drafts, metadata, internal links, and refresh recommendations."
   },
   {
     title: "Beta launch",
-    href: "https://github.com/cburton12345/hubi-ai-business-operator/blob/main/docs/phase15-16-beta-and-launch-readiness.md",
+    href: "/docs/phase15-16-beta-and-launch-readiness.md",
     summary: "Beta QA sequence and manual-only launch rules."
   }
 ];
