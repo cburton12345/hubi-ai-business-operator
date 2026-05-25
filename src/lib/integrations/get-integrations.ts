@@ -89,15 +89,16 @@ export const plannedConnections = [
   {
     provider: "marketplacepro",
     displayName: "MarketplacePro",
-    notes: "Optional bridge from MarketplacePro discovery and vendor leads into Ferocity operations. Ferocity stays the CRM/follow-up system.",
+    notes: "Optional adapter from MarketplacePro launch tables into Ferocity operations. MarketplacePro keeps its public discovery schema.",
     envVars: ["MARKETPLACEPRO_WEBHOOK_SECRET"],
     setupItems: [
-      "Map MarketplacePro vendor to a Ferocity workspace or brand",
-      "Import leads with MarketplacePro source details",
-      "Send follow-up, estimates, jobs, and reviews from Ferocity",
+      "Map posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, and support_requests",
+      "Connect MarketplacePro account/vendor/listing IDs to a Ferocity workspace or brand",
+      "Import activity with MarketplacePro source details",
+      "Manage follow-up, estimates, jobs, reviews, and provider relationships in Ferocity",
       "Keep outbound status sync paused until rules are reviewed"
     ],
-    callbackPath: "/api/integrations/marketplacepro/leads",
+    callbackPath: "/api/integrations/marketplacepro/events",
     riskLevel: "medium"
   },
   {
