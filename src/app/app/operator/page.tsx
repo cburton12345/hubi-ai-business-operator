@@ -231,6 +231,33 @@ export default async function OperatorConsolePage() {
         </section>
 
         <section className="panel span-6">
+          <h2>Drafts And Notes</h2>
+          <p className="muted">Customer-visible drafts and internal notes. Nothing here sends automatically.</p>
+          <ul className="list">
+            {dashboard.messages.map((message) => (
+              <li className="list-row" key={message.id}>
+                <div>
+                  <h3>{message.subject}</h3>
+                  <p className="muted">
+                    {message.direction} / {message.channel} / {message.visibility} / {message.status}
+                  </p>
+                  <p>{message.body}</p>
+                </div>
+                <div className="inline-actions">
+                  {message.aiGenerated ? <span className="pill">AI draft</span> : null}
+                  <span className="pill">{dateLabel(message.createdAt)}</span>
+                </div>
+              </li>
+            ))}
+            {dashboard.messages.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No draft or queued messages yet. Run the scan after new leads arrive.</span>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
           <h2>Operator Timeline</h2>
           <p className="muted">Lead, follow-up, estimate, job, revenue, and system events in one history.</p>
           <ul className="list">

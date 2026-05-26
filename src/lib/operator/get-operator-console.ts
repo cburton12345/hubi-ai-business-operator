@@ -58,6 +58,19 @@ export type TemplateRow = {
   requiresApproval: boolean;
 };
 
+export type CommunicationMessageRow = {
+  id: string;
+  threadId: string;
+  subject: string;
+  direction: string;
+  channel: string;
+  visibility: string;
+  status: string;
+  body: string;
+  aiGenerated: boolean;
+  createdAt: string;
+};
+
 export type OperatorTimelineRow = {
   id: string;
   family: string;
@@ -73,6 +86,7 @@ export type OperatorConsoleDashboard = {
   stages: OpportunityStageRow[];
   schedule: ScheduleEventRow[];
   templates: TemplateRow[];
+  messages: CommunicationMessageRow[];
   timeline: OperatorTimelineRow[];
 };
 
@@ -83,7 +97,7 @@ function num(value: string | number | null | undefined) {
 export async function getOperatorConsoleDashboard(): Promise<OperatorConsoleDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
 
-  const [metricsResult, threadsResult, stagesResult, opportunitiesResult, scheduleResult, templatesResult, timelineResult] =
+  const [metricsResult, threadsResult, stagesResult, messagesResult, opportunitiesResult, scheduleResult, templatesResult, timelineResult] =
     await Promise.all([
       queryPostgres<{
         open_threads: string;
@@ -141,6 +155,29 @@ export async function getOperatorConsoleDashboard(): Promise<OperatorConsoleDash
         from public.pipeline_stages
         where tenant_id = $1 and active = true
         order by sort_order asc, name
+        `,
+        [workspaceId]
+      ),
+      queryPostgres<{
+        id: string;
+        thread_id: string;
+        subject: string;
+        direction: string;
+        channel: string;
+        visibility: string;
+        status: string;
+        body: string;
+        ai_generated: boolean;
+        created_at: string;
+      }>(
+        `
+        select m.id, m.thread_id, t.subject, m.direction, m.channel, m.visibility, m.status, m.body, m.ai_generated, m.created_at
+        from public.communication_messages m
+        join public.communication_threads t on t.id = m.thread_id and t.tenant_id = m.tenant_id
+        where m.tenant_id = $1
+          and m.status in ('draft', 'queued', 'failed')
+        order by m.created_at desc
+        limit 20
         `,
         [workspaceId]
       ),
@@ -285,6 +322,18 @@ export async function getOperatorConsoleDashboard(): Promise<OperatorConsoleDash
       channel: row.channel,
       purpose: row.purpose,
       requiresApproval: row.requires_approval
+    })),
+    messages: (messagesResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      threadId: row.thread_id,
+      subject: row.subject,
+      direction: row.direction,
+      channel: row.channel,
+      visibility: row.visibility,
+      status: row.status,
+      body: row.body,
+      aiGenerated: row.ai_generated,
+      createdAt: row.created_at
     })),
     timeline: (timelineResult?.rows ?? []).map((row) => ({
       id: row.id,

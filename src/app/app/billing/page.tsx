@@ -28,6 +28,50 @@ export default async function BillingPage() {
         )}
       </section>
 
+      <div className="grid section-actions">
+        <Metric label="Brands" value={billing.usage.brands} />
+        <Metric label="Users" value={billing.usage.users} />
+        <Metric label="AI runs this month" value={billing.usage.aiRunsThisMonth} />
+        <Metric label="SEO drafts this month" value={billing.usage.seoDraftsThisMonth} />
+        <Metric label="Publishing queue" value={billing.usage.publishingQueueItems} />
+        <Metric label="Review requests" value={billing.usage.reviewRequestsThisMonth} />
+      </div>
+
+      <section className="panel section-actions">
+        <h2>Billing Readiness</h2>
+        <ul className="list">
+          {billing.readiness.map((item) => (
+            <li className="list-row" key={item.label}>
+              <div>
+                <h3>{item.label}</h3>
+                <p className="muted">{item.detail}</p>
+              </div>
+              <span className={`pill ${item.status === "blocked" ? "high" : item.status === "needs_setup" ? "medium" : ""}`}>{item.status}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <h2>Feature Gates</h2>
+        <p className="muted">Usage and limits are visible now so paid tiers can be enforced cleanly later.</p>
+        <ul className="list">
+          {billing.featureGates.map((gate) => (
+            <li className="list-row" key={gate.featureKey}>
+              <div>
+                <h3>{gate.label}</h3>
+                <p className="muted">{gate.featureKey} / {gate.usagePeriod ?? "monthly"} / used {gate.currentUsage.toLocaleString()}</p>
+              </div>
+              <div className="inline-actions">
+                <span className="pill">{gate.status}</span>
+                <span className="pill">{gate.usageLimit === null ? "unlimited" : `${gate.remaining?.toLocaleString()} left`}</span>
+              </div>
+            </li>
+          ))}
+          {billing.featureGates.length === 0 ? <li className="list-row"><span className="muted">No feature gates configured yet.</span></li> : null}
+        </ul>
+      </section>
+
       <div className="grid">
         {billing.plans.map((plan) => (
           <section className="panel span-4" key={plan.id}>
@@ -41,5 +85,14 @@ export default async function BillingPage() {
         ))}
       </div>
     </QueuePageShell>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <section className="panel span-4 metric">
+      <span className="muted">{label}</span>
+      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+    </section>
   );
 }
