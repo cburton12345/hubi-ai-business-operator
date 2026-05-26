@@ -48,6 +48,15 @@ type InvoiceFollowUpRow = {
   due_date: string | null;
 };
 
+type DailyPriority = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  buttonLabel: string;
+  urgency: "high" | "medium" | "low";
+};
+
 function money(cents: string | number | null | undefined) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
     Number(cents ?? 0) / 100
@@ -151,6 +160,96 @@ async function loadOperationalSnapshot(workspaceId: string) {
   };
 }
 
+function buildTodayPlan(input: {
+  openLeads: number;
+  staleLeads: number;
+  followUpsDue: number;
+  actionQueue: number;
+  unpaidInvoices: number;
+  overdueInvoices: number;
+  pendingDrafts: number;
+  pendingApprovals: number;
+}): DailyPriority[] {
+  const priorities: DailyPriority[] = [];
+
+  if (input.followUpsDue > 0) {
+    priorities.push({
+      id: "follow-ups",
+      title: `${input.followUpsDue} follow-up${input.followUpsDue === 1 ? "" : "s"} due`,
+      detail: "Start here. These are leads, callbacks, estimates, or invoices that need a human touch.",
+      href: "/app/growth",
+      buttonLabel: "Open follow-ups",
+      urgency: "high"
+    });
+  }
+
+  if (input.openLeads > 0) {
+    priorities.push({
+      id: "new-leads",
+      title: `${input.openLeads} new lead${input.openLeads === 1 ? "" : "s"}`,
+      detail: "Fast response matters. Review new requests and move real opportunities into the operating loop.",
+      href: "/app/leads",
+      buttonLabel: "Review leads",
+      urgency: input.staleLeads > 0 ? "high" : "medium"
+    });
+  }
+
+  if (input.overdueInvoices > 0) {
+    priorities.push({
+      id: "overdue-invoices",
+      title: `${input.overdueInvoices} overdue invoice${input.overdueInvoices === 1 ? "" : "s"}`,
+      detail: "Use a polite payment reminder before old balances become harder to collect.",
+      href: "/app/service",
+      buttonLabel: "Open invoices",
+      urgency: "high"
+    });
+  } else if (input.unpaidInvoices > 0) {
+    priorities.push({
+      id: "unpaid-invoices",
+      title: `${input.unpaidInvoices} unpaid invoice${input.unpaidInvoices === 1 ? "" : "s"}`,
+      detail: "Keep cash collection visible without sending anything automatically.",
+      href: "/app/service",
+      buttonLabel: "Check invoices",
+      urgency: "medium"
+    });
+  }
+
+  if (input.actionQueue > 0) {
+    priorities.push({
+      id: "action-queue",
+      title: `${input.actionQueue} action${input.actionQueue === 1 ? "" : "s"} waiting`,
+      detail: "Approve, edit, or reject queued messages and automation steps before anything live can send.",
+      href: "/app/actions",
+      buttonLabel: "Review actions",
+      urgency: "medium"
+    });
+  }
+
+  if (input.pendingApprovals > 0 || input.pendingDrafts > 0) {
+    priorities.push({
+      id: "marketing-review",
+      title: "Marketing review needed",
+      detail: `${input.pendingDrafts} draft${input.pendingDrafts === 1 ? "" : "s"} and ${input.pendingApprovals} approval${input.pendingApprovals === 1 ? "" : "s"} need a look before publishing.`,
+      href: "/app/approvals",
+      buttonLabel: "Review marketing",
+      urgency: "low"
+    });
+  }
+
+  if (priorities.length === 0) {
+    priorities.push({
+      id: "healthy",
+      title: "No urgent work found",
+      detail: "Ferocity did not find overdue follow-ups, unpaid invoice pressure, or action queue items right now.",
+      href: "/app/operator",
+      buttonLabel: "Open operator console",
+      urgency: "low"
+    });
+  }
+
+  return priorities.slice(0, 4);
+}
+
 export async function getDashboardSnapshot() {
   const supabase = createSupabaseAdminClient();
   const workspace = await getCurrentWorkspace();
@@ -232,22 +331,24 @@ export async function getDashboardSnapshot() {
         riskProfile: brand.risk_profile
       }));
       const counts = countResult?.rows[0];
+      const metrics = {
+        brands: brands.length,
+        openLeads: Number(counts?.open_leads ?? 0),
+        pendingDrafts: Number(counts?.pending_drafts ?? 0),
+        pendingApprovals: Number(counts?.pending_approvals ?? 0),
+        contentCreatedThisWeek: Number(counts?.content_created_this_week ?? 0),
+        aiRecommendations: Number(counts?.ai_recommendations ?? 0),
+        staleLeads: Number(counts?.stale_leads ?? 0),
+        ...operational.metrics
+      };
 
       return {
         tenantName: workspace.name,
         brands,
         recommendations: starterRecommendations,
         tasks: starterTasks,
-        metrics: {
-          brands: brands.length,
-          openLeads: Number(counts?.open_leads ?? 0),
-          pendingDrafts: Number(counts?.pending_drafts ?? 0),
-          pendingApprovals: Number(counts?.pending_approvals ?? 0),
-          contentCreatedThisWeek: Number(counts?.content_created_this_week ?? 0),
-          aiRecommendations: Number(counts?.ai_recommendations ?? 0),
-          staleLeads: Number(counts?.stale_leads ?? 0),
-          ...operational.metrics
-        },
+        metrics,
+        todayPlan: buildTodayPlan(metrics),
         operator: {
           followUps: operational.followUps,
           invoiceFollowUps: operational.invoiceFollowUps
@@ -260,21 +361,24 @@ export async function getDashboardSnapshot() {
       };
     }
 
+    const metrics = {
+      brands: internalBrands.length,
+      openLeads: 0,
+      pendingDrafts: starterTasks.length,
+      pendingApprovals: starterRecommendations.filter((item) => item.riskLevel !== "low").length,
+      contentCreatedThisWeek: 0,
+      aiRecommendations: starterRecommendations.length,
+      staleLeads: 0,
+      ...operational.metrics
+    };
+
     return {
       tenantName: "Internal Portfolio",
       brands: internalBrands,
       recommendations: starterRecommendations,
       tasks: starterTasks,
-      metrics: {
-        brands: internalBrands.length,
-        openLeads: 0,
-        pendingDrafts: starterTasks.length,
-        pendingApprovals: starterRecommendations.filter((item) => item.riskLevel !== "low").length,
-        contentCreatedThisWeek: 0,
-        aiRecommendations: starterRecommendations.length,
-        staleLeads: 0,
-        ...operational.metrics
-      },
+      metrics,
+      todayPlan: buildTodayPlan(metrics),
       operator: {
         followUps: operational.followUps,
         invoiceFollowUps: operational.invoiceFollowUps
@@ -307,22 +411,24 @@ export async function getDashboardSnapshot() {
     primaryGoal: brand.primary_goal ?? "No primary goal set.",
     riskProfile: brand.risk_profile
   }));
+  const metrics = {
+    brands: brandCount ?? internalBrands.length,
+    openLeads: leadCount ?? 0,
+    pendingDrafts: draftCount ?? 0,
+    pendingApprovals: approvalCount ?? 0,
+    contentCreatedThisWeek: 0,
+    aiRecommendations: starterRecommendations.length,
+    staleLeads: 0,
+    ...operational.metrics
+  };
 
   return {
     tenantName: workspace.name,
     brands: brands.length > 0 ? brands : internalBrands,
     recommendations: starterRecommendations,
     tasks: starterTasks,
-    metrics: {
-      brands: brandCount ?? internalBrands.length,
-      openLeads: leadCount ?? 0,
-      pendingDrafts: draftCount ?? 0,
-      pendingApprovals: approvalCount ?? 0,
-      contentCreatedThisWeek: 0,
-      aiRecommendations: starterRecommendations.length,
-      staleLeads: 0,
-      ...operational.metrics
-    },
+    metrics,
+    todayPlan: buildTodayPlan(metrics),
     operator: {
       followUps: operational.followUps,
       invoiceFollowUps: operational.invoiceFollowUps

@@ -60,6 +60,33 @@ export default async function AppDashboardPage() {
           </div>
         </div>
 
+        <section className="panel">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Today</h2>
+              <p className="muted">The shortest path from attention to revenue. No setup language, no API chores.</p>
+            </div>
+            <Link className="mini-button" href="/app/operator">
+              Full console
+            </Link>
+          </div>
+          <ul className="priority-list">
+            {snapshot.todayPlan.map((item, index) => (
+              <li className="priority-row" key={item.id}>
+                <span className="priority-number">{index + 1}</span>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">{item.detail}</p>
+                </div>
+                <span className={`pill ${item.urgency}`}>{item.urgency}</span>
+                <Link className="mini-button" href={item.href}>
+                  {item.buttonLabel}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <div className="grid">
           <Metric icon={<Inbox size={20} />} label="Open leads" value={snapshot.metrics.openLeads} href="/app/leads" />
           <Metric icon={<MousePointerClick size={20} />} label="Need follow-up" value={snapshot.metrics.followUpsDue} href="/app/growth" />
