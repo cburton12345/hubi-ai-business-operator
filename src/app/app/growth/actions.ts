@@ -33,6 +33,11 @@ const insightStatusSchema = z.object({
   status: z.enum(["acknowledged", "resolved", "dismissed"])
 });
 
+const seoOpportunityStatusSchema = z.object({
+  opportunityId: z.string().min(1),
+  status: z.enum(["open", "planned", "draft_created", "in_review", "published_manually", "paused", "done", "dismissed"])
+});
+
 async function insertTimeline(input: {
   tenantId: string;
   brandId?: string | null;
@@ -82,6 +87,7 @@ export async function scanGrowthLoopAction() {
     completed_jobs_without_reviews: string;
     unattributed_leads: string;
     overdue_invoices: string;
+    missing_page_coverage: string;
   }>(
     `
     select
@@ -125,7 +131,30 @@ export async function scanGrowthLoopAction() {
           and i.status in ('sent_manually', 'partially_paid', 'overdue')
           and coalesce(i.due_date, i.created_at::date) <= current_date
           and i.amount_paid_cents < i.total_cents
-      ) as overdue_invoices
+      ) as overdue_invoices,
+      (
+        select count(*)
+        from public.brands b
+        join public.brand_services s on s.tenant_id = b.tenant_id and s.brand_id = b.id and s.active = true
+        left join public.brand_locations loc on loc.tenant_id = b.tenant_id and loc.brand_id = b.id and loc.active = true
+        where b.tenant_id = $1 and b.status = 'active'
+          and not exists (
+            select 1
+            from public.brand_landing_pages p
+            where p.tenant_id = b.tenant_id
+              and p.brand_id = b.id
+              and p.status <> 'archived'
+              and (
+                p.primary_keyword ilike '%' || s.name || '%'
+                or p.title ilike '%' || s.name || '%'
+              )
+              and (
+                loc.city is null
+                or p.title ilike '%' || loc.city || '%'
+                or p.primary_keyword ilike '%' || loc.city || '%'
+              )
+          )
+      ) as missing_page_coverage
     `,
     [workspaceId]
   );
@@ -183,6 +212,16 @@ export async function scanGrowthLoopAction() {
       actionHref: "/app/growth"
     },
     {
+      key: "seo-page-coverage",
+      type: "seo_compounding",
+      severity: Number(row?.missing_page_coverage ?? 0) > 10 ? "high" : "medium",
+      count: Number(row?.missing_page_coverage ?? 0),
+      title: "Service-area pages need coverage",
+      summary: "Some services and locations do not appear to have enough page coverage yet.",
+      recommendation: "Create useful city/service pages with real local proof, clear next steps, and internal links.",
+      actionHref: "/app/growth"
+    },
+    {
       key: "invoice-follow-up-needed",
       type: "invoice_followup",
       severity: Number(row?.overdue_invoices ?? 0) > 5 ? "high" : "medium",
@@ -223,6 +262,136 @@ export async function scanGrowthLoopAction() {
       ]
     );
   }
+
+  await queryPostgres(
+    `
+    insert into public.seo_page_opportunities (
+      tenant_id,
+      brand_id,
+      opportunity_type,
+      page_type,
+      title,
+      target_keyword,
+      service_focus,
+      city_focus,
+      target_url,
+      priority_score,
+      reason,
+      next_step,
+      metadata_json,
+      due_at
+    )
+    select
+      b.tenant_id,
+      b.id,
+      'create_city_service_page',
+      'city_page',
+      concat(s.name, ' in ', coalesce(loc.city, loc.service_area_name, b.primary_location, 'service area')),
+      lower(concat(s.name, ' ', coalesce(loc.city, loc.service_area_name, b.primary_location, 'near me'))),
+      s.name,
+      coalesce(loc.city, loc.service_area_name, b.primary_location),
+      concat('/', lower(regexp_replace(concat(s.name, '-', coalesce(loc.city, loc.service_area_name, b.primary_location, 'service-area')), '[^a-zA-Z0-9]+', '-', 'g'))),
+      least(95, 55 + (s.priority * 5) + coalesce(loc.priority * 3, 0)),
+      'This service/location combination does not appear to have strong page coverage yet.',
+      'Draft a useful page with real service details, local proof, FAQs, internal links, and one clear call to action.',
+      jsonb_build_object('createdByScan', 'growth_loop', 'providerReadyOnly', true),
+      now() + interval '7 days'
+    from public.brands b
+    join public.brand_services s on s.tenant_id = b.tenant_id and s.brand_id = b.id and s.active = true
+    left join public.brand_locations loc on loc.tenant_id = b.tenant_id and loc.brand_id = b.id and loc.active = true
+    where b.tenant_id = $1 and b.status = 'active'
+      and not exists (
+        select 1
+        from public.brand_landing_pages p
+        where p.tenant_id = b.tenant_id
+          and p.brand_id = b.id
+          and p.status <> 'archived'
+          and (
+            p.primary_keyword ilike '%' || s.name || '%'
+            or p.title ilike '%' || s.name || '%'
+          )
+          and (
+            loc.city is null
+            or p.title ilike '%' || loc.city || '%'
+            or p.primary_keyword ilike '%' || loc.city || '%'
+          )
+      )
+    order by s.priority desc, loc.priority desc nulls last
+    limit 100
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.seo_page_opportunities (
+      tenant_id,
+      brand_id,
+      opportunity_type,
+      page_type,
+      title,
+      target_keyword,
+      current_url,
+      target_url,
+      priority_score,
+      reason,
+      next_step,
+      metadata_json,
+      due_at
+    )
+    select
+      p.tenant_id,
+      p.brand_id,
+      'refresh_existing_page',
+      case when p.page_type in ('service_page', 'city_page', 'blog', 'landing_page') then p.page_type else 'other' end,
+      concat('Refresh: ', p.title),
+      p.primary_keyword,
+      p.slug,
+      p.slug,
+      68,
+      'Existing page is still active and should be refreshed with better proof, clearer next steps, and updated internal links.',
+      'Review traffic/conversion data when connected, then improve usefulness and conversion clarity before republishing manually.',
+      jsonb_build_object('createdByScan', 'growth_loop', 'refreshCandidate', true),
+      now() + interval '14 days'
+    from public.brand_landing_pages p
+    where p.tenant_id = $1
+      and p.status in ('published', 'draft')
+      and not exists (
+        select 1
+        from public.seo_page_opportunities o
+        where o.tenant_id = p.tenant_id
+          and o.brand_id = p.brand_id
+          and o.opportunity_type = 'refresh_existing_page'
+          and o.target_url = p.slug
+          and o.status in ('open', 'planned', 'draft_created', 'in_review')
+      )
+    order by p.updated_at asc nulls first, p.created_at asc
+    limit 50
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.marketing_conversion_targets (
+      tenant_id, brand_id, target_key, label, source_family, target_type, target_value, period, metadata_json
+    )
+    select b.tenant_id, b.id, target_key, label, source_family, target_type, target_value, 'monthly', metadata_json
+    from public.brands b
+    cross join (
+      values
+        ('organic_leads', 'Organic leads', 'organic', 'lead', 20, '{"plainRule":"Track SEO and website leads."}'::jsonb),
+        ('gbp_calls', 'GBP calls', 'gbp', 'call', 15, '{"plainRule":"Track Google Business Profile calls when connected."}'::jsonb),
+        ('review_flow', 'New reviews', 'manual', 'review', 8, '{"plainRule":"Ask real customers for reviews after completed work."}'::jsonb),
+        ('booked_jobs', 'Booked jobs from marketing', 'unknown', 'booked_job', 10, '{"plainRule":"Tie leads to jobs before optimizing spend."}'::jsonb)
+    ) defaults(target_key, label, source_family, target_type, target_value, metadata_json)
+    where b.tenant_id = $1 and b.status = 'active'
+    on conflict (tenant_id, brand_id, target_key) do nothing
+    `,
+    [workspaceId]
+  );
 
   await queryPostgres(
     `
@@ -499,4 +668,41 @@ export async function updateGrowthInsightAction(formData: FormData) {
     [workspaceId, parsed.data.insightId, parsed.data.status]
   );
   revalidatePath("/app/growth");
+}
+
+export async function updateSeoOpportunityAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = seoOpportunityStatusSchema.safeParse({
+    opportunityId: formData.get("opportunityId"),
+    status: formData.get("status")
+  });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ brand_id: string; title: string }>(
+    `
+    update public.seo_page_opportunities
+    set status = $3, updated_at = now()
+    where tenant_id = $1 and id = $2
+    returning brand_id, title
+    `,
+    [workspaceId, parsed.data.opportunityId, parsed.data.status]
+  );
+  const row = result?.rows[0];
+  if (row) {
+    await insertTimeline({
+      tenantId: workspaceId,
+      brandId: row.brand_id,
+      family: "seo",
+      type: "page_opportunity_status",
+      title: `SEO opportunity marked ${parsed.data.status}`,
+      body: row.title,
+      entityType: "seo_page_opportunity",
+      entityId: parsed.data.opportunityId,
+      sourceTable: "seo_page_opportunities",
+      sourceId: parsed.data.opportunityId,
+      metadata: { status: parsed.data.status }
+    });
+  }
+  revalidatePath("/app/growth");
+  revalidatePath("/app/seo");
 }

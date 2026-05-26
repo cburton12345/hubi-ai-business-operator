@@ -76,6 +76,39 @@ export type ReviewWorkflowRow = {
   negativeInterceptionStatus: string;
 };
 
+export type SeoOpportunityRow = {
+  id: string;
+  brandName: string;
+  type: string;
+  pageType: string;
+  title: string;
+  targetKeyword: string | null;
+  serviceFocus: string | null;
+  cityFocus: string | null;
+  priorityScore: number;
+  status: string;
+  reason: string;
+  nextStep: string;
+};
+
+export type WeakAreaRow = {
+  brandName: string;
+  label: string;
+  serviceCount: number;
+  locationCount: number;
+  pageCount: number;
+  keywordCount: number;
+};
+
+export type ConversionTargetRow = {
+  id: string;
+  label: string;
+  sourceFamily: string;
+  targetType: string;
+  targetValue: number;
+  period: string;
+};
+
 export type TimelineEventRow = {
   id: string;
   family: string;
@@ -93,6 +126,15 @@ export type GrowthOperatorDashboard = {
   followUps: FollowUpWorkflowRow[];
   attribution: AttributionSourceRow[];
   reviewWorkflows: ReviewWorkflowRow[];
+  seoOpportunities: SeoOpportunityRow[];
+  weakAreas: WeakAreaRow[];
+  conversionTargets: ConversionTargetRow[];
+  nextBestActions: Array<{
+    title: string;
+    detail: string;
+    href: string;
+    urgency: "high" | "medium" | "low";
+  }>;
   timeline: TimelineEventRow[];
 };
 
@@ -111,6 +153,9 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     followUpResult,
     attributionResult,
     reviewResult,
+    seoOpportunityResult,
+    weakAreaResult,
+    conversionTargetResult,
     timelineResult
   ] = await Promise.all([
     queryPostgres<{
@@ -276,6 +321,74 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     ),
     queryPostgres<{
       id: string;
+      brand_name: string;
+      opportunity_type: string;
+      page_type: string;
+      title: string;
+      target_keyword: string | null;
+      service_focus: string | null;
+      city_focus: string | null;
+      priority_score: number;
+      status: string;
+      reason: string;
+      next_step: string;
+    }>(
+      `
+      select o.id, b.name as brand_name, o.opportunity_type, o.page_type, o.title, o.target_keyword,
+        o.service_focus, o.city_focus, o.priority_score, o.status, o.reason, o.next_step
+      from public.seo_page_opportunities o
+      join public.brands b on b.id = o.brand_id
+      where o.tenant_id = $1 and o.status in ('open', 'planned', 'draft_created', 'in_review')
+      order by o.priority_score desc, o.detected_at desc
+      limit 20
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      brand_name: string;
+      label: string;
+      service_count: string;
+      location_count: string;
+      page_count: string;
+      keyword_count: string;
+    }>(
+      `
+      select b.name as brand_name,
+        coalesce(b.primary_location, b.industry, 'Growth setup') as label,
+        (select count(*) from public.brand_services s where s.tenant_id = b.tenant_id and s.brand_id = b.id and s.active = true) as service_count,
+        (select count(*) from public.brand_locations l where l.tenant_id = b.tenant_id and l.brand_id = b.id and l.active = true) as location_count,
+        (select count(*) from public.brand_landing_pages p where p.tenant_id = b.tenant_id and p.brand_id = b.id and p.status <> 'archived') as page_count,
+        (select count(*) from public.brand_seo_keywords k where k.tenant_id = b.tenant_id and k.brand_id = b.id) as keyword_count
+      from public.brands b
+      where b.tenant_id = $1 and b.status = 'active'
+      order by
+        ((select count(*) from public.brand_services s where s.tenant_id = b.tenant_id and s.brand_id = b.id and s.active = true)
+        + (select count(*) from public.brand_locations l where l.tenant_id = b.tenant_id and l.brand_id = b.id and l.active = true)
+        - (select count(*) from public.brand_landing_pages p where p.tenant_id = b.tenant_id and p.brand_id = b.id and p.status <> 'archived')) desc,
+        b.name
+      limit 8
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      label: string;
+      source_family: string;
+      target_type: string;
+      target_value: string;
+      period: string;
+    }>(
+      `
+      select id, label, source_family, target_type, target_value::text, period
+      from public.marketing_conversion_targets
+      where tenant_id = $1 and status = 'active'
+      order by source_family, target_type, label
+      limit 20
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
       event_family: string;
       event_type: string;
       title: string;
@@ -294,6 +407,106 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
   ]);
 
   const metrics = metricsResult?.rows[0];
+  const seoOpportunities = (seoOpportunityResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    type: row.opportunity_type,
+    pageType: row.page_type,
+    title: row.title,
+    targetKeyword: row.target_keyword,
+    serviceFocus: row.service_focus,
+    cityFocus: row.city_focus,
+    priorityScore: row.priority_score,
+    status: row.status,
+    reason: row.reason,
+    nextStep: row.next_step
+  }));
+  const qualityReviews = (qualityResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    draftId: row.draft_id,
+    brandName: row.brand_name,
+    title: row.title ?? "Untitled draft",
+    contentType: row.content_type,
+    status: row.quality_status,
+    usefulnessScore: row.usefulness_score,
+    localRelevanceScore: row.local_relevance_score,
+    originalityScore: row.originality_score,
+    conversionClarityScore: row.conversion_clarity_score,
+    riskFlags: row.risk_flags ?? []
+  }));
+  const publishingQueue = (publishingResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    title: row.title ?? "Untitled item",
+    targetPlatform: row.target_platform,
+    queueStatus: row.queue_status,
+    providerStatus: row.provider_status,
+    scheduledFor: row.scheduled_for
+  }));
+  const reviewWorkflows = (reviewResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    customerName: row.customer_name ?? "Unassigned customer",
+    triggerEvent: row.trigger_event,
+    channel: row.channel,
+    status: row.status,
+    scheduledFor: row.scheduled_for,
+    negativeInterceptionStatus: row.negative_interception_status
+  }));
+  const attribution = (attributionResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    sourceFamily: row.source_family,
+    sourceName: row.source_name,
+    campaignName: row.campaign_name,
+    serviceFocus: row.service_focus,
+    cityFocus: row.city_focus,
+    leads: numberFrom(row.leads),
+    jobs: numberFrom(row.jobs),
+    revenueCents: numberFrom(row.revenue_cents)
+  }));
+  const nextBestActions = [
+    seoOpportunities.length > 0
+      ? {
+          title: "Build the highest-value local page",
+          detail: `${seoOpportunities[0].title}: ${seoOpportunities[0].nextStep}`,
+          href: "/app/seo",
+          urgency: "high" as const
+        }
+      : null,
+    qualityReviews.some((review) => review.status !== "passed")
+      ? {
+          title: "Clean up content before publishing",
+          detail: "Review usefulness, local proof, originality, and conversion clarity so Ferocity does not ship thin AI content.",
+          href: "/app/growth",
+          urgency: "high" as const
+        }
+      : null,
+    publishingQueue.length > 0
+      ? {
+          title: "Keep publishing consistent",
+          detail: "Move approved work through the queue manually or with connected providers later.",
+          href: "/app/growth",
+          urgency: "medium" as const
+        }
+      : null,
+    reviewWorkflows.length > 0
+      ? {
+          title: "Ask happy customers for reviews",
+          detail: "Review requests are ready to send manually until SMS/email/GBP providers are connected.",
+          href: "/app/growth",
+          urgency: "medium" as const
+        }
+      : null,
+    attribution.length === 0
+      ? {
+          title: "Start tracking which marketing makes money",
+          detail: "Add source tracking so Ferocity can connect pages and campaigns to leads, jobs, and revenue.",
+          href: "/app/integrations",
+          urgency: "medium" as const
+        }
+      : null
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return {
     metrics: [
@@ -313,28 +526,8 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       status: row.status,
       actionHref: row.action_href
     })),
-    qualityReviews: (qualityResult?.rows ?? []).map((row) => ({
-      id: row.id,
-      draftId: row.draft_id,
-      brandName: row.brand_name,
-      title: row.title ?? "Untitled draft",
-      contentType: row.content_type,
-      status: row.quality_status,
-      usefulnessScore: row.usefulness_score,
-      localRelevanceScore: row.local_relevance_score,
-      originalityScore: row.originality_score,
-      conversionClarityScore: row.conversion_clarity_score,
-      riskFlags: row.risk_flags ?? []
-    })),
-    publishingQueue: (publishingResult?.rows ?? []).map((row) => ({
-      id: row.id,
-      brandName: row.brand_name,
-      title: row.title ?? "Untitled item",
-      targetPlatform: row.target_platform,
-      queueStatus: row.queue_status,
-      providerStatus: row.provider_status,
-      scheduledFor: row.scheduled_for
-    })),
+    qualityReviews,
+    publishingQueue,
     followUps: (followUpResult?.rows ?? []).map((row) => ({
       id: row.id,
       brandName: row.brand_name,
@@ -345,28 +538,26 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       dueAt: row.due_at,
       aiSuggestedMessage: row.ai_suggested_message
     })),
-    attribution: (attributionResult?.rows ?? []).map((row) => ({
-      id: row.id,
+    attribution,
+    reviewWorkflows,
+    seoOpportunities,
+    weakAreas: (weakAreaResult?.rows ?? []).map((row) => ({
       brandName: row.brand_name,
+      label: row.label,
+      serviceCount: numberFrom(row.service_count),
+      locationCount: numberFrom(row.location_count),
+      pageCount: numberFrom(row.page_count),
+      keywordCount: numberFrom(row.keyword_count)
+    })),
+    conversionTargets: (conversionTargetResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      label: row.label,
       sourceFamily: row.source_family,
-      sourceName: row.source_name,
-      campaignName: row.campaign_name,
-      serviceFocus: row.service_focus,
-      cityFocus: row.city_focus,
-      leads: numberFrom(row.leads),
-      jobs: numberFrom(row.jobs),
-      revenueCents: numberFrom(row.revenue_cents)
+      targetType: row.target_type,
+      targetValue: numberFrom(row.target_value),
+      period: row.period
     })),
-    reviewWorkflows: (reviewResult?.rows ?? []).map((row) => ({
-      id: row.id,
-      brandName: row.brand_name,
-      customerName: row.customer_name ?? "Unassigned customer",
-      triggerEvent: row.trigger_event,
-      channel: row.channel,
-      status: row.status,
-      scheduledFor: row.scheduled_for,
-      negativeInterceptionStatus: row.negative_interception_status
-    })),
+    nextBestActions,
     timeline: (timelineResult?.rows ?? []).map((row) => ({
       id: row.id,
       family: row.event_family,

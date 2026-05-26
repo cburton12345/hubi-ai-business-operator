@@ -7,7 +7,8 @@ import {
   updateContentQualityReviewAction,
   updateFollowUpWorkflowAction,
   updateGrowthInsightAction,
-  updatePublishingQueueAction
+  updatePublishingQueueAction,
+  updateSeoOpportunityAction
 } from "./actions";
 
 function dateLabel(value: string | null) {
@@ -54,6 +55,116 @@ export default async function GrowthOperatorPage() {
       </div>
 
       <div className="grid">
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Growth Command Center</h2>
+              <p className="muted">Simple weekly work: make better pages, get more reviews, follow up, publish consistently, and track what turns into revenue.</p>
+            </div>
+            <Link className="mini-button" href="/app/seo">
+              SEO planner
+            </Link>
+          </div>
+          <ul className="priority-list">
+            {dashboard.nextBestActions.map((action, index) => (
+              <li className="priority-row" key={action.title}>
+                <span className="priority-number">{index + 1}</span>
+                <div>
+                  <h3>{action.title}</h3>
+                  <p className="muted">{action.detail}</p>
+                </div>
+                <span className={`pill ${action.urgency}`}>{action.urgency}</span>
+                <Link className="mini-button" href={action.href}>
+                  Open
+                </Link>
+              </li>
+            ))}
+            {dashboard.nextBestActions.length === 0 ? (
+              <li className="priority-row">
+                <span className="priority-number">1</span>
+                <div>
+                  <h3>No urgent growth work found</h3>
+                  <p className="muted">Run a scan after new leads, jobs, drafts, reviews, or marketing data changes.</p>
+                </div>
+                <span className="pill low">low</span>
+                <Link className="mini-button" href="/app/growth">
+                  Stay here
+                </Link>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Pages To Create Or Refresh</h2>
+          <p className="muted">Local SEO opportunities based on real brand services, locations, page inventory, and future metric imports.</p>
+          <ul className="list">
+            {dashboard.seoOpportunities.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">
+                    {[item.brandName, item.pageType, item.targetKeyword, item.cityFocus, item.serviceFocus].filter(Boolean).join(" / ")}
+                  </p>
+                  <p>{item.reason}</p>
+                  <p className="muted">Next: {item.nextStep}</p>
+                </div>
+                <form action={updateSeoOpportunityAction} className="inline-actions">
+                  <input name="opportunityId" type="hidden" value={item.id} />
+                  <span className="pill high">{item.priorityScore}</span>
+                  <select name="status" defaultValue={item.status}>
+                    <option value="open">open</option>
+                    <option value="planned">planned</option>
+                    <option value="draft_created">draft_created</option>
+                    <option value="in_review">in_review</option>
+                    <option value="published_manually">published_manually</option>
+                    <option value="paused">paused</option>
+                    <option value="done">done</option>
+                    <option value="dismissed">dismissed</option>
+                  </select>
+                  <button className="mini-button" type="submit">
+                    Save
+                  </button>
+                </form>
+              </li>
+            ))}
+            {dashboard.seoOpportunities.length === 0 ? (
+              <li className="list-row">
+                <div>
+                  <h3>No page opportunities yet</h3>
+                  <p className="muted">Run a scan after adding services, service areas, keywords, or page records.</p>
+                </div>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Coverage Gaps</h2>
+          <p className="muted">A quick check for brands that have services or service areas but not enough page and keyword coverage.</p>
+          <ul className="list">
+            {dashboard.weakAreas.map((area) => (
+              <li className="list-row" key={`${area.brandName}-${area.label}`}>
+                <div>
+                  <h3>{area.brandName}</h3>
+                  <p className="muted">{area.label}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill">{area.serviceCount} services</span>
+                  <span className="pill">{area.locationCount} areas</span>
+                  <span className="pill">{area.pageCount} pages</span>
+                  <span className="pill">{area.keywordCount} keywords</span>
+                </div>
+              </li>
+            ))}
+            {dashboard.weakAreas.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No active brand coverage data yet.</span>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
         <section className="panel span-6">
           <div className="list-row flush-row">
             <div>
@@ -274,6 +385,32 @@ export default async function GrowthOperatorPage() {
                 <div>
                   <h3>No attribution sources yet</h3>
                   <p className="muted">Future form/source tracking and manual source mapping will populate this without demo data.</p>
+                </div>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Growth Targets</h2>
+          <p className="muted">Plain targets for leads, booked jobs, revenue, reviews, calls, and forms by channel.</p>
+          <ul className="list">
+            {dashboard.conversionTargets.map((target) => (
+              <li className="list-row" key={target.id}>
+                <div>
+                  <h3>{target.label}</h3>
+                  <p className="muted">
+                    {target.sourceFamily} / {target.targetType} / {target.period}
+                  </p>
+                </div>
+                <span className="pill">{target.targetValue.toLocaleString()}</span>
+              </li>
+            ))}
+            {dashboard.conversionTargets.length === 0 ? (
+              <li className="list-row">
+                <div>
+                  <h3>No growth targets yet</h3>
+                  <p className="muted">Ferocity can still track activity now; targets can be added after plan tiers and onboarding get tighter.</p>
                 </div>
               </li>
             ) : null}

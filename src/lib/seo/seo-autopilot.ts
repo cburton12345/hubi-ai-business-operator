@@ -39,6 +39,17 @@ export type GenerateSeoAutopilotResult = {
   calendarItemsCreated: number;
 };
 
+export type SeoPageOpportunitySummary = {
+  id: string;
+  brandName: string;
+  title: string;
+  pageType: string;
+  targetKeyword: string | null;
+  priorityScore: number;
+  status: string;
+  nextStep: string;
+};
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -273,6 +284,41 @@ export async function getSeoAutopilotSummary(): Promise<SeoAutopilotSummary[]> {
       ]
     };
   });
+}
+
+export async function getSeoPageOpportunitySummary(): Promise<SeoPageOpportunitySummary[]> {
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{
+    id: string;
+    brand_name: string;
+    title: string;
+    page_type: string;
+    target_keyword: string | null;
+    priority_score: number;
+    status: string;
+    next_step: string;
+  }>(
+    `
+    select o.id, b.name as brand_name, o.title, o.page_type, o.target_keyword, o.priority_score, o.status, o.next_step
+    from public.seo_page_opportunities o
+    join public.brands b on b.id = o.brand_id
+    where o.tenant_id = $1 and o.status in ('open', 'planned', 'draft_created', 'in_review')
+    order by o.priority_score desc, o.detected_at desc
+    limit 12
+    `,
+    [workspaceId]
+  );
+
+  return (result?.rows ?? []).map((row) => ({
+    id: row.id,
+    brandName: row.brand_name,
+    title: row.title,
+    pageType: row.page_type,
+    targetKeyword: row.target_keyword,
+    priorityScore: row.priority_score,
+    status: row.status,
+    nextStep: row.next_step
+  }));
 }
 
 export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<GenerateSeoAutopilotResult> {

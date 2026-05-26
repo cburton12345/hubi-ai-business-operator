@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { FileText, Search, Sparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { getSeoAutopilotSummary } from "@/lib/seo/seo-autopilot";
+import { getSeoAutopilotSummary, getSeoPageOpportunitySummary } from "@/lib/seo/seo-autopilot";
 import { generateSeoAutopilotAction } from "./actions";
 
 export default async function SeoAutopilotPage() {
-  const rows = await getSeoAutopilotSummary();
+  const [rows, opportunities] = await Promise.all([getSeoAutopilotSummary(), getSeoPageOpportunitySummary()]);
   const totalKeywords = rows.reduce((sum, row) => sum + row.keywordCount, 0);
   const totalDrafts = rows.reduce((sum, row) => sum + row.recentDraftCount, 0);
 
@@ -47,6 +47,43 @@ export default async function SeoAutopilotPage() {
       </div>
 
       <div className="grid">
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Page Opportunities</h2>
+              <p className="muted">The practical SEO work list: pages to create, refresh, improve, or support with local proof.</p>
+            </div>
+            <Link className="mini-button" href="/app/growth">
+              Growth command
+            </Link>
+          </div>
+          <ul className="list">
+            {opportunities.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">
+                    {[item.brandName, item.pageType, item.targetKeyword].filter(Boolean).join(" / ")}
+                  </p>
+                  <p>{item.nextStep}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill high">{item.priorityScore}</span>
+                  <span className="pill">{item.status}</span>
+                </div>
+              </li>
+            ))}
+            {opportunities.length === 0 ? (
+              <li className="list-row">
+                <div>
+                  <h3>No page opportunities yet</h3>
+                  <p className="muted">Run the growth scan after adding services, cities, keywords, or existing pages.</p>
+                </div>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
         {rows.map((row) => (
           <section className="panel span-6" key={row.brandId}>
             <div className="list-row flush-row">
