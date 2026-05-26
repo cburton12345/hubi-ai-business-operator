@@ -122,6 +122,11 @@ const inventoryItemSchema = z.object({
   notes: z.string().max(1200).optional()
 });
 
+const serviceTaskStatusSchema = z.object({
+  taskId: z.string().uuid(),
+  status: z.enum(["open", "scheduled", "done", "dismissed"])
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
@@ -168,6 +173,229 @@ async function recalculateInvoiceTotal(workspaceId: string, invoiceId: string) {
     [workspaceId, invoiceId]
   );
   return result?.rows[0]?.customer_id ?? null;
+}
+
+async function insertTimeline(input: {
+  tenantId: string;
+  family: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  sourceTable?: string | null;
+  sourceId?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await queryPostgres(
+    `
+    insert into public.operator_timeline_events (
+      tenant_id, event_family, event_type, title, body, primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    values ($1, $2, $3, $4, $5, $6, $7::uuid, $8, $9::uuid, $10::jsonb)
+    `,
+    [
+      input.tenantId,
+      input.family,
+      input.type,
+      input.title,
+      input.body ?? null,
+      input.entityType ?? null,
+      input.entityId ?? null,
+      input.sourceTable ?? null,
+      input.sourceId ?? null,
+      JSON.stringify(input.metadata ?? {})
+    ]
+  );
+}
+
+export async function scanServiceOpsAction() {
+  await requirePermission("lead:manage");
+  const workspaceId = await getCurrentWorkspaceId();
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select j.tenant_id, j.brand_id, j.customer_id, 'schedule_job', 'high',
+      concat('Schedule job: ', j.title),
+      concat(c.name, ' has an unscheduled job waiting.'),
+      'Pick a date, assign the right person, and confirm the appointment manually.',
+      now(),
+      'job', j.id, 'service_jobs', j.id,
+      jsonb_build_object('createdByScan', 'service_ops')
+    from public.service_jobs j
+    join public.customers c on c.id = j.customer_id
+    where j.tenant_id = $1 and j.status = 'unscheduled'
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select j.tenant_id, j.brand_id, j.customer_id, 'assign_technician', 'medium',
+      concat('Assign technician: ', j.title),
+      concat(c.name, ' has a scheduled job with no assigned team member.'),
+      'Assign a technician or crew before the appointment window.',
+      coalesce(j.scheduled_start, now()),
+      'job', j.id, 'service_jobs', j.id,
+      jsonb_build_object('createdByScan', 'service_ops')
+    from public.service_jobs j
+    join public.customers c on c.id = j.customer_id
+    where j.tenant_id = $1 and j.status = 'scheduled' and j.assigned_user_id is null
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select e.tenant_id, e.brand_id, e.customer_id, 'estimate_followup',
+      case when e.created_at < now() - interval '7 days' then 'high' else 'medium' end,
+      concat('Follow up on estimate: ', e.title),
+      concat(c.name, ' has a sent estimate that has not been approved or declined.'),
+      'Review the estimate and use a useful manual follow-up before marking it won or lost.',
+      now(),
+      'estimate', e.id, 'service_estimates', e.id,
+      jsonb_build_object('createdByScan', 'service_ops', 'estimateStatus', e.status)
+    from public.service_estimates e
+    join public.customers c on c.id = e.customer_id
+    where e.tenant_id = $1 and e.status = 'sent_manually' and e.created_at < now() - interval '2 days'
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select i.tenant_id, i.brand_id, i.customer_id, 'collect_payment',
+      case when coalesce(i.due_date, i.created_at::date) < current_date then 'high' else 'medium' end,
+      concat('Collect payment: ', i.title),
+      concat(c.name, ' has an open invoice balance of ', greatest(i.total_cents - i.amount_paid_cents, 0), ' cents.'),
+      'Review the invoice, confirm the balance, and send a polite payment reminder manually or through an approved provider.',
+      coalesce(i.due_date::timestamptz, now()),
+      'invoice', i.id, 'service_invoices', i.id,
+      jsonb_build_object('createdByScan', 'service_ops', 'balanceDueCents', greatest(i.total_cents - i.amount_paid_cents, 0))
+    from public.service_invoices i
+    join public.customers c on c.id = i.customer_id
+    where i.tenant_id = $1
+      and i.status in ('sent_manually', 'partially_paid', 'overdue')
+      and i.amount_paid_cents < i.total_cents
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select j.tenant_id, j.brand_id, j.customer_id, 'create_invoice', 'medium',
+      concat('Create invoice for completed job: ', j.title),
+      concat(c.name, ' has a completed job without an invoice.'),
+      'Create and review an invoice before sending anything to the customer.',
+      now() + interval '1 day',
+      'job', j.id, 'service_jobs', j.id,
+      jsonb_build_object('createdByScan', 'service_ops')
+    from public.service_jobs j
+    join public.customers c on c.id = j.customer_id
+    where j.tenant_id = $1 and j.status = 'completed'
+      and not exists (select 1 from public.service_invoices i where i.job_id = j.id)
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select r.tenant_id, r.brand_id, r.customer_id, 'request_review', 'medium',
+      concat('Review request ready: ', coalesce(c.name, 'Customer')),
+      'A review request workflow is ready but not completed.',
+      'Review the message and send manually or through an approved provider.',
+      coalesce(r.scheduled_for, now()),
+      'review_request', r.id, 'review_request_workflows', r.id,
+      jsonb_build_object('createdByScan', 'service_ops', 'negativeInterceptionStatus', r.negative_interception_status)
+    from public.review_request_workflows r
+    left join public.customers c on c.id = r.customer_id
+    where r.tenant_id = $1 and r.status in ('draft', 'scheduled')
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, customer_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select p.tenant_id, p.brand_id, p.customer_id, 'recurring_service_due', 'medium',
+      concat('Recurring service due: ', p.title),
+      concat(c.name, ' has a recurring service plan due soon.'),
+      'Confirm the next visit and create a job when ready.',
+      p.next_service_date::timestamptz,
+      'recurring_plan', p.id, 'recurring_service_plans', p.id,
+      jsonb_build_object('createdByScan', 'service_ops', 'frequency', p.frequency)
+    from public.recurring_service_plans p
+    join public.customers c on c.id = p.customer_id
+    where p.tenant_id = $1 and p.status = 'active' and p.next_service_date <= current_date + interval '14 days'
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.service_operational_tasks (
+      tenant_id, brand_id, task_type, priority, title, detail, next_step, due_at,
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+    )
+    select i.tenant_id, i.brand_id, 'inventory_reorder', 'medium',
+      concat('Inventory low: ', i.name),
+      concat('Quantity is ', i.quantity, ' ', coalesce(i.unit, ''), ' and reorder threshold is ', i.reorder_threshold, '.'),
+      'Check stock and reorder or reserve inventory before field work is delayed.',
+      now() + interval '1 day',
+      'inventory_item', i.id, 'service_inventory_items', i.id,
+      jsonb_build_object('createdByScan', 'service_ops', 'category', i.category)
+    from public.service_inventory_items i
+    where i.tenant_id = $1 and i.status <> 'retired' and i.quantity <= i.reorder_threshold
+    on conflict do nothing
+    `,
+    [workspaceId]
+  );
+
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "job",
+    type: "service_ops_scan",
+    title: "Service operations scan completed",
+    body: "Ferocity checked unscheduled jobs, technician assignment, estimate follow-up, invoices, reviews, recurring service, and inventory.",
+    metadata: { scan: "service_ops" }
+  });
+
+  revalidatePath("/app/service");
+  revalidatePath("/app");
 }
 
 export async function createCustomerAction(formData: FormData) {
@@ -754,4 +982,34 @@ export async function createInventoryItemAction(formData: FormData) {
     ]
   );
   revalidatePath("/app/service/inventory");
+}
+
+export async function updateServiceTaskAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = serviceTaskStatusSchema.safeParse({
+    taskId: formData.get("taskId"),
+    status: formData.get("status")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    update public.service_operational_tasks
+    set status = $3, updated_at = now()
+    where tenant_id = $1 and id = $2
+    `,
+    [workspaceId, parsed.data.taskId, parsed.data.status]
+  );
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "job",
+    type: "service_task_status",
+    title: `Service task marked ${parsed.data.status}`,
+    sourceTable: "service_operational_tasks",
+    sourceId: parsed.data.taskId,
+    metadata: { status: parsed.data.status }
+  });
+  revalidatePath("/app/service");
+  revalidatePath("/app");
 }
