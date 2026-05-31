@@ -60,10 +60,10 @@ const featureCards = [
 ];
 
 const demoActions = [
+  ["Set up growth", "SEO, reviews, forms, ads, and sources", "Build plan"],
   ["Lead recovery", "3 leads need a reply today", "Draft reply"],
   ["Estimate follow-up", "$28k in viewed estimates", "Queue reminders"],
-  ["Review flow", "4 completed jobs", "Draft requests"],
-  ["SEO refresh", "8 city pages need proof", "Draft updates"]
+  ["Review flow", "4 completed jobs", "Draft requests"]
 ];
 
 const commandMetrics = [
@@ -80,6 +80,8 @@ const operatorAlerts = [
 ];
 
 const proofLoop = [
+  ["System setup", "Services, cities, channels, and controls", "owner goals become a reviewed setup plan"],
+  ["Growth channel", "SEO, GBP, ads, referrals, or marketplace", "source rules exist before leads arrive"],
   ["Website source", "Storm repair city page", "utm_source=local_seo / page_url captured"],
   ["Lead captured", "North Ridge roof leak", "source, service, city, form, and consent stay attached"],
   ["Follow-up queued", "First response and callback", "draft message, task, due time, owner"],
@@ -111,6 +113,7 @@ const automationRunway = [
 ];
 
 const connectionSteps = [
+  ["Build My System", "Set services, service areas, lead sources, review flow, follow-up timing, and approvals first."],
   ["Website connector", "Add a Ferocity quote link, embedded form, or tracking helper to the customer's site."],
   ["Lead forms", "Every submission can carry source, campaign, page URL, and referrer data."],
   ["SEO pages", "Publish approved drafts to the customer's website, a Ferocity hosted page, or a manual export workflow."],
@@ -208,7 +211,7 @@ export default function DemoPage() {
             <p className="eyebrow">Product demo</p>
             <h1>See how Ferocity turns marketing into booked work.</h1>
             <p>
-              Follow the path from getting found to capturing a lead, following up, booking the job, collecting payment,
+              Follow the path from setup to getting found, capturing a lead, following up, booking the job, collecting payment,
               requesting a review, and seeing what produced revenue.
             </p>
             <div className="button-row">
@@ -260,14 +263,14 @@ export default function DemoPage() {
         <section className="demo-positioning">
           <div>
             <p className="eyebrow">What this connects</p>
-            <h2>Every lead gets a source, a next step, and an outcome.</h2>
+            <h2>The system starts before the lead arrives.</h2>
             <p>
-              Ferocity tracks the path from a page, post, ad, referral, or marketplace lead to the follow-up, estimate, job,
-              invoice, review, and revenue that came after it.
+              Ferocity first maps the business, services, service areas, channels, and controls. Then every page, post, ad,
+              referral, form, or marketplace request can be tied to the follow-up, estimate, job, invoice, review, and revenue that came after it.
             </p>
           </div>
           <div className="demo-proof-flow">
-            {["SEO / ads / referrals", "Lead", "Estimate", "Job", "Invoice", "Review", "Better next action"].map((item) => (
+            {["Setup", "SEO / ads / referrals", "Lead", "Estimate", "Job", "Invoice", "Review", "Better next action"].map((item) => (
               <span key={item}>{item}</span>
             ))}
           </div>
@@ -315,10 +318,11 @@ export default function DemoPage() {
         <section className="source-tracking-band">
           <div>
             <p className="eyebrow">How it connects</p>
-            <h2>Ferocity starts by tracking where every lead came from.</h2>
+            <h2>Ferocity starts by setting up what should be tracked.</h2>
             <p className="muted">
-              A lead source can be a website form, hosted page, local SEO page, Google profile, review flow, ad, Facebook group,
-              referral, phone call, manual entry, or MarketplacePro request. From there, Ferocity keeps the next step and outcome attached.
+              A business can start with AI-guided setup, marketing setup, or a basic lead workflow. Either way, Ferocity defines the
+              source rules first so website forms, hosted pages, SEO pages, Google profile activity, reviews, ads, Facebook groups,
+              referrals, phone calls, manual entries, and MarketplacePro requests stay tied to outcomes.
             </p>
           </div>
           <div className="source-step-grid">
@@ -334,7 +338,7 @@ export default function DemoPage() {
         <section className="demo-workbench">
           <div className="section-heading">
             <p className="eyebrow">Click-through demo map</p>
-            <h2>Pick a business problem and see the next action.</h2>
+            <h2>Pick where the business wants to start.</h2>
           </div>
           <div className="demo-action-grid">
             {demoActions.map(([title, body, action]) => (

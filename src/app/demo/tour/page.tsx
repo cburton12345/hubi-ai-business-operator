@@ -1,11 +1,25 @@
 import Link from "next/link";
-import { ArrowRight, BellRing, CalendarClock, ChartNoAxesCombined, FileCheck2, MessageSquareText, Star } from "lucide-react";
+import { ArrowRight, BellRing, Bot, CalendarClock, ChartNoAxesCombined, FileCheck2, Megaphone, MessageSquareText, Star } from "lucide-react";
 
 const marketplaceProUrl = "https://marketplacepro.live";
 
 const tour = [
   {
     step: "1",
+    title: "Ferocity sets up the system",
+    body: "The owner describes the business in plain English. Ferocity turns that into services, service areas, lead sources, review flow, follow-up rules, and safety controls.",
+    result: "Setup plan / SEO, reviews, ads, forms, and follow-up mapped first",
+    icon: Bot
+  },
+  {
+    step: "2",
+    title: "Growth channels start feeding the loop",
+    body: "Local SEO pages, Google profile activity, reviews, paid campaigns, referrals, website forms, and marketplace sources are tracked before the lead is ever handled.",
+    result: "Source tracking / Service + city + channel attached",
+    icon: Megaphone
+  },
+  {
+    step: "3",
     title: "A lead comes in",
     body: (
       <>
@@ -20,35 +34,35 @@ const tour = [
     icon: MessageSquareText
   },
   {
-    step: "2",
+    step: "4",
     title: "Ferocity shows the next move",
     body: "The system suggests a reply, creates an internal note, and flags whether the lead needs a callback.",
     result: "Reply draft / Customer message held for review",
     icon: BellRing
   },
   {
-    step: "3",
+    step: "5",
     title: "Follow-up stays visible",
     body: "If the customer does not respond, Ferocity keeps the lead in view instead of letting it disappear.",
     result: "Follow-up due today / Owner can call, text, or snooze",
     icon: CalendarClock
   },
   {
-    step: "4",
+    step: "6",
     title: "Estimate and invoice reminders appear",
     body: "Open estimates, viewed estimates, unpaid invoices, and callbacks turn into clear operator tasks.",
     result: "Estimate follow-up queued / Invoice reminder drafted",
     icon: FileCheck2
   },
   {
-    step: "5",
+    step: "7",
     title: "Reviews and marketing compound",
     body: "After completed work, Ferocity creates review request drafts and content ideas tied to real services.",
     result: "Review request draft / SEO refresh idea / GBP post draft",
     icon: Star
   },
   {
-    step: "6",
+    step: "8",
     title: "ROI becomes clearer",
     body: "Lead sources connect to jobs, invoices, reviews, and revenue so the business can see what is working.",
     result: "Campaign -> lead -> estimate -> job -> paid invoice",
@@ -75,9 +89,10 @@ export default function TourPage() {
 
         <section className="public-hero">
           <p className="eyebrow">Tour mode</p>
-          <h1>Follow a lead through Ferocity.</h1>
+          <h1>Follow the full growth and operations loop.</h1>
           <p className="muted">
-            This public tour follows one lead from capture to reply, follow-up, estimate, review, marketing, and revenue tracking.
+            The workflow usually starts with setup and growth channels, then moves into lead capture, reply, follow-up, estimate,
+            payment, review, marketing proof, and revenue tracking. Some businesses may start at a later step, but the loop stays the same.
           </p>
           <div className="button-row">
             <Link className="button" href="/demo/acme-roofing">
