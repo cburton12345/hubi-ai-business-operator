@@ -13,6 +13,7 @@ const accessRequestSchema = z.object({
   companyName: z.string().trim().max(180).optional(),
   businessType: z.string().trim().max(120).optional(),
   websiteUrl: z.string().trim().max(240).optional(),
+  websiteConnectionPlan: z.string().trim().max(80).optional(),
   requestedPlan: z.string().trim().max(80).optional(),
   mainGoal: z.string().trim().max(120).optional(),
   leadSources: z.array(z.string().trim().max(80)).optional(),
@@ -310,6 +311,7 @@ async function createStarterWorkspace(input: {
   mainGoal?: string;
   message?: string;
   leadSources?: string[];
+  websiteConnectionPlan?: string | null;
 }) {
   const existingInviteResult = await queryPostgres<{ tenant_id: string; slug: string }>(
     `
@@ -571,6 +573,7 @@ async function createStarterWorkspace(input: {
         planKey,
         leadFormKey,
         leadSources: normalizeLeadSources(input.leadSources),
+        websiteConnectionPlan: input.websiteConnectionPlan,
         liveActionsEnabled: false
       })
     ]
@@ -593,6 +596,7 @@ async function createStarterWorkspace(input: {
         brandId,
         leadFormKey,
         leadSources: normalizeLeadSources(input.leadSources),
+        websiteConnectionPlan: input.websiteConnectionPlan,
         inviteCreated: true,
         liveActionsEnabled: false
       })
@@ -617,6 +621,7 @@ export async function POST(request: NextRequest) {
     companyName: String(formData.get("companyName") ?? ""),
     businessType: String(formData.get("businessType") ?? ""),
     websiteUrl: String(formData.get("websiteUrl") ?? ""),
+    websiteConnectionPlan: String(formData.get("websiteConnectionPlan") ?? ""),
     requestedPlan: String(formData.get("requestedPlan") ?? ""),
     mainGoal: String(formData.get("mainGoal") ?? ""),
     leadSources: formData.getAll("leadSources").map(String),
@@ -693,6 +698,7 @@ export async function POST(request: NextRequest) {
         consentToContact: true,
         submittedAt: new Date().toISOString(),
         leadSources: normalizeLeadSources(parsed.data.leadSources),
+        websiteConnectionPlan: emptyToNull(parsed.data.websiteConnectionPlan),
         launchMode: parsed.data.createWorkspace === "on" ? "auto_workspace_requested" : "request_access_no_auto_workspace",
         nextStep: parsed.data.createWorkspace === "on" ? "workspace_invite_created_when_safe" : "review_then_invite_or_setup_call"
       }),
@@ -720,6 +726,7 @@ export async function POST(request: NextRequest) {
       companyName: parsed.data.companyName,
       businessType: parsed.data.businessType,
       websiteUrl: parsed.data.websiteUrl,
+      websiteConnectionPlan: parsed.data.websiteConnectionPlan,
       requestedPlan: parsed.data.requestedPlan,
       mainGoal: parsed.data.mainGoal,
       message: parsed.data.message,

@@ -6,27 +6,27 @@ const plans = [
     key: "free",
     name: "Free",
     price: "$0",
-    fit: "For trying Ferocity with real lead capture and source tracking.",
+    fit: "For trying Ferocity with a real workspace, one lead form, and basic source tracking.",
     included: ["1 workspace", "1 brand", "1 user", "1 lead form", "25 leads/month", "5 proof submissions", "Manual tasks"],
-    limits: "No live SMS/email, no payment links, no background automations, no MarketplacePro sync, and only tiny AI/setup previews.",
+    limits: "Good for evaluation and light use. No live SMS/email, payment links, background automations, MarketplacePro sync, or full AI setup runs.",
     cta: "Start Free"
   },
   {
     key: "starter",
     name: "Starter",
     price: "$79/mo",
-    fit: "For businesses that mainly need lead capture and basic follow-up.",
+    fit: "For businesses that mainly need lead capture, simple pipeline, and basic follow-up.",
     included: ["Everything in Free", "More leads", "Basic pipeline", "25 proof submissions", "Manual follow-up tasks", "Basic reports"],
-    limits: "For getting organized first with a focused lead and follow-up workspace. Provider sends still require setup.",
+    limits: "Good for getting organized first. Provider sends still require verified email/SMS accounts and approval.",
     cta: "Start Starter"
   },
   {
     key: "growth",
     name: "Growth",
     price: "$199/mo",
-    fit: "For businesses that want SEO, reviews, marketing drafts, and attribution.",
+    fit: "For businesses that want SEO, reviews, marketing drafts, customer proof, and attribution.",
     included: ["Everything in Starter", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
-    limits: "For businesses that want marketing output, review flow, source tracking, and follow-up automation scans.",
+    limits: "Good for growth work. Live publishing, ad changes, and message sends stay behind approval and connected accounts.",
     cta: "Start Growth"
   },
   {
@@ -35,7 +35,7 @@ const plans = [
     price: "$399/mo",
     fit: "For businesses that want jobs, estimates, invoices, scheduling, and operations visibility.",
     included: ["Everything in Growth", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
-    limits: "For teams that need sales, service work, payment visibility, and reporting in the same workspace.",
+    limits: "Good for teams that need sales, service work, payment visibility, and reporting in the same workspace.",
     cta: "Start Operator"
   },
   {
@@ -47,6 +47,23 @@ const plans = [
     limits: "For larger teams, multiple brands, and implementation support.",
     cta: "Talk to Ferocity"
   }
+];
+
+const includedByDefault = [
+  "Public demo and product tour",
+  "Safe setup request form",
+  "One workspace per email when automatic creation is selected",
+  "Lead source tracking seeds for website, SEO, reviews, calls, ads, referrals, and MarketplacePro",
+  "Private dashboard protection for workspace data"
+];
+
+const paidOrConnected = [
+  "Higher lead, proof, workspace, brand, and user limits",
+  "Full AI setup runs and larger content generation",
+  "Live email/SMS sends through verified providers",
+  "Payment links, invoice reminders, and ledger workflows",
+  "Publishing to customer websites, hosted pages, GBP, ads, or MarketplacePro sync",
+  "Advanced automations, background scans, reporting, and implementation help"
 ];
 
 export default function PricingPage() {
@@ -70,18 +87,18 @@ export default function PricingPage() {
           <p className="eyebrow">Plan structure</p>
           <h1>Choose the level that matches how much of the business Ferocity runs.</h1>
           <p className="muted">
-            Start with lead capture and follow-up, add marketing and reviews, then expand into jobs, estimates, invoices, reporting,
-            and multi-brand operations.
+            Free is for evaluation and light capture. Paid tiers unlock higher usage, stronger automations, payments, integrations,
+            publishing workflows, and deeper AI setup.
           </p>
           <div className="button-row">
-            <Link className="button" href="/demo/tour">
+            <Link className="button" href="/start?source=pricing">
+              Start setup
+            </Link>
+            <Link className="button secondary-button" href="/demo/tour">
               Take the tour
             </Link>
             <Link className="button secondary-button" href="/automations">
               See automations
-            </Link>
-            <Link className="button secondary-button" href="/start?source=pricing">
-              Request access
             </Link>
           </div>
         </section>
@@ -103,15 +120,36 @@ export default function PricingPage() {
                 ))}
               </ul>
               <p className="muted">{plan.limits}</p>
-              <form action="/api/billing/checkout" method="post">
-                <input name="plan" type="hidden" value={plan.key} />
-                <input name="source" type="hidden" value="pricing" />
-                <button className="button" type="submit">
-                  {plan.cta}
-                </button>
-              </form>
+              <Link className="button" href={`/start?source=pricing&plan=${plan.key}`}>
+                {plan.cta}
+              </Link>
             </article>
           ))}
+        </section>
+
+        <section className="feature-split">
+          <article className="panel">
+            <h2>Included before payment</h2>
+            <ul className="plain-list">
+              {includedByDefault.map((item) => (
+                <li key={item}>
+                  <CheckCircle2 size={16} />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+          <article className="panel">
+            <h2>Paid plan or connected account</h2>
+            <ul className="plain-list">
+              {paidOrConnected.map((item) => (
+                <li key={item}>
+                  <ShieldCheck size={16} />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
         </section>
 
         <section className="panel">

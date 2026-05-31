@@ -1368,6 +1368,38 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.feature-group-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.feature-group-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.feature-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.feature-mini-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.feature-mini-card h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
 .features-hero {
   max-width: 980px;
 }
@@ -2548,6 +2580,7 @@ pre {
   .feature-loop,
   .feature-split,
   .feature-automation-list,
+  .feature-group-grid,
   .status-grid,
   .setup-step-grid,
   .public-grid,

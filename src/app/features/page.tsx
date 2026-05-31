@@ -16,60 +16,74 @@ const marketplaceProUrl = "https://marketplacepro.live";
 
 const sections = [
   {
+    group: "Growth",
     title: "Get more leads",
     body: "Plan local SEO, service pages, review flow, GBP activity, referral/community ideas, and campaign tracking.",
     examples: ["Service page drafts", "Location page planning", "GBP post drafts", "Source tracking"],
     icon: Megaphone
   },
   {
+    group: "Sales",
     title: "Respond faster",
     body: "Turn new leads, missed calls, and quote requests into visible tasks and suggested replies.",
     examples: ["Speed-to-lead draft", "Unanswered lead alert", "Conversation timeline", "Internal notes"],
     icon: MessageSquareText
   },
   {
+    group: "Sales",
     title: "Automate follow-up",
     body: "Create reminders and drafts for the moments that usually get forgotten.",
     examples: ["Stale lead recovery", "Estimate follow-up", "Invoice follow-up", "Callback reminders"],
     icon: CalendarClock
   },
   {
+    group: "Growth",
     title: "Build SEO safely",
     body: "Create useful, reviewable content plans that tie back to services, towns, jobs, and lead capture.",
     examples: ["Draft-first pages", "SEO refreshes", "Quality checks", "No thin auto-publishing"],
     icon: FileText
   },
   {
+    group: "Proof",
     title: "Ask for reviews",
     body: "Create review request drafts after completed work and route unhappy feedback before a public ask.",
     examples: ["Review request workflow", "Negative-experience interception", "Response drafts", "Google profile workflow"],
     icon: Star
   },
   {
+    group: "Proof",
     title: "Capture customer proof",
     body: "Collect approved testimonials, before/after links, customer stories, and consent after real jobs.",
     examples: ["Photo links", "Video links", "Consent tracking", "Proof-to-content drafts"],
     icon: CheckCircle2
   },
   {
+    group: "Revenue",
     title: "Track revenue",
     body: "Connect marketing activity to leads, estimates, booked jobs, paid invoices, and reviews.",
     examples: ["Lead source ROI", "Pipeline value", "Closed revenue", "Campaign learning"],
     icon: ChartNoAxesCombined
   },
   {
+    group: "Setup",
     title: "Configure with AI",
     body: "Let a business owner describe what they need in normal words, then review setup changes before applying.",
     examples: ["Build My System", "Preview changes", "Apply safely", "Change log"],
     icon: Bot
   },
   {
+    group: "Control",
     title: "Keep control",
     body: "Customer messages, publishing, connected accounts, and spending stay under review.",
     examples: ["Usage limits", "Approval gates", "Audit logs", "Bring your own accounts"],
     icon: ShieldCheck
   }
 ];
+
+const featureGroups = ["Setup", "Growth", "Sales", "Proof", "Revenue", "Control"].map((name) => ({
+  name,
+  items: sections.filter((section) => section.group === name)
+}));
 
 const operatingLoop = [
   {
@@ -224,22 +238,29 @@ export default function FeaturesPage() {
           </div>
         </section>
 
-        <section className="public-grid feature-grid">
-          {sections.map((section) => {
-            const Icon = section.icon;
-            return (
-              <article className="panel" key={section.title}>
-                <Icon size={20} />
-                <h2>{section.title}</h2>
-                <p className="muted">{section.body}</p>
-                <ul className="plain-list">
-                  {section.examples.map((example) => (
-                    <li key={example}>{example}</li>
-                  ))}
-                </ul>
-              </article>
-            );
-          })}
+        <section className="feature-group-stack">
+          {featureGroups.map((group) => (
+            <article className="panel feature-group-panel" key={group.name}>
+              <p className="eyebrow">{group.name}</p>
+              <div className="feature-group-grid">
+                {group.items.map((section) => {
+                  const Icon = section.icon;
+                  return (
+                    <div className="feature-mini-card" key={section.title}>
+                      <Icon size={20} />
+                      <h2>{section.title}</h2>
+                      <p className="muted">{section.body}</p>
+                      <ul className="plain-list">
+                        {section.examples.map((example) => (
+                          <li key={example}>{example}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
         </section>
 
         <section className="final-cta">

@@ -22,6 +22,15 @@ const leadSourceOptions = [
   ["manual_referrals", "Referrals / manual leads"]
 ];
 
+const websiteConnectionOptions = [
+  ["not_sure", "Not sure yet"],
+  ["add_quote_link", "Add a quote link or button"],
+  ["embed_form", "Embed a Ferocity form"],
+  ["hosted_pages", "Use Ferocity hosted pages"],
+  ["publish_to_existing_site", "Publish approved SEO/content to my site"],
+  ["marketplacepro", "Connect MarketplacePro leads"]
+];
+
 export default async function StartPage({
   searchParams
 }: {
@@ -120,6 +129,16 @@ export default async function StartPage({
               <input name="websiteUrl" type="url" placeholder="https://example.com" />
             </label>
             <label>
+              How should Ferocity connect to the website?
+              <select name="websiteConnectionPlan" defaultValue="not_sure">
+                {websiteConnectionOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               Main goal
               <select name="mainGoal" defaultValue="seo_reviews">
                 {goals.map(([value, label]) => (
@@ -178,7 +197,7 @@ export default async function StartPage({
             <div className="stacked-list">
               {[
                 "Free can start with a small lead capture workspace. Paid tiers unlock higher usage, automations, payments, and integrations.",
-                "The website connection plan shows what to add: quote link, embedded form, tracking helper, or hosted page.",
+                "The website connection plan shows what to add: quote link, embedded form, hosted page, approved SEO publishing, or MarketplacePro source.",
                 "Lead sources are mapped so forms, SEO, ads, reviews, calls, and MarketplacePro can be tracked.",
                 "If selected, Ferocity creates a locked trial workspace and owner invite link.",
                 "Customer messages, publishing, ad changes, and billing actions stay under your control.",
