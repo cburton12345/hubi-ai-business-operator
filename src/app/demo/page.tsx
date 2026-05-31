@@ -107,6 +107,9 @@ export default function DemoPage() {
               <Link className="button secondary-button" href="/start?source=demo">
                 Start my setup
               </Link>
+              <Link className="button secondary-button" href="/pricing">
+                View plans
+              </Link>
             </div>
           </div>
 
@@ -222,8 +225,8 @@ export default function DemoPage() {
             <Link className="button" href="/start?source=demo_bottom">
               Start setup <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/features">
-              See features
+            <Link className="button secondary-button" href="/pricing">
+              Compare plans
             </Link>
           </div>
         </section>

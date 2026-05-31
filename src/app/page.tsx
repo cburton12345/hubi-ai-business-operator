@@ -96,14 +96,14 @@ export default function HomePage() {
               Ferocity helps a business keep SEO, reviews, leads, estimates, jobs, invoices, reminders, and revenue tracking in one place.
             </p>
             <div className="button-row">
-              <Link className="button" href="/demo">
-                See the demo <ArrowRight size={16} />
+              <Link className="button" href="/start?source=home">
+                Start my setup <ArrowRight size={16} />
               </Link>
-              <Link className="button secondary-button" href="/start?source=home">
-                Start my setup
+              <Link className="button secondary-button" href="/pricing">
+                View plans
               </Link>
-              <Link className="button secondary-button" href="/automations">
-                View automations
+              <Link className="button secondary-button" href="/demo">
+                See demo
               </Link>
             </div>
             <div className="trust-strip" aria-label="Safety controls">
@@ -300,16 +300,16 @@ export default function HomePage() {
 
         <section className="final-cta">
           <div>
-            <p className="eyebrow">See it safely</p>
-            <h2>Show the demo publicly. Keep the real dashboard private.</h2>
+            <p className="eyebrow">Start path</p>
+            <h2>See the system, choose a plan, then set up the business.</h2>
             <p>Public pages explain the system. Real leads, settings, automations, billing, and workspace data stay behind sign-in.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/demo">
-              Open demo <ArrowRight size={16} />
+            <Link className="button" href="/start?source=home_bottom">
+              Start setup <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/start?source=home_bottom">
-              Request setup
+            <Link className="button secondary-button" href="/pricing">
+              View plans
             </Link>
           </div>
         </section>

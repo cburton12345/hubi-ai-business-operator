@@ -141,14 +141,14 @@ export default function FeaturesPage() {
             tracking to work together without making the owner dig through disconnected tools.
           </p>
           <div className="button-row">
-            <Link className="button" href="/demo/tour">
-              Take the tour
-            </Link>
-            <Link className="button secondary-button" href="/automations">
-              See automations
-            </Link>
-            <Link className="button secondary-button" href="/start?source=features">
+            <Link className="button" href="/start?source=features">
               Start my setup
+            </Link>
+            <Link className="button secondary-button" href="/pricing">
+              View plans
+            </Link>
+            <Link className="button secondary-button" href="/demo">
+              See demo
             </Link>
           </div>
         </section>
@@ -162,11 +162,11 @@ export default function FeaturesPage() {
               and fast follow-up." Ferocity turns that into a setup checklist with drafts, tasks, safety settings, and review steps.
             </p>
             <div className="button-row">
-              <Link className="button secondary-button" href="/app/build-system">
-                Open Build My System
+              <Link className="button" href="/start?source=features_setup">
+                Start setup
               </Link>
-              <Link className="button secondary-button" href="/demo">
-                View demo workspace
+              <Link className="button secondary-button" href="/pricing">
+                Compare tiers
               </Link>
             </div>
           </div>
@@ -251,11 +251,11 @@ export default function FeaturesPage() {
             </p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/demo">
-              Open demo
-            </Link>
-            <Link className="button secondary-button" href="/start?source=features_bottom">
+            <Link className="button" href="/start?source=features_bottom">
               Start setup
+            </Link>
+            <Link className="button secondary-button" href="/pricing">
+              View plans
             </Link>
           </div>
         </section>

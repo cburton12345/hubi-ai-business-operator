@@ -78,14 +78,14 @@ export default function AutomationsPage() {
             publishing, connected accounts, and ad spend stay under review and approval.
           </p>
           <div className="button-row">
-            <Link className="button" href="/demo/tour">
-              Take the tour
-            </Link>
-            <Link className="button secondary-button" href="/integrations">
-              See integrations
-            </Link>
-            <Link className="button secondary-button" href="/start?source=automations">
+            <Link className="button" href="/start?source=automations">
               Start my setup
+            </Link>
+            <Link className="button secondary-button" href="/pricing">
+              View plans
+            </Link>
+            <Link className="button secondary-button" href="/demo/tour">
+              Take the tour
             </Link>
           </div>
         </section>
@@ -120,11 +120,11 @@ export default function AutomationsPage() {
             <ShieldCheck size={22} />
           </div>
           <div className="button-row">
-            <Link className="mini-button" href="/demo/acme-roofing">
-              View roofing example
+            <Link className="mini-button" href="/start?source=automations_safe">
+              Start setup
             </Link>
-            <Link className="mini-button secondary-button" href="/about">
-              Learn more
+            <Link className="mini-button secondary-button" href="/pricing">
+              Compare plans
             </Link>
           </div>
         </section>
@@ -139,6 +139,14 @@ export default function AutomationsPage() {
               </p>
             </div>
             <MailCheck size={22} />
+          </div>
+          <div className="button-row">
+            <Link className="mini-button" href="/start?source=automations_tools">
+              Request setup
+            </Link>
+            <Link className="mini-button secondary-button" href="/pricing">
+              See tiers
+            </Link>
           </div>
         </section>
       </section>

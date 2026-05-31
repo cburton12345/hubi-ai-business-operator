@@ -24,9 +24,11 @@ export default function PublicIntegrationsPage() {
           <Link className="brand-mark" href="/">Ferocity</Link>
           <div>
             <Link href="/about">About</Link>
+            <Link href="/demo">Demo</Link>
+            <Link href="/pricing">Plans</Link>
+            <Link href="/start">Start</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
-            <Link className="mini-button" href="/app/integrations">Manage</Link>
           </div>
         </nav>
         <section className="public-hero">
@@ -36,6 +38,14 @@ export default function PublicIntegrationsPage() {
             Keep trusted systems for payments, email, phones, calendars, ads, marketplace leads, and public profiles. Ferocity organizes
             the work around them.
           </p>
+          <div className="button-row">
+            <Link className="button" href="/start?source=integrations">
+              Start setup
+            </Link>
+            <Link className="button secondary-button" href="/pricing">
+              View plans
+            </Link>
+          </div>
         </section>
         <section className="panel">
           <h2>Connection Paths</h2>
@@ -89,6 +99,23 @@ export default function PublicIntegrationsPage() {
                 <span>{body}</span>
               </div>
             ))}
+          </div>
+        </section>
+        <section className="final-cta">
+          <div>
+            <p className="eyebrow">Ready path</p>
+            <h2>Start with the business workflow. Connect tools when they matter.</h2>
+            <p>
+              Ferocity can start with lead capture, setup planning, or follow-up before every integration is connected.
+            </p>
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/start?source=integrations_bottom">
+              Start setup
+            </Link>
+            <Link className="button secondary-button" href="/pricing">
+              Compare plans
+            </Link>
           </div>
         </section>
       </section>
