@@ -129,9 +129,10 @@ with check (public.has_tenant_role(tenant_id, array['owner', 'admin']));
 
 insert into public.billing_plans (plan_key, name, monthly_price_cents, included_workspaces, included_brands, included_ai_runs, metadata_json)
 values
-  ('starter', 'Starter', 9900, 1, 2, 200, '{"stripeConnected": false}'::jsonb),
-  ('growth', 'Growth', 29900, 3, 10, 1000, '{"stripeConnected": false}'::jsonb),
-  ('operator', 'Operator', 79900, 10, 50, 5000, '{"stripeConnected": false}'::jsonb)
+  ('free', 'Free', 0, 1, 1, 25, '{"stripeConnected": false, "leadLimit": 25, "ferocityBranding": true}'::jsonb),
+  ('starter', 'Starter', 7900, 1, 2, 200, '{"stripeConnected": false}'::jsonb),
+  ('growth', 'Growth', 19900, 3, 10, 1000, '{"stripeConnected": false}'::jsonb),
+  ('operator', 'Operator', 39900, 10, 50, 5000, '{"stripeConnected": false}'::jsonb)
 on conflict (plan_key) do update
 set
   name = excluded.name,

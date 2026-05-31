@@ -22,6 +22,18 @@ export default async function OperatorSetupPage() {
       title="Choose What Ferocity Should Run"
       description="Turn on the parts the business needs now. Keep advanced tools and live integrations off until the plan, keys, and approval rules are ready."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Not sure what to choose?</h2>
+            <p className="muted">Describe the business and Ferocity will prepare a reviewed setup plan before changing anything.</p>
+          </div>
+          <Link className="button" href="/app/build-system">
+            Build My System
+          </Link>
+        </div>
+      </section>
+
       <div className="grid section-actions">
         {dashboard.verticals.map((vertical) => (
           <section className="panel span-6" key={vertical.key}>
@@ -110,7 +122,12 @@ export default async function OperatorSetupPage() {
         <h2>
           <PlugZap size={18} /> Tool Connections
         </h2>
-        <p className="muted">These are not live switches. They show what must be true before Ferocity sends, publishes, syncs, or charges.</p>
+        <div className="list-row flush-row">
+          <p className="muted">These are not live switches. They show what must be true before Ferocity sends, publishes, syncs, or charges.</p>
+          <Link className="mini-button" href="/app/controls">
+            Service controls
+          </Link>
+        </div>
         <div className="grid">
           {dashboard.providers.map((provider) => (
             <section className="span-4" key={`${provider.providerKey}-${provider.label}`}>

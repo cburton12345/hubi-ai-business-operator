@@ -197,6 +197,9 @@ set plain_language_goal = excluded.plain_language_goal,
 
 insert into public.plan_feature_matrix (plan_key, feature_key, feature_label, included, limit_label, sort_order, metadata_json)
 values
+  ('free', 'lead_capture', 'Lead Capture', true, '1 form and limited monthly leads', 5, '{"freeTier":true}'::jsonb),
+  ('free', 'source_tracking', 'Source Tracking', true, 'Basic website/source tracking', 6, '{"freeTier":true}'::jsonb),
+  ('free', 'manual_tasks', 'Manual Tasks', true, 'Manual follow-up only', 7, '{"freeTier":true}'::jsonb),
   ('starter', 'get_leads', 'Get Leads', true, 'Core SEO drafts and lead capture', 10, '{}'::jsonb),
   ('starter', 'follow_up_basic', 'Basic Follow Up', true, 'Manual follow-up and draft replies', 20, '{}'::jsonb),
   ('starter', 'quality_guardrails', 'Quality Guardrails', true, 'Review content before publishing', 30, '{}'::jsonb),

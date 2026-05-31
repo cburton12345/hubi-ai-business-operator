@@ -41,6 +41,9 @@ export default async function SeoAutopilotPage() {
         <Link className="button secondary-button" href="/app/review">
           <FileText size={16} /> Review drafts
         </Link>
+        <Link className="button secondary-button" href="/app/sites">
+          Hosted pages
+        </Link>
         <Link className="button secondary-button" href="/app/brands">
           Brand SEO data
         </Link>

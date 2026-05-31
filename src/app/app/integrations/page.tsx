@@ -11,6 +11,9 @@ export default async function IntegrationsPage() {
   const rows = await getIntegrationRows();
   const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
   const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
+  const connected = rows.filter((row) => row.status === "connected" || row.accountStatus === "connected").length;
+  const missingKeys = rows.filter((row) => row.missingEnvVars.length > 0).length;
+  const liveActions = rows.filter((row) => row.liveActionsEnabled).length;
 
   return (
     <QueuePageShell
@@ -18,6 +21,32 @@ export default async function IntegrationsPage() {
       title="Connect The Outside Tools"
       description="Ferocity should route work to proven providers, not rebuild them. Use managed defaults when useful, then switch to customer-owned accounts when keys, permissions, and approval rules are ready."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Provider Readiness</h2>
+            <p className="muted">Connect the tools in steps. Keys and OAuth can be added later; live actions stay off until reviewed.</p>
+          </div>
+          <a className="button" href="/app/build-system">
+            Build My System
+          </a>
+        </div>
+        <div className="grid section-actions">
+          <section className="panel span-4 metric">
+            <span className="muted">Connected</span>
+            <strong>{connected}</strong>
+          </section>
+          <section className="panel span-4 metric">
+            <span className="muted">Need keys</span>
+            <strong>{missingKeys}</strong>
+          </section>
+          <section className="panel span-4 metric">
+            <span className="muted">Live actions on</span>
+            <strong>{liveActions}</strong>
+          </section>
+        </div>
+      </section>
+
       <section className="panel span-12 section-actions">
         <div className="list-row flush-row">
           <div>

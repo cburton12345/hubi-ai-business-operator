@@ -26,6 +26,8 @@ export type ServiceJobDetail = {
   dispatcherNotes: string;
   completionNotes: string;
   nextAction: string;
+  proofRequests: { id: string; publicToken: string; requestType: string; status: string; createdAt: string; url: string }[];
+  proofSubmissions: { id: string; title: string; status: string; assetCount: number; createdAt: string }[];
 };
 
 export type ServiceInvoiceDetail = {
@@ -36,10 +38,14 @@ export type ServiceInvoiceDetail = {
   status: string;
   total: string;
   amountPaid: string;
+  balanceDue: string;
   dueDate: string;
   internalNotes: string;
   paymentNotes: string;
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
+  paymentLinks: { id: string; provider: string; status: string; amount: string; paymentUrl: string; createdAt: string }[];
+  payments: { id: string; provider: string; status: string; amount: string; receivedAt: string; note: string }[];
+  ledgerEntries: { id: string; entryType: string; direction: string; amount: string; description: string; occurredAt: string }[];
 };
 
 function formatDateTime(start: Date | null, end: Date | null) {
@@ -109,28 +115,55 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
 
 export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const result = await queryPostgres<{
-    id: string;
-    customer_id: string;
-    customer_name: string;
-    title: string;
-    status: string;
-    scheduled_start: Date | null;
-    scheduled_end: Date | null;
-    service_area: string | null;
-    dispatcher_notes: string | null;
-    completion_notes: string | null;
-    ai_next_action: string | null;
-  }>(
-    `
-    select j.id, j.customer_id, c.name as customer_name, j.title, j.status, j.scheduled_start, j.scheduled_end, j.service_area, j.dispatcher_notes, j.completion_notes, j.ai_next_action
-    from public.service_jobs j
-    join public.customers c on c.id = j.customer_id
-    where j.tenant_id = $1 and j.id = $2
-    limit 1
-    `,
-    [workspaceId, jobId]
-  );
+  const [result, requestsResult, submissionsResult] = await Promise.all([
+    queryPostgres<{
+      id: string;
+      customer_id: string;
+      customer_name: string;
+      title: string;
+      status: string;
+      scheduled_start: Date | null;
+      scheduled_end: Date | null;
+      service_area: string | null;
+      dispatcher_notes: string | null;
+      completion_notes: string | null;
+      ai_next_action: string | null;
+    }>(
+      `
+      select j.id, j.customer_id, c.name as customer_name, j.title, j.status, j.scheduled_start, j.scheduled_end, j.service_area, j.dispatcher_notes, j.completion_notes, j.ai_next_action
+      from public.service_jobs j
+      join public.customers c on c.id = j.customer_id
+      where j.tenant_id = $1 and j.id = $2
+      limit 1
+      `,
+      [workspaceId, jobId]
+    ),
+    queryPostgres<{ id: string; public_token: string; request_type: string; status: string; created_at: Date }>(
+      `
+      select id, public_token, request_type, status, created_at
+      from public.ugc_capture_requests
+      where tenant_id = $1 and job_id = $2
+      order by created_at desc
+      limit 10
+      `,
+      [workspaceId, jobId]
+    ),
+    queryPostgres<{ id: string; title: string | null; status: string; created_at: Date; asset_count: string }>(
+      `
+      select
+        s.id,
+        s.title,
+        s.status,
+        s.created_at,
+        (select count(*) from public.ugc_assets a where a.submission_id = s.id)::text as asset_count
+      from public.ugc_submissions s
+      where s.tenant_id = $1 and s.job_id = $2
+      order by s.created_at desc
+      limit 10
+      `,
+      [workspaceId, jobId]
+    )
+  ]);
   const job = result?.rows[0];
   if (!job) return null;
 
@@ -144,13 +177,28 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
     serviceArea: job.service_area ?? "",
     dispatcherNotes: job.dispatcher_notes ?? "",
     completionNotes: job.completion_notes ?? "",
-    nextAction: job.ai_next_action ?? ""
+    nextAction: job.ai_next_action ?? "",
+    proofRequests: (requestsResult?.rows ?? []).map((request) => ({
+      id: request.id,
+      publicToken: request.public_token,
+      requestType: request.request_type,
+      status: request.status,
+      createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(request.created_at),
+      url: `/proof/${request.public_token}`
+    })),
+    proofSubmissions: (submissionsResult?.rows ?? []).map((submission) => ({
+      id: submission.id,
+      title: submission.title ?? "Customer proof submission",
+      status: submission.status,
+      assetCount: Number(submission.asset_count ?? 0),
+      createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(submission.created_at)
+    }))
   };
 }
 
 export async function getServiceInvoiceDetail(invoiceId: string): Promise<ServiceInvoiceDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [invoiceResult, itemsResult] = await Promise.all([
+  const [invoiceResult, itemsResult, linksResult, paymentsResult, ledgerResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -180,6 +228,57 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       order by position, name
       `,
       [workspaceId, invoiceId]
+    ),
+    queryPostgres<{
+      id: string;
+      provider: string;
+      status: string;
+      amount_cents: number;
+      payment_url: string | null;
+      created_at: Date;
+    }>(
+      `
+      select id, provider, status, amount_cents, payment_url, created_at
+      from public.service_invoice_payment_links
+      where tenant_id = $1 and invoice_id = $2
+      order by created_at desc
+      limit 10
+      `,
+      [workspaceId, invoiceId]
+    ),
+    queryPostgres<{
+      id: string;
+      provider: string;
+      status: string;
+      amount_cents: number;
+      received_at: Date;
+      metadata_json: { note?: string } | null;
+    }>(
+      `
+      select id, provider, status, amount_cents, received_at, metadata_json
+      from public.service_invoice_payments
+      where tenant_id = $1 and invoice_id = $2
+      order by received_at desc
+      limit 10
+      `,
+      [workspaceId, invoiceId]
+    ),
+    queryPostgres<{
+      id: string;
+      entry_type: string;
+      direction: string;
+      amount_cents: number;
+      description: string | null;
+      occurred_at: Date;
+    }>(
+      `
+      select id, entry_type, direction, amount_cents, description, occurred_at
+      from public.service_ledger_entries
+      where tenant_id = $1 and invoice_id = $2
+      order by occurred_at desc
+      limit 20
+      `,
+      [workspaceId, invoiceId]
     )
   ]);
   const invoice = invoiceResult?.rows[0];
@@ -193,6 +292,7 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
     status: invoice.status,
     total: formatMoney(invoice.total_cents),
     amountPaid: formatMoney(invoice.amount_paid_cents),
+    balanceDue: formatMoney(Math.max(invoice.total_cents - invoice.amount_paid_cents, 0)),
     dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date",
     internalNotes: invoice.internal_notes ?? "",
     paymentNotes: invoice.manual_payment_notes ?? "",
@@ -204,6 +304,30 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       unitPrice: formatMoney(item.unit_price_cents),
       unitPriceValue: centsToDollars(item.unit_price_cents),
       total: formatMoney(item.total_cents)
+    })),
+    paymentLinks: (linksResult?.rows ?? []).map((link) => ({
+      id: link.id,
+      provider: link.provider,
+      status: link.status,
+      amount: formatMoney(link.amount_cents),
+      paymentUrl: link.payment_url ?? "",
+      createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(link.created_at)
+    })),
+    payments: (paymentsResult?.rows ?? []).map((payment) => ({
+      id: payment.id,
+      provider: payment.provider,
+      status: payment.status,
+      amount: formatMoney(payment.amount_cents),
+      receivedAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(payment.received_at),
+      note: payment.metadata_json?.note ?? ""
+    })),
+    ledgerEntries: (ledgerResult?.rows ?? []).map((entry) => ({
+      id: entry.id,
+      entryType: entry.entry_type,
+      direction: entry.direction,
+      amount: formatMoney(entry.amount_cents),
+      description: entry.description ?? "",
+      occurredAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(entry.occurred_at)
     }))
   };
 }

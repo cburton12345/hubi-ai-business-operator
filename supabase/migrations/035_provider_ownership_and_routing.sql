@@ -64,7 +64,17 @@ insert into public.provider_accounts (
   tenant_id, provider_key, display_name, status, credentials_status, ownership_mode,
   sender_identity, monthly_included_units, overage_policy, metadata_json
 )
-select t.id, provider_key, display_name, status, credentials_status, ownership_mode, sender_identity, monthly_included_units, overage_policy, metadata_json
+select
+  t.id,
+  defaults.provider_key,
+  defaults.display_name,
+  defaults.status,
+  defaults.credentials_status,
+  defaults.ownership_mode,
+  defaults.sender_identity,
+  defaults.monthly_included_units,
+  defaults.overage_policy,
+  defaults.metadata_json
 from public.tenants t
 cross join (
   values
@@ -88,7 +98,14 @@ where provider_key in ('twilio', 'email_provider', 'google_business_profile', 'c
 insert into public.provider_routing_rules (
   tenant_id, action_type, default_provider_key, ownership_mode, fallback_provider_key, plain_language_rule, metadata_json
 )
-select t.id, action_type, default_provider_key, ownership_mode, fallback_provider_key, plain_language_rule, metadata_json
+select
+  t.id,
+  defaults.action_type,
+  defaults.default_provider_key,
+  defaults.ownership_mode,
+  defaults.fallback_provider_key,
+  defaults.plain_language_rule,
+  defaults.metadata_json
 from public.tenants t
 cross join (
   values

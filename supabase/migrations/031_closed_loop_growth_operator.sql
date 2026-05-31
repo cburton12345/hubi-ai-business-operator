@@ -236,7 +236,13 @@ using (public.has_tenant_role(tenant_id, array['owner', 'admin']))
 with check (public.has_tenant_role(tenant_id, array['owner', 'admin']));
 
 insert into public.workspace_feature_entitlements (tenant_id, feature_key, status, usage_limit, usage_period, metadata_json)
-select t.id, feature_key, status, usage_limit, usage_period, metadata_json
+select
+  t.id,
+  defaults.feature_key,
+  defaults.status,
+  defaults.usage_limit,
+  defaults.usage_period,
+  defaults.metadata_json
 from public.tenants t
 cross join (
   values

@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { queryPostgres } from "@/lib/db/postgres";
 import type { PublicLeadInput } from "@/lib/leads/schemas";
 
@@ -65,6 +66,15 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
       ok: false,
       status: 404,
       error: "Lead form was not found."
+    };
+  }
+
+  const limit = await checkLeadIntakeLimits(form.tenant_id);
+  if (!limit.ok) {
+    return {
+      ok: false,
+      status: limit.status,
+      error: limit.error
     };
   }
 
@@ -173,6 +183,15 @@ async function createPublicLeadWithPostgres(
       ok: false,
       status: 404,
       error: "Lead form was not found."
+    };
+  }
+
+  const limit = await checkLeadIntakeLimits(form.tenant_id);
+  if (!limit.ok) {
+    return {
+      ok: false,
+      status: limit.status,
+      error: limit.error
     };
   }
 

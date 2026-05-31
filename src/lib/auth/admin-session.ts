@@ -13,7 +13,7 @@ export function isAdminTokenValid(token: string | undefined | null) {
 
 export async function hasAdminSession() {
   if (!isAdminTokenConfigured()) {
-    return process.env.NODE_ENV !== "production";
+    return false;
   }
 
   const cookieStore = await cookies();

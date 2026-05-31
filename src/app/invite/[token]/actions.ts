@@ -7,12 +7,19 @@ import { appSessionCookieName } from "@/lib/auth/session";
 import { hashPassword, hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
+import { env } from "@/lib/env";
 
 const acceptInviteSchema = z.object({
   token: z.string().min(20),
   name: z.string().min(1).max(160),
   password: z.string().min(8).max(200)
 });
+
+function appUrl(path: string) {
+  const baseUrl = env.FEROCITY_APP_URL ?? "http://localhost:3000";
+  return new URL(path, baseUrl).toString();
+}
 
 export async function acceptInviteAction(formData: FormData) {
   const parsed = acceptInviteSchema.safeParse({
@@ -98,6 +105,26 @@ export async function acceptInviteAction(formData: FormData) {
     [invite.id, userId]
   );
 
+  await sendTransactionalEmail({
+    to: invite.email,
+    subject: "Your Ferocity account is ready",
+    text: `Hi ${parsed.data.name.trim()},
+
+Your Ferocity account is ready.
+
+You can open your workspace here:
+${appUrl("/app")}
+
+Start with Build My System if you want Ferocity to guide setup, or use the dashboard to review leads, automations, service ops, and growth work.`,
+    tenantId: invite.tenant_id,
+    eventKey: "invite_accepted",
+    metadata: {
+      inviteId: invite.id,
+      role: invite.role,
+      userId
+    }
+  });
+
   const sessionToken = randomSessionToken();
   await queryPostgres(
     `
@@ -116,5 +143,5 @@ export async function acceptInviteAction(formData: FormData) {
     maxAge: 60 * 60 * 24 * 14
   });
 
-  redirect("/app/onboarding");
+  redirect("/app/welcome");
 }

@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { env } from "@/lib/env";
+import { logAppError } from "@/lib/observability/log-error";
 import { dollarsToCents } from "@/lib/service-ops/money";
+import { makePublicToken } from "@/lib/ugc/proof";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const customerSchema = z.object({
@@ -96,6 +99,16 @@ const deleteInvoiceLineItemSchema = z.object({
   itemId: z.string().uuid()
 });
 
+const paymentRequestSchema = z.object({
+  invoiceId: z.string().uuid()
+});
+
+const manualPaymentSchema = z.object({
+  invoiceId: z.string().uuid(),
+  amountCents: z.number().int().min(1),
+  note: z.string().max(1200).optional()
+});
+
 const customerPortalSchema = z.object({
   customerId: z.string().uuid()
 });
@@ -125,6 +138,11 @@ const inventoryItemSchema = z.object({
 const serviceTaskStatusSchema = z.object({
   taskId: z.string().uuid(),
   status: z.enum(["open", "scheduled", "done", "dismissed"])
+});
+
+const jobProofRequestSchema = z.object({
+  jobId: z.string().uuid(),
+  requestType: z.enum(["job_proof", "review_proof", "testimonial", "before_after", "general"]).default("job_proof")
 });
 
 function emptyToNull(value: string | undefined) {
@@ -624,6 +642,86 @@ export async function updateJobAction(formData: FormData) {
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
 }
 
+export async function createJobProofRequestAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = jobProofRequestSchema.safeParse({
+    jobId: formData.get("jobId"),
+    requestType: formData.get("requestType") || "job_proof"
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const jobResult = await queryPostgres<{
+    brand_id: string | null;
+    customer_id: string;
+    title: string;
+    status: string;
+  }>(
+    `
+    select brand_id, customer_id, title, status
+    from public.service_jobs
+    where tenant_id = $1 and id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.jobId]
+  );
+  const job = jobResult?.rows[0];
+  if (!job) return;
+
+  const token = makePublicToken();
+  const requestResult = await queryPostgres<{ id: string }>(
+    `
+    insert into public.ugc_capture_requests (
+      tenant_id, brand_id, customer_id, job_id, public_token, request_type, status, metadata_json
+    )
+    values ($1, $2, $3, $4, $5, $6, 'ready', $7::jsonb)
+    returning id
+    `,
+    [
+      workspaceId,
+      job.brand_id,
+      job.customer_id,
+      parsed.data.jobId,
+      token,
+      parsed.data.requestType,
+      JSON.stringify({
+        createdFrom: "service_job",
+        jobStatusAtCreation: job.status,
+        sendMode: "manual"
+      })
+    ]
+  );
+
+  const request = requestResult?.rows[0];
+  if (!request) return;
+
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "review",
+    type: "proof_request_created",
+    title: "Customer proof request prepared",
+    body: `Manual proof link prepared for ${job.title}. Send only after review: /proof/${token}`,
+    entityType: "job",
+    entityId: parsed.data.jobId,
+    sourceTable: "ugc_capture_requests",
+    sourceId: request.id,
+    metadata: { publicUrl: `/proof/${token}`, requestType: parsed.data.requestType }
+  });
+
+  await queryPostgres(
+    `
+    insert into public.activity_logs (tenant_id, brand_id, actor_type, action, target_type, target_id, metadata_json)
+    values ($1, $2, 'user', 'service_job_proof_request_created', 'ugc_capture_request', $3, $4::jsonb)
+    `,
+    [workspaceId, job.brand_id, request.id, JSON.stringify({ jobId: parsed.data.jobId, publicUrl: `/proof/${token}` })]
+  );
+
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
+  revalidatePath(`/app/service/customers/${job.customer_id}`);
+  revalidatePath("/app/proof");
+}
+
 export async function updateTechnicianJobAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = technicianJobSchema.safeParse({
@@ -699,6 +797,230 @@ export async function updateInvoiceAction(formData: FormData) {
       emptyToNull(parsed.data.paymentNotes)
     ]
   );
+  const row = result?.rows[0];
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+  if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function prepareInvoicePaymentRequestAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = paymentRequestSchema.safeParse({
+    invoiceId: formData.get("invoiceId")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const invoiceResult = await queryPostgres<{
+    id: string;
+    tenant_id: string;
+    brand_id: string | null;
+    customer_id: string;
+    customer_email: string | null;
+    title: string;
+    total_cents: number;
+    amount_paid_cents: number;
+  }>(
+    `
+    select i.id, i.tenant_id, i.brand_id, i.customer_id, c.email as customer_email, i.title, i.total_cents, i.amount_paid_cents
+    from public.service_invoices i
+    join public.customers c on c.id = i.customer_id
+    where i.tenant_id = $1 and i.id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.invoiceId]
+  );
+  const invoice = invoiceResult?.rows[0];
+  if (!invoice) return;
+
+  const balanceDue = Math.max(invoice.total_cents - invoice.amount_paid_cents, 0);
+  if (balanceDue <= 0) return;
+
+  const requestResult = await queryPostgres<{ id: string }>(
+    `
+    insert into public.service_invoice_payment_links (
+      tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, currency, metadata_json
+    )
+    values (
+      $1, $2, $3, $4, 'stripe', 'draft', $5, 'usd',
+      jsonb_build_object(
+        'mode', 'prepared',
+        'plainStatus', 'Stripe payment collection is prepared. No customer charge is made until an approved link is sent.',
+        'nextStep', 'Connect Stripe keys, account ownership, webhook verification, and approval rules before sending a payment link.'
+      )
+    )
+    returning id
+    `,
+    [workspaceId, invoice.brand_id, invoice.customer_id, invoice.id, balanceDue]
+  );
+  const paymentLinkId = requestResult?.rows[0]?.id;
+  if (!paymentLinkId) return;
+
+  let paymentUrl = "";
+  let requestStatus = "draft";
+
+  if (env.STRIPE_SECRET_KEY) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
+    const body = new URLSearchParams({
+      mode: "payment",
+      "line_items[0][price_data][currency]": "usd",
+      "line_items[0][price_data][product_data][name]": invoice.title,
+      "line_items[0][price_data][unit_amount]": String(balanceDue),
+      "line_items[0][quantity]": "1",
+      success_url: `${appUrl}/portal/payment-success?invoice=${encodeURIComponent(invoice.id)}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/portal/payment-cancel?invoice=${encodeURIComponent(invoice.id)}`,
+      "metadata[ferocity_kind]": "service_invoice_payment",
+      "metadata[tenant_id]": workspaceId,
+      "metadata[invoice_id]": invoice.id,
+      "metadata[customer_id]": invoice.customer_id,
+      "metadata[payment_link_id]": paymentLinkId,
+      "metadata[amount_cents]": String(balanceDue),
+      "metadata[currency]": "usd"
+    });
+
+    if (invoice.customer_email) {
+      body.set("customer_email", invoice.customer_email);
+    }
+
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body
+    });
+
+    if (response.ok) {
+      const session = (await response.json()) as { id?: string; url?: string; payment_intent?: string };
+      paymentUrl = session.url ?? "";
+      requestStatus = paymentUrl ? "ready" : "draft";
+      await queryPostgres(
+        `
+        update public.service_invoice_payment_links
+        set status = $3,
+            provider_checkout_session_id = $4,
+            provider_payment_intent_id = $5,
+            payment_url = $6,
+            metadata_json = metadata_json || $7::jsonb,
+            updated_at = now()
+        where tenant_id = $1 and id = $2
+        `,
+        [
+          workspaceId,
+          paymentLinkId,
+          requestStatus,
+          session.id ?? null,
+          session.payment_intent ?? null,
+          paymentUrl || null,
+          JSON.stringify({ stripeCheckoutPrepared: Boolean(paymentUrl) })
+        ]
+      );
+    } else {
+      const detail = await response.text();
+      await logAppError({
+        source: "app.service.prepareInvoicePaymentRequestAction",
+        message: "Stripe invoice checkout session creation failed.",
+        severity: "warning",
+        metadata: { invoiceId: invoice.id, status: response.status, detail: detail.slice(0, 500) }
+      });
+    }
+  }
+
+  await queryPostgres(
+    `
+    insert into public.service_ledger_entries (
+      tenant_id, brand_id, customer_id, invoice_id, entry_type, direction, amount_cents, currency, description, provider, metadata_json
+    )
+    values (
+      $1, $2, $3, $4, 'payment_requested', 'debit', $5, 'usd',
+      $6,
+      'stripe',
+      jsonb_build_object('paymentLinkId', $7::uuid, 'status', $8::text, 'paymentUrlReady', $9::boolean)
+    )
+    `,
+    [
+      workspaceId,
+      invoice.brand_id,
+      invoice.customer_id,
+      invoice.id,
+      balanceDue,
+      paymentUrl
+        ? "Prepared Stripe checkout link for invoice balance. Send only after review."
+        : "Prepared payment request for invoice balance. No live checkout link was created.",
+      paymentLinkId,
+      requestStatus,
+      Boolean(paymentUrl)
+    ]
+  );
+
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+  revalidatePath(`/app/service/customers/${invoice.customer_id}`);
+}
+
+export async function recordManualInvoicePaymentAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = manualPaymentSchema.safeParse({
+    invoiceId: formData.get("invoiceId"),
+    amountCents: dollarsToCents(formData.get("amount")),
+    note: String(formData.get("note") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ customer_id: string }>(
+    `
+    with invoice as (
+      select id, tenant_id, brand_id, customer_id, total_cents, amount_paid_cents,
+        greatest(total_cents - amount_paid_cents, 0) as balance_due_cents
+      from public.service_invoices
+      where tenant_id = $1 and id = $2
+      limit 1
+    ),
+    bounded as (
+      select *, least($3::integer, balance_due_cents) as payment_cents
+      from invoice
+      where balance_due_cents > 0
+    ),
+    payment as (
+      insert into public.service_invoice_payments (
+        tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, net_cents, currency, paid_at, metadata_json
+      )
+      select tenant_id, brand_id, customer_id, id, 'manual', 'succeeded', payment_cents, payment_cents, 'usd', now(),
+        jsonb_build_object('note', $4::text, 'source', 'manual_record')
+      from bounded
+      where payment_cents > 0
+      returning id, tenant_id, brand_id, customer_id, invoice_id, amount_cents
+    ),
+    ledger as (
+      insert into public.service_ledger_entries (
+        tenant_id, brand_id, customer_id, invoice_id, payment_id, entry_type, direction, amount_cents, currency, description, provider, metadata_json
+      )
+      select tenant_id, brand_id, customer_id, invoice_id, id, 'payment_received', 'credit', amount_cents, 'usd',
+        coalesce(nullif($4::text, ''), 'Manual invoice payment recorded.'),
+        'manual',
+        jsonb_build_object('source', 'manual_record')
+      from payment
+    ),
+    updated as (
+      update public.service_invoices i
+      set amount_paid_cents = least(i.total_cents, i.amount_paid_cents + p.amount_cents),
+          status = case
+            when least(i.total_cents, i.amount_paid_cents + p.amount_cents) >= i.total_cents then 'paid'
+            else 'partially_paid'
+          end,
+          manual_payment_notes = concat_ws(E'\n', nullif(i.manual_payment_notes, ''), nullif($4::text, '')),
+          updated_at = now()
+      from payment p
+      where i.tenant_id = $1 and i.id = p.invoice_id
+      returning i.customer_id
+    )
+    select customer_id from updated
+    `,
+    [workspaceId, parsed.data.invoiceId, parsed.data.amountCents, parsed.data.note ?? ""]
+  );
+
   const row = result?.rows[0];
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);

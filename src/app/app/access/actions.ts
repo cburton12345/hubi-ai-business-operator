@@ -8,6 +8,8 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
+import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const schema = z.object({
@@ -28,6 +30,11 @@ const brandAccessSchema = z.object({
   role: z.enum(["owner", "admin", "operator", "viewer"]),
   notes: z.string().max(600).optional()
 });
+
+function inviteUrl(token: string) {
+  const baseUrl = env.FEROCITY_APP_URL ?? "http://localhost:3000";
+  return new URL(`/invite/${token}`, baseUrl).toString();
+}
 
 export async function createWorkspaceUserAction(formData: FormData) {
   await requirePermission("tenant:manage");
@@ -109,6 +116,11 @@ export async function createWorkspaceInviteAction(formData: FormData) {
   const workspaceId = await getCurrentWorkspaceId();
   const session = await getCurrentAppSession();
   const token = randomSessionToken();
+  const workspaceResult = await queryPostgres<{ name: string; slug: string }>(
+    "select name, slug from public.tenants where id = $1 limit 1",
+    [workspaceId]
+  );
+  const workspace = workspaceResult?.rows[0];
   await queryPostgres(
     `
     insert into public.workspace_invites (tenant_id, email, role, status, invited_by_user_id, invite_token_hash, expires_at, updated_at)
@@ -124,6 +136,24 @@ export async function createWorkspaceInviteAction(formData: FormData) {
     `,
     [workspaceId, parsed.data.email, parsed.data.role, session?.userId ?? null, hashSessionToken(token)]
   );
+
+  await sendTransactionalEmail({
+    to: parsed.data.email,
+    subject: `You're invited to ${workspace?.name ?? "Ferocity"}`,
+    text: `You have been invited to ${workspace?.name ?? "a Ferocity workspace"} as ${parsed.data.role}.
+
+Create your account here:
+${inviteUrl(token)}
+
+This invite expires in 14 days. Ferocity keeps customer messages, publishing, ad changes, and billing actions off until an authorized user reviews them.`,
+    tenantId: workspaceId,
+    eventKey: "workspace_invite",
+    metadata: {
+      workspaceSlug: workspace?.slug,
+      role: parsed.data.role,
+      invitedByUserId: session?.userId ?? null
+    }
+  });
 
   revalidatePath("/app/access");
   redirect(`/app/access?invite=${encodeURIComponent(token)}`);

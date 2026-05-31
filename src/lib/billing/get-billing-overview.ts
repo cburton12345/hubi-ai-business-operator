@@ -21,6 +21,8 @@ export type BillingOverview = {
   usage: {
     brands: number;
     users: number;
+    leadsThisMonth: number;
+    activeForms: number;
     aiRunsThisMonth: number;
     seoDraftsThisMonth: number;
     publishingQueueItems: number;
@@ -57,6 +59,8 @@ export async function getBillingOverview(): Promise<BillingOverview> {
     queryPostgres<{
       brands: string;
       users: string;
+      leads_this_month: string;
+      active_forms: string;
       ai_runs_this_month: string;
       seo_drafts_this_month: string;
       publishing_queue_items: string;
@@ -67,6 +71,8 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       select
         (select count(*) from public.brands where tenant_id = $1 and status = 'active') as brands,
         (select count(*) from public.tenant_users where tenant_id = $1) as users,
+        (select count(*) from public.leads where tenant_id = $1 and created_at >= date_trunc('month', now())) as leads_this_month,
+        (select count(*) from public.forms where tenant_id = $1 and active = true) as active_forms,
         (select count(*) from public.ai_generation_runs where tenant_id = $1 and created_at >= date_trunc('month', now())) as ai_runs_this_month,
         (
           select count(*) from public.ai_drafts
@@ -112,6 +118,8 @@ export async function getBillingOverview(): Promise<BillingOverview> {
   const usage = {
     brands: Number(usageRow?.brands ?? 0),
     users: Number(usageRow?.users ?? 0),
+    leadsThisMonth: Number(usageRow?.leads_this_month ?? 0),
+    activeForms: Number(usageRow?.active_forms ?? 0),
     aiRunsThisMonth: Number(usageRow?.ai_runs_this_month ?? 0),
     seoDraftsThisMonth: Number(usageRow?.seo_drafts_this_month ?? 0),
     publishingQueueItems: Number(usageRow?.publishing_queue_items ?? 0),

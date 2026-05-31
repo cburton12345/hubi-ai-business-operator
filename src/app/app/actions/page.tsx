@@ -1,7 +1,7 @@
 import { CheckCircle2, GitBranch, RefreshCw, ShieldAlert } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getActionQueueDashboard } from "@/lib/actions-queue/get-action-queue";
-import { scanActionQueueAction, updateOutboundActionStatusAction } from "./actions";
+import { scanActionQueueAction, sendApprovedEmailAction, updateOutboundActionStatusAction } from "./actions";
 
 function dateLabel(value: string | null) {
   if (!value) return "Not scheduled";
@@ -59,6 +59,8 @@ export default async function ActionsPage() {
                         {action.actionType} / {action.providerKey} / {action.targetType ?? "no target"} / {dateLabel(action.scheduledFor)}
                       </p>
                       <p className="muted">{action.recipientLabel ?? "No recipient"}</p>
+                      {action.bodyPreview ? <p>{action.bodyPreview}</p> : null}
+                      {action.lastError ? <p className="danger-text">{action.lastError}</p> : null}
                     </div>
                     <div className="inline-actions">
                       <span className={`pill ${action.riskLevel}`}>{action.riskLevel}</span>
@@ -81,6 +83,14 @@ export default async function ActionsPage() {
                   </div>
                   <input name="note" placeholder="Short review note" />
                 </form>
+                {action.actionType === "email_send" && (action.status === "approved" || action.status === "queued") ? (
+                  <form action={sendApprovedEmailAction} className="section-actions">
+                    <input name="actionId" type="hidden" value={action.id} />
+                    <button className="button" type="submit">
+                      Send with Resend
+                    </button>
+                  </form>
+                ) : null}
               </li>
             ))}
             {dashboard.actions.length === 0 ? (

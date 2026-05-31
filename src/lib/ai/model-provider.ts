@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { getServiceGate } from "@/lib/controls/service-gates";
 
 export type AiGenerationRunInput = {
   tenantId: string;
@@ -74,6 +75,21 @@ function parseJsonObject<T>(value: string): T | null {
 
 export async function generateJsonWithProvider<T extends Record<string, unknown>>(input: JsonGenerationInput<T>): Promise<T> {
   const config = providerConfig();
+  const gate = await getServiceGate(input.tenantId, "ai_generation");
+
+  if (!gate.enabled) {
+    await recordAiGenerationRun({
+      tenantId: input.tenantId,
+      brandId: input.brandId,
+      runType: input.runType,
+      prompt: { system: input.system, user: input.user },
+      response: input.fallback,
+      status: "fallback",
+      fallbackUsed: true,
+      errorMessage: `AI generation skipped: ${gate.reason}`
+    });
+    return input.fallback;
+  }
 
   if (config.provider !== "openai" || !config.apiKey) {
     await recordAiGenerationRun({

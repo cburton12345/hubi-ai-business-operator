@@ -184,7 +184,14 @@ begin
 end $$;
 
 insert into public.pipeline_stages (tenant_id, stage_key, name, sort_order, default_probability, is_won, is_lost)
-select t.id, stage_key, name, sort_order, default_probability, is_won, is_lost
+select
+  t.id,
+  defaults.stage_key,
+  defaults.name,
+  defaults.sort_order,
+  defaults.default_probability,
+  defaults.is_won,
+  defaults.is_lost
 from public.tenants t
 cross join (
   values
@@ -198,7 +205,15 @@ cross join (
 on conflict (tenant_id, stage_key) do nothing;
 
 insert into public.communication_templates (tenant_id, name, channel, purpose, subject, body, requires_approval, metadata_json)
-select t.id, name, channel, purpose, subject, body, true, metadata_json
+select
+  t.id,
+  defaults.name,
+  defaults.channel,
+  defaults.purpose,
+  defaults.subject,
+  defaults.body,
+  true,
+  defaults.metadata_json
 from public.tenants t
 cross join (
   values

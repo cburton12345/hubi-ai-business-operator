@@ -10,3 +10,6 @@ coverage/
 *.log
 tsconfig.tsbuildinfo
 .render-generated-admin-token
+
+# Local Netlify folder
+.netlify

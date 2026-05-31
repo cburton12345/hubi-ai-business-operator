@@ -20,17 +20,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!token && !isProduction) {
-    return NextResponse.next();
-  }
-
-  if (!token) {
-    return new NextResponse("Admin access is not configured.", { status: 503 });
-  }
-
   const queryToken = request.nextUrl.searchParams.get("adminToken");
 
-  if (queryToken && queryToken === token) {
+  if (token && queryToken && queryToken === token) {
     const cleanUrl = new URL(request.url);
     cleanUrl.searchParams.delete("adminToken");
 
@@ -47,7 +39,7 @@ export function middleware(request: NextRequest) {
 
   if (
     request.cookies.get(appSessionCookieName)?.value ||
-    request.cookies.get(adminCookieName)?.value === token
+    (token && request.cookies.get(adminCookieName)?.value === token)
   ) {
     return NextResponse.next();
   }

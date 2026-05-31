@@ -1,12 +1,37 @@
 import { notFound } from "next/navigation";
+import { ProofCaptureShell } from "@/app/proof/[token]/page";
 import { getCustomerPortal } from "@/lib/service-ops/get-customer-portal";
+import { getPortalProofContext } from "@/lib/ugc/proof";
 
-export default async function CustomerPortalPage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  const portal = await getCustomerPortal(token);
+export default async function CustomerPortalPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ proof?: string; error?: string; success?: string }>;
+}) {
+  const [{ token }, query] = await Promise.all([params, searchParams]);
+  const [portal, proofContext] = await Promise.all([getCustomerPortal(token), getPortalProofContext(token)]);
 
   if (!portal) {
     notFound();
+  }
+
+  if (query.proof === "1" && proofContext) {
+    return (
+      <ProofCaptureShell
+        cityState={proofContext.location}
+        customerEmail={proofContext.customerEmail}
+        customerName={proofContext.customerName}
+        customerPhone={proofContext.customerPhone}
+        error={query.error}
+        jobTitle={proofContext.jobTitle}
+        mode="portal"
+        organizationName={proofContext.organizationName}
+        success={query.success === "1"}
+        token={token}
+      />
+    );
   }
 
   return (
@@ -15,6 +40,11 @@ export default async function CustomerPortalPage({ params }: { params: Promise<{
         <p className="eyebrow">{portal.organizationName}</p>
         <h1>{portal.customerName}</h1>
         <p className="muted">Customer portal summary for estimates, scheduled work, and invoices. Messages and payments are still handled manually by the business.</p>
+        <div className="button-row">
+          <a className="button" href={`/portal/${token}?proof=1`}>
+            Share job photos or testimonial
+          </a>
+        </div>
 
         <div className="grid portal-summary">
           <section className="panel span-4">

@@ -46,7 +46,9 @@ export async function submitPublicLeadForm(formData: FormData) {
       injuryType: String(formData.get("injuryType") ?? "") || undefined,
       hasAttorney: formData.get("hasAttorney") === "on",
       treatmentReceived: formData.get("treatmentReceived") === "on",
-      legalDisclaimerAcknowledged: formData.get("legalDisclaimerAcknowledged") === "on"
+      legalDisclaimerAcknowledged: formData.get("legalDisclaimerAcknowledged") === "on",
+      pageUrl: String(formData.get("pageUrl") ?? "") || undefined,
+      referrer: String(formData.get("referrer") ?? "") || undefined
     }
   });
 
@@ -63,7 +65,8 @@ export async function submitPublicLeadForm(formData: FormData) {
   const result = await createPublicLead(parsed.data, {});
 
   if (!result.ok) {
-    redirect(`/forms/${encodeURIComponent(publicKey)}?error=1`);
+    const reason = result.status === 402 ? "limit" : "1";
+    redirect(`/forms/${encodeURIComponent(publicKey)}?error=${reason}`);
   }
 
   redirect(`/forms/${encodeURIComponent(publicKey)}/thanks`);

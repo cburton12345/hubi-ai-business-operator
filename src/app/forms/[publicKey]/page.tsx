@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { submitPublicLeadForm } from "@/app/forms/[publicKey]/actions";
 import { getPublicFormProfile } from "@/lib/forms/get-public-form-profile";
 
@@ -14,12 +15,28 @@ export default async function PublicLeadFormPage({
   searchParams
 }: {
   params: Promise<{ publicKey: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_term?: string;
+    utm_content?: string;
+    source?: string;
+    campaign?: string;
+    page_url?: string;
+    referrer?: string;
+  }>;
 }) {
   const { publicKey } = await params;
   const query = await searchParams;
   const profile = await getPublicFormProfile(publicKey);
   const leadType = defaultLeadType(profile?.businessModel ?? "local_service");
+  const utmSource = query.utm_source ?? query.source ?? "";
+  const utmMedium = query.utm_medium ?? "";
+  const utmCampaign = query.utm_campaign ?? query.campaign ?? "";
+  const pageUrl = query.page_url ?? "";
+  const referrer = query.referrer ?? "";
 
   return (
     <main className="page-shell">
@@ -37,11 +54,13 @@ export default async function PublicLeadFormPage({
         <form action={submitPublicLeadForm} className="panel form-stack auth-panel">
           <input name="formPublicKey" type="hidden" value={publicKey} />
           <input name="submittedAt" type="hidden" value={new Date().toISOString()} />
-          <input name="utmSource" type="hidden" value="" />
-          <input name="utmMedium" type="hidden" value="" />
-          <input name="utmCampaign" type="hidden" value="" />
-          <input name="utmTerm" type="hidden" value="" />
-          <input name="utmContent" type="hidden" value="" />
+          <input name="utmSource" type="hidden" value={utmSource} />
+          <input name="utmMedium" type="hidden" value={utmMedium} />
+          <input name="utmCampaign" type="hidden" value={utmCampaign} />
+          <input name="utmTerm" type="hidden" value={query.utm_term ?? ""} />
+          <input name="utmContent" type="hidden" value={query.utm_content ?? ""} />
+          <input name="pageUrl" type="hidden" value={pageUrl} />
+          <input name="referrer" type="hidden" value={referrer} />
           <label className="honeypot" aria-hidden="true">
             Website
             <input name="website" tabIndex={-1} autoComplete="off" />
@@ -169,7 +188,16 @@ export default async function PublicLeadFormPage({
             <input name="legalDisclaimerAcknowledged" type="checkbox" />
             If this is legal-related, I understand this does not create an attorney-client relationship.
           </label>
-          {query.error ? <p className="form-error">Please provide a valid email or phone number.</p> : null}
+          {query.error === "limit" ? (
+            <div className="form-error limit-error-box">
+              <p>This business needs to upgrade its Ferocity plan before more leads can be accepted here.</p>
+              <Link className="mini-button" href="/pricing">
+                View Ferocity plans
+              </Link>
+            </div>
+          ) : query.error ? (
+            <p className="form-error">Please provide a valid email or phone number.</p>
+          ) : null}
           <button className="button" type="submit">
             Submit
           </button>

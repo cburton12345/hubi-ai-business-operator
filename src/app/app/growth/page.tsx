@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Activity, BarChart3, CheckCircle2, ClipboardCheck, Radio, RefreshCw } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { getChannelPlaybooks } from "@/lib/growth/channel-playbook";
 import { getGrowthOperatorDashboard } from "@/lib/growth/get-growth-operator";
 import {
   scanGrowthLoopAction,
@@ -21,7 +22,7 @@ function money(cents: number) {
 }
 
 export default async function GrowthOperatorPage() {
-  const dashboard = await getGrowthOperatorDashboard();
+  const [dashboard, playbooks] = await Promise.all([getGrowthOperatorDashboard(), getChannelPlaybooks()]);
 
   return (
     <QueuePageShell
@@ -37,6 +38,9 @@ export default async function GrowthOperatorPage() {
         </form>
         <Link className="button secondary-button" href="/app/seo">
           SEO Autopilot
+        </Link>
+        <Link className="button secondary-button" href="/app/sites">
+          Growth Sites
         </Link>
         <Link className="button secondary-button" href="/app/review">
           Review Drafts
@@ -55,6 +59,39 @@ export default async function GrowthOperatorPage() {
       </div>
 
       <div className="grid">
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Channel Playbook</h2>
+              <p className="muted">Recommended first channels by business type. Ferocity should prove organic, reviews, referrals, community, and follow-up before pushing paid spend.</p>
+            </div>
+            <Link className="mini-button" href="/app/reports">
+              Track ROI
+            </Link>
+          </div>
+          <div className="playbook-grid">
+            {playbooks.map((playbook) => (
+              <section className="playbook-card" key={playbook.brandId}>
+                <div>
+                  <h3>{playbook.brandName}</h3>
+                  <p className="muted">{playbook.pathName}</p>
+                  <p>{playbook.summary}</p>
+                </div>
+                <PlaybookList title="Start with" items={playbook.startWith} />
+                <PlaybookList title="Use later" items={playbook.useLater} />
+                <PlaybookList title="Do not rush" items={playbook.avoidAtFirst} />
+                <PlaybookList title="Track proof" items={playbook.proofToTrack} />
+              </section>
+            ))}
+            {playbooks.length === 0 ? (
+              <section className="playbook-card">
+                <h3>No active brands yet</h3>
+                <p className="muted">Add a brand and business type so Ferocity can recommend the right channel mix.</p>
+              </section>
+            ) : null}
+          </div>
+        </section>
+
         <section className="panel span-12">
           <div className="list-row flush-row">
             <div>
@@ -473,5 +510,18 @@ export default async function GrowthOperatorPage() {
         </section>
       </div>
     </QueuePageShell>
+  );
+}
+
+function PlaybookList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <strong>{title}</strong>
+      <ul className="plain-list">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

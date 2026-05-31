@@ -1,14 +1,38 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
+import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { getPublicFormRows, type PublicFormRow } from "@/lib/forms/get-public-forms";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { rotateFormPublicKeyAction } from "./actions";
 
 export default async function FormsPage() {
-  const rows = await getPublicFormRows();
+  const [rows, workspaceId] = await Promise.all([getPublicFormRows(), getCurrentWorkspaceId()]);
+  const limits = await checkLeadIntakeLimits(workspaceId);
 
   return (
     <QueuePageShell eyebrow="Lead Capture" title="Public Lead Forms" description="Reusable form keys route incoming leads to the correct workspace and brand.">
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Plan Limits</h2>
+            <p className="muted">
+              {limits.monthlyLeadLimit === null
+                ? `${limits.monthlyLeadsUsed} leads this month. This plan has no fixed lead limit.`
+                : `${limits.monthlyLeadsUsed} of ${limits.monthlyLeadLimit} leads used this month.`}
+            </p>
+            <p className="muted">
+              {limits.formsLimit === null
+                ? `${limits.activeForms} active forms.`
+                : `${limits.activeForms} of ${limits.formsLimit} active forms allowed on ${limits.planKey}.`}
+            </p>
+          </div>
+          <div className="inline-actions">
+            <span className={`pill ${limits.ok ? "" : "high"}`}>{limits.ok ? "accepting leads" : "upgrade needed"}</span>
+            <Link className="mini-button" href="/app/billing">Review plan</Link>
+          </div>
+        </div>
+      </section>
       <QueueTable<PublicFormRow>
         rows={rows}
         columns={[

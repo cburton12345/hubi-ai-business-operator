@@ -26,9 +26,9 @@ export const plannedConnections = [
   {
     provider: "resend_shared",
     displayName: "Ferocity Shared Email",
-    notes: "Starter email route managed by Ferocity. Customer-owned email can replace it after sender/domain setup.",
-    envVars: [],
-    setupItems: ["Review sender identity", "Keep approval required", "Switch to customer email when the domain is ready"],
+    notes: "Starter Resend route managed by Ferocity. Customer-owned email can replace it after sender/domain setup.",
+    envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"],
+    setupItems: ["Set EMAIL_PROVIDER to resend", "Add the Resend API key", "Use a verified sender", "Keep approval required"],
     callbackPath: null,
     riskLevel: "medium"
   },
@@ -84,6 +84,48 @@ export const plannedConnections = [
     envVars: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Ads developer token", "Connect manager account", "Request OAuth consent", "Require approval for budget changes"],
     callbackPath: "/api/integrations/google/oauth/callback",
+    riskLevel: "high"
+  },
+  {
+    provider: "reddit",
+    displayName: "Reddit",
+    notes: "Community listening, draft responses, and future ads/reporting. Ferocity will not post or spend without review and credentials.",
+    envVars: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"],
+    setupItems: [
+      "Create a Reddit app",
+      "Use the Ferocity redirect URL from the deployed domain",
+      "Request only the scopes needed for the first workflow",
+      "Keep posting, replies, and ads in review mode until approved"
+    ],
+    callbackPath: "/api/integrations/reddit/oauth/callback",
+    riskLevel: "high"
+  },
+  {
+    provider: "microsoft_ads",
+    displayName: "Microsoft Ads",
+    notes: "Future ad reporting and conversion attribution for Bing/Microsoft channels. No budget actions run by default.",
+    envVars: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI", "MICROSOFT_ADS_DEVELOPER_TOKEN"],
+    setupItems: [
+      "Create Microsoft Entra app credentials",
+      "Configure the deployed Ferocity redirect URL",
+      "Connect ad account reporting only first",
+      "Require approval for any campaign or budget change"
+    ],
+    callbackPath: "/api/integrations/microsoft/oauth/callback",
+    riskLevel: "high"
+  },
+  {
+    provider: "yahoo_ads",
+    displayName: "Yahoo / Native Ads",
+    notes: "Prepared for future native ad reporting and campaign attribution. No live sync is active.",
+    envVars: ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"],
+    setupItems: [
+      "Confirm the Yahoo or native ads provider",
+      "Create provider credentials",
+      "Configure the deployed Ferocity callback URL",
+      "Keep reporting read-only before any publishing or spend actions"
+    ],
+    callbackPath: "/api/integrations/yahoo/oauth/callback",
     riskLevel: "high"
   },
   {

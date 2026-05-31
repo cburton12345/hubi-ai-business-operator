@@ -18,6 +18,32 @@ function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
 }
 
+function EmptyNextSteps({
+  title,
+  body,
+  actions
+}: {
+  title: string;
+  body: string;
+  actions: Array<{ href: string; label: string; primary?: boolean }>;
+}) {
+  return (
+    <li className="list-row">
+      <div>
+        <h3>{title}</h3>
+        <p className="muted">{body}</p>
+        <div className="button-row compact-actions">
+          {actions.map((action) => (
+            <Link className={action.primary ? "mini-button" : "mini-button secondary-button"} href={action.href} key={action.href}>
+              {action.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export default async function OperatorConsolePage() {
   const dashboard = await getOperatorConsoleDashboard();
   const stageOptions = dashboard.stages.map((stage) => ({ id: stage.id, name: stage.name }));
@@ -96,12 +122,15 @@ export default async function OperatorConsolePage() {
               </li>
             ))}
             {dashboard.threads.length === 0 ? (
-              <li className="list-row">
-                <div>
-                  <h3>No conversation threads yet</h3>
-                  <p className="muted">Run the scan to create threads from real open leads.</p>
-                </div>
-              </li>
+              <EmptyNextSteps
+                title="No conversations yet"
+                body="Add a real lead or connect a form. Ferocity will then show who needs a reply, callback, or internal note."
+                actions={[
+                  { href: "/app/leads", label: "Add first lead", primary: true },
+                  { href: "/app/forms", label: "Connect form" },
+                  { href: "/app/build-system", label: "Build this for me" }
+                ]}
+              />
             ) : null}
           </ul>
         </section>
@@ -138,12 +167,14 @@ export default async function OperatorConsolePage() {
               </li>
             ))}
             {dashboard.schedule.length === 0 ? (
-              <li className="list-row">
-                <div>
-                  <h3>No schedule events yet</h3>
-                  <p className="muted">Callbacks and scheduled service jobs appear here after the scan.</p>
-                </div>
-              </li>
+              <EmptyNextSteps
+                title="No callbacks or appointments yet"
+                body="Once leads or jobs need a time, they will show here. You can set up callback rules first."
+                actions={[
+                  { href: "/app/build-system", label: "Set up callbacks", primary: true },
+                  { href: "/app/calendar", label: "Open calendar" }
+                ]}
+              />
             ) : null}
           </ul>
         </section>
@@ -198,7 +229,7 @@ export default async function OperatorConsolePage() {
                   ))}
                   {stage.opportunities.length === 0 ? (
                     <li className="list-row">
-                      <span className="muted">No opportunities in this stage.</span>
+                      <span className="muted">Nothing here yet.</span>
                     </li>
                   ) : null}
                 </ul>
@@ -250,9 +281,14 @@ export default async function OperatorConsolePage() {
               </li>
             ))}
             {dashboard.messages.length === 0 ? (
-              <li className="list-row">
-                <span className="muted">No draft or queued messages yet. Run the scan after new leads arrive.</span>
-              </li>
+              <EmptyNextSteps
+                title="No message drafts yet"
+                body="When a lead, estimate, invoice, or review request needs follow-up, Ferocity can prepare a draft for approval."
+                actions={[
+                  { href: "/app/build-system", label: "Set up follow-up", primary: true },
+                  { href: "/app/controls", label: "Review send rules" }
+                ]}
+              />
             ) : null}
           </ul>
         </section>
@@ -273,9 +309,11 @@ export default async function OperatorConsolePage() {
               </li>
             ))}
             {dashboard.timeline.length === 0 ? (
-              <li className="list-row">
-                <span className="muted">Scan and operator actions will populate this timeline.</span>
-              </li>
+              <EmptyNextSteps
+                title="No activity yet"
+                body="This becomes the history of leads, messages, estimates, jobs, reviews, revenue, and setup changes."
+                actions={[{ href: "/app/build-system", label: "Start setup", primary: true }]}
+              />
             ) : null}
           </ul>
         </section>

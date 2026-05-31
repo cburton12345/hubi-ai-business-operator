@@ -14,7 +14,12 @@ export default async function LoginPage({
         <div>
           <p className="eyebrow">Workspace Access</p>
           <h1>Sign in to Ferocity Operator.</h1>
-          <p className="muted">Use a workspace account. The admin token remains available for emergency internal access.</p>
+          <p className="muted">Use a workspace account. Need access first? Request setup from the public site.</p>
+          <div className="button-row">
+            <a className="button secondary-button" href="/start?source=login">
+              Request access
+            </a>
+          </div>
         </div>
 
         <form action={loginUser} className="panel form-stack auth-panel">

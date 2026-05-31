@@ -17,6 +17,8 @@ export type OutboundActionRow = {
   recipientLabel: string | null;
   scheduledFor: string | null;
   targetType: string | null;
+  lastError: string | null;
+  bodyPreview: string | null;
   createdAt: string;
 };
 
@@ -117,10 +119,24 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       recipient_label: string | null;
       scheduled_for: string | null;
       target_type: string | null;
+      last_error: string | null;
+      body_preview: string | null;
       created_at: string;
     }>(
       `
-      select id, action_type, provider_key, status, risk_level, subject, recipient_label, scheduled_for, target_type, created_at
+      select
+        id,
+        action_type,
+        provider_key,
+        status,
+        risk_level,
+        subject,
+        recipient_label,
+        scheduled_for,
+        target_type,
+        last_error,
+        left(coalesce(payload_json->>'body', ''), 220) as body_preview,
+        created_at
       from public.outbound_action_queue
       where tenant_id = $1
       order by
@@ -229,6 +245,8 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       recipientLabel: row.recipient_label,
       scheduledFor: row.scheduled_for,
       targetType: row.target_type,
+      lastError: row.last_error,
+      bodyPreview: row.body_preview,
       createdAt: row.created_at
     })),
     providers: (providerResult?.rows ?? []).map((row) => ({

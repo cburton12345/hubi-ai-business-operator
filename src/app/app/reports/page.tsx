@@ -1,6 +1,7 @@
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
+import Link from "next/link";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -15,6 +16,71 @@ export default async function ReportsPage() {
       title="Workspace Performance"
       description="Lead, content, approval, AI generation, and integration-readiness reporting for the selected organization."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Business Command Center</h2>
+            <p className="muted">What is working, what is stuck, and what to do next.</p>
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/app/build-system">Build My System</Link>
+            <Link className="button secondary-button" href="/app/operator">Open operator console</Link>
+            <Link className="button secondary-button" href="/app/growth">Open growth loop</Link>
+          </div>
+        </div>
+        <div className="grid section-actions">
+          <Metric label="Revenue collected" value={money(report.leadToRevenue.collectedRevenueCents)} />
+          <Metric label="Open pipeline" value={money(report.leadToRevenue.openPipelineCents)} />
+          <Metric label="Needs attention" value={snapshot.todayPlan.length + report.activeAlerts} />
+          <Metric label="Provider gaps" value={report.providerGaps.length} />
+        </div>
+      </section>
+
+      <div className="grid section-actions">
+        <section className="panel span-6">
+          <h2>Problems Needing Attention</h2>
+          <ul className="list">
+            {snapshot.todayPlan.slice(0, 5).map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">{item.detail}</p>
+                </div>
+                <Link className="mini-button" href={item.href}>{item.buttonLabel}</Link>
+              </li>
+            ))}
+            {snapshot.todayPlan.length === 0 ? <li className="list-row"><span className="muted">No urgent operator problems found right now.</span></li> : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Recommended Actions</h2>
+          <ul className="list">
+            <li className="list-row">
+              <div>
+                <h3>Set up what is missing</h3>
+                <p className="muted">Use plain English to create a reviewed setup plan for workflows, SEO, reviews, automations, and providers.</p>
+              </div>
+              <Link className="mini-button" href="/app/build-system">Build</Link>
+            </li>
+            <li className="list-row">
+              <div>
+                <h3>Close provider gaps</h3>
+                <p className="muted">{report.providerGaps.length} provider gaps are keeping Ferocity in manual or review mode.</p>
+              </div>
+              <Link className="mini-button" href="/app/integrations">Connect</Link>
+            </li>
+            <li className="list-row">
+              <div>
+                <h3>Protect spend and tokens</h3>
+                <p className="muted">Review AI, SMS, email, publishing, and ads limits before turning on live actions.</p>
+              </div>
+              <Link className="mini-button" href="/app/controls">Controls</Link>
+            </li>
+          </ul>
+        </section>
+      </div>
+
       <div className="grid section-actions">
         <Metric label="Open leads" value={snapshot.metrics.openLeads} />
         <Metric label="Content this week" value={snapshot.metrics.contentCreatedThisWeek} />

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
     "db:migrate": "node scripts/run-migrations.mjs",
     "db:verify-rls": "node scripts/verify-rls.mjs",
@@ -27,6 +27,7 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.11",
     "@types/node": "^24.10.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.7",

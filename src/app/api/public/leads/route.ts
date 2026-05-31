@@ -44,6 +44,16 @@ export async function POST(request: NextRequest) {
       severity: result.status >= 500 ? "error" : "warning",
       metadata: { formPublicKey: parsed.data.formPublicKey, status: result.status }
     });
+    if (result.status === 402) {
+      return NextResponse.json(
+        {
+          error: result.error,
+          status: "plan_limit",
+          upgradeUrl: "/pricing"
+        },
+        { status: result.status }
+      );
+    }
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
