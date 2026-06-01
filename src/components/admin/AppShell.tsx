@@ -21,6 +21,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
             <Link href="/app">Home</Link>
             <Link href="/app/build-system">Build My System</Link>
+            <Link href="/app/marketing-os">Marketing OS</Link>
             <Link href="/app/operator">Operator Console</Link>
             <Link href="/app/growth">Growth Loop</Link>
             <Link href="/app/service">Service Ops</Link>
@@ -48,6 +49,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 </section>
                 <section>
                   <p>Growth</p>
+                  <Link href="/app/marketing-os">Marketing OS</Link>
                   <Link href="/app/website">Website Connector</Link>
                   <Link href="/app/proof">Customer Proof</Link>
                   <Link href="/app/marketing">AI Operator</Link>
@@ -102,7 +104,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </form>
           <Link className="button app-builder-button" href="/app/build-system">
-            Build My System
+            Have AI Set This Up
           </Link>
           <div className="session-chip">
             <strong>{workspace.name}</strong>

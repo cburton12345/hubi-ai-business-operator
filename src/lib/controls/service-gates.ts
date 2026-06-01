@@ -34,7 +34,16 @@ const serviceUsageSql: Record<string, string> = {
   growth_attribution: "select count(*)::int as current_usage from public.growth_attribution_events where tenant_id = $1 and occurred_at >= date_trunc('month', now())",
   follow_up_recovery: "select count(*)::int as current_usage from public.follow_up_workflows where tenant_id = $1 and status in ('open', 'scheduled', 'missed')",
   payment_collection: "select count(*)::int as current_usage from public.service_invoice_payment_links where tenant_id = $1 and created_at >= date_trunc('month', now())",
-  marketplacepro_import: "select count(*)::int as current_usage from public.marketplacepro_integration_events where tenant_id = $1 and created_at >= date_trunc('month', now())"
+  marketplacepro_import: "select count(*)::int as current_usage from public.marketplacepro_integration_events where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  marketing_os_profile: "select count(*)::int as current_usage from public.marketing_os_business_profiles where tenant_id = $1 and status <> 'archived'",
+  website_import: "select count(*)::int as current_usage from public.marketing_os_website_imports where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  content_studio: "select count(*)::int as current_usage from public.content_studio_campaigns where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  media_library: "select count(*)::int as current_usage from public.marketing_media_assets where tenant_id = $1 and status <> 'archived'",
+  marketing_graphics: "select count(*)::int as current_usage from public.marketing_graphic_jobs where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  ai_video_generation: "select count(*)::int as current_usage from public.marketing_video_jobs where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  voice_ai: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'voice_ai' and created_at >= date_trunc('month', now())",
+  bulk_email: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'bulk_email' and created_at >= date_trunc('month', now())",
+  premium_ai_tasks: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'premium_ai_task' and created_at >= date_trunc('month', now())"
 };
 
 export async function getServiceUsage(tenantId: string, featureKey: string) {

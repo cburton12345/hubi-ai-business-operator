@@ -31,7 +31,16 @@ const featureOrder = [
   "payment_collection",
   "calendar_sync",
   "growth_attribution",
-  "marketplacepro_import"
+  "marketplacepro_import",
+  "marketing_os_profile",
+  "website_import",
+  "content_studio",
+  "media_library",
+  "marketing_graphics",
+  "ai_video_generation",
+  "voice_ai",
+  "bulk_email",
+  "premium_ai_tasks"
 ];
 
 function labelFor(featureKey: string) {
