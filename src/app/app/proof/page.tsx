@@ -28,7 +28,10 @@ export default async function ProofEnginePage() {
               Ferocity keeps everything in review before it becomes marketing.
             </p>
           </div>
-          <Link className="mini-button" href="/app/review">Open content review</Link>
+          <div className="inline-actions">
+            <Link className="mini-button" href="/app/marketing-os">Have AI Set This Up</Link>
+            <Link className="mini-button" href="/app/review">Open content review</Link>
+          </div>
         </div>
         <div className="operating-loop">
           {["Completed job", "Customer proof", "Permission check", "Draft marketing"].map((step, index) => (

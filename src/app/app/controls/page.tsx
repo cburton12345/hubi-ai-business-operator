@@ -41,6 +41,7 @@ export default async function ControlsPage() {
             </p>
           </div>
           <div className="inline-actions">
+            <Link className="mini-button" href="/app/build-system">Have AI Set This Up</Link>
             <Link className="mini-button" href="/app/billing">Billing</Link>
             <Link className="mini-button" href="/app/integrations">Integrations</Link>
           </div>

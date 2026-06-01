@@ -46,6 +46,7 @@ const commandItems = [
 ];
 
 const proofPoints = [
+  ["Marketing OS", "Business profile memory, website import requests, one-click campaigns, media, graphics, and video job drafts."],
   ["Growth", "SEO pages, Google profile activity, reviews, referrals, ads, and source tracking."],
   ["Sales", "Lead inbox, suggested replies, callbacks, notes, estimates, and pipeline stages."],
   ["Operations", "Jobs, appointments, invoices, payment reminders, customer history, and task visibility."],
@@ -95,10 +96,10 @@ export default function DemoPage() {
         <section className="hero-command demo-hero">
           <div className="hero-copy">
             <p className="eyebrow">Product demo</p>
-            <h1>Ferocity connects marketing, follow-up, and service work.</h1>
+            <h1>Ferocity builds the marketing system, then runs the follow-up loop.</h1>
             <p>
-              The point is simple: set up how the business grows, catch the leads that come from that work, follow up fast,
-              collect reviews and payments, then see which channels produce real jobs.
+              Tell Ferocity what the business does. It prepares the business profile, campaigns, content, review flow,
+              lead capture, follow-up, and safety controls so the owner is not staring at a pile of settings.
             </p>
             <div className="button-row">
               <Link className="button" href="/demo/tour">
@@ -125,7 +126,7 @@ export default function DemoPage() {
               {[
                 ["18", "new leads", "6 need reply"],
                 ["$84k", "pipeline", "$28k viewed estimates"],
-                ["34", "SEO targets", "service and city pages"],
+                ["34", "content targets", "SEO, posts, reviews"],
                 ["12", "review asks", "ready after jobs"]
               ].map(([value, label, hint]) => (
                 <div key={label}>
@@ -153,12 +154,12 @@ export default function DemoPage() {
             <p className="eyebrow">The operating loop</p>
             <h2>Ferocity starts before the lead arrives.</h2>
             <p>
-              A CRM starts when somebody becomes a contact. Ferocity starts earlier: services, service areas, lead sources,
-              review timing, content controls, and follow-up rules.
+              A CRM starts when somebody becomes a contact. Ferocity starts earlier with the Marketing OS: business profile
+              memory, website import, one-click campaigns, SEO drafts, media, review graphics, and approval controls.
             </p>
           </div>
           <div className="demo-proof-flow">
-            {["Setup", "Growth", "Lead", "Follow-up", "Job", "Payment", "Review", "ROI"].map((item) => (
+            {["Setup", "Profile", "Campaign", "Lead", "Follow-up", "Job", "Payment", "Review", "ROI"].map((item) => (
               <span key={item}>{item}</span>
             ))}
           </div>
@@ -182,7 +183,7 @@ export default function DemoPage() {
         <section className="panel">
           <div className="section-heading">
             <p className="eyebrow">What is included</p>
-            <h2>One demo, four plain areas.</h2>
+            <h2>One demo, five plain areas.</h2>
             <p className="muted">
               The detailed pages are still there. This page only shows the core idea so a normal business owner can understand it quickly.
             </p>

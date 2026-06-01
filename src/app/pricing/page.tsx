@@ -7,8 +7,8 @@ const plans = [
     name: "Free",
     price: "$0",
     fit: "For trying Ferocity with a real workspace, one lead form, and basic source tracking.",
-    included: ["1 workspace", "1 brand", "1 user", "1 lead form", "25 leads/month", "5 proof submissions", "Manual tasks"],
-    limits: "Good for evaluation and light use. No live SMS/email, payment links, background automations, MarketplacePro sync, or full AI setup runs.",
+    included: ["1 workspace", "1 brand", "1 user", "1 lead form", "Business profile memory", "Starter Content Studio", "Manual tasks"],
+    limits: "Good for evaluation and light use. No live SMS/email, payment links, background automations, MarketplacePro sync, or provider publishing.",
     cta: "Start Free"
   },
   {
@@ -16,7 +16,7 @@ const plans = [
     name: "Starter",
     price: "$79/mo",
     fit: "For businesses that mainly need lead capture, simple pipeline, and basic follow-up.",
-    included: ["Everything in Free", "More leads", "Basic pipeline", "25 proof submissions", "Manual follow-up tasks", "Basic reports"],
+    included: ["Everything in Free", "Website import requests", "More leads", "Basic pipeline", "Review/before-after graphic drafts", "Basic reports"],
     limits: "Good for getting organized first. Provider sends still require verified email/SMS accounts and approval.",
     cta: "Start Starter"
   },
@@ -25,7 +25,7 @@ const plans = [
     name: "Growth",
     price: "$199/mo",
     fit: "For businesses that want SEO, reviews, marketing drafts, customer proof, and attribution.",
-    included: ["Everything in Starter", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
+    included: ["Everything in Starter", "Content Studio campaigns", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
     limits: "Good for growth work. Live publishing, ad changes, and message sends stay behind approval and connected accounts.",
     cta: "Start Growth"
   },
@@ -34,7 +34,7 @@ const plans = [
     name: "Operator",
     price: "$399/mo",
     fit: "For businesses that want jobs, estimates, invoices, scheduling, and operations visibility.",
-    included: ["Everything in Growth", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
+    included: ["Everything in Growth", "AI video job foundation", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
     limits: "Good for teams that need sales, service work, payment visibility, and reporting in the same workspace.",
     cta: "Start Operator"
   },
@@ -59,10 +59,10 @@ const includedByDefault = [
 
 const paidOrConnected = [
   "Higher lead, proof, workspace, brand, and user limits",
-  "Full AI setup runs and larger content generation",
+  "Full AI setup runs, Content Studio usage, graphics, and larger content generation",
   "Live email/SMS sends through verified providers",
   "Payment links, invoice reminders, and ledger workflows",
-  "Publishing to customer websites, hosted pages, GBP, ads, or MarketplacePro sync",
+  "Publishing to customer websites, hosted pages, GBP, ads, video providers, or MarketplacePro sync",
   "Advanced automations, background scans, reporting, and implementation help"
 ];
 

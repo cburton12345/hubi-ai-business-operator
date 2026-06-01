@@ -50,7 +50,10 @@ export default async function WebsiteConnectorPage() {
           Hosted pages
         </Link>
         <Link className="button secondary-button" href="/app/build-system">
-          Build My System
+          Have AI Set This Up
+        </Link>
+        <Link className="button secondary-button" href="/app/marketing-os">
+          Marketing OS
         </Link>
       </div>
 

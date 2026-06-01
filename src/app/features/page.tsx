@@ -16,6 +16,13 @@ const marketplaceProUrl = "https://marketplacepro.live";
 
 const sections = [
   {
+    group: "Setup",
+    title: "Marketing OS",
+    body: "Build business profile memory, website import requests, one-click campaigns, content drafts, media, graphics, and video jobs from one place.",
+    examples: ["Have AI set this up", "Business profile memory", "Content Studio", "Review-first outputs"],
+    icon: Bot
+  },
+  {
     group: "Growth",
     title: "Get more leads",
     body: "Plan local SEO, service pages, review flow, GBP activity, referral/community ideas, and campaign tracking.",
@@ -149,10 +156,10 @@ export default function FeaturesPage() {
 
         <section className="public-hero features-hero">
           <p className="eyebrow">What Ferocity can do</p>
-          <h1>One place to manage leads, follow-up, reviews, jobs, and revenue.</h1>
+          <h1>One place to build marketing, catch leads, follow up, and prove revenue.</h1>
           <p className="muted">
-            Ferocity is built for local service businesses that need marketing, follow-up, reviews, estimates, jobs, and revenue
-            tracking to work together without making the owner dig through disconnected tools.
+            Ferocity is built for local service businesses that need a marketing system first, then CRM, follow-up, reviews,
+            estimates, jobs, and revenue tracking tied together without making the owner configure disconnected tools.
           </p>
           <div className="button-row">
             <Link className="button" href="/start?source=features">
@@ -173,7 +180,7 @@ export default function FeaturesPage() {
             <h2>Ferocity does not make owners configure a pile of tools.</h2>
             <p className="muted">
               A business owner can start with normal words like "I run a roofing company and need storm leads, reviews, SEO pages,
-              and fast follow-up." Ferocity turns that into a setup checklist with drafts, tasks, safety settings, and review steps.
+              and fast follow-up." Ferocity turns that into business profile memory, campaign drafts, tasks, safety settings, and review steps.
             </p>
             <div className="button-row">
               <Link className="button" href="/start?source=features_setup">
@@ -195,6 +202,7 @@ export default function FeaturesPage() {
                 .
               </li>
               <li>Create service and city page drafts for review.</li>
+              <li>Create one-click campaigns, social posts, review graphics, landing pages, and Content Studio outputs.</li>
               <li>Prepare speed-to-lead, stale lead, estimate, invoice, review, and customer proof workflows.</li>
               <li>Keep customer messages, publishing, ad spend, and sync under approval.</li>
             </ul>

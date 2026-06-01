@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowRight, KeyRound, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getIntegrationRows } from "@/lib/integrations/get-integrations";
@@ -27,9 +28,14 @@ export default async function IntegrationsPage() {
             <h2>Provider Readiness</h2>
             <p className="muted">Connect the tools in steps. Keys and OAuth can be added later; live actions stay off until reviewed.</p>
           </div>
-          <a className="button" href="/app/build-system">
-            Build My System
-          </a>
+          <div className="inline-actions">
+            <Link className="button" href="/app/build-system">
+              Have AI Set This Up
+            </Link>
+            <Link className="button secondary-button" href="/app/marketing-os">
+              Marketing OS
+            </Link>
+          </div>
         </div>
         <div className="grid section-actions">
           <section className="panel span-4 metric">

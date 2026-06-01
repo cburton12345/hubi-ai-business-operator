@@ -3,14 +3,16 @@ import { QueueTable } from "@/components/admin/QueueTable";
 import { getReviewDraftRows } from "@/lib/marketing/get-phase2-dashboard";
 import { getContentExportRows, type ContentExportRow } from "@/lib/exports/get-content-exports";
 import { getWorkspaceDataExportRows, type WorkspaceDataExportRow } from "@/lib/exports/workspace-data-exports";
+import { getReviewFirstExportQueueRows, type ReviewFirstExportQueueRow } from "@/lib/exports/get-review-first-export-queue";
 import { createExportFromDraftAction, createWorkspaceDataExportAction } from "./actions";
 import Link from "next/link";
 
 export default async function ExportsPage() {
-  const [drafts, exports, workspaceExports] = await Promise.all([
+  const [drafts, exports, workspaceExports, reviewFirstExports] = await Promise.all([
     getReviewDraftRows(),
     getContentExportRows(),
-    getWorkspaceDataExportRows()
+    getWorkspaceDataExportRows(),
+    getReviewFirstExportQueueRows()
   ]);
 
   return (
@@ -70,6 +72,42 @@ export default async function ExportsPage() {
           {drafts.length === 0 ? <p className="muted">No reviewed drafts are available yet.</p> : null}
         </div>
       </section>
+
+      <section className="panel section-actions">
+        <div>
+          <h2>Review-First Export Queue</h2>
+          <p className="muted">Marketing OS, proof, SEO, and growth page outputs land here before anything leaves Ferocity.</p>
+        </div>
+      </section>
+
+      <QueueTable<ReviewFirstExportQueueRow>
+        rows={reviewFirstExports}
+        columns={[
+          {
+            key: "title",
+            label: "Review Item",
+            render: (row) => (
+              <>
+                <strong>{row.title}</strong>
+                <span className="muted">{row.providerKey} / {row.targetLabel}</span>
+              </>
+            )
+          },
+          { key: "brand", label: "Brand", render: (row) => row.brandName },
+          { key: "type", label: "Type", render: (row) => <span className="pill">{row.exportType}</span> },
+          {
+            key: "status",
+            label: "Status",
+            render: (row) => (
+              <>
+                <span className={`pill ${row.riskLevel}`}>{row.riskLevel}</span>
+                <span className="pill">{row.status}</span>
+              </>
+            )
+          },
+          { key: "created", label: "Created", render: (row) => new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(row.createdAt)) }
+        ]}
+      />
 
       <QueueTable<ContentExportRow>
         rows={exports}

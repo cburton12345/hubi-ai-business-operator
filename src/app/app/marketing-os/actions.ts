@@ -67,6 +67,8 @@ function titleFromPrompt(prompt: string) {
 }
 
 async function insertDraftOutputs(workspaceId: string, brandId: string | null, campaignId: string, prompt: string, outputTypes: string[]) {
+  if (!brandId) return;
+
   const rows = outputTypes.map((type) => ({
     outputType: type,
     title: `${type.replaceAll("_", " ")} draft`,
@@ -74,10 +76,11 @@ async function insertDraftOutputs(workspaceId: string, brandId: string | null, c
   }));
 
   for (const item of rows) {
-    await queryPostgres(
+    const outputResult = await queryPostgres<{ id: string }>(
       `
       insert into public.content_studio_outputs (tenant_id, brand_id, campaign_id, output_type, platform, title, body, status, risk_level, metadata_json)
       values ($1, $2, $3, $4, $5, $6, $7, 'needs_review', 'medium', $8::jsonb)
+      returning id
       `,
       [
         workspaceId,
@@ -90,6 +93,82 @@ async function insertDraftOutputs(workspaceId: string, brandId: string | null, c
         JSON.stringify({ generatedBy: "deterministic_setup", noTokenSpend: true })
       ]
     );
+    const outputId = outputResult?.rows[0]?.id;
+
+    const draftResult = await queryPostgres<{ id: string }>(
+      `
+      insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, metadata_json, status, risk_level)
+      values ($1, $2, $3, $4, $5, $6::jsonb, 'needs_review', 'medium')
+      returning id
+      `,
+      [
+        workspaceId,
+        brandId,
+        draftTypeFor(item.outputType),
+        item.title,
+        item.body,
+        JSON.stringify({ source: "marketing_os", contentStudioOutputId: outputId, campaignId })
+      ]
+    );
+    const draftId = draftResult?.rows[0]?.id ?? null;
+
+    const calendarResult = await queryPostgres<{ id: string }>(
+      `
+      insert into public.marketing_calendar_items (tenant_id, brand_id, source_type, source_id, title, item_type, status, risk_level, notes, metadata_json)
+      values ($1, $2, 'ai_draft', $3, $4, $5, 'draft', 'medium', $6, $7::jsonb)
+      returning id
+      `,
+      [
+        workspaceId,
+        brandId,
+        draftId,
+        item.title,
+        calendarTypeFor(item.outputType),
+        "Created from Marketing OS. Schedule after review.",
+        JSON.stringify({ source: "marketing_os", contentStudioOutputId: outputId, campaignId })
+      ]
+    );
+    const calendarId = calendarResult?.rows[0]?.id ?? null;
+
+    await queryPostgres(
+      `
+      insert into public.review_first_export_queue (
+        tenant_id, brand_id, export_type, provider_key, target_label, title, body, status, risk_level, source_table, source_id, metadata_json
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, 'needs_review', 'medium', 'content_studio_outputs', $8, $9::jsonb)
+      `,
+      [
+        workspaceId,
+        brandId,
+        exportTypeFor(item.outputType),
+        providerFor(item.outputType),
+        platformFor(item.outputType),
+        item.title,
+        item.body,
+        outputId,
+        JSON.stringify({ source: "marketing_os", campaignId, aiDraftId: draftId, calendarItemId: calendarId })
+      ]
+    );
+
+    if (outputId) {
+      await queryPostgres(
+        `
+        update public.content_studio_outputs
+        set source_ai_draft_id = $3,
+            source_calendar_item_id = $4,
+            metadata_json = metadata_json || $5::jsonb,
+            updated_at = now()
+        where tenant_id = $1 and id = $2
+        `,
+        [
+          workspaceId,
+          outputId,
+          draftId,
+          calendarId,
+          JSON.stringify({ reviewDraftCreated: Boolean(draftId), calendarItemCreated: Boolean(calendarId), exportQueueCreated: true })
+        ]
+      );
+    }
   }
 
   await queryPostgres(
@@ -100,6 +179,46 @@ async function insertDraftOutputs(workspaceId: string, brandId: string | null, c
     `,
     [workspaceId, campaignId, rows.length]
   );
+}
+
+function draftTypeFor(outputType: string) {
+  if (outputType === "blog_article") return "blog";
+  if (outputType === "gbp_post") return "gbp_post";
+  if (outputType === "landing_page") return "landing_page";
+  if (outputType === "email_campaign") return "email";
+  if (outputType === "sms_campaign") return "sms";
+  if (outputType === "ad_copy" || outputType === "image_ad" || outputType.includes("ad")) return "facebook_ad";
+  if (outputType.includes("facebook") || outputType.includes("instagram") || outputType.includes("linkedin") || outputType === "x_post" || outputType.includes("tiktok")) {
+    return "facebook_post";
+  }
+  if (outputType.includes("review")) return "gbp_post";
+  return "landing_page";
+}
+
+function calendarTypeFor(outputType: string) {
+  const draftType = draftTypeFor(outputType);
+  if (draftType === "blog") return "seo_blog";
+  if (draftType === "email" || draftType === "sms") return outputType.includes("review") ? "review_request" : "lead_followup";
+  return draftType;
+}
+
+function exportTypeFor(outputType: string) {
+  if (outputType === "gbp_post") return "gbp_post";
+  if (outputType.includes("review")) return "review_reply";
+  if (outputType.includes("ad") || outputType.includes("facebook") || outputType.includes("instagram")) return "ad_creative";
+  if (outputType === "landing_page" || outputType.includes("seo") || outputType === "blog_article") return "website_page";
+  if (outputType === "email_campaign") return "email_campaign";
+  if (outputType === "sms_campaign") return "sms_campaign";
+  return "other";
+}
+
+function providerFor(outputType: string) {
+  if (outputType === "gbp_post" || outputType.includes("review")) return "google_business_profile";
+  if (outputType.includes("facebook") || outputType.includes("instagram") || outputType.includes("ad")) return "meta";
+  if (outputType === "landing_page" || outputType === "blog_article") return "website_connector";
+  if (outputType === "email_campaign") return "email_provider";
+  if (outputType === "sms_campaign") return "twilio";
+  return "manual_export";
 }
 
 function platformFor(outputType: string) {

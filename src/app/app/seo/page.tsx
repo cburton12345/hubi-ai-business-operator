@@ -47,6 +47,9 @@ export default async function SeoAutopilotPage() {
         <Link className="button secondary-button" href="/app/brands">
           Brand SEO data
         </Link>
+        <Link className="button secondary-button" href="/app/marketing-os">
+          Have AI Set This Up
+        </Link>
       </div>
 
       <div className="grid">
