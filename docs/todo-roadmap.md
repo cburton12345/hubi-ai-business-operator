@@ -281,3 +281,19 @@ These remain intentionally unconnected until explicit integration phases. Curren
 - [x] Do not respond publicly to sensitive reviews automatically
 - [x] Do not build a giant website builder before the operating core works
 - [x] Do not hardcode the system around one business
+
+## Cross-Project Inspiration Backlog
+
+These came from reviewing local MarketplacePro, 4Bid, and GovFlow project materials. See `docs/cross-project-inspiration-audit.md`.
+
+- [ ] Service-area intelligence: ZIP/city/radius matching, target towns, service boundaries, and distance-aware lead routing.
+- [ ] Provider and crew bench: saved subcontractors, workers, referral partners, private notes, availability, and relationship history.
+- [ ] Alerts/subscriptions: follow a source, service, city, customer, campaign, MarketplacePro vendor, or public profile.
+- [ ] Connector run history: source sync runs, records found/created/skipped, failures, last success, and review queues.
+- [ ] Credential rotation alerts for Resend, Twilio, Stripe, Google, Meta, MarketplacePro, Search Console, and CMS/website providers.
+- [ ] Daily operator digest: urgent leads, stale estimates, overdue invoices, review opportunities, SEO refreshes, provider issues, and source performance.
+- [ ] Fit/urgency scoring by source: lead source, campaign, service area, service type, estimate value, and close probability.
+- [ ] Document and attachment review for estimates, contracts, specs, and customer proof media.
+- [ ] Review-first export queues for website pages, MarketplacePro profile updates, GBP posts, review replies, ad creative, and SEO refreshes.
+- [ ] Support/report issue queue for public forms, proof pages, customer portals, and integration problems.
+- [ ] Production hardening pass: broaden rate limits, webhook replay/idempotency checks, upload validation, and public endpoint abuse controls.
