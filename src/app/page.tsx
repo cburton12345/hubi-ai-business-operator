@@ -4,18 +4,19 @@ import { ArrowRight, BellRing, CalendarClock, ChartNoAxesCombined, CheckCircle2,
 const operatorCards = [
   { label: "New leads", value: "18", note: "6 need fast reply", tone: "hot" },
   { label: "Pipeline", value: "$84k", note: "open value", tone: "money" },
-  { label: "Reviews", value: "12", note: "requests queued", tone: "trust" },
-  { label: "SEO pages", value: "34", note: "drafts in review", tone: "draft" }
+  { label: "Campaigns", value: "9", note: "drafts in review", tone: "trust" },
+  { label: "Content targets", value: "34", note: "SEO, posts, reviews", tone: "draft" }
 ];
 
 const actionQueue = [
+  "Finish Marketing OS setup for storm campaign",
   "Reply to 3 storm leads before they go cold",
   "Follow up on 5 viewed estimates",
-  "Ask 4 completed jobs for reviews",
+  "Prepare 4 review graphics from completed jobs",
   "Refresh 8 city/service pages with real job proof"
 ];
 
-const consoleTabs = ["Today", "Leads", "Growth", "Jobs"];
+const consoleTabs = ["Today", "Marketing OS", "Leads", "Jobs"];
 
 const pipelineRows = [
   ["Storm leads", "$42k", "high"],
@@ -31,6 +32,11 @@ const leaks = [
 ];
 
 const setupTracks = [
+  {
+    title: "Build the marketing system",
+    body: "Business profile memory, website import requests, one-click campaigns, Content Studio, media, graphics, and video job drafts.",
+    icon: Sparkles
+  },
   {
     title: "Get found",
     body: "Useful service pages, city targets, review flow, GBP activity, and source tracking.",
@@ -64,6 +70,7 @@ const verticals = [
 
 const setupExamples = [
   "I run a roofing company and want storm leads.",
+  "Create a hail damage campaign with review graphics.",
   "Set up missed-call text back and stale lead recovery.",
   "Build review requests after completed jobs.",
   "Help me make SEO pages without auto-publishing junk."
@@ -91,9 +98,10 @@ export default function HomePage() {
         <section className="hero-command">
           <div className="hero-copy">
             <p className="eyebrow">For service businesses</p>
-            <h1>Stop losing jobs between marketing, follow-up, and operations.</h1>
+            <h1>Tell Ferocity about the business. It builds the marketing system and follow-up loop.</h1>
             <p>
-              Ferocity helps a business keep SEO, reviews, leads, estimates, jobs, invoices, reminders, and revenue tracking in one place.
+              Ferocity gives service businesses a Marketing OS: business profile memory, content campaigns, media, review graphics,
+              lead capture, follow-up, estimates, jobs, invoices, and revenue tracking in one place.
             </p>
             <div className="button-row">
               <Link className="button" href="/start?source=home">
@@ -149,13 +157,13 @@ export default function HomePage() {
               </section>
               <section className="console-panel">
                 <div className="console-heading">
-                  <h2><Sparkles size={18} /> Setup plan</h2>
+                  <h2><Sparkles size={18} /> Marketing OS plan</h2>
                   <small>Preview only</small>
                 </div>
                 <div className="recommend-card">
-                  <strong>Recover storm leads first</strong>
-                  <p>Draft replies, schedule callbacks, and keep customer messages in review.</p>
-                  <Link href="/demo/tour">View workflow</Link>
+                  <strong>Create storm campaign</strong>
+                  <p>Prepare SEO targets, social posts, GBP draft, review graphic, landing page, and follow-up drafts.</p>
+                  <Link href="/demo">View demo</Link>
                 </div>
               </section>
             </div>
@@ -181,7 +189,8 @@ export default function HomePage() {
             <h2>Marketing is only valuable when it becomes booked work.</h2>
           </div>
           <p>
-            Ferocity connects SEO, reviews, forms, ads, conversations, estimates, jobs, invoices, and follow-up so the business sees what is working and what is leaking money.
+            Ferocity connects Content Studio, SEO, reviews, forms, ads, conversations, estimates, jobs, invoices, and follow-up
+            so the business sees what is working and what is leaking money.
           </p>
         </section>
 
@@ -206,7 +215,7 @@ export default function HomePage() {
         <section className="operator-system">
           <div className="section-heading">
             <p className="eyebrow">What Ferocity organizes</p>
-            <h2>Not random tools. Clear work from lead to paid job.</h2>
+            <h2>Not random tools. Clear work from setup to paid job.</h2>
           </div>
           <div className="system-track">
             {setupTracks.map((track, index) => {
@@ -238,8 +247,10 @@ export default function HomePage() {
             <div className="setup-plan-mini">
                 <strong>Ferocity sets up:</strong>
               <ul>
+                <li>Business profile memory and Content Studio campaign</li>
                 <li>Storm lead intake and source tracking</li>
                 <li>Speed-to-lead reply drafts and callback reminders</li>
+                <li>Review graphics and customer proof workflow</li>
                 <li>Review request workflow after completed work</li>
                 <li>Draft-only service and city page plan</li>
               </ul>
