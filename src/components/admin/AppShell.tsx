@@ -24,6 +24,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/app/operator">Operator Console</Link>
             <Link href="/app/growth">Growth Loop</Link>
             <Link href="/app/service">Service Ops</Link>
+            <Link href="/app/operator-depth">Operator Depth</Link>
             <Link href="/app/go-live">Go Live</Link>
             <Link href="/app/system-health">System Health</Link>
             <Link href="/app/reports">Reports</Link>
@@ -60,6 +61,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/workflows">Workflows</Link>
                   <Link href="/app/alerts">Alerts</Link>
                   <Link href="/app/runbooks">Runbooks</Link>
+                  <Link href="/app/operator-depth">Operator Depth</Link>
                 </section>
                 <section>
                   <p>Settings</p>

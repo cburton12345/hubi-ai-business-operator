@@ -38,6 +38,7 @@ type HealthStats = {
   marketplace_events: string;
   public_forms: string;
   pages: string;
+  operator_depth_records: string;
 };
 
 type IntegrationStatus = {
@@ -81,7 +82,13 @@ async function getSystemHealthData() {
         (select count(*) from public.marketplacepro_connections where tenant_id = $1)::text as marketplace_connections,
         (select count(*) from public.marketplacepro_sync_events where tenant_id = $1)::text as marketplace_events,
         (select count(*) from public.forms where tenant_id = $1 and active = true and public_key is not null)::text as public_forms,
-        (select count(*) from public.brand_landing_pages where tenant_id = $1 and status <> 'archived')::text as pages
+        (select count(*) from public.brand_landing_pages where tenant_id = $1 and status <> 'archived')::text as pages,
+        (
+          (select count(*) from public.service_area_targets where tenant_id = $1 and status <> 'archived') +
+          (select count(*) from public.connector_run_history where tenant_id = $1) +
+          (select count(*) from public.lead_source_scores where tenant_id = $1) +
+          (select count(*) from public.review_first_export_queue where tenant_id = $1)
+        )::text as operator_depth_records
       `,
       [workspaceId]
     ),
@@ -257,6 +264,13 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       status: marketplace ? (connected(marketplace) ? "ok" : "paused") : "needs_setup",
       href: "/app/integrations",
       button: "Marketplace"
+    },
+    {
+      title: "Operator depth",
+      body: count(stats?.operator_depth_records) > 0 ? `${stats?.operator_depth_records} deeper operating record(s) found.` : "Service areas, connector runs, source scores, and review-first exports have not been refreshed yet.",
+      status: count(stats?.operator_depth_records) > 0 ? "ok" : "needs_setup",
+      href: "/app/operator-depth",
+      button: "Depth"
     },
     {
       title: "Public pages and forms",
