@@ -43,7 +43,8 @@ const serviceUsageSql: Record<string, string> = {
   ai_video_generation: "select count(*)::int as current_usage from public.marketing_video_jobs where tenant_id = $1 and created_at >= date_trunc('month', now())",
   voice_ai: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'voice_ai' and created_at >= date_trunc('month', now())",
   bulk_email: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'bulk_email' and created_at >= date_trunc('month', now())",
-  premium_ai_tasks: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'premium_ai_task' and created_at >= date_trunc('month', now())"
+  premium_ai_tasks: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'premium_ai_task' and created_at >= date_trunc('month', now())",
+  byo_credential_vault: "select count(*)::int as current_usage from public.tenant_provider_credentials where tenant_id = $1 and status <> 'archived'"
 };
 
 export async function getServiceUsage(tenantId: string, featureKey: string) {

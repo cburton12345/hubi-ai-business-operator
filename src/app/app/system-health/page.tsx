@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, CircleAlert, CircleDashed, ShieldAlert, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { hasSupabaseAdminConfig, hasSupabaseBrowserConfig, missingEnvVars } from "@/lib/env";
+import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getEmailProviderHealth, type EmailProviderHealth } from "@/lib/email/provider-health";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -34,6 +35,8 @@ type HealthStats = {
   integrations: string;
   live_integrations: string;
   callback_integrations: string;
+  tenant_credentials: string;
+  tenant_credentials_need_key: string;
   marketplace_connections: string;
   marketplace_events: string;
   public_forms: string;
@@ -79,6 +82,8 @@ async function getSystemHealthData() {
         (select count(*) from public.integration_connections where tenant_id = $1)::text as integrations,
         (select count(*) from public.integration_connections where tenant_id = $1 and coalesce((metadata_json->>'liveActionsEnabled')::boolean, false) = true)::text as live_integrations,
         (select count(*) from public.integration_connections where tenant_id = $1 and metadata_json->>'callbackPath' is not null)::text as callback_integrations,
+        (select count(*) from public.tenant_provider_credentials where tenant_id = $1 and status <> 'archived')::text as tenant_credentials,
+        (select count(*) from public.tenant_provider_credentials where tenant_id = $1 and status = 'needs_encryption_key')::text as tenant_credentials_need_key,
         (select count(*) from public.marketplacepro_connections where tenant_id = $1)::text as marketplace_connections,
         (select count(*) from public.marketplacepro_sync_events where tenant_id = $1)::text as marketplace_events,
         (select count(*) from public.forms where tenant_id = $1 and active = true and public_key is not null)::text as public_forms,
@@ -126,6 +131,9 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
   const smsLive = connected(integration(integrations, "twilio")) || connected(integration(integrations, "twilio_shared"));
   const marketplace = integration(integrations, "marketplacepro");
   const liveIntegrations = count(stats?.live_integrations);
+  const encryptionReady = hasCredentialEncryptionKey();
+  const tenantCredentials = count(stats?.tenant_credentials);
+  const credentialsNeedKey = count(stats?.tenant_credentials_need_key);
 
   return [
     {
@@ -232,6 +240,19 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       status: liveIntegrations === 0 ? "paused" : "broken",
       href: "/app/integrations",
       button: "Inspect"
+    },
+    {
+      title: "BYO credential vault",
+      body: encryptionReady
+        ? tenantCredentials > 0
+          ? `${tenantCredentials} tenant-owned credential record(s) stored. Live actions are still gated.`
+          : "Encryption is ready. No tenant-owned provider keys have been added yet."
+        : credentialsNeedKey > 0
+          ? `${credentialsNeedKey} credential record(s) need CREDENTIAL_ENCRYPTION_KEY before secrets can be stored.`
+          : "Set CREDENTIAL_ENCRYPTION_KEY before accepting tenant-owned provider secrets.",
+      status: encryptionReady ? "ok" : tenantCredentials > 0 || credentialsNeedKey > 0 ? "broken" : "needs_setup",
+      href: "/app/credentials",
+      button: "Vault"
     },
     {
       title: "Provider callbacks",

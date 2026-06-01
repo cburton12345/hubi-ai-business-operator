@@ -32,6 +32,7 @@ const featureOrder = [
   "calendar_sync",
   "growth_attribution",
   "marketplacepro_import",
+  "byo_credential_vault",
   "marketing_os_profile",
   "website_import",
   "content_studio",
