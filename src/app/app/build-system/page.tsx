@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, CircleAlert, CircleDashed, ExternalLink, Wand2 } from "lucide-react";
+import { Bot, CheckCircle2, CircleAlert, CircleDashed, ExternalLink, SlidersHorizontal, Wand2 } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -161,6 +161,31 @@ export default async function BuildSystemPage() {
             </p>
           </div>
           <span className="pill">no token spend</span>
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>1. AI Mode or 2. Traditional Mode</h2>
+            <p className="muted">
+              This page is the AI-guided setup path. It creates a preview before changes apply. Traditional Mode is still available when an
+              admin wants direct access to every menu, setting, module, and control.
+            </p>
+          </div>
+          <span className="pill">choose either path</span>
+        </div>
+        <div className="path-grid">
+          <Link className="path-card" href="/app/ai-workforce">
+            <Bot size={18} />
+            <strong>1. AI Mode</strong>
+            <span>Use plain English. Ferocity prepares setup, marketing, SEO, website, follow-up, and review work for approval.</span>
+          </Link>
+          <Link className="path-card" href="/app/setup">
+            <SlidersHorizontal size={18} />
+            <strong>2. Traditional Mode</strong>
+            <span>Use direct module controls for setup, leads, sites, automations, integrations, billing, reports, and safety settings.</span>
+          </Link>
         </div>
       </section>
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   BarChart3,
+  Bot,
   CalendarDays,
   CheckCircle2,
   CreditCard,
@@ -11,6 +12,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Workflow
 } from "lucide-react";
@@ -137,6 +139,32 @@ export default async function AppDashboardPage() {
         </div>
 
         <section className="clarity-band">
+          <div className="panel">
+            <div className="list-row flush-row">
+              <div>
+                <p className="eyebrow">Choose how to use Ferocity</p>
+                <h2>1. AI Mode or 2. Traditional Mode</h2>
+                <p className="muted">
+                  Start with AI Mode if you want Ferocity to guide setup in plain English. Use Traditional Mode when you want every manual
+                  dashboard, setting, workflow, and control.
+                </p>
+              </div>
+              <span className="pill">two paths, one platform</span>
+            </div>
+            <div className="path-grid">
+              <Link className="path-card" href="/app/ai-workforce">
+                <Bot size={18} />
+                <strong>1. AI Mode</strong>
+                <span>Tell AI employees what you want: more leads, reviews, SEO, website hookup, automations, or follow-up. Review before live action.</span>
+              </Link>
+              <Link className="path-card" href="/app/setup">
+                <SlidersHorizontal size={18} />
+                <strong>2. Traditional Mode</strong>
+                <span>Use direct menus for brands, leads, marketing, websites, automations, service ops, reports, controls, billing, and integrations.</span>
+              </Link>
+            </div>
+          </div>
+
           <div className="panel">
             <div className="list-row flush-row">
               <div>
