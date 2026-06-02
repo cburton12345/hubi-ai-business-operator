@@ -26,14 +26,14 @@ export default async function OperatorSetupPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Choose How You Want To Work</h2>
-            <p className="muted">AI Guided Mode is the simple path. Traditional Mode keeps every manual control available for administrators and power users.</p>
+            <p className="muted">1. AI Mode is the simple path. 2. Traditional Mode keeps every manual control available for administrators and power users.</p>
           </div>
           <div className="inline-actions">
             <Link className="button" href="/app/ai-workforce">
-              <Bot size={16} /> AI Guided Mode
+              <Bot size={16} /> 1. AI Mode
             </Link>
             <span className="pill">
-              <SlidersHorizontal size={14} /> Traditional Mode below
+              <SlidersHorizontal size={14} /> 2. Traditional Mode below
             </span>
           </div>
         </div>

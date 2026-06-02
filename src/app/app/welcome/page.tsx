@@ -47,10 +47,10 @@ export default async function WelcomePage() {
         </div>
         <div className="inline-actions">
           <Link className="button" href="/app/ai-workforce">
-            AI Guided Mode
+            1. AI Mode
           </Link>
           <Link className="button secondary-button" href="/app/setup">
-            Traditional Mode
+            2. Traditional Mode
           </Link>
         </div>
       </div>
@@ -65,7 +65,7 @@ export default async function WelcomePage() {
       <section className="grid section-actions">
         <article className="panel span-6">
           <Bot size={20} />
-          <h2>AI Guided Mode</h2>
+          <h2>1. AI Mode</h2>
           <p className="muted">
             Tell Ferocity what you want done. AI employees prepare plans, drafts, workflows, and next actions using the same CRM, review, website,
             content, automation, reporting, messaging, lead, billing, and settings systems.
@@ -77,7 +77,7 @@ export default async function WelcomePage() {
 
         <article className="panel span-6">
           <SlidersHorizontal size={20} />
-          <h2>Traditional Mode</h2>
+          <h2>2. Traditional Mode</h2>
           <p className="muted">
             Use the normal menus when you want full control. Nothing is removed or hidden: leads, settings, reviews, automations, websites,
             billing, messaging, reports, and integrations stay available.

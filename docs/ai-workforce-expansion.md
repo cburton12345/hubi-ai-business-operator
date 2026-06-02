@@ -10,12 +10,12 @@ The AI Workforce is an orchestration layer over existing Ferocity systems. It mu
 
 - Keep existing app routes, auth, RLS, CRM, reviews, lead system, billing, portal, messaging, automations, websites, and content tools intact.
 - Keep Traditional Mode available for power users and administrators.
-- Make AI Guided Mode the simple default path for normal owners.
+- Make AI Mode the simple default path for normal owners.
 - Map AI employee actions to existing Ferocity modules whenever possible.
 - Do not create duplicate databases, duplicate workflow engines, duplicate campaign systems, or duplicate CRM records.
 - Keep live sends, publishing, ads, sync, and spend behind approval gates.
-- The product model is one platform with two interaction modes: AI Guided Mode and Traditional Mode.
-- AI Guided Mode is an additional orchestration layer, not a replacement for existing Ferocity functionality.
+- The product model is one platform with two interaction modes: 1. AI Mode and 2. Traditional Mode.
+- AI Mode is an additional orchestration layer, not a replacement for existing Ferocity functionality.
 
 ## First Implementation Order
 
@@ -23,7 +23,7 @@ The AI Workforce is an orchestration layer over existing Ferocity systems. It mu
 2. Show AI employees as roles with plain-English jobs, example commands, and safe next actions.
 3. Add quick actions: Get More Leads, Get More Reviews, Create Campaign, Improve Website, Improve SEO, Reactivate Leads, Generate Content, Set Up My Business.
 4. Route each quick action into existing Ferocity systems: Build My System, Marketing OS, Website Connector, SEO, Reviews, Operator Console, Automation, Leads, Integrations, Controls.
-5. Keep Simple Mode and Traditional Mode visible.
+5. Keep AI Mode and Traditional Mode visible.
 6. Add command preview behavior without executing destructive actions.
 7. Preserve future TODOs for live AI execution, website scraping, one-click campaign generation, and direct provider publishing.
 

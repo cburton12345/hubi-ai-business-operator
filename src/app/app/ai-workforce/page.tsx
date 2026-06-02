@@ -119,7 +119,7 @@ const quickActions = [
 export default function AiWorkforcePage() {
   return (
     <QueuePageShell
-      eyebrow="AI Guided Mode"
+      eyebrow="AI Mode"
       title="AI Workforce Command Center"
       description="Manage Ferocity like a team of AI employees. Traditional menus stay available; this layer simply makes the work easier to start, preview, and approve."
     >
@@ -130,13 +130,13 @@ export default function AiWorkforcePage() {
               <Bot size={18} /> One Platform, Two Ways To Use It
             </h2>
             <p className="muted">
-              AI Guided Mode lets owners say what they want. Traditional Mode keeps every CRM, review, website, content, automation, reporting,
+              1. AI Mode lets owners say what they want. 2. Traditional Mode keeps every CRM, review, website, content, automation, reporting,
               messaging, lead, billing, customer portal, integration, and settings page available.
             </p>
           </div>
           <div className="inline-actions">
-            <span className="pill">AI guided</span>
-            <span className="pill">traditional mode</span>
+            <span className="pill">1. AI Mode</span>
+            <span className="pill">2. Traditional Mode</span>
           </div>
         </div>
         <div className="setup-step-grid">
