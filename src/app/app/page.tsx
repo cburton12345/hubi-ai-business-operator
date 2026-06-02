@@ -115,6 +115,9 @@ export default async function AppDashboardPage() {
             <Link className="button secondary-button" href="/app/website">
               Connect Website
             </Link>
+            <Link className="button" href="/app/ai-workforce">
+              AI Workforce
+            </Link>
             <Link className="button" href="/app/build-system">
               Build My System
             </Link>
@@ -255,6 +258,11 @@ export default async function AppDashboardPage() {
             <Link className="mini-button" href="/app/setup">Choose modules</Link>
           </div>
           <div className="path-grid">
+            <Link className="path-card" href="/app/ai-workforce">
+              <Sparkles size={18} />
+              <strong>I want AI employees to handle this</strong>
+              <span>Use one command center for growth, reviews, SEO, content, sales, follow-up, website, ads, and setup.</span>
+            </Link>
             <Link className="path-card" href="/app/build-system">
               <Sparkles size={18} />
               <strong>I do not know how to set this up</strong>

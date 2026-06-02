@@ -20,6 +20,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
             <Link href="/app">Home</Link>
+            <Link href="/app/ai-workforce">AI Workforce</Link>
             <Link href="/app/build-system">Build My System</Link>
             <Link href="/app/marketing-os">Marketing OS</Link>
             <Link href="/app/operator">Operator Console</Link>
@@ -35,6 +36,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 <section>
                   <p>Start</p>
                   <Link href="/app/welcome">Welcome</Link>
+                  <Link href="/app/ai-workforce">AI Workforce</Link>
                   <Link href="/app/onboarding">Onboarding</Link>
                   <Link href="/app/access-requests">Access Requests</Link>
                   <Link href="/app/setup">Setup</Link>
@@ -103,8 +105,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               Switch
             </button>
           </form>
-          <Link className="button app-builder-button" href="/app/build-system">
-            Have AI Set This Up
+          <Link className="button app-builder-button" href="/app/ai-workforce">
+            AI Workforce
           </Link>
           <div className="session-chip">
             <strong>{workspace.name}</strong>
