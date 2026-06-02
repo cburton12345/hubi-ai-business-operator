@@ -183,6 +183,47 @@ async function recordAccessEmailStatus(input: {
   );
 }
 
+async function markAccessEmailStage(input: { requestId: string; stage: string; metadata?: Record<string, unknown> }) {
+  await queryPostgres(
+    `
+    update public.access_requests
+    set metadata_json = coalesce(metadata_json, '{}'::jsonb) || $2::jsonb,
+        updated_at = now()
+    where id = $1
+    `,
+    [
+      input.requestId,
+      JSON.stringify({
+        emailStage: input.stage,
+        emailStageAt: new Date().toISOString(),
+        ...(input.metadata ?? {})
+      })
+    ]
+  );
+}
+
+async function sendAccessRequestEmailsSafely(input: Parameters<typeof sendAccessRequestEmails>[0]) {
+  await markAccessEmailStage({ requestId: input.requestId, stage: "started" });
+  try {
+    await sendAccessRequestEmails(input);
+    await markAccessEmailStage({ requestId: input.requestId, stage: "completed" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Access request email failed.";
+    await markAccessEmailStage({ requestId: input.requestId, stage: "failed", metadata: { emailError: message } });
+    await logAppError({
+      source: "public.access_requests.email_delivery",
+      severity: "warning",
+      message,
+      tenantId: input.tenantId,
+      metadata: {
+        accessRequestId: input.requestId,
+        email: input.email,
+        workspaceStatus: input.workspaceStatus
+      }
+    });
+  }
+}
+
 async function sendAccessRequestEmails(input: {
   request: NextRequest;
   requestId: string;
@@ -734,7 +775,7 @@ export async function POST(request: NextRequest) {
 
     if (created) {
       if (created.status === "existing_account") {
-        await sendAccessRequestEmails({
+        await sendAccessRequestEmailsSafely({
           request,
           requestId: result.rows[0].id,
           email: parsed.data.email,
@@ -754,7 +795,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      await sendAccessRequestEmails({
+      await sendAccessRequestEmailsSafely({
         request,
         requestId: result.rows[0].id,
         email: parsed.data.email,
@@ -781,7 +822,7 @@ export async function POST(request: NextRequest) {
       severity: "warning",
       metadata: { accessRequestId: result.rows[0].id, email: parsed.data.email }
     });
-    await sendAccessRequestEmails({
+    await sendAccessRequestEmailsSafely({
       request,
       requestId: result.rows[0].id,
       email: parsed.data.email,
@@ -796,7 +837,7 @@ export async function POST(request: NextRequest) {
     return redirectTo(request, "/start/thanks?workspace=pending");
   }
 
-  await sendAccessRequestEmails({
+  await sendAccessRequestEmailsSafely({
     request,
     requestId: result.rows[0].id,
     email: parsed.data.email,
