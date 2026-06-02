@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, CircleDollarSign, LockKeyhole, WandSparkles } from "lucide-react";
+import { Bot, CheckCircle2, CircleDollarSign, LockKeyhole, SlidersHorizontal, WandSparkles } from "lucide-react";
 import { getCurrentWorkspace, getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 
@@ -45,9 +45,14 @@ export default async function WelcomePage() {
             checked before anything sends, publishes, syncs, or spends.
           </p>
         </div>
-        <Link className="button" href="/app/build-system">
-          Build My System
-        </Link>
+        <div className="inline-actions">
+          <Link className="button" href="/app/ai-workforce">
+            AI Guided Mode
+          </Link>
+          <Link className="button secondary-button" href="/app/setup">
+            Traditional Mode
+          </Link>
+        </div>
       </div>
 
       <section className="grid section-actions">
@@ -58,6 +63,30 @@ export default async function WelcomePage() {
       </section>
 
       <section className="grid section-actions">
+        <article className="panel span-6">
+          <Bot size={20} />
+          <h2>AI Guided Mode</h2>
+          <p className="muted">
+            Tell Ferocity what you want done. AI employees prepare plans, drafts, workflows, and next actions using the same CRM, review, website,
+            content, automation, reporting, messaging, lead, billing, and settings systems.
+          </p>
+          <Link className="mini-button" href="/app/ai-workforce">
+            Manage AI employees
+          </Link>
+        </article>
+
+        <article className="panel span-6">
+          <SlidersHorizontal size={20} />
+          <h2>Traditional Mode</h2>
+          <p className="muted">
+            Use the normal menus when you want full control. Nothing is removed or hidden: leads, settings, reviews, automations, websites,
+            billing, messaging, reports, and integrations stay available.
+          </p>
+          <Link className="mini-button" href="/app/setup">
+            Open setup
+          </Link>
+        </article>
+
         <article className="panel span-6">
           <WandSparkles size={20} />
           <h2>1. Tell Ferocity what to build</h2>

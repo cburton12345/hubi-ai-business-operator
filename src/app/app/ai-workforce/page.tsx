@@ -130,7 +130,8 @@ export default function AiWorkforcePage() {
               <Bot size={18} /> One Platform, Two Ways To Use It
             </h2>
             <p className="muted">
-              AI Guided Mode lets owners say what they want. Traditional Mode keeps every CRM, review, website, automation, billing, messaging, and settings page available.
+              AI Guided Mode lets owners say what they want. Traditional Mode keeps every CRM, review, website, content, automation, reporting,
+              messaging, lead, billing, customer portal, integration, and settings page available.
             </p>
           </div>
           <div className="inline-actions">

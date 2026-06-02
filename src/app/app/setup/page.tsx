@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, PlugZap, ShieldCheck } from "lucide-react";
+import { Bot, CheckCircle2, Circle, PlugZap, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOperatorSetupDashboard } from "@/lib/setup/get-operator-setup";
 import { updateSetupStepStatusAction, updateVerticalStatusAction } from "./actions";
@@ -25,12 +25,17 @@ export default async function OperatorSetupPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Not sure what to choose?</h2>
-            <p className="muted">Describe the business and Ferocity will prepare a reviewed setup plan before changing anything.</p>
+            <h2>Choose How You Want To Work</h2>
+            <p className="muted">AI Guided Mode is the simple path. Traditional Mode keeps every manual control available for administrators and power users.</p>
           </div>
-          <Link className="button" href="/app/build-system">
-            Build My System
-          </Link>
+          <div className="inline-actions">
+            <Link className="button" href="/app/ai-workforce">
+              <Bot size={16} /> AI Guided Mode
+            </Link>
+            <span className="pill">
+              <SlidersHorizontal size={14} /> Traditional Mode below
+            </span>
+          </div>
         </div>
       </section>
 

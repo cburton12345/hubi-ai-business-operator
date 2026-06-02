@@ -14,6 +14,8 @@ The AI Workforce is an orchestration layer over existing Ferocity systems. It mu
 - Map AI employee actions to existing Ferocity modules whenever possible.
 - Do not create duplicate databases, duplicate workflow engines, duplicate campaign systems, or duplicate CRM records.
 - Keep live sends, publishing, ads, sync, and spend behind approval gates.
+- The product model is one platform with two interaction modes: AI Guided Mode and Traditional Mode.
+- AI Guided Mode is an additional orchestration layer, not a replacement for existing Ferocity functionality.
 
 ## First Implementation Order
 
