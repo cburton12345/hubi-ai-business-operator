@@ -161,12 +161,11 @@ async function recordAccessEmailStatus(input: {
   await queryPostgres(
     `
     update public.access_requests
-    set metadata_json = jsonb_set(
-          metadata_json,
-          array['emailNotifications', $2],
-          $3::jsonb,
-          true
-        ),
+    set metadata_json = coalesce(metadata_json, '{}'::jsonb)
+          || jsonb_build_object(
+            'emailNotifications',
+            coalesce(metadata_json->'emailNotifications', '{}'::jsonb) || jsonb_build_object($2, $3::jsonb)
+          ),
         updated_at = now()
     where id = $1
     `,
