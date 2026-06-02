@@ -25,7 +25,7 @@ The AI Workforce is an orchestration layer over existing Ferocity systems. It mu
 4. Route each quick action into existing Ferocity systems: Build My System, Marketing OS, Website Connector, SEO, Reviews, Operator Console, Automation, Leads, Integrations, Controls.
 5. Keep AI Mode and Traditional Mode visible.
 6. Add command preview behavior without executing destructive actions.
-7. Preserve future TODOs for live AI execution, website scraping, one-click campaign generation, and direct provider publishing.
+7. Preserve future TODOs for live AI execution, advanced website crawling, one-click campaign generation, and direct provider publishing.
 
 ## AI Employees
 
@@ -57,4 +57,5 @@ The AI Workforce is an orchestration layer over existing Ferocity systems. It mu
 
 - Build My System already creates reviewed setup plans.
 - Marketing OS, Website Connector, SEO, Reviews, Automations, Operator Console, and Service Ops already exist as traditional modules.
-- Next addition is a clear AI employee command center that ties those modules together in one owner-friendly place.
+- AI Mode now routes owner commands into existing setup, marketing, website import, SEO, monitoring, and timeline records.
+- Website import safely reads one public HTML page into review-ready Marketing OS facts; advanced crawling and CMS publishing remain provider-gated.

@@ -11,6 +11,7 @@ import { generateSeoAutopilotAction } from "@/app/app/seo/actions";
 import { scanServiceOpsAction } from "@/app/app/service/actions";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { processNewestWebsiteImportForUrl } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type AiWorkforceState = {
@@ -103,6 +104,12 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     websiteForm.set("websiteUrl", websiteUrl);
     await requestWebsiteImportAction(websiteForm);
     prepared.push("Queued a reviewed website import through Marketing OS.");
+    const importResult = await processNewestWebsiteImportForUrl(workspaceId, websiteUrl);
+    if (importResult.ok) {
+      prepared.push("Imported public website facts into Marketing OS for review. Nothing was published.");
+    } else {
+      blocked.push(`Website import needs attention: ${importResult.message}`);
+    }
   } else if (hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow"])) {
     blocked.push("Website import needs the site URL. Add the URL to the command, such as: Improve my website https://example.com.");
   }

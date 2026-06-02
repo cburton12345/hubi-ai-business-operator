@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { processWebsiteImport } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const brandSchema = z.object({
@@ -14,6 +15,10 @@ const brandSchema = z.object({
 const websiteImportSchema = z.object({
   brandId: z.string().uuid().optional(),
   websiteUrl: z.string().url().max(500)
+});
+
+const processWebsiteImportSchema = z.object({
+  importId: z.string().uuid()
 });
 
 const contentCampaignSchema = z.object({
@@ -325,10 +330,22 @@ export async function requestWebsiteImportAction(formData: FormData) {
         pendingFields: ["company_name", "services", "service_areas", "about_content", "faqs", "reviews", "contact_information", "marketing_content"]
       }),
       session?.userId ?? null,
-      JSON.stringify({ noLiveScrapeYet: true, reviewBeforeUse: true })
+      JSON.stringify({ queuedForSafeHtmlImport: true, reviewBeforeUse: true, noPublishing: true })
     ]
   );
 
+  revalidateMarketingOs();
+}
+
+export async function processWebsiteImportAction(formData: FormData) {
+  await requirePermission("brand:manage");
+  const workspaceId = await getCurrentWorkspaceId();
+  const parsed = processWebsiteImportSchema.safeParse({
+    importId: formData.get("importId")
+  });
+  if (!parsed.success) return;
+
+  await processWebsiteImport(workspaceId, parsed.data.importId);
   revalidateMarketingOs();
 }
 
@@ -520,4 +537,6 @@ function revalidateMarketingOs() {
   revalidatePath("/app/marketing");
   revalidatePath("/app/controls");
   revalidatePath("/app/billing");
+  revalidatePath("/app/ai-workforce");
+  revalidatePath("/app/operator");
 }

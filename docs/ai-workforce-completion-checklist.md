@@ -35,6 +35,7 @@ Ferocity should use AI employees to plan, prepare, monitor, and optimize work wh
 - [x] Preserve rollback/review behavior through setup operator logs.
 - [x] Keep provider actions approval-gated.
 - [x] Wire AI Mode into website import requests.
+- [x] Process safe public website imports into review-ready Marketing OS facts.
 - [x] Wire AI Mode into growth/service/operator monitoring scans.
 - [x] Add safe scheduler/readiness stubs for future background AI employees.
 - [x] Surface AI Mode prepared work and blocked items clearly.
@@ -47,7 +48,7 @@ These are intentionally not marked as code blockers because they require provide
 - Live email/SMS sending requires verified provider keys, consent, and review.
 - Live website/CMS publishing requires a connected CMS or manual export workflow.
 - Live GBP/social/ad publishing requires provider OAuth, budgets, approvals, and plan limits.
-- True website scraping beyond queued import requests requires the production crawler/provider choice.
+- Advanced website crawling, JavaScript rendering, and multi-page CMS imports require the production crawler/provider choice.
 - Scheduled AI Workforce monitoring requires `AI_WORKFORCE_CRON_TOKEN` and an external scheduler or Netlify scheduled trigger.
 
 ## Non-Negotiables

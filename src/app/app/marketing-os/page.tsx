@@ -6,6 +6,7 @@ import {
   createContentStudioCampaignAction,
   createGraphicJobAction,
   createOneClickCampaignAction,
+  processWebsiteImportAction,
   createVideoJobAction,
   refreshBusinessProfileMemoryAction,
   requestWebsiteImportAction
@@ -61,7 +62,7 @@ export default async function MarketingOsPage() {
             <BrandSelect brands={dashboard.brands} />
             <input name="websiteUrl" type="url" placeholder="https://theirwebsite.com" required />
             <button className="button secondary-button" type="submit">Import From Website</button>
-            <p className="muted">This records a reviewed import request. It does not claim live scraping is active.</p>
+            <p className="muted">This queues a safe public-page import. Review facts before Ferocity uses them.</p>
           </form>
         </section>
 
@@ -157,7 +158,7 @@ export default async function MarketingOsPage() {
 
       <div className="grid section-actions">
         <ListPanel title="Business Profile Memory" empty="No business profile memory yet. Run Quick Setup." rows={dashboard.profiles} />
-        <ListPanel title="Website Imports" empty="No website import requests yet." rows={dashboard.websiteImports} />
+        <ListPanel title="Website Imports" empty="No website import requests yet." rows={dashboard.websiteImports} processWebsiteImports />
         <ListPanel title="Campaigns" empty="No content studio campaigns yet." rows={dashboard.campaigns} />
         <ListPanel title="Review-Ready Outputs" empty="No campaign outputs yet." rows={dashboard.outputs} />
         <ListPanel title="Media Library" empty="No media library records yet." rows={dashboard.mediaAssets} />
@@ -196,7 +197,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ListPanel({ title, empty, rows }: { title: string; empty: string; rows: MarketingOsRow[] }) {
+function ListPanel({ title, empty, rows, processWebsiteImports = false }: { title: string; empty: string; rows: MarketingOsRow[]; processWebsiteImports?: boolean }) {
   return (
     <section className="panel span-6">
       <h2>{title}</h2>
@@ -208,7 +209,15 @@ function ListPanel({ title, empty, rows }: { title: string; empty: string; rows:
               {item.detail ? <p>{item.detail}</p> : null}
               <p className="muted">{item.meta}</p>
             </div>
-            <span className="pill">{item.status}</span>
+            <div className="button-row">
+              <span className="pill">{item.status}</span>
+              {processWebsiteImports && ["queued", "failed", "scanning"].includes(item.status) ? (
+                <form action={processWebsiteImportAction}>
+                  <input name="importId" type="hidden" value={item.id} />
+                  <button className="mini-button" type="submit">Process import</button>
+                </form>
+              ) : null}
+            </div>
           </li>
         ))}
         {rows.length === 0 ? <li className="list-row"><span className="muted">{empty}</span></li> : null}
