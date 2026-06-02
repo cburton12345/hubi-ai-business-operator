@@ -205,8 +205,17 @@ async function markAccessEmailStage(input: { requestId: string; stage: string; m
 async function sendAccessRequestEmailsSafely(input: Parameters<typeof sendAccessRequestEmails>[0]) {
   await markAccessEmailStage({ requestId: input.requestId, stage: "started" });
   try {
-    await sendAccessRequestEmails(input);
-    await markAccessEmailStage({ requestId: input.requestId, stage: "completed" });
+    const result = await sendAccessRequestEmails(input);
+    await markAccessEmailStage({
+      requestId: input.requestId,
+      stage: "completed",
+      metadata: {
+        emailNotifications: {
+          requester: result.requester,
+          admin: result.admin
+        }
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Access request email failed.";
     await markAccessEmailStage({ requestId: input.requestId, stage: "failed", metadata: { emailError: message } });
@@ -337,6 +346,21 @@ ${input.message || "none"}`,
     key: "admin",
     result: admin
   });
+
+  return {
+    requester: {
+      ok: confirmation.ok,
+      skipped: "skipped" in confirmation ? confirmation.skipped : false,
+      providerMessageId: "providerMessageId" in confirmation ? confirmation.providerMessageId : null,
+      error: "error" in confirmation ? confirmation.error : null
+    },
+    admin: {
+      ok: admin.ok,
+      skipped: "skipped" in admin ? admin.skipped : false,
+      providerMessageId: "providerMessageId" in admin ? admin.providerMessageId : null,
+      error: "error" in admin ? admin.error : null
+    }
+  };
 }
 
 async function createStarterWorkspace(input: {
