@@ -85,6 +85,7 @@ export default function DemoPage() {
           <div>
             <Link href="/about">About</Link>
             <Link href="/features">Features</Link>
+            <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/integrations">Integrations</Link>
@@ -110,6 +111,9 @@ export default function DemoPage() {
               </Link>
               <Link className="button secondary-button" href="/pricing">
                 View plans
+              </Link>
+              <Link className="button secondary-button" href="/connect-website">
+                Connect website
               </Link>
             </div>
           </div>
@@ -225,6 +229,9 @@ export default function DemoPage() {
           <div className="button-row">
             <Link className="button" href="/start?source=demo_bottom">
               Start setup <ArrowRight size={16} />
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Website hookup
             </Link>
             <Link className="button secondary-button" href="/pricing">
               Compare plans

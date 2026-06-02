@@ -77,6 +77,7 @@ export default function PricingPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
+            <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/integrations">Integrations</Link>
             <Link href="/start">Start</Link>
@@ -99,6 +100,9 @@ export default function PricingPage() {
             </Link>
             <Link className="button secondary-button" href="/automations">
               See automations
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Website hookup
             </Link>
           </div>
         </section>

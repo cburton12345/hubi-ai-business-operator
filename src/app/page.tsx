@@ -86,6 +86,7 @@ export default function HomePage() {
             <Link href="/about">About</Link>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
+            <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/integrations">Integrations</Link>
@@ -112,6 +113,9 @@ export default function HomePage() {
               </Link>
               <Link className="button secondary-button" href="/demo">
                 See demo
+              </Link>
+              <Link className="button secondary-button" href="/connect-website">
+                Connect website
               </Link>
             </div>
             <div className="trust-strip" aria-label="Safety controls">
@@ -318,6 +322,9 @@ export default function HomePage() {
           <div className="button-row">
             <Link className="button" href="/start?source=home_bottom">
               Start setup <ArrowRight size={16} />
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Website hookup
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans

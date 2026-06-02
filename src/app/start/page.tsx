@@ -58,6 +58,7 @@ export default async function StartPage({
           </Link>
           <div>
             <Link href="/demo">Demo</Link>
+            <Link href="/connect-website">Connect Website</Link>
             <Link href="/features">Features</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
@@ -78,6 +79,9 @@ export default async function StartPage({
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View tiers
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Website hookup
             </Link>
           </div>
         </section>

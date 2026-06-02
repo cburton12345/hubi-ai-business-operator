@@ -57,6 +57,35 @@ export default async function WebsiteConnectorPage() {
         </Link>
       </div>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Recommended setup order</p>
+            <h2>Hook up the site without confusing the owner.</h2>
+            <p className="muted">
+              Start with lead capture and tracking. Use reviewed drafts for SEO and marketing. Turn on live publishing only after the account, limits,
+              and approvals are ready.
+            </p>
+          </div>
+          <span className="pill">plain steps</span>
+        </div>
+        <div className="grid section-actions">
+          {[
+            ["1", "Import website facts", "Read the public page into Marketing OS for review. Do not publish."],
+            ["2", "Add lead capture", "Use a quote button, embedded Ferocity form, or hosted growth page."],
+            ["3", "Track sources", "Attach UTM, page, referrer, service, city, and campaign data to leads."],
+            ["4", "Draft SEO and content", "Prepare service pages, city pages, GBP posts, review asks, and campaigns."],
+            ["5", "Approve live actions", "Only then enable CMS publishing, email, SMS, payments, ads, or provider sync."]
+          ].map(([number, title, body]) => (
+            <article className="panel span-4" key={title}>
+              <span className="pill">{number}</span>
+              <h3>{title}</h3>
+              <p className="muted">{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <div className="grid section-actions">
         <section className="panel span-6">
           <h2>How A Website Connects</h2>

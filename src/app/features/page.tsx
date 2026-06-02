@@ -147,6 +147,7 @@ export default function FeaturesPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/demo/tour">Tour</Link>
+            <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/start">Start</Link>
@@ -170,6 +171,9 @@ export default function FeaturesPage() {
             </Link>
             <Link className="button secondary-button" href="/demo">
               See demo
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Website hookup
             </Link>
           </div>
         </section>
@@ -282,6 +286,9 @@ export default function FeaturesPage() {
           <div className="button-row">
             <Link className="button" href="/start?source=features_bottom">
               Start setup
+            </Link>
+            <Link className="button secondary-button" href="/connect-website">
+              Connect website
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans
