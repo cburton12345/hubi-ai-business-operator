@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, CircleAlert, CircleDashed, ShieldAlert, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { hasSupabaseAdminConfig, hasSupabaseBrowserConfig, missingEnvVars } from "@/lib/env";
+import { env, hasSupabaseAdminConfig, hasSupabaseBrowserConfig, missingEnvVars } from "@/lib/env";
 import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getEmailProviderHealth, type EmailProviderHealth } from "@/lib/email/provider-health";
@@ -253,6 +253,15 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       status: encryptionReady ? "ok" : tenantCredentials > 0 || credentialsNeedKey > 0 ? "broken" : "needs_setup",
       href: "/app/credentials",
       button: "Vault"
+    },
+    {
+      title: "AI Workforce monitor",
+      body: env.AI_WORKFORCE_CRON_TOKEN
+        ? "Protected background monitor token is configured. Scheduled scans can be enabled without live provider actions."
+        : "Background AI monitoring is intentionally disabled until AI_WORKFORCE_CRON_TOKEN is configured.",
+      status: env.AI_WORKFORCE_CRON_TOKEN ? "ok" : "needs_setup",
+      href: "/app/ai-workforce",
+      button: "AI Mode"
     },
     {
       title: "Provider callbacks",

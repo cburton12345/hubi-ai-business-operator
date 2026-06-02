@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
+import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { AiCommandPanel } from "./AiCommandPanel";
 
@@ -148,6 +149,7 @@ async function getAiWorkforceHistory() {
 
 export default async function AiWorkforcePage() {
   const history = await getAiWorkforceHistory();
+  const monitorReady = Boolean(env.AI_WORKFORCE_CRON_TOKEN);
 
   return (
     <QueuePageShell
@@ -206,6 +208,34 @@ export default async function AiWorkforcePage() {
               </div>
               <CheckCircle2 size={18} />
             </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Background AI Employees</h2>
+            <p className="muted">
+              Ferocity can run protected monitoring scans through existing lead, growth, service, and action queue systems. This is a safe scheduler path, not live provider automation.
+            </p>
+          </div>
+          <span className={`pill ${monitorReady ? "" : "high"}`}>{monitorReady ? "monitor ready" : "needs AI_WORKFORCE_CRON_TOKEN"}</span>
+        </div>
+        <div className="status-grid compact-status-grid">
+          {[
+            ["Lead-to-job monitor", "Creates or refreshes conversations, opportunities, callbacks, and scheduled-work visibility."],
+            ["Growth monitor", "Finds stale leads, review gaps, SEO quality gaps, unpaid invoices, attribution gaps, and publishing readiness."],
+            ["Service ops monitor", "Finds unscheduled jobs, technician gaps, estimate follow-up, invoice tasks, review work, and inventory issues."],
+            ["Action queue monitor", "Moves draft messages, publishing items, review requests, and calendar work into approval queues."]
+          ].map(([title, body]) => (
+            <div className="status-card" key={title}>
+              <div>
+                <h3>{title}</h3>
+                <p className="muted">{body}</p>
+              </div>
+              <ShieldCheck size={18} />
+            </div>
           ))}
         </div>
       </section>

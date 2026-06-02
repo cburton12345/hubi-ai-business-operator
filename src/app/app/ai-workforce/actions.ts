@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { scanActionQueueAction } from "@/app/app/actions/actions";
 import { applySetupPlanAction } from "@/app/app/build-system/actions";
-import { createContentStudioCampaignAction, createOneClickCampaignAction, refreshBusinessProfileMemoryAction } from "@/app/app/marketing-os/actions";
+import { scanGrowthLoopAction } from "@/app/app/growth/actions";
+import { createContentStudioCampaignAction, createOneClickCampaignAction, refreshBusinessProfileMemoryAction, requestWebsiteImportAction } from "@/app/app/marketing-os/actions";
+import { scanLeadToJobLoopAction } from "@/app/app/operator/actions";
 import { generateSeoAutopilotAction } from "@/app/app/seo/actions";
+import { scanServiceOpsAction } from "@/app/app/service/actions";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -54,6 +57,11 @@ function campaignKeyFor(command: string) {
   return null;
 }
 
+function firstUrl(command: string) {
+  const match = command.match(/https?:\/\/[^\s)]+/i);
+  return match?.[0]?.replace(/[.,;!?]+$/, "") ?? null;
+}
+
 async function timeline(workspaceId: string, title: string, body: string, metadata: Record<string, unknown>) {
   await queryPostgres(
     `
@@ -89,6 +97,16 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   await refreshBusinessProfileMemoryAction(new FormData());
   prepared.push("Refreshed business profile memory from existing brand, services, areas, proof, offers, and marketing settings.");
 
+  const websiteUrl = firstUrl(command);
+  if (websiteUrl) {
+    const websiteForm = new FormData();
+    websiteForm.set("websiteUrl", websiteUrl);
+    await requestWebsiteImportAction(websiteForm);
+    prepared.push("Queued a reviewed website import through Marketing OS.");
+  } else if (hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow"])) {
+    blocked.push("Website import needs the site URL. Add the URL to the command, such as: Improve my website https://example.com.");
+  }
+
   if (hasAny(lower, ["campaign", "storm", "hail", "facebook", "instagram", "ad", "promotion", "content", "blog", "gbp", "email", "sms", "referral"])) {
     const blueprintKey = campaignKeyFor(command);
     if (blueprintKey) {
@@ -111,8 +129,22 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   }
 
   if (hasAny(lower, ["follow", "reactivate", "old lead", "stale", "missed call", "callback", "estimate", "invoice", "review"])) {
+    await scanLeadToJobLoopAction();
+    prepared.push("Scanned lead-to-job records for conversations, opportunities, callbacks, and scheduled work.");
+    await scanGrowthLoopAction();
+    prepared.push("Scanned growth loop records for stale leads, reviews, invoices, attribution, and content gaps.");
+    await scanServiceOpsAction();
+    prepared.push("Scanned service operations for jobs, estimates, invoices, reviews, recurring service, and inventory tasks.");
     await scanActionQueueAction();
     prepared.push("Scanned action queue for follow-up, review, publishing, calendar, and consent-ready work.");
+  }
+
+  if (hasAny(lower, ["monitor", "optimize", "improve", "audit", "check everything", "run scans", "command center"])) {
+    await scanLeadToJobLoopAction();
+    await scanGrowthLoopAction();
+    await scanServiceOpsAction();
+    await scanActionQueueAction();
+    prepared.push("Ran AI Mode monitoring scans across lead-to-job, growth, service ops, and action queue systems.");
   }
 
   await timeline(
