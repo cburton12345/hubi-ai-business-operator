@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Eye, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Eye, ShieldCheck } from "lucide-react";
+import { executeAiWorkforceCommandAction } from "./actions";
 
 type CommandPlan = {
   title: string;
@@ -93,6 +94,7 @@ function pickPlan(input: string) {
 
 export function AiCommandPanel() {
   const [command, setCommand] = useState("Get me more roofing leads.");
+  const [executeState, executeAction, executePending] = useActionState(executeAiWorkforceCommandAction, { ok: false });
   const plan = useMemo(() => pickPlan(command), [command]);
 
   return (
@@ -104,10 +106,10 @@ export function AiCommandPanel() {
         </div>
         <span className="pill">preview first</span>
       </div>
-      <div className="two-col">
+      <form action={executeAction} className="two-col">
         <label>
           Owner command
-          <textarea value={command} onChange={(event) => setCommand(event.target.value)} rows={5} />
+          <textarea name="command" value={command} onChange={(event) => setCommand(event.target.value)} rows={5} />
         </label>
         <div className="panel form-stack">
           <h3>
@@ -120,8 +122,43 @@ export function AiCommandPanel() {
               <span className="pill" key={employee}>{employee}</span>
             ))}
           </div>
+          <button className="button" type="submit" disabled={executePending}>
+            {executePending ? "Preparing..." : "Prepare work in Ferocity"}
+          </button>
+          <p className="muted">Creates reviewed setup/campaign/SEO/action records where appropriate. It does not send, publish, spend, or sync live.</p>
         </div>
-      </div>
+      </form>
+      {executeState.message ? (
+        <section className={`panel ${executeState.ok ? "success-panel" : ""}`}>
+          <div className="list-row flush-row">
+            <div>
+              <h3>{executeState.message}</h3>
+              <p className="muted">Review the prepared records in Traditional Mode before anything goes live.</p>
+            </div>
+            <span className={`pill ${executeState.ok ? "" : "high"}`}>{executeState.ok ? "prepared" : "needs attention"}</span>
+          </div>
+          {executeState.prepared?.length ? (
+            <ul className="list">
+              {executeState.prepared.map((item) => (
+                <li className="list-row" key={item}>
+                  <CheckCircle2 size={16} />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {executeState.blocked?.length ? (
+            <ul className="list">
+              {executeState.blocked.map((item) => (
+                <li className="list-row" key={item}>
+                  <span className="pill high">blocked</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
       <div className="grid">
         <section className="panel span-6">
           <h3>What Ferocity Would Prepare</h3>

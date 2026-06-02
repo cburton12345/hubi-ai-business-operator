@@ -16,6 +16,8 @@ import {
   Workflow
 } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { AiCommandPanel } from "./AiCommandPanel";
 
 const employees = [
@@ -116,7 +118,37 @@ const quickActions = [
   ["Set Up My Business", "AI creates a reviewed setup plan for profile, services, areas, forms, automations, reviews, and SEO.", "/app/build-system"]
 ];
 
-export default function AiWorkforcePage() {
+type AiWorkforceEvent = {
+  id: string;
+  title: string;
+  body: string | null;
+  occurred_at: Date;
+  metadata_json: {
+    command?: string;
+    prepared?: string[];
+    blocked?: string[];
+  } | null;
+};
+
+async function getAiWorkforceHistory() {
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<AiWorkforceEvent>(
+    `
+    select id, title, body, occurred_at, metadata_json
+    from public.operator_timeline_events
+    where tenant_id = $1
+      and event_type = 'ai_workforce_command'
+    order by occurred_at desc
+    limit 8
+    `,
+    [workspaceId]
+  );
+  return result?.rows ?? [];
+}
+
+export default async function AiWorkforcePage() {
+  const history = await getAiWorkforceHistory();
+
   return (
     <QueuePageShell
       eyebrow="AI Mode"
@@ -176,6 +208,40 @@ export default function AiWorkforcePage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>AI Mode Activity</h2>
+            <p className="muted">Commands are logged in the existing operator timeline so the work stays auditable with the rest of Ferocity.</p>
+          </div>
+          <Link className="mini-button" href="/app/operator">Timeline</Link>
+        </div>
+        <ul className="list">
+          {history.map((event) => (
+            <li className="list-row" key={event.id}>
+              <div>
+                <h3>{event.metadata_json?.command ?? event.title}</h3>
+                <p className="muted">
+                  {new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(event.occurred_at)}
+                </p>
+                <p>{event.body}</p>
+                {event.metadata_json?.prepared?.length ? (
+                  <p className="muted">{event.metadata_json.prepared.length} prepared item(s), review required before live action.</p>
+                ) : null}
+              </div>
+              <span className={`pill ${event.metadata_json?.blocked?.length ? "high" : ""}`}>
+                {event.metadata_json?.blocked?.length ? "needs attention" : "prepared"}
+              </span>
+            </li>
+          ))}
+          {history.length === 0 ? (
+            <li className="list-row">
+              <span className="muted">No AI Mode commands have been executed yet.</span>
+            </li>
+          ) : null}
+        </ul>
       </section>
 
       <section className="panel section-actions">
