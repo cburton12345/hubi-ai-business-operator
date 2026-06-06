@@ -86,6 +86,7 @@ export default function HomePage() {
             <Link href="/about">About</Link>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
+            <Link href="/business-health-score">Health Score</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
@@ -107,6 +108,9 @@ export default function HomePage() {
             <div className="button-row">
               <Link className="button" href="/start?source=home">
                 Start my setup <ArrowRight size={16} />
+              </Link>
+              <Link className="button secondary-button" href="/business-health-score">
+                Business Health Score
               </Link>
               <Link className="button secondary-button" href="/pricing">
                 View plans

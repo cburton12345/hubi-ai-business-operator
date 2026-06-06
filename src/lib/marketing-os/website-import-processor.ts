@@ -25,6 +25,16 @@ export type WebsiteImportProcessResult = {
   };
 };
 
+export type PublicWebsiteAnalysis = NonNullable<WebsiteImportProcessResult["extracted"]> & {
+  finalUrl: string;
+  contentType: string;
+  htmlCharsRead: number;
+  formCount: number;
+  ctaHints: string[];
+  trustHints: string[];
+  mediaHints: string[];
+};
+
 const PRIVATE_IPV4_PATTERNS = [
   /^0\./,
   /^10\./,
@@ -168,6 +178,95 @@ function areaHints(text: string, links: Array<{ text: string }>) {
     ...links.map((link) => link.text).filter((text) => /\b(service areas?|locations?|near me|areas served)\b/i.test(text))
   ];
   return unique(candidates, 12);
+}
+
+function extractCtaHints(text: string, links: Array<{ text: string }>) {
+  const patterns = [
+    "free estimate",
+    "get a quote",
+    "request a quote",
+    "schedule",
+    "book",
+    "call now",
+    "contact us",
+    "request service",
+    "get started"
+  ];
+  const candidates = [...links.map((link) => link.text), text.slice(0, 12000)].filter((value) => {
+    const lower = value.toLowerCase();
+    return patterns.some((pattern) => lower.includes(pattern));
+  });
+  return unique(candidates, 12);
+}
+
+function extractTrustHints(text: string) {
+  const patterns = [
+    "review",
+    "testimonial",
+    "before and after",
+    "before & after",
+    "licensed",
+    "insured",
+    "warranty",
+    "guarantee",
+    "family owned",
+    "locally owned"
+  ];
+  return unique(
+    patterns.filter((pattern) => text.toLowerCase().includes(pattern)).map((pattern) => pattern.replace(/\b\w/g, (char) => char.toUpperCase())),
+    12
+  );
+}
+
+function extractMediaHints(html: string) {
+  const imageCount = (html.match(/<img\b/gi) ?? []).length;
+  const videoCount = (html.match(/<video\b|youtube\.com|vimeo\.com/gi) ?? []).length;
+  const hints: string[] = [];
+  if (imageCount > 0) hints.push(`${imageCount} image${imageCount === 1 ? "" : "s"}`);
+  if (videoCount > 0) hints.push(`${videoCount} video hint${videoCount === 1 ? "" : "s"}`);
+  return hints;
+}
+
+export async function analyzePublicWebsiteUrl(websiteUrl: string): Promise<
+  | { ok: true; analysis: PublicWebsiteAnalysis }
+  | { ok: false; message: string }
+> {
+  const url = safeUrl(websiteUrl);
+  if (!url) {
+    return { ok: false, message: "Use a public http or https website URL. Local and private network URLs are blocked." };
+  }
+
+  try {
+    const { html, finalUrl, contentType } = await fetchPublicHtml(url);
+    const text = stripTags(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " "));
+    const title = extractTag(html, "title");
+    const metaDescription = extractMetaDescription(html);
+    const headings = extractHeadings(html);
+    const links = extractLinks(html, new URL(finalUrl));
+    const formCount = (html.match(/<form\b/gi) ?? []).length;
+    return {
+      ok: true,
+      analysis: {
+        finalUrl,
+        contentType,
+        htmlCharsRead: html.length,
+        title,
+        metaDescription,
+        headings,
+        phones: extractPhones(text),
+        emails: extractEmails(text),
+        serviceHints: serviceHints(headings, links),
+        serviceAreaHints: areaHints(text, links),
+        internalLinks: links,
+        formCount,
+        ctaHints: extractCtaHints(text, links),
+        trustHints: extractTrustHints(text),
+        mediaHints: extractMediaHints(html)
+      }
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Website scan failed." };
+  }
 }
 
 async function fetchPublicHtml(url: URL) {
@@ -353,22 +452,9 @@ export async function processWebsiteImport(workspaceId: string, importId: string
   );
 
   try {
-    const { html, finalUrl, contentType } = await fetchPublicHtml(url);
-    const text = stripTags(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " "));
-    const title = extractTag(html, "title");
-    const metaDescription = extractMetaDescription(html);
-    const headings = extractHeadings(html);
-    const links = extractLinks(html, new URL(finalUrl));
-    const extracted = {
-      title,
-      metaDescription,
-      headings,
-      phones: extractPhones(text),
-      emails: extractEmails(text),
-      serviceHints: serviceHints(headings, links),
-      serviceAreaHints: areaHints(text, links),
-      internalLinks: links
-    };
+    const analysisResult = await analyzePublicWebsiteUrl(row.website_url);
+    if (!analysisResult.ok) throw new Error(analysisResult.message);
+    const { finalUrl, contentType, htmlCharsRead, formCount, ctaHints, trustHints, mediaHints, ...extracted } = analysisResult.analysis;
     const profileId = await upsertReviewProfile(workspaceId, row, extracted);
 
     await queryPostgres(
@@ -391,9 +477,13 @@ export async function processWebsiteImport(workspaceId: string, importId: string
           reviewBeforeUse: true,
           finalUrl,
           contentType,
-          htmlCharsRead: html.length,
           noPublishing: true,
-          noLiveSync: true
+          noLiveSync: true,
+          htmlCharsRead,
+          formCount,
+          ctaHints,
+          trustHints,
+          mediaHints
         })
       ]
     );

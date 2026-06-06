@@ -147,6 +147,7 @@ export default function FeaturesPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/demo/tour">Tour</Link>
+            <Link href="/business-health-score">Health Score</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
@@ -165,6 +166,9 @@ export default function FeaturesPage() {
           <div className="button-row">
             <Link className="button" href="/start?source=features">
               Start my setup
+            </Link>
+            <Link className="button secondary-button" href="/business-health-score">
+              Business Health Score
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans

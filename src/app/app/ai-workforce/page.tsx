@@ -4,10 +4,12 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   FileText,
   Megaphone,
   MessagesSquare,
   Phone,
+  PlayCircle,
   Search,
   ShieldCheck,
   Sparkles,
@@ -18,8 +20,10 @@ import {
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { getAgentWorkflowDashboard } from "@/lib/ai-workforce/agent-workflows";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { AiCommandPanel } from "./AiCommandPanel";
+import { runAiAgentWorkflowAction, updateAiAgentWorkflowAction } from "./workflow-actions";
 
 const employees = [
   {
@@ -147,8 +151,24 @@ async function getAiWorkforceHistory() {
   return result?.rows ?? [];
 }
 
+function dateLabel(value: string | null) {
+  if (!value) return "Not scheduled";
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function modeLabel(value: string) {
+  if (value === "draft_only") return "draft only";
+  if (value === "auto_allowed") return "auto allowed";
+  return "approval required";
+}
+
+function cadenceLabel(value: string) {
+  if (value === "every_15_min") return "every 15 min";
+  return value.replaceAll("_", " ");
+}
+
 export default async function AiWorkforcePage() {
-  const history = await getAiWorkforceHistory();
+  const [history, agentDashboard] = await Promise.all([getAiWorkforceHistory(), getAgentWorkflowDashboard()]);
   const monitorReady = Boolean(env.AI_WORKFORCE_CRON_TOKEN);
 
   return (
@@ -191,6 +211,136 @@ export default async function AiWorkforcePage() {
 
       <AiCommandPanel />
 
+      <section className="section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <Workflow size={18} /> AI Agent Workflows
+            </h2>
+            <p className="muted">
+              These are the actual agent loops. They use existing Ferocity leads, messages, reviews, invoices, drafts, action queues, and timeline records.
+              Customer sends and publishing stay gated unless policies, keys, consent, and approvals allow them.
+            </p>
+          </div>
+          <Link className="mini-button" href="/app/actions">Open action queue</Link>
+        </div>
+        {!agentDashboard.tableReady ? (
+          <div className="callout">
+            <h3>Agent workflow tables need the latest migration</h3>
+            <p className="muted">The UI is ready, but the database still needs migration 051 before these controls can run.</p>
+          </div>
+        ) : null}
+        <div className="grid">
+          {agentDashboard.workflows.map((workflow) => (
+            <div className="panel span-4" key={workflow.id}>
+              <div className="list-row flush-row">
+                <div>
+                  <h3>{workflow.agentName}</h3>
+                  <p className="muted">{workflow.plainGoal}</p>
+                </div>
+                <span className={`pill ${workflow.status === "paused" ? "high" : ""}`}>{workflow.status === "active" ? "on" : workflow.status}</span>
+              </div>
+              <div className="inline-actions">
+                <span className="pill">{modeLabel(workflow.runMode)}</span>
+                <span className="pill">
+                  <Clock3 size={14} /> {cadenceLabel(workflow.cadenceKey)}
+                </span>
+                <span className="pill">{workflow.openOutputs} output(s)</span>
+              </div>
+              <p className="muted">Last run: {dateLabel(workflow.lastRunAt)} / {workflow.lastRunStatus ?? "not run yet"}</p>
+              <p className="muted">Next run: {dateLabel(workflow.nextRunAt)}</p>
+              <form action={updateAiAgentWorkflowAction} className="form-stack compact-form">
+                <input name="workflowId" type="hidden" value={workflow.id} />
+                <div className="two-col">
+                  <label>
+                    Status
+                    <select name="status" defaultValue={workflow.status}>
+                      <option value="active">On</option>
+                      <option value="paused">Off</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </label>
+                  <label>
+                    Mode
+                    <select name="runMode" defaultValue={workflow.runMode}>
+                      <option value="draft_only">Draft only</option>
+                      <option value="approval_required">Ask before action</option>
+                      <option value="auto_allowed">Auto allowed</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Schedule
+                  <select name="cadenceKey" defaultValue={workflow.cadenceKey}>
+                    <option value="manual">Manual only</option>
+                    <option value="every_15_min">Every 15 min</option>
+                    <option value="hourly">Hourly</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                </label>
+                <div className="button-row">
+                  <button className="mini-button" type="submit">Save agent</button>
+                </div>
+              </form>
+              <form action={runAiAgentWorkflowAction}>
+                <input name="agentKey" type="hidden" value={workflow.agentKey} />
+                <button className="button" type="submit">
+                  <PlayCircle size={16} /> Run check now
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid section-actions">
+        <div className="panel span-6">
+          <h2>Recent Agent Runs</h2>
+          <ul className="list">
+            {agentDashboard.runs.map((run) => (
+              <li className="list-row" key={run.id}>
+                <div>
+                  <h3>{run.agentKey.replaceAll("_", " ")}</h3>
+                  <p>{run.summary ?? "Run started."}</p>
+                  <p className="muted">
+                    {dateLabel(run.startedAt)} / {run.outputsPrepared} prepared / {run.outputsSent} sent / {run.outputsBlocked} blocked
+                  </p>
+                </div>
+                <span className={`pill ${run.status === "failed" ? "high" : ""}`}>{run.status}</span>
+              </li>
+            ))}
+            {agentDashboard.runs.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No agent workflow runs yet. Use Run check now on one of the agents.</span>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+        <div className="panel span-6">
+          <h2>Agent Output Queue</h2>
+          <ul className="list">
+            {agentDashboard.outputs.map((output) => (
+              <li className="list-row" key={output.id}>
+                <div>
+                  <h3>{output.title}</h3>
+                  <p className="muted">
+                    {output.agentKey.replaceAll("_", " ")} / {output.outputType} / {dateLabel(output.createdAt)}
+                  </p>
+                  <p className="muted">{output.targetType ?? "audit only"}</p>
+                </div>
+                <span className="pill">{output.status}</span>
+              </li>
+            ))}
+            {agentDashboard.outputs.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">Agent outputs will appear here after a run.</span>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      </section>
+
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
@@ -217,17 +367,18 @@ export default async function AiWorkforcePage() {
           <div>
             <h2>Background AI Employees</h2>
             <p className="muted">
-              Ferocity can run protected monitoring scans through existing lead, growth, service, and action queue systems. This is a safe scheduler path, not live provider automation.
+              Ferocity can run scheduled AI agent workflows through the protected monitor endpoint. Agents prepare drafts, tasks, review work, internal alerts, and outputs while live customer sends and publishing stay gated.
             </p>
           </div>
           <span className={`pill ${monitorReady ? "" : "high"}`}>{monitorReady ? "monitor ready" : "needs AI_WORKFORCE_CRON_TOKEN"}</span>
         </div>
         <div className="status-grid compact-status-grid">
           {[
-            ["Lead-to-job monitor", "Creates or refreshes conversations, opportunities, callbacks, and scheduled-work visibility."],
-            ["Growth monitor", "Finds stale leads, review gaps, SEO quality gaps, unpaid invoices, attribution gaps, and publishing readiness."],
-            ["Service ops monitor", "Finds unscheduled jobs, technician gaps, estimate follow-up, invoice tasks, review work, and inventory issues."],
-            ["Action queue monitor", "Moves draft messages, publishing items, review requests, and calendar work into approval queues."]
+            ["Lead Response Agent", "Checks due lead-response workflows, prepares first-reply drafts, and sends internal owner/team alerts when email is ready."],
+            ["Follow-Up Agent", "Checks stale leads and creates reviewed follow-up tasks instead of letting opportunities disappear."],
+            ["Review Agent", "Checks completed jobs and prepares review request workflows that still require approval before customer contact."],
+            ["Invoice Reminder Agent", "Checks aging invoices and prepares payment reminder work without sending customer email automatically."],
+            ["SEO And Marketing Agent", "Checks service and area data and prepares draft-only SEO content that still needs proof and approval."]
           ].map(([title, body]) => (
             <div className="status-card" key={title}>
               <div>

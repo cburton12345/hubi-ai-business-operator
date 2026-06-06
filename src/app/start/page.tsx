@@ -58,6 +58,7 @@ export default async function StartPage({
           </Link>
           <div>
             <Link href="/demo">Demo</Link>
+            <Link href="/business-health-score">Health Score</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/features">Features</Link>
             <Link href="/automations">Automations</Link>
@@ -76,6 +77,9 @@ export default async function StartPage({
           <div className="button-row">
             <Link className="button secondary-button" href="/demo/tour">
               Take the tour first
+            </Link>
+            <Link className="button secondary-button" href="/business-health-score">
+              Business Health Score
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View tiers

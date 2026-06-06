@@ -6,17 +6,26 @@ const plans = [
     key: "free",
     name: "Free",
     price: "$0",
-    fit: "For trying Ferocity with a real workspace, one lead form, and basic source tracking.",
-    included: ["1 workspace", "1 brand", "1 user", "1 lead form", "Business profile memory", "Starter Content Studio", "Manual tasks"],
+    fit: "For trying Ferocity with a Business Health Score, real workspace, one lead form, and basic source tracking.",
+    included: ["Business Health Score", "1 workspace", "1 brand", "1 user", "1 lead form", "Business profile memory", "Basic CRM"],
     limits: "Good for evaluation and light use. No live SMS/email, payment links, background automations, MarketplacePro sync, or provider publishing.",
     cta: "Start Free"
+  },
+  {
+    key: "ai_growth_report",
+    name: "AI Growth Report",
+    price: "$49",
+    fit: "A one-time growth plan before a subscription, included with Starter and higher.",
+    included: ["Complete business audit", "Competitor comparison", "SEO analysis", "Review analysis", "Lead capture analysis", "Automation analysis", "Custom 90-day action plan"],
+    limits: "Buy once if you are not ready for a subscription. Included once with Starter and higher. Does not turn on live sends, publishing, payments, ads, or background automations.",
+    cta: "Unlock Report"
   },
   {
     key: "starter",
     name: "Starter",
     price: "$79/mo",
     fit: "For businesses that mainly need lead capture, simple pipeline, and basic follow-up.",
-    included: ["Everything in Free", "Website import requests", "More leads", "Basic pipeline", "Review/before-after graphic drafts", "Basic reports"],
+    included: ["Everything in Free", "1 included AI Growth Report", "Website import requests", "More leads", "Basic pipeline", "Review/before-after graphic drafts", "Basic reports"],
     limits: "Good for getting organized first. Provider sends still require verified email/SMS accounts and approval.",
     cta: "Start Starter"
   },
@@ -25,7 +34,7 @@ const plans = [
     name: "Growth",
     price: "$199/mo",
     fit: "For businesses that want SEO, reviews, marketing drafts, customer proof, and attribution.",
-    included: ["Everything in Starter", "Content Studio campaigns", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
+    included: ["Everything in Starter", "AI Growth Report refreshes", "Content Studio campaigns", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
     limits: "Good for growth work. Live publishing, ad changes, and message sends stay behind approval and connected accounts.",
     cta: "Start Growth"
   },
@@ -34,7 +43,7 @@ const plans = [
     name: "Operator",
     price: "$399/mo",
     fit: "For businesses that want jobs, estimates, invoices, scheduling, and operations visibility.",
-    included: ["Everything in Growth", "AI video job foundation", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
+    included: ["Everything in Growth", "Deeper operations plan", "AI video job foundation", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
     limits: "Good for teams that need sales, service work, payment visibility, and reporting in the same workspace.",
     cta: "Start Operator"
   },
@@ -43,7 +52,7 @@ const plans = [
     name: "Pro / Agency",
     price: "Custom",
     fit: "For multi-brand operators, agencies, or advanced service businesses.",
-    included: ["Multi-brand workspaces", "Advanced integrations", "Higher usage", "MarketplacePro connection", "Expanded reporting"],
+    included: ["Multi-brand AI Growth Reports", "Multi-brand workspaces", "Advanced integrations", "Higher usage", "MarketplacePro connection", "Expanded reporting"],
     limits: "For larger teams, multiple brands, and implementation support.",
     cta: "Talk to Ferocity"
   }
@@ -77,6 +86,7 @@ export default function PricingPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
+            <Link href="/business-health-score">Health Score</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/integrations">Integrations</Link>
@@ -86,14 +96,16 @@ export default function PricingPage() {
 
         <section className="public-hero">
           <p className="eyebrow">Plan structure</p>
-          <h1>Choose the level that matches how much of the business Ferocity runs.</h1>
+          <h1>The Operating System for contractors, landlords, and small businesses.</h1>
           <p className="muted">
-            Free is for evaluation and light capture. Paid tiers unlock higher usage, stronger automations, payments, integrations,
-            publishing workflows, and deeper AI setup.
+            CRM, marketing, reviews, AI setup, estimates, payments, operations, and ecosystem access in one hub. Start with the free score. Get the AI Growth Report with Starter and higher, or buy it once before subscribing.
           </p>
           <div className="button-row">
             <Link className="button" href="/start?source=pricing">
               Start setup
+            </Link>
+            <Link className="button secondary-button" href="/business-health-score">
+              Business Health Score
             </Link>
             <Link className="button secondary-button" href="/demo/tour">
               Take the tour
@@ -107,7 +119,7 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section className="pricing-grid">
+        <section className="pricing-grid" id="ai-growth-report">
           {plans.map((plan) => (
             <article className="panel pricing-card" key={plan.name}>
               <div>
@@ -124,7 +136,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               <p className="muted">{plan.limits}</p>
-              <Link className="button" href={`/start?source=pricing&plan=${plan.key}`}>
+              <Link className="button" href={plan.key === "ai_growth_report" ? "/business-health-score" : `/start?source=pricing&plan=${plan.key}`}>
                 {plan.cta}
               </Link>
             </article>
@@ -159,14 +171,29 @@ export default function PricingPage() {
         <section className="panel">
           <div className="list-row flush-row">
             <div>
-              <h2>Clear controls, no surprise actions</h2>
+              <h2>Ferocity is the hub, not just a CRM</h2>
               <p className="muted">
-                Ferocity shows what is included in each plan, what needs review, and what requires a connected account before it can
-                affect customers, publishing, ads, or billing.
+                MarketplacePro, BidOps, 4Bid, Homes4Rent, and Guardian Signal can appear as ecosystem options when they match a real business need. Ferocity keeps the operating loop in one place.
               </p>
             </div>
             <ShieldCheck size={22} />
           </div>
+        </section>
+
+        <section className="grid section-actions">
+          {[
+            "MarketplacePro Access",
+            "BidOps Opportunities",
+            "Homes4Rent Integration",
+            "Guardian Signal Integration",
+            "4Bid Marketplace Access"
+          ].map((item) => (
+            <div className="panel span-4 metric" key={item}>
+              <span className="muted">Ecosystem</span>
+              <strong>{item}</strong>
+              <small className="muted">Shown when it fits the business, not forced into every setup.</small>
+            </div>
+          ))}
         </section>
       </section>
     </main>

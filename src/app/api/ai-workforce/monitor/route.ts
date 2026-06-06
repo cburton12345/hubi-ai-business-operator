@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { scanActionQueueAction } from "@/app/app/actions/actions";
-import { scanGrowthLoopAction } from "@/app/app/growth/actions";
-import { scanLeadToJobLoopAction } from "@/app/app/operator/actions";
-import { scanServiceOpsAction } from "@/app/app/service/actions";
 import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
+import { runDueAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { fallbackWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export const dynamic = "force-dynamic";
@@ -48,21 +45,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const completed: string[] = [];
-  await scanLeadToJobLoopAction();
-  completed.push("lead_to_job");
-  await scanGrowthLoopAction();
-  completed.push("growth_loop");
-  await scanServiceOpsAction();
-  completed.push("service_ops");
-  await scanActionQueueAction();
-  completed.push("action_queue");
+  const result = await runDueAgentWorkflows({ limit: 25 });
 
   await logMonitorRun(
     "completed",
-    "Protected AI Workforce monitor ran existing Ferocity scans. No live sends, publishing, ads, or provider sync were triggered.",
+    "Protected AI Workforce monitor ran due AI agent workflows. Customer sends, publishing, ads, payments, and provider sync stayed behind existing gates.",
     {
-      completed,
+      tenantsChecked: result.tenantsChecked,
+      dueCount: result.dueCount,
+      completed: result.completed,
       liveActionsStillGated: true,
       elapsedMs: Date.now() - startedAt
     }
@@ -72,7 +63,9 @@ export async function POST(request: NextRequest) {
     {
       ok: true,
       status: "completed",
-      completed,
+      tenantsChecked: result.tenantsChecked,
+      dueCount: result.dueCount,
+      completed: result.completed,
       liveActionsStillGated: true,
       elapsedMs: Date.now() - startedAt
     },

@@ -2334,6 +2334,34 @@ pre {
   background: white;
 }
 
+.health-category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-category {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.health-category span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.health-category strong {
+  color: var(--ink);
+  font-size: clamp(20px, 2vw, 30px);
+  line-height: 1.05;
+}
+
 .form-stack select,
 .form-stack input,
 .form-stack textarea {
@@ -2532,6 +2560,10 @@ pre {
   }
 
   .checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .health-category-grid {
     grid-template-columns: 1fr;
   }
 

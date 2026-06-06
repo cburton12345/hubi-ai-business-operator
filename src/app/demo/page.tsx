@@ -85,6 +85,7 @@ export default function DemoPage() {
           <div>
             <Link href="/about">About</Link>
             <Link href="/features">Features</Link>
+            <Link href="/business-health-score">Health Score</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
@@ -105,6 +106,9 @@ export default function DemoPage() {
             <div className="button-row">
               <Link className="button" href="/demo/tour">
                 Start guided tour <ArrowRight size={16} />
+              </Link>
+              <Link className="button secondary-button" href="/business-health-score">
+                Business Health Score
               </Link>
               <Link className="button secondary-button" href="/start?source=demo">
                 Start my setup
