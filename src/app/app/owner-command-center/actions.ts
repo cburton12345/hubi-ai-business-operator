@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
+import { syncTimelineToOwnerCommandCenter } from "@/lib/owner-command-center/sync-owner-command-events";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const eventActionSchema = z.object({
@@ -89,5 +90,35 @@ export async function updateOwnerCommandEventAction(formData: FormData) {
   }
 
   revalidatePath("/app/owner-command-center");
+  revalidatePath("/app/reports");
+}
+
+export async function syncFerocityActivityToOwnerCommandAction() {
+  await requirePermission("tenant:manage");
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const result = await syncTimelineToOwnerCommandCenter(workspaceId);
+
+  await queryPostgres(
+    `
+    insert into public.operator_timeline_events (
+      tenant_id, event_family, event_type, title, body, metadata_json
+    )
+    values ($1, 'system', 'owner_command_sync', $2, $3, $4::jsonb)
+    `,
+    [
+      workspaceId,
+      "Owner Command Center synced Ferocity activity",
+      `Scanned ${result.scanned} timeline events and promoted ${result.promoted} owner-visible events.`,
+      JSON.stringify({
+        scanned: result.scanned,
+        promoted: result.promoted,
+        actor: session?.email ?? "admin-token"
+      })
+    ]
+  );
+
+  revalidatePath("/app/owner-command-center");
+  revalidatePath("/app/operator");
   revalidatePath("/app/reports");
 }

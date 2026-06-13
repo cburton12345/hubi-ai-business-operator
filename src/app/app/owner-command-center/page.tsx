@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, Bot, BriefcaseBusiness, DollarSign, Radar, ShieldAlert, Sparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOwnerCommandCenter, type OwnerCommandEvent } from "@/lib/owner-command-center/get-owner-command-center";
-import { updateOwnerCommandEventAction } from "./actions";
+import { syncFerocityActivityToOwnerCommandAction, updateOwnerCommandEventAction } from "./actions";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -33,6 +33,9 @@ export default async function OwnerCommandCenterPage() {
             <p className="muted">This is Layer 1. Operations and builder controls stay one click away.</p>
           </div>
           <div className="button-row">
+            <form action={syncFerocityActivityToOwnerCommandAction}>
+              <button className="button" type="submit">Sync Ferocity Activity</button>
+            </form>
             <Link className="button" href="/app/ai-workforce">AI Workforce</Link>
             <Link className="button secondary-button" href="/app/operator">Operations</Link>
             <Link className="button secondary-button" href="/app/reports">Reports</Link>

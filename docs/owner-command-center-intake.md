@@ -43,3 +43,21 @@ The endpoint is safe by default. It records an event; it does not send messages,
 ## Escalation Rule
 
 Only escalate to the owner for revenue opportunity, financial risk, customer dispute, legal issue, safety issue, automation failure, low confidence, or human approval required.
+
+## Ferocity Timeline Bridge
+
+Ferocity can also promote important local `operator_timeline_events` into the Owner Command Center.
+
+Use the app button:
+
+`Owner Command Center -> Sync Ferocity Activity`
+
+That action scans recent Ferocity timeline events and promotes owner-visible activity such as:
+
+- high-value leads
+- estimate or invoice money risk
+- billing or automation failures
+- review/reputation items
+- AI-prepared work that should be reviewed
+
+This is intentionally a bridge, not a duplicate workflow system. The source record stays in the existing Ferocity module, and the owner event points back to the relevant area.
