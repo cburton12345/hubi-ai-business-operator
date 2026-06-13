@@ -50,7 +50,8 @@ const envSchema = z.object({
   CALENDAR_CLIENT_SECRET: optionalString,
   CALENDAR_OAUTH_REDIRECT_URI: optionalUrl,
   MARKETPLACEPRO_WEBHOOK_SECRET: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(16).optional()),
-  AI_WORKFORCE_CRON_TOKEN: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(16).optional())
+  AI_WORKFORCE_CRON_TOKEN: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(16).optional()),
+  OWNER_COMMAND_CENTER_TOKEN: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(16).optional())
 });
 
 export const env = envSchema.parse({
@@ -99,7 +100,8 @@ export const env = envSchema.parse({
   CALENDAR_CLIENT_SECRET: process.env.CALENDAR_CLIENT_SECRET,
   CALENDAR_OAUTH_REDIRECT_URI: process.env.CALENDAR_OAUTH_REDIRECT_URI,
   MARKETPLACEPRO_WEBHOOK_SECRET: process.env.MARKETPLACEPRO_WEBHOOK_SECRET,
-  AI_WORKFORCE_CRON_TOKEN: process.env.AI_WORKFORCE_CRON_TOKEN
+  AI_WORKFORCE_CRON_TOKEN: process.env.AI_WORKFORCE_CRON_TOKEN,
+  OWNER_COMMAND_CENTER_TOKEN: process.env.OWNER_COMMAND_CENTER_TOKEN
 });
 
 export function hasSupabaseBrowserConfig() {
