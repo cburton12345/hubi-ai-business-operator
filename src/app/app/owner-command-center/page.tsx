@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, Bot, BriefcaseBusiness, DollarSign, Radar, ShieldAlert, Sparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOwnerCommandCenter, type OwnerCommandEvent } from "@/lib/owner-command-center/get-owner-command-center";
+import { updateOwnerCommandEventAction } from "./actions";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -29,6 +30,7 @@ export default async function OwnerCommandCenterPage() {
               <Sparkles size={18} /> Daily Briefing
             </h2>
             <p className="muted">{center.briefing}</p>
+            <p className="muted">This is Layer 1. Operations and builder controls stay one click away.</p>
           </div>
           <div className="button-row">
             <Link className="button" href="/app/ai-workforce">AI Workforce</Link>
@@ -53,8 +55,8 @@ export default async function OwnerCommandCenterPage() {
       </section>
 
       <section className="grid section-actions">
-        <EventPanel title="Needs Owner Queue" empty="No owner decisions are waiting right now." events={center.needsOwner} />
-        <EventPanel title="Critical Issues Queue" empty="No critical issues are open." events={center.criticalIssues} />
+        <EventPanel title="Needs Owner Queue" empty="No owner decisions are waiting right now." events={center.needsOwner} allowActions />
+        <EventPanel title="Critical Issues Queue" empty="No critical issues are open." events={center.criticalIssues} allowActions />
       </section>
 
       <section className="grid section-actions">
@@ -78,11 +80,11 @@ export default async function OwnerCommandCenterPage() {
             {center.makeMoneyNext.length === 0 ? <li className="list-row"><span className="muted">No money moves are ready yet.</span></li> : null}
           </ul>
         </section>
-        <EventPanel title="Money Radar" empty="No revenue or financial-risk events have arrived yet." events={center.moneyRadar} />
+        <EventPanel title="Money Radar" empty="No revenue or financial-risk events have arrived yet." events={center.moneyRadar} allowActions />
       </section>
 
       <section className="grid section-actions">
-        <EventPanel title="AI Actions Feed" empty="No AI-handled events yet." events={center.aiActions} />
+        <EventPanel title="AI Actions Feed" empty="No AI-handled events yet." events={center.aiActions} allowActions />
         <EventPanel title="Unified Owner Event Feed" empty="No owner events yet. Connected systems can post events into the intake endpoint." events={center.events.slice(0, 12)} />
       </section>
 
@@ -109,7 +111,7 @@ function Metric({ label, value, icon, tone = "" }: { label: string; value: numbe
   );
 }
 
-function EventPanel({ title, empty, events }: { title: string; empty: string; events: OwnerCommandEvent[] }) {
+function EventPanel({ title, empty, events, allowActions = false }: { title: string; empty: string; events: OwnerCommandEvent[]; allowActions?: boolean }) {
   return (
     <section className="panel span-6">
       <h2>{title}</h2>
@@ -126,9 +128,29 @@ function EventPanel({ title, empty, events }: { title: string; empty: string; ev
             </div>
             <div className="inline-actions">
               <span className={`pill ${severityClass(event.severity)}`}>{event.severity}</span>
+              <span className="pill">{event.status.replaceAll("_", " ")}</span>
               {event.moneyCents ? <span className="pill">{money(event.moneyCents)}</span> : null}
               <Link className="mini-button" href={event.actionHref}>Open</Link>
             </div>
+            {allowActions ? (
+              <div className="button-row">
+                <form action={updateOwnerCommandEventAction}>
+                  <input name="eventId" type="hidden" value={event.id} />
+                  <input name="nextStatus" type="hidden" value="watching" />
+                  <button className="mini-button secondary-button" type="submit">Watch</button>
+                </form>
+                <form action={updateOwnerCommandEventAction}>
+                  <input name="eventId" type="hidden" value={event.id} />
+                  <input name="nextStatus" type="hidden" value="ai_handled" />
+                  <button className="mini-button secondary-button" type="submit">AI handled</button>
+                </form>
+                <form action={updateOwnerCommandEventAction}>
+                  <input name="eventId" type="hidden" value={event.id} />
+                  <input name="nextStatus" type="hidden" value="resolved" />
+                  <button className="mini-button" type="submit">Resolve</button>
+                </form>
+              </div>
+            ) : null}
           </li>
         ))}
         {events.length === 0 ? <li className="list-row"><span className="muted">{empty}</span></li> : null}

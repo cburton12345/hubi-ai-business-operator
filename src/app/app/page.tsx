@@ -95,6 +95,9 @@ export default async function AppDashboardPage() {
             <p className="muted">Plain view of what needs attention, what is making money, and what Ferocity can help with next.</p>
           </div>
           <div className="button-row">
+            <Link className="button" href="/app/owner-command-center">
+              Owner Command
+            </Link>
             <form action={scanGrowthLoopAction}>
               <button className="button" type="submit">
                 <RefreshCw size={16} /> Find follow-ups
@@ -143,15 +146,20 @@ export default async function AppDashboardPage() {
             <div className="list-row flush-row">
               <div>
                 <p className="eyebrow">Choose how to use Ferocity</p>
-                <h2>1. AI Mode or 2. Traditional Mode</h2>
+                <h2>Owner View, AI Mode, Or Traditional Mode</h2>
                 <p className="muted">
-                  Start with AI Mode if you want Ferocity to guide setup in plain English. Use Traditional Mode when you want every manual
-                  dashboard, setting, workflow, and control.
+                  Start with Owner View when you want the shortest answer. Use AI Mode if you want Ferocity to guide setup in plain English.
+                  Use Traditional Mode when you want every manual dashboard, setting, workflow, and control.
                 </p>
               </div>
               <span className="pill">two paths, one platform</span>
             </div>
             <div className="path-grid">
+              <Link className="path-card" href="/app/owner-command-center">
+                <Sparkles size={18} />
+                <strong>0. Owner View</strong>
+                <span>See what happened, what matters, what AI handled, what needs a decision, and how to make money next.</span>
+              </Link>
               <Link className="path-card" href="/app/ai-workforce">
                 <Bot size={18} />
                 <strong>1. AI Mode</strong>
