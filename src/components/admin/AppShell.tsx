@@ -21,6 +21,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
             <Link href="/app">Home</Link>
             <Link href="/app/owner-command-center">Owner Command</Link>
+            <Link href="/app/personal-ops">Personal Ops</Link>
             <Link href="/app/ai-workforce">AI Workforce</Link>
             <Link href="/app/build-system">Build My System</Link>
             <Link href="/app/marketing-os">Marketing OS</Link>
@@ -38,6 +39,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <p>Start</p>
                   <Link href="/app/welcome">Welcome</Link>
                   <Link href="/app/owner-command-center">Owner Command</Link>
+                  <Link href="/app/personal-ops">Personal Ops</Link>
                   <Link href="/app/ai-workforce">AI Workforce</Link>
                   <Link href="/app/onboarding">Onboarding</Link>
                   <Link href="/app/access-requests">Access Requests</Link>

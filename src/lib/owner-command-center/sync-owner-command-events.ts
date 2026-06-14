@@ -28,7 +28,7 @@ type OwnerEventInput = {
   recommendedAction: string;
   actionHref: string;
   moneyCents: number;
-  riskType: "revenue" | "financial" | "customer" | "legal" | "safety" | "automation" | "growth" | null;
+  riskType: "revenue" | "financial" | "customer" | "legal" | "safety" | "automation" | "low_confidence" | "approval" | null;
   confidenceScore: number;
   metadata: Record<string, unknown>;
   occurredAt: Date;
@@ -77,7 +77,7 @@ function riskTypeFor(row: TimelineRow): OwnerEventInput["riskType"] {
   if (textIncludes(row, ["dispute", "complaint", "angry", "refund"])) return "customer";
   if (["billing", "invoice"].includes(row.event_family)) return "financial";
   if (["revenue", "estimate", "lead"].includes(row.event_family)) return "revenue";
-  if (["seo", "content", "marketing", "review"].includes(row.event_family)) return "growth";
+  if (["seo", "content", "marketing", "review"].includes(row.event_family)) return "approval";
   return null;
 }
 
