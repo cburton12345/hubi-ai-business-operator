@@ -33,8 +33,11 @@ export default async function SeoAutopilotPage() {
       </div>
 
       <div className="button-row section-actions">
+        <Link className="button" href="/app/publishing-hub">
+          Publishing Hub
+        </Link>
         <form action={generateSeoAutopilotAction}>
-          <button className="button" type="submit">
+          <button className="button secondary-button" type="submit">
             <Sparkles size={16} /> Generate SEO drafts
           </button>
         </form>

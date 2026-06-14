@@ -31,8 +31,11 @@ export default async function HostedGrowthSitesPage() {
       </div>
 
       <div className="button-row section-actions">
+        <Link className="button" href="/app/publishing-hub">
+          Publishing Hub
+        </Link>
         <form action={prepareHostedGrowthPagesAction}>
-          <button className="button" type="submit">
+          <button className="button secondary-button" type="submit">
             <FilePlus2 size={16} /> Prepare hosted pages
           </button>
         </form>

@@ -55,6 +55,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 </section>
                 <section>
                   <p>Growth</p>
+                  <Link href="/app/publishing-hub">Publishing Hub</Link>
                   <Link href="/app/marketing-os">Marketing OS</Link>
                   <Link href="/app/website-grader">Assessments</Link>
                   <Link href="/app/website">Website Connector</Link>

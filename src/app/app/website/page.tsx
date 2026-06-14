@@ -40,6 +40,9 @@ export default async function WebsiteConnectorPage() {
       </div>
 
       <div className="button-row section-actions">
+        <Link className="button" href="/app/publishing-hub">
+          Publishing Hub
+        </Link>
         <Link className="button" href="/app/forms">
           <MousePointerClick size={16} /> Lead forms
         </Link>
