@@ -1,6 +1,7 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { missingEnvVars } from "@/lib/env";
+import { getOAuthProviderConfig } from "@/lib/integrations/oauth-providers";
 
 export type IntegrationRow = {
   id: string;
@@ -20,6 +21,9 @@ export type IntegrationRow = {
   accountStatus: string | null;
   routeActions: string[];
   fallbackForActions: string[];
+  oauthStartPath: string | null;
+  setupMode: string;
+  liveActionRule: string;
 };
 
 export const plannedConnections = [
@@ -30,7 +34,9 @@ export const plannedConnections = [
     envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"],
     setupItems: ["Set EMAIL_PROVIDER to resend", "Add the Resend API key", "Use a verified sender", "Keep approval required"],
     callbackPath: null,
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "managed_default",
+    liveActionRule: "Transactional email can be sent only through approved templates and workspace rules."
   },
   {
     provider: "twilio_shared",
@@ -39,7 +45,9 @@ export const plannedConnections = [
     envVars: [],
     setupItems: ["Confirm consent rules", "Keep review required", "Switch to customer Twilio when compliance is ready"],
     callbackPath: "/api/integrations/twilio/status",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "managed_default",
+    liveActionRule: "SMS sends require consent, approval gates, and plan limits."
   },
   {
     provider: "supabase_auth",
@@ -48,7 +56,9 @@ export const plannedConnections = [
     envVars: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
     setupItems: ["Confirm email templates", "Set allowed redirect URLs", "Test invite acceptance", "Run RLS verification"],
     callbackPath: null,
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "core_account",
+    liveActionRule: "Auth remains workspace-scoped and does not grant provider access by itself."
   },
   {
     provider: "stripe",
@@ -57,7 +67,9 @@ export const plannedConnections = [
     envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"],
     setupItems: ["Create Stripe products/prices", "Set billing portal return URL", "Register webhook endpoint", "Map Stripe customer to workspace"],
     callbackPath: "/api/integrations/stripe/webhook",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "customer_or_platform_owned",
+    liveActionRule: "Payment links and ledgers can be prepared; billing ownership and refunds stay controlled."
   },
   {
     provider: "google_business_profile",
@@ -66,7 +78,9 @@ export const plannedConnections = [
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Google Cloud OAuth app", "Request Business Profile scopes", "Verify redirect URL", "Require approval before publishing"],
     callbackPath: "/api/integrations/google/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Draft GBP posts and profile recommendations first. Publishing requires approval."
   },
   {
     provider: "facebook",
@@ -75,7 +89,9 @@ export const plannedConnections = [
     envVars: ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Meta app", "Request pages and ads permissions", "Configure redirect URL", "Keep publishing disabled until reviewed"],
     callbackPath: "/api/integrations/meta/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Read and draft first. Page publishing, replies, ads, and spend require approval."
   },
   {
     provider: "google_ads",
@@ -84,7 +100,9 @@ export const plannedConnections = [
     envVars: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Ads developer token", "Connect manager account", "Request OAuth consent", "Require approval for budget changes"],
     callbackPath: "/api/integrations/google/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
   },
   {
     provider: "reddit",
@@ -98,7 +116,9 @@ export const plannedConnections = [
       "Keep posting, replies, and ads in review mode until approved"
     ],
     callbackPath: "/api/integrations/reddit/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Community research and ad reporting first. Posting, replies, and ad spend require approval."
   },
   {
     provider: "microsoft_ads",
@@ -112,7 +132,9 @@ export const plannedConnections = [
       "Require approval for any campaign or budget change"
     ],
     callbackPath: "/api/integrations/microsoft/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
   },
   {
     provider: "yahoo_ads",
@@ -126,7 +148,9 @@ export const plannedConnections = [
       "Keep reporting read-only before any publishing or spend actions"
     ],
     callbackPath: "/api/integrations/yahoo/oauth/callback",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Reporting and attribution first. Publishing and spend require approval."
   },
   {
     provider: "marketplacepro",
@@ -141,7 +165,9 @@ export const plannedConnections = [
       "Keep outbound status sync paused until rules are reviewed"
     ],
     callbackPath: "/api/integrations/marketplacepro/events",
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "signed_webhook",
+    liveActionRule: "MarketplacePro can send inbound events; outbound status sync stays paused until reviewed."
   },
   {
     provider: "search_console",
@@ -150,7 +176,9 @@ export const plannedConnections = [
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Verify site property ownership", "Request Search Console scope", "Map properties to brands", "Use data for recommendations only"],
     callbackPath: "/api/integrations/google/oauth/callback",
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "oauth",
+    liveActionRule: "Read SEO data only. Ferocity prepares recommendations and drafts."
   },
   {
     provider: "analytics",
@@ -159,7 +187,9 @@ export const plannedConnections = [
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GA4_PROPERTY_ID"],
     setupItems: ["Confirm GA4 property", "Map events to lead sources", "Avoid storing personal analytics data unnecessarily"],
     callbackPath: "/api/integrations/google/oauth/callback",
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "oauth",
+    liveActionRule: "Read traffic and conversion reporting only. No site changes happen from analytics."
   },
   {
     provider: "email_provider",
@@ -168,7 +198,9 @@ export const plannedConnections = [
     envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"],
     setupItems: ["Choose provider", "Verify sender domain", "Configure unsubscribe/compliance footer", "Keep lead replies draft-only until approved"],
     callbackPath: null,
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "api_key",
+    liveActionRule: "Email sends require approved templates, sender compliance, and plan limits."
   },
   {
     provider: "twilio",
@@ -177,7 +209,9 @@ export const plannedConnections = [
     envVars: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
     setupItems: ["Verify number", "Configure messaging compliance", "Confirm consent before sending", "Keep SMS replies draft-only until approved"],
     callbackPath: "/api/integrations/twilio/status",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "api_key",
+    liveActionRule: "SMS sends require consent, approval gates, and plan limits."
   },
   {
     provider: "review_platform",
@@ -186,7 +220,9 @@ export const plannedConnections = [
     envVars: ["REVIEW_PROVIDER", "REVIEW_API_KEY"],
     setupItems: ["Choose review provider", "Map locations to brands", "Require approval before public responses", "Never invent testimonials"],
     callbackPath: "/api/integrations/reviews/webhook",
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "api_key_or_webhook",
+    liveActionRule: "Review requests and public responses require approval and customer-consent rules."
   },
   {
     provider: "calendar_provider",
@@ -195,7 +231,9 @@ export const plannedConnections = [
     envVars: ["CALENDAR_PROVIDER", "CALENDAR_CLIENT_ID", "CALENDAR_CLIENT_SECRET", "CALENDAR_OAUTH_REDIRECT_URI"],
     setupItems: ["Choose Google or Microsoft calendar", "Map calendars to brands/users", "Avoid auto-booking until rules are approved"],
     callbackPath: "/api/integrations/calendar/oauth/callback",
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "oauth",
+    liveActionRule: "Read and draft schedule changes first. Auto-booking requires explicit rules."
   },
   {
     provider: "webhook_framework",
@@ -204,7 +242,9 @@ export const plannedConnections = [
     envVars: [],
     setupItems: ["Create inbound endpoint", "Copy one-time token", "Activate endpoint", "Review logged events before processing"],
     callbackPath: "/api/webhooks/[endpointId]",
-    riskLevel: "medium"
+    riskLevel: "medium",
+    setupMode: "signed_webhook",
+    liveActionRule: "Inbound events can be received; destructive outbound actions stay disabled."
   },
   {
     provider: "external_publishing",
@@ -213,7 +253,9 @@ export const plannedConnections = [
     envVars: ["CMS_PROVIDER", "CMS_API_KEY"],
     setupItems: ["Choose CMS/provider", "Map pages to brands", "Require approval before publishing", "Preserve manual export fallback"],
     callbackPath: null,
-    riskLevel: "high"
+    riskLevel: "high",
+    setupMode: "api_key_or_oauth",
+    liveActionRule: "Hosted and customer-site publishing stays draft/review-first until permissions are approved."
   }
 ];
 
@@ -240,7 +282,9 @@ export async function ensurePlannedIntegrationConnections() {
           setupItems: connection.setupItems,
           callbackPath: connection.callbackPath,
           riskLevel: connection.riskLevel,
-          liveActionsEnabled: false
+          liveActionsEnabled: false,
+          setupMode: connection.setupMode,
+          liveActionRule: connection.liveActionRule
         })
       ]
     );
@@ -263,6 +307,8 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       callbackPath?: string | null;
       riskLevel?: string;
       liveActionsEnabled?: boolean;
+      setupMode?: string;
+      liveActionRule?: string;
     } | null;
   }>(
     `
@@ -309,6 +355,7 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
     const envVars = row.metadata_json?.envVars ?? [];
     const missing = missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
     const account = accounts.get(row.provider);
+    const oauthConfig = getOAuthProviderConfig(row.provider);
 
     return {
       id: row.id,
@@ -327,7 +374,10 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       liveActionsEnabled: account?.live_actions_enabled ?? row.metadata_json?.liveActionsEnabled === true,
       accountStatus: account?.status ?? null,
       routeActions: routes.filter((route) => route.default_provider_key === row.provider).map((route) => route.action_type),
-      fallbackForActions: routes.filter((route) => route.fallback_provider_key === row.provider).map((route) => route.action_type)
+      fallbackForActions: routes.filter((route) => route.fallback_provider_key === row.provider).map((route) => route.action_type),
+      oauthStartPath: oauthConfig ? `/api/integrations/${row.provider}/oauth/start` : null,
+      setupMode: row.metadata_json?.setupMode ?? (oauthConfig ? "oauth" : "manual"),
+      liveActionRule: row.metadata_json?.liveActionRule ?? "Live actions stay disabled until reviewed."
     };
   });
 }

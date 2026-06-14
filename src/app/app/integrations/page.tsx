@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, KeyRound, ShieldCheck } from "lucide-react";
+import { ArrowRight, KeyRound, ShieldCheck, Unplug } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getIntegrationRows } from "@/lib/integrations/get-integrations";
 import { updateIntegrationReadinessAction } from "./actions";
@@ -8,7 +8,30 @@ function ownerLabel(value: string) {
   return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
 }
 
-export default async function IntegrationsPage() {
+function setupNotice(params: { setup?: string; provider?: string; missing?: string }) {
+  if (!params.setup) return null;
+  if (params.setup === "missing_credentials") {
+    return {
+      title: "Provider app keys are not added yet",
+      body: `${params.provider ?? "This provider"} is ready in Ferocity, but it needs ${params.missing ?? "provider credentials"} before the account connection screen can open.`
+    };
+  }
+  if (params.setup === "unsupported") {
+    return {
+      title: "Provider is not wired for OAuth yet",
+      body: `${params.provider ?? "That provider"} can still be tracked manually or by API key, but it does not have a Ferocity OAuth setup path yet.`
+    };
+  }
+  return null;
+}
+
+export default async function IntegrationsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ setup?: string; provider?: string; missing?: string }>;
+}) {
+  const params = await searchParams;
+  const notice = setupNotice(params);
   const rows = await getIntegrationRows();
   const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
   const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
@@ -49,6 +72,55 @@ export default async function IntegrationsPage() {
           <section className="panel span-4 metric">
             <span className="muted">Live actions on</span>
             <strong>{liveActions}</strong>
+          </section>
+        </div>
+      </section>
+
+      {notice ? (
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>
+                <Unplug size={18} /> {notice.title}
+              </h2>
+              <p className="muted">{notice.body}</p>
+            </div>
+            <Link className="button secondary-button" href="/app/credentials">
+              Add Keys Later
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Customer Account Setup</h2>
+            <p className="muted">
+              Ferocity can help a business connect existing accounts or walk them through creating accounts. Ownership, billing, ad spend, and
+              public publishing stay with the business unless they explicitly approve managed service work.
+            </p>
+          </div>
+          <Link className="button" href="/app/build-system">
+            Setup My Accounts
+          </Link>
+        </div>
+        <div className="grid">
+          <section className="span-3">
+            <h3>1. Connect</h3>
+            <p className="muted">Owner signs in to Google, Meta, Reddit, Microsoft, reviews, email, SMS, calendar, or payments.</p>
+          </section>
+          <section className="span-3">
+            <h3>2. Read First</h3>
+            <p className="muted">Ferocity pulls account status, sources, spend, leads, reviews, and reporting where permissions allow.</p>
+          </section>
+          <section className="span-3">
+            <h3>3. Draft Work</h3>
+            <p className="muted">AI prepares campaigns, posts, SEO updates, replies, follow-ups, and recommendations for review.</p>
+          </section>
+          <section className="span-3">
+            <h3>4. Approve</h3>
+            <p className="muted">Live sends, publishing, syncing, billing, and ad budget changes stay gated by tier and approval rules.</p>
           </section>
         </div>
       </section>
@@ -119,6 +191,10 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
           <span className="pill">{row.envVars.length === 0 ? "No tenant key needed" : row.credentialsStatus}</span>
         </li>
         <li className="list-row">
+          <strong>Setup</strong>
+          <span className="pill">{row.setupMode.replaceAll("_", " ")}</span>
+        </li>
+        <li className="list-row">
           <strong>Default for</strong>
           <span className="muted">{activeRoutes}</span>
         </li>
@@ -128,6 +204,7 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
         </li>
       </ul>
       <div className="form-stack section-actions">
+        <p className="muted">Rule: {row.liveActionRule}</p>
         <p className="muted">Setup steps</p>
         <ul className="list">
           {row.setupItems.map((item) => (
@@ -139,6 +216,16 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
         </ul>
         <p className="muted">Missing keys: {row.missingEnvVars.length > 0 ? row.missingEnvVars.join(", ") : "None"}</p>
         <p className="muted">Callback: {row.callbackPath ?? "None"}</p>
+        <div className="button-row">
+          {row.oauthStartPath ? (
+            <Link className="mini-button" href={row.oauthStartPath}>
+              Connect Account
+            </Link>
+          ) : null}
+          <Link className="mini-button secondary-button" href="/app/credentials">
+            Add Keys
+          </Link>
+        </div>
         <form action={updateIntegrationReadinessAction} className="inline-actions">
           <input name="connectionId" type="hidden" value={row.id} />
           <input name="liveActionsEnabled" type="hidden" value="false" />

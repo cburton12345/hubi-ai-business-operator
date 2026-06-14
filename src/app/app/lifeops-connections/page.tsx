@@ -76,7 +76,10 @@ export default async function LifeOpsConnectionsPage() {
             <h2>
               <ShieldCheck size={18} /> Registered Systems
             </h2>
-            <p className="muted">These are the brands and platforms Ferocity expects to hear from. Status only controls readiness labels for now.</p>
+            <p className="muted">
+              These are the brands and platforms Ferocity expects to hear from. Planned means registered. Connected means Ferocity has received a
+              valid owner event from that system or you manually marked it ready.
+            </p>
           </div>
           <span className="pill">{dashboard.connections.length} systems</span>
         </div>
@@ -140,6 +143,7 @@ function ConnectionCard({ connection }: { connection: LifeOpsConnection }) {
       <div className="inline-actions section-actions">
         <span className="pill">{connection.ownerLayer.replaceAll("_", " ")}</span>
         <span className="pill">{dateLabel(connection.lastEventAt)}</span>
+        <span className="pill">{connection.lastEventAt ? "event intake seen" : "registered only"}</span>
       </div>
       <div className="inline-actions">
         {connection.eventScope.map((scope) => (
