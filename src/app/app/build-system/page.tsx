@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bot, CheckCircle2, CircleAlert, CircleDashed, ExternalLink, SlidersHorizontal, Wand2 } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getSetupGuidance } from "@/lib/setup/setup-guidance";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { revertSetupRunAction } from "./actions";
 import { SetupBuilder } from "./SetupBuilder";
@@ -140,7 +141,7 @@ async function getBuildSystemData() {
 }
 
 export default async function BuildSystemPage() {
-  const { logs, latestAppliedId, assets, readiness, integrations } = await getBuildSystemData();
+  const [{ logs, latestAppliedId, assets, readiness, integrations }, guidance] = await Promise.all([getBuildSystemData(), getSetupGuidance()]);
   const nextActions = buildNextActions(readiness, integrations, latestAppliedId);
   const readinessItems = buildReadinessItems(readiness, integrations);
 
@@ -153,6 +154,43 @@ export default async function BuildSystemPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
+            <p className="eyebrow">{guidance.aiUsed ? "AI setup coach" : "Setup coach"}</p>
+            <h2>{guidance.headline}</h2>
+            <p className="muted">{guidance.summary}</p>
+            <p className="muted">{guidance.websiteAuditNote}</p>
+          </div>
+          <span className="pill">{guidance.aiUsed ? "OpenAI assisted" : "local fallback"}</span>
+        </div>
+        {guidance.missing.length ? (
+          <div className="inline-actions section-actions">
+            {guidance.missing.map((item) => (
+              <span className="pill high" key={item}>{item}</span>
+            ))}
+          </div>
+        ) : null}
+        <ul className="list">
+          {guidance.nextActions.map((item) => (
+            <li className="list-row" key={item.title}>
+              <div>
+                <div className="inline-actions">
+                  <span className={`pill ${item.priority === "critical" || item.priority === "high" ? "high" : item.priority === "normal" ? "medium" : ""}`}>
+                    {item.priority}
+                  </span>
+                  <span className="pill">recommended next</span>
+                </div>
+                <h3>{item.title}</h3>
+                <p className="muted">{item.why}</p>
+                <p>{item.doNext}</p>
+              </div>
+              <Link className="mini-button" href={item.href}>Open</Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
             <h2>
               <Wand2 size={18} /> Setup Operator
             </h2>
@@ -160,7 +198,7 @@ export default async function BuildSystemPage() {
               Use this when settings, workflows, automations, SEO, reviews, ads, or integrations feel like too much. Power users can still open every setting directly.
             </p>
           </div>
-          <span className="pill">no token spend</span>
+          <span className="pill">preview first</span>
         </div>
       </section>
 
