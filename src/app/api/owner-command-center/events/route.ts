@@ -111,5 +111,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Event was not saved." }, { status: 500 });
   }
 
+  if (event.tenantId) {
+    await queryPostgres(
+      `
+      update public.owner_platform_connections
+      set last_event_at = coalesce($3::timestamptz, now()),
+          connection_status = case when connection_status = 'planned' then 'connected' else connection_status end,
+          metadata_json = metadata_json || $4::jsonb
+      where tenant_id = $1 and platform_key = $2
+      `,
+      [
+        event.tenantId,
+        event.platformKey,
+        event.occurredAt ?? null,
+        JSON.stringify({
+          lastExternalEventId: event.externalEventId ?? null,
+          lastEventType: event.eventType,
+          lastIntakeAt: new Date().toISOString()
+        })
+      ]
+    );
+  }
+
   return NextResponse.json({ ok: true, id: result.rows[0].id });
 }

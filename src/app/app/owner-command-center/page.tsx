@@ -36,6 +36,7 @@ export default async function OwnerCommandCenterPage() {
             <form action={syncFerocityActivityToOwnerCommandAction}>
               <button className="button" type="submit">Sync Ferocity Activity</button>
             </form>
+            <Link className="button secondary-button" href="/app/lifeops-connections">LifeOps Connections</Link>
             <Link className="button secondary-button" href="/app/personal-ops">Personal Ops</Link>
             <Link className="button" href="/app/ai-workforce">AI Workforce</Link>
             <Link className="button secondary-button" href="/app/operator">Operations</Link>
