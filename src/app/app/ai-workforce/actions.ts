@@ -73,6 +73,64 @@ async function timeline(workspaceId: string, title: string, body: string, metada
   );
 }
 
+async function ownerCommandEvent(workspaceId: string, command: string, prepared: string[], blocked: string[]) {
+  const hasBlocked = blocked.length > 0;
+  const summary = hasBlocked
+    ? `AI prepared ${prepared.length} item(s), but ${blocked.length} item(s) need owner review before the setup can continue.`
+    : `AI prepared ${prepared.length} item(s) inside existing Ferocity systems. Review the prepared work before anything goes live.`;
+
+  await queryPostgres(
+    `
+    insert into public.owner_command_events (
+      tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+      severity, status, owner_attention, ai_handled, ai_summary, recommended_action, action_href,
+      money_cents, risk_type, confidence_score, metadata_json
+    )
+    values (
+      $1, 'ferocity', 'Ferocity', $2, 'ai.command.prepared', $3, $4,
+      $5, $6, $7, $8, $9, $10, '/app/build-system',
+      0, $11, $12, $13::jsonb
+    )
+    on conflict (tenant_id, platform_key, external_event_id)
+    do update set
+      title = excluded.title,
+      summary = excluded.summary,
+      severity = excluded.severity,
+      status = excluded.status,
+      owner_attention = excluded.owner_attention,
+      ai_handled = excluded.ai_handled,
+      ai_summary = excluded.ai_summary,
+      recommended_action = excluded.recommended_action,
+      risk_type = excluded.risk_type,
+      confidence_score = excluded.confidence_score,
+      metadata_json = public.owner_command_events.metadata_json || excluded.metadata_json,
+      updated_at = now()
+    `,
+    [
+      workspaceId,
+      `ai-command:${Buffer.from(command).toString("base64url").slice(0, 48)}:${Date.now()}`,
+      hasBlocked ? "AI command needs review" : "AI command prepared work",
+      summary,
+      hasBlocked ? "high" : "medium",
+      hasBlocked ? "needs_owner" : "ai_handled",
+      hasBlocked,
+      !hasBlocked,
+      summary,
+      hasBlocked ? "Open Build My System and resolve the blocked setup items." : "Open Build My System to review the prepared setup, marketing, SEO, and workflow records.",
+      hasBlocked ? "approval" : null,
+      hasBlocked ? 78 : 88,
+      JSON.stringify({
+        source: "ai_workforce_command",
+        command,
+        prepared,
+        blocked,
+        noLiveActions: true,
+        reviewRoutes: ["/app/build-system", "/app/owner-command-center", "/app/actions", "/app/review", "/app/publishing-hub"]
+      })
+    ]
+  );
+}
+
 export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, formData: FormData): Promise<AiWorkforceState> {
   await requirePermission("ai:queue");
   const parsed = commandSchema.safeParse({ command: formData.get("command") });
@@ -166,10 +224,12 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       liveActionsStillRequireApproval: true
     }
   );
+  await ownerCommandEvent(workspaceId, command, prepared, blocked);
 
   revalidatePath("/app/ai-workforce");
   revalidatePath("/app");
   revalidatePath("/app/build-system");
+  revalidatePath("/app/owner-command-center");
   revalidatePath("/app/marketing-os");
   revalidatePath("/app/actions");
   revalidatePath("/app/seo");
