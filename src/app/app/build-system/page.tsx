@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bot, CheckCircle2, CircleAlert, CircleDashed, ExternalLink, SlidersHorizontal, Wand2 } from "lucide-react";
+import { AiCommandPanel } from "@/app/app/ai-workforce/AiCommandPanel";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getSetupGuidance } from "@/lib/setup/setup-guidance";
@@ -187,6 +188,13 @@ export default async function BuildSystemPage() {
           ))}
         </ul>
       </section>
+
+      <AiCommandPanel
+        title="Ask Ferocity What To Do Next"
+        description="Use this like a setup chatbot. Ask what is missing, paste a website URL, or describe the outcome you want. Ferocity will prepare reviewed work in the existing modules and keep live actions gated."
+        initialCommand="Audit my setup, website, SEO, reviews, lead capture, follow-up, payments, and automations. Tell me what I need next."
+        submitLabel="Audit and prepare next steps"
+      />
 
       <section className="panel section-actions">
         <div className="list-row flush-row">

@@ -15,6 +15,17 @@ type CommandPlan = {
 
 const commandPlans: CommandPlan[] = [
   {
+    title: "Audit what is missing",
+    ownerWords: "Audit my business setup and tell me what I need next.",
+    employees: ["AI Business Setup Manager", "AI Growth Manager", "AI Automation Manager", "AI Website Manager"],
+    prepares: ["Check missing setup pieces", "Run operator/growth/service scans", "Review website and SEO readiness", "Route owner to the next useful action"],
+    routes: [
+      { label: "Build My System", href: "/app/build-system" },
+      { label: "Owner Command", href: "/app/owner-command-center" },
+      { label: "Business Health Score", href: "/business-health-score" }
+    ]
+  },
+  {
     title: "Get more leads",
     ownerWords: "Get me more roofing leads.",
     employees: ["AI Growth Manager", "AI SEO Manager", "AI Marketing Manager", "AI Ad Manager"],
@@ -84,16 +95,27 @@ const commandPlans: CommandPlan[] = [
 
 function pickPlan(input: string) {
   const lower = input.toLowerCase();
-  if (lower.includes("review") || lower.includes("testimonial")) return commandPlans[1];
-  if (lower.includes("storm") || lower.includes("campaign") || lower.includes("hail") || lower.includes("ad")) return commandPlans[2];
-  if (lower.includes("website") || lower.includes("homepage") || lower.includes("page")) return commandPlans[3];
-  if (lower.includes("old lead") || lower.includes("follow up") || lower.includes("last month") || lower.includes("reactivate")) return commandPlans[4];
-  if (lower.includes("setup") || lower.includes("set up") || lower.includes("business")) return commandPlans[5];
-  return commandPlans[0];
+  if (lower.includes("audit") || lower.includes("missing") || lower.includes("what do i need") || lower.includes("what next") || lower.includes("check everything")) return commandPlans[0];
+  if (lower.includes("review") || lower.includes("testimonial")) return commandPlans[2];
+  if (lower.includes("storm") || lower.includes("campaign") || lower.includes("hail") || lower.includes("ad")) return commandPlans[3];
+  if (lower.includes("website") || lower.includes("homepage") || lower.includes("page")) return commandPlans[4];
+  if (lower.includes("old lead") || lower.includes("follow up") || lower.includes("last month") || lower.includes("reactivate")) return commandPlans[5];
+  if (lower.includes("setup") || lower.includes("set up") || lower.includes("business")) return commandPlans[6];
+  return commandPlans[1];
 }
 
-export function AiCommandPanel() {
-  const [command, setCommand] = useState("Get me more roofing leads.");
+export function AiCommandPanel({
+  title = "Tell The AI Workforce What You Want",
+  description = "This preview does not send, publish, spend, or change records. It shows the safe plan and routes you to existing Ferocity systems.",
+  initialCommand = "Get me more roofing leads.",
+  submitLabel = "Prepare work in Ferocity"
+}: {
+  title?: string;
+  description?: string;
+  initialCommand?: string;
+  submitLabel?: string;
+}) {
+  const [command, setCommand] = useState(initialCommand);
   const [executeState, executeAction, executePending] = useActionState(executeAiWorkforceCommandAction, { ok: false });
   const plan = useMemo(() => pickPlan(command), [command]);
 
@@ -101,8 +123,8 @@ export function AiCommandPanel() {
     <section className="panel section-actions">
       <div className="list-row flush-row">
         <div>
-          <h2>Tell The AI Workforce What You Want</h2>
-          <p className="muted">This preview does not send, publish, spend, or change records. It shows the safe plan and routes you to existing Ferocity systems.</p>
+          <h2>{title}</h2>
+          <p className="muted">{description}</p>
         </div>
         <span className="pill">preview first</span>
       </div>
@@ -123,7 +145,7 @@ export function AiCommandPanel() {
             ))}
           </div>
           <button className="button" type="submit" disabled={executePending}>
-            {executePending ? "Preparing..." : "Prepare work in Ferocity"}
+            {executePending ? "Preparing..." : submitLabel}
           </button>
           <p className="muted">Creates reviewed setup/campaign/SEO/action records where appropriate. It does not send, publish, spend, or sync live.</p>
         </div>
