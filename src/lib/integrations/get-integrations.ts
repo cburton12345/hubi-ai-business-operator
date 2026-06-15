@@ -63,9 +63,9 @@ export const plannedConnections = [
   {
     provider: "stripe",
     displayName: "Stripe Billing",
-    notes: "Billing later. Workspace plans are tracked without Stripe.",
-    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"],
-    setupItems: ["Create Stripe products/prices", "Set billing portal return URL", "Register webhook endpoint", "Map Stripe customer to workspace"],
+    notes: "Stripe-hosted Checkout is available when the secret key, webhook secret, and Ferocity price IDs are configured. A publishable key is only needed later for embedded client-side payment elements.",
+    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID_STARTER", "STRIPE_PRICE_ID_GROWTH", "STRIPE_PRICE_ID_OPERATOR", "STRIPE_PRICE_ID_AI_GROWTH_REPORT"],
+    setupItems: ["Create Stripe products/prices", "Set billing portal return URL", "Register webhook endpoint", "Map Stripe customer to workspace", "Add publishable key only if embedded payment elements are added later"],
     callbackPath: "/api/integrations/stripe/webhook",
     riskLevel: "high",
     setupMode: "customer_or_platform_owned",
@@ -268,7 +268,7 @@ export async function ensurePlannedIntegrationConnections() {
       values ($1, $2, $3, 'planned', 'not_configured', $4::jsonb)
       on conflict (tenant_id, provider) do update
       set display_name = excluded.display_name,
-          metadata_json = excluded.metadata_json || public.integration_connections.metadata_json,
+          metadata_json = public.integration_connections.metadata_json || excluded.metadata_json,
           updated_at = now()
       `,
       [
@@ -356,13 +356,14 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
     const missing = missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
     const account = accounts.get(row.provider);
     const oauthConfig = getOAuthProviderConfig(row.provider);
+    const envCredentialsReady = missing.length === 0 && envVars.length > 0;
 
     return {
       id: row.id,
       provider: row.provider,
       displayName: row.display_name,
       status: row.status,
-      credentialsStatus: account?.credentials_status ?? (missing.length === 0 && envVars.length > 0 ? "configured" : row.credentials_status),
+      credentialsStatus: envCredentialsReady ? "configured" : account?.credentials_status ?? row.credentials_status,
       ownershipMode: account?.ownership_mode ?? (row.provider.endsWith("_shared") ? "ferocity_managed" : "workspace"),
       notes: row.metadata_json?.notes ?? "Prepared for a later integration phase.",
       envVars,
