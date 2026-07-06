@@ -123,7 +123,9 @@ async function getBuildSystemData() {
             'brand_landing_pages',
             'growth_sources',
             'follow_up_workflows',
-            'review_request_workflows'
+            'review_request_workflows',
+            'push_notification_preferences',
+            'ai_agent_workflows'
           )
         order by created_at asc
         limit 50
@@ -148,9 +150,9 @@ export default async function BuildSystemPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Build My System"
-      title="Tell Ferocity What To Set Up"
-      description="A guided setup layer for normal business owners. Preview the plan first, then apply only reviewed changes."
+      eyebrow="Start Here"
+      title="Let Ferocity Help Set Up The Business"
+      description="Tell Ferocity what the business needs. It will suggest the first useful steps and keep you in control."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -190,20 +192,21 @@ export default async function BuildSystemPage() {
       </section>
 
       <AiCommandPanel
-        title="Ask Ferocity What To Do Next"
-        description="Use this like a setup chatbot. Ask what is missing, paste a website URL, or describe the outcome you want. Ferocity will prepare reviewed work in the existing modules and keep live actions gated."
-        initialCommand="Audit my setup, website, SEO, reviews, lead capture, follow-up, payments, and automations. Tell me what I need next."
-        submitLabel="Audit and prepare next steps"
+        title="Tell Ferocity What To Set Up"
+        description="Use this like a setup coach. Ferocity should tell you what will help first, what can wait, and what to do next."
+        initialCommand="Tell me the fastest way Ferocity can help this business. Keep it simple and show the next best steps."
+        submitLabel="Show my simple setup path"
       />
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
             <h2>
-              <Wand2 size={18} /> Setup Operator
+              <Wand2 size={18} /> What Ferocity Can Set Up
             </h2>
             <p className="muted">
-              Use this when settings, workflows, automations, SEO, reviews, ads, or integrations feel like too much. Power users can still open every setting directly.
+              Ferocity can help with leads, follow-up, jobs, invoices, reviews, website forms, SEO, marketing, reminders, workers, and reports.
+              You can skip anything that does not matter yet.
             </p>
           </div>
           <span className="pill">preview first</span>
@@ -213,24 +216,23 @@ export default async function BuildSystemPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>1. AI Mode or 2. Traditional Mode</h2>
+            <h2>Choose How To Start</h2>
             <p className="muted">
-              This page is the AI-guided setup path. It creates a preview before changes apply. Traditional Mode is still available when an
-              admin wants direct access to every menu, setting, module, and control.
+              You do not have to set up everything on day one. Let Ferocity guide you, or add the basics yourself.
             </p>
           </div>
-          <span className="pill">choose either path</span>
+          <span className="pill">skip anything</span>
         </div>
         <div className="path-grid">
           <Link className="path-card" href="/app/ai-workforce">
             <Bot size={18} />
-            <strong>1. AI Mode</strong>
-            <span>Use plain English. Ferocity prepares setup, marketing, SEO, website, follow-up, and review work for approval.</span>
+            <strong>Let Ferocity guide me</strong>
+            <span>Use plain English. Ferocity prepares the setup plan and shows it before anything changes.</span>
           </Link>
           <Link className="path-card" href="/app/setup">
             <SlidersHorizontal size={18} />
-            <strong>2. Traditional Mode</strong>
-            <span>Use direct module controls for setup, leads, sites, automations, integrations, billing, reports, and safety settings.</span>
+            <strong>I want to choose myself</strong>
+            <span>Choose what Ferocity helps with now, what stays off, and what can wait.</span>
           </Link>
         </div>
       </section>
@@ -239,18 +241,18 @@ export default async function BuildSystemPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Start Here</h2>
-            <p className="muted">The simple path from empty workspace to a working Ferocity system.</p>
+            <p className="muted">The simple path from a new account to a working Ferocity system.</p>
           </div>
-          <span className="pill">guided setup</span>
+          <span className="pill">plain steps</span>
         </div>
         <div className="setup-step-grid">
           {[
-            ["1", "Add your business", "Name, services, areas, contact info, and brand basics."],
-            ["2", "Choose what Ferocity handles", "Leads, follow-up, SEO, reviews, automations, service ops, or all of it."],
-            ["3", "Connect lead sources", "Website forms, calls, MarketplacePro, email, ads, and manual leads."],
-            ["4", "Set follow-up rules", "When leads, estimates, invoices, callbacks, and reviews need attention."],
-            ["5", "Review automations", "Approve drafts, reminders, send rules, provider access, and limits."],
-            ["6", "Go live when ready", "Turn on connected providers only after keys, consent, and plan limits are set."]
+            ["1", "Pick the outcome", "More leads, faster follow-up, jobs, invoices, reviews, SEO, workers, reminders, or all of it."],
+            ["2", "Add only the basics", "Business name, services, service area, best contact, and the first lead path."],
+            ["3", "Start with what works now", "Use reminders, forms, notes, drafts, and owner alerts right away."],
+            ["4", "Leave the rest for later", "If something does not matter today, skip it. Ferocity can bring it back when it helps."],
+            ["5", "Review important actions", "Approve customer messages, public posts, payment requests, and other sensitive work before they happen."],
+            ["6", "Turn on more over time", "Add email, payments, ads, reviews, website publishing, and other connections when the business is ready."]
           ].map(([number, title, body]) => (
             <div className="setup-step-card" key={number}>
               <span className="step-dot">{number}</span>
@@ -262,15 +264,17 @@ export default async function BuildSystemPage() {
       </section>
 
       <section className="panel section-actions">
-        <h2>Status Words Ferocity Uses</h2>
-        <p className="muted">These labels should make it clear what is usable, limited, blocked, or waiting for approval.</p>
+        <h2>What The Status Means</h2>
+        <p className="muted">Plain labels for what is ready, what needs attention, and what can wait.</p>
         <div className="status-grid compact-status-grid">
           {[
             ["Included", "Usable now inside Ferocity."],
             ["Limited", "Usable, but usage is capped."],
-            ["Needs setup", "Business details or rules are missing."],
-            ["Needs provider key", "Requires Twilio, Resend, Stripe, calendar, or another account."],
-            ["Needs approval", "Ferocity can prepare it, but a human must approve live action."],
+            ["Skip for now", "Not needed today. Ferocity can bring it back later."],
+            ["Paused", "Set up, but not running."],
+            ["Needs business info", "Ferocity needs a little more detail before this works well."],
+            ["Needs connection", "This works better after an email, payment, calendar, website, ad, or review account is connected."],
+            ["Needs approval", "Ferocity prepared it, but someone should review it first."],
             ["Higher plan", "Requires a larger tier or custom limit."]
           ].map(([label, body]) => (
             <div className="status-card" key={label}>
@@ -289,7 +293,7 @@ export default async function BuildSystemPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Next Actions</h2>
-            <p className="muted">After Ferocity applies a setup plan, these are the normal owner-friendly next steps.</p>
+            <p className="muted">After Ferocity creates the setup plan, these are the next useful steps.</p>
           </div>
           <span className="pill">{nextActions.filter((item) => !item.done).length} open</span>
         </div>
@@ -315,7 +319,7 @@ export default async function BuildSystemPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Created Or Prepared By Ferocity</h2>
-            <p className="muted">The latest applied setup run created or updated these draft assets. They are editable and auditable.</p>
+            <p className="muted">The latest setup created or prepared these items. You can edit them before using them.</p>
           </div>
           <span className="pill">{assets.length} items</span>
         </div>
@@ -335,7 +339,7 @@ export default async function BuildSystemPage() {
           ))}
           {assets.length === 0 ? (
             <li className="list-row">
-              <span className="muted">No applied setup assets yet. Preview and apply a setup plan to create draft services, forms, templates, workflows, pages, and tracking sources.</span>
+              <span className="muted">Nothing has been created yet. Start a setup plan to prepare services, forms, messages, follow-up, pages, and tracking.</span>
             </li>
           ) : null}
         </ul>
@@ -344,14 +348,14 @@ export default async function BuildSystemPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Go Live Readiness</h2>
-            <p className="muted">Ferocity can organize work before going live. These checks show what still blocks live sending, publishing, and sync.</p>
+            <h2>Ready To Use</h2>
+            <p className="muted">Ferocity can organize work right away. These checks show what still needs attention before sending messages, collecting payments, or posting publicly.</p>
           </div>
             <Link className="mini-button" href="/app/integrations">
               Integrations
             </Link>
             <Link className="mini-button" href="/app/go-live">
-              Full scan
+              Check everything
             </Link>
           </div>
         <div className="status-grid compact-status-grid">
@@ -369,7 +373,7 @@ export default async function BuildSystemPage() {
 
       <section className="panel section-actions">
         <h2>Setup Change Log</h2>
-        <p className="muted">Plans applied by the setup operator. Revert restores the saved setup snapshot for statuses and controls.</p>
+        <p className="muted">A record of setup plans Ferocity created or changed.</p>
         <ul className="list">
           {logs.map((log) => (
             <li className="list-row" key={log.id}>
@@ -421,7 +425,7 @@ function buildNextActions(readiness: ReadinessStats | null, integrations: Integr
   return [
     {
       title: "Fill in business name and contact info",
-      body: "Confirm public business name, phone, email, and main service area before forms or pages go live.",
+      body: "Confirm the business name, phone, email, and main service area before using public forms or pages.",
       href: "/app/setup",
       button: "Edit basics",
       done: Boolean(readiness && num(readiness.brands) > 0 && num(readiness.brands_missing_contact) === 0)
@@ -442,28 +446,21 @@ function buildNextActions(readiness: ReadinessStats | null, integrations: Integr
     },
     {
       title: "Connect email provider",
-      body: "Verify sender/domain rules before any live email sending.",
+      body: "Add the email account Ferocity should use when the business is ready to send email.",
       href: "/app/integrations",
       button: "Connect",
       done: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared"))
     },
     {
-      title: "Connect SMS provider",
-      body: "Only turn on SMS after number setup, consent rules, and approval mode are ready.",
-      href: "/app/integrations",
-      button: "Connect",
-      done: isConnected(integration(integrations, "twilio")) || isConnected(integration(integrations, "twilio_shared"))
-    },
-    {
-      title: "Set plan limits and approval rules",
-      body: "Protect AI, email, SMS, publishing, and provider sync from surprise usage or spend.",
+      title: "Set spending and approval rules",
+      body: "Decide what Ferocity can do on its own and what still needs a person to review it.",
       href: "/app/controls",
       button: "Limits",
       done: Boolean(readiness && num(readiness.manual_marketing_settings) > 0 && latestAppliedId)
     },
     {
       title: "Review public publishing rules",
-      body: "Confirm SEO pages, GBP posts, review responses, and ad changes stay draft-first until approved.",
+      body: "Confirm pages, Google posts, review responses, and ad changes wait for approval.",
       href: "/app/controls",
       button: "Rules",
       done: Boolean(readiness && num(readiness.pages) > 0 && num(readiness.manual_marketing_settings) > 0)
@@ -475,7 +472,7 @@ function buildReadinessItems(readiness: ReadinessStats | null, integrations: Int
   return [
     {
       title: "Business basics",
-      body: readiness && num(readiness.brands_missing_contact) === 0 ? "Business profile has core contact details." : "Business contact details still need review.",
+      body: readiness && num(readiness.brands_missing_contact) === 0 ? "Business contact details are filled in." : "Business contact details still need review.",
       ready: Boolean(readiness && num(readiness.brands) > 0 && num(readiness.brands_missing_contact) === 0)
     },
     {
@@ -485,32 +482,34 @@ function buildReadinessItems(readiness: ReadinessStats | null, integrations: Int
     },
     {
       title: "Follow-up workflows",
-      body: readiness && num(readiness.followups) > 0 ? `${readiness.followups} follow-up workflow(s) open.` : "Create or approve follow-up rules.",
+      body: readiness && num(readiness.followups) > 0 ? `${readiness.followups} follow-up plan(s) started.` : "Create or approve follow-up reminders.",
       ready: Boolean(readiness && num(readiness.followups) > 0)
     },
     {
       title: "Review requests",
-      body: readiness && num(readiness.review_workflows) > 0 ? "Review workflow is drafted." : "Review request timing still needs setup.",
+      body: readiness && num(readiness.review_workflows) > 0 ? "Review requests are prepared." : "Choose when Ferocity should ask for reviews.",
       ready: Boolean(readiness && num(readiness.review_workflows) > 0)
     },
     {
       title: "Email ready",
-      body: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared")) ? "Email route is configured." : "Email sending needs sender/domain/provider setup.",
+      body: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared")) ? "Email is ready." : "Email needs a sending account before Ferocity can send messages.",
       ready: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared"))
     },
     {
-      title: "SMS ready",
-      body: isConnected(integration(integrations, "twilio")) || isConnected(integration(integrations, "twilio_shared")) ? "SMS route is configured." : "SMS needs Twilio or shared SMS rules plus consent.",
-      ready: isConnected(integration(integrations, "twilio")) || isConnected(integration(integrations, "twilio_shared"))
+      title: "Alerts and email ready",
+      body: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared"))
+        ? "Ferocity can use app alerts, dashboard queues, and email. SMS can stay optional."
+        : "Email still needs setup. App alerts and dashboard queues can still guide the owner.",
+      ready: isConnected(integration(integrations, "email_provider")) || isConnected(integration(integrations, "resend_shared"))
     },
     {
       title: "Publishing rules",
-      body: readiness && num(readiness.manual_marketing_settings) > 0 ? "Manual approval mode is set." : "Set publishing and review approval rules.",
+      body: readiness && num(readiness.manual_marketing_settings) > 0 ? "Public posts and pages require approval." : "Choose who approves public posts, pages, and review replies.",
       ready: Boolean(readiness && num(readiness.manual_marketing_settings) > 0)
     },
     {
-      title: "Provider sync",
-      body: isConnected(integration(integrations, "marketplacepro")) ? "MarketplacePro is connected." : "MarketplacePro and other syncs are optional and paused until connected.",
+      title: "MarketplacePro",
+      body: isConnected(integration(integrations, "marketplacepro")) ? "MarketplacePro is connected." : "MarketplacePro is optional and can be connected later.",
       ready: isConnected(integration(integrations, "marketplacepro"))
     }
   ];
@@ -540,7 +539,9 @@ function assetHref(table: string) {
     brand_landing_pages: "/app/sites",
     growth_sources: "/app/growth",
     follow_up_workflows: "/app/operator",
-    review_request_workflows: "/app/review"
+    review_request_workflows: "/app/review",
+    push_notification_preferences: "/app/notifications",
+    ai_agent_workflows: "/app/ai-workforce"
   };
   return map[table] ?? "/app/build-system";
 }

@@ -48,11 +48,11 @@ async function getLatestUpgrade(token: string) {
 }
 
 function statusCopy(status?: string) {
-  if (status === "stripe_not_ready") return "Your report request was saved. Stripe checkout is not connected locally yet.";
+  if (status === "stripe_not_ready") return "Your report request was saved. Checkout is being prepared for this report.";
   if (status === "checkout_cancelled") return "Checkout was cancelled. Nothing was charged.";
-  if (status === "stripe_error") return "Stripe did not create the checkout session. The request is still safe to retry later.";
-  if (status === "stripe_missing_url") return "Stripe responded without a checkout URL. The request was saved for review.";
-  if (status === "checkout_started") return "Checkout started. Webhook unlock can be connected after Stripe keys and webhooks are final.";
+  if (status === "stripe_error") return "Checkout could not start. The request was saved and is safe to retry.";
+  if (status === "stripe_missing_url") return "Checkout could not open. The request was saved for review.";
+  if (status === "checkout_started") return "Checkout started. After payment, Ferocity records the report path and next setup step.";
   return null;
 }
 
@@ -73,7 +73,7 @@ export default async function AiGrowthReportUpgradePage({
         <section className="public-shell">
           <nav className="public-nav">
             <Link className="brand-mark" href="/">Ferocity</Link>
-            <div><Link href="/business-health-score">Business Health Score</Link></div>
+            <div><Link href="/business-health-score">Business Grader</Link></div>
           </nav>
           <section className="public-hero">
             <p className="eyebrow">Report not found</p>
@@ -86,12 +86,13 @@ export default async function AiGrowthReportUpgradePage({
   }
 
   const fullReportItems = [
-    "Competitor comparison",
+    "What is leaking money now",
+    "What Ferocity can set up first",
     "Local SEO and service-area plan",
     "Review and reputation plan",
     "Lead capture and follow-up plan",
-    "Automation opportunities",
-    "90-day action plan in plain English"
+    "Recommended automations",
+    "30/60/90 day action plan"
   ];
 
   return (
@@ -109,11 +110,11 @@ export default async function AiGrowthReportUpgradePage({
         </nav>
 
         <section className="public-hero">
-          <p className="eyebrow">AI Growth Report</p>
-          <h1>Turn this score into a simple growth plan.</h1>
+          <p className="eyebrow">Business Autopilot Blueprint</p>
+          <h1>Turn this score into the first Ferocity setup plan.</h1>
           <p className="muted">
-            {report.company_name || "This business"} scored {report.score}/100. The paid report turns the score into a practical plan for SEO,
-            reviews, lead capture, follow-up, automation, and the first 90 days of work.
+            {report.company_name || "This business"} scored {report.score}/100. The Blueprint shows what is leaking money,
+            what Ferocity can help fix, and which lead, review, SEO, follow-up, job, and money workflows should be set up first.
           </p>
           {notice ? <p className="success-panel">{notice}</p> : null}
         </section>
@@ -139,7 +140,7 @@ export default async function AiGrowthReportUpgradePage({
         <section className="grid section-actions">
           <article className="panel span-5">
             <h2>
-              <Sparkles size={18} /> What the full report adds
+              <Sparkles size={18} /> What the Blueprint adds
             </h2>
             <ul className="plain-list">
               {fullReportItems.map((item) => (
@@ -154,15 +155,26 @@ export default async function AiGrowthReportUpgradePage({
           <article className="panel span-7">
             <h2>Choose how to get it</h2>
             <p className="muted">
-              The free score stays free. The AI Growth Report can be bought once, or it can be included with a monthly plan.
+              The free score stays free. The Business Autopilot Blueprint is included with every paid plan, or it can be bought once and credited toward the first month.
             </p>
             <div className="stacked-list">
               <form action="/api/business-health-score/upgrade" method="post" className="list-row flush-row">
                 <input name="reportToken" type="hidden" value={report.report_token} />
+                <input name="selectedPath" type="hidden" value="job_tracker" />
+                <div>
+                  <h3>Job Tracker starts simple</h3>
+                  <p className="muted">$39/mo. Best if they mainly need bids, jobs, materials, people paid, and basic payment tracking first.</p>
+                </div>
+                <button className="mini-button" type="submit">
+                  Start Job Tracker <ArrowRight size={14} />
+                </button>
+              </form>
+              <form action="/api/business-health-score/upgrade" method="post" className="list-row flush-row">
+                <input name="reportToken" type="hidden" value={report.report_token} />
                 <input name="selectedPath" type="hidden" value="starter" />
                 <div>
-                  <h3>Starter includes the report</h3>
-                  <p className="muted">$79/mo. Best if they want a workspace, basic CRM, lead form, source tracking, and one AI Growth Report.</p>
+                  <h3>Starter includes the Blueprint</h3>
+                  <p className="muted">$79/mo. Best if they want Ferocity watching leads, follow-up, reviews, simple jobs, proof drafts, owner alerts, and basic reports.</p>
                 </div>
                 <button className="mini-button" type="submit">
                   Start Starter <ArrowRight size={14} />
@@ -172,8 +184,8 @@ export default async function AiGrowthReportUpgradePage({
                 <input name="reportToken" type="hidden" value={report.report_token} />
                 <input name="selectedPath" type="hidden" value="one_time" />
                 <div>
-                  <h3>Buy the report once</h3>
-                  <p className="muted">$49 one-time. Safe checkout only starts when the Stripe report price is configured.</p>
+                  <h3>Buy the Blueprint once</h3>
+                  <p className="muted">$49 one-time. Use this when they want the diagnosis and setup roadmap before starting a monthly workspace.</p>
                 </div>
                 <button className="mini-button secondary-button" type="submit">
                   Unlock for $49
@@ -184,7 +196,7 @@ export default async function AiGrowthReportUpgradePage({
                 <input name="selectedPath" type="hidden" value="growth" />
                 <div>
                   <h3>Growth includes refreshes</h3>
-                  <p className="muted">$199/mo. Best for SEO drafts, reviews, proof capture, marketing campaigns, attribution, and report refreshes.</p>
+              <p className="muted">$199/mo. Best for SEO drafts, reviews, proof capture, marketing campaigns, attribution, and weekly growth briefs.</p>
                 </div>
                 <button className="mini-button" type="submit">
                   Start Growth
@@ -202,7 +214,7 @@ export default async function AiGrowthReportUpgradePage({
               </h2>
               <p className="muted">
                 This page does not send messages, publish SEO pages, change ads, process payments, or turn on automations by itself.
-                It records the chosen path and hands off to checkout or setup when the provider keys are ready.
+                It records the chosen path and hands off to checkout or setup with the same review controls used across Ferocity.
               </p>
             </div>
             <Link className="button secondary-button" href={`/business-health-score/report/${report.report_token}`}>

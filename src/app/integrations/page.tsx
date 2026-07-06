@@ -1,6 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 
-const marketplaceProUrl = "https://marketplacepro.live";
+export const metadata: Metadata = {
+  title: "Ferocity Integrations",
+  description:
+    "Connect Ferocity with Google, Meta, Reddit, Microsoft, Resend, Stripe, calendars, ads, reviews, marketplace sources, app alerts, email, and optional customer communication tools.",
+  alternates: {
+    canonical: "/integrations"
+  }
+};
 
 const providers = [
   { name: "Google Business Profile" },
@@ -11,9 +19,10 @@ const providers = [
   { name: "Microsoft Ads" },
   { name: "Yahoo / Native Ads" },
   { name: "Resend or customer email" },
-  { name: "Twilio" },
+  { name: "App alerts and email by default" },
+  { name: "Optional SMS later" },
   { name: "Stripe" },
-  { name: "MarketplacePro", href: marketplaceProUrl }
+  { name: "Marketplace and partner sources" }
 ];
 
 export default function PublicIntegrationsPage() {
@@ -25,17 +34,18 @@ export default function PublicIntegrationsPage() {
           <div>
             <Link href="/about">About</Link>
             <Link href="/demo">Demo</Link>
+            <Link href="/business-health-score">Free Grader</Link>
             <Link href="/pricing">Plans</Link>
+            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/terms">Terms</Link>
+            <Link href="/login">Sign in</Link>
           </div>
         </nav>
         <section className="public-hero">
           <p className="eyebrow">Integrations</p>
           <h1>Connect Ferocity to the tools your business already uses.</h1>
           <p className="muted">
-            Keep trusted systems for payments, email, phones, calendars, ads, marketplace leads, and public profiles. Ferocity organizes
+            Keep trusted systems for payments, email, app alerts, calendars, ads, marketplace leads, and public profiles. Ferocity organizes
             the work around them.
           </p>
           <div className="button-row">
@@ -45,21 +55,16 @@ export default function PublicIntegrationsPage() {
             <Link className="button secondary-button" href="/pricing">
               View plans
             </Link>
+            <Link className="button secondary-button" href="/install">
+              Install app
+            </Link>
           </div>
         </section>
         <section className="panel">
           <h2>Connection Paths</h2>
           <ul className="public-provider-list">
             {providers.map((provider) => (
-              <li key={provider.name}>
-                {provider.href ? (
-                  <Link className="inline-link" href={provider.href}>
-                    {provider.name}
-                  </Link>
-                ) : (
-                  provider.name
-                )}
-              </li>
+              <li key={provider.name}>{provider.name}</li>
             ))}
           </ul>
         </section>
@@ -90,7 +95,7 @@ export default function PublicIntegrationsPage() {
             {[
               ["Website connector", "Quote buttons, embedded forms, and a small tracking helper attach page and campaign data to leads."],
               ["Forms", "Website and hosted forms capture source, referrer, and UTM data."],
-              ["Marketplace", "MarketplacePro requests map into the same lead flow."],
+              ["Marketplace", "Marketplace and partner requests map into the same lead flow."],
               ["Manual sources", "Calls, referrals, and walk-ins can be entered without losing attribution."],
               ["Reporting", "Sources roll up into lead, job, revenue, and review reporting."]
             ].map(([title, body]) => (

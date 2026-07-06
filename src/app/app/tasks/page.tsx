@@ -9,7 +9,7 @@ export default async function TasksPage() {
 
   return (
     <QueuePageShell
-      eyebrow="AI Operator"
+      eyebrow="AI Workforce"
       title="AI Task Queue"
       description="Work the AI should perform or prepare, scoped by workspace and brand."
     >

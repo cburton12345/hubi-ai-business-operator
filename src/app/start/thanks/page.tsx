@@ -41,7 +41,8 @@ export default async function StartThanksPage({
                   : "Good. Your Ferocity setup request is in."}
           </h1>
           <p className="muted">
-            This request does not send customer messages, publish content, change ads, sync outside accounts, or start billing.
+            This request starts the autopilot setup path. It does not send customer messages, publish content, change ads,
+            sync outside accounts, or start billing.
           </p>
           <div className="button-row">
             {inviteUrl ? (
@@ -58,7 +59,7 @@ export default async function StartThanksPage({
               </Link>
             )}
             <Link className="button secondary-button" href="/automations">
-              View automations
+              View autopilot workflows
             </Link>
           </div>
         </section>
@@ -73,7 +74,7 @@ export default async function StartThanksPage({
                   : workspaceReused
                     ? `Use the refreshed invite link to claim the existing workspace${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate tenant.`
                     : existingAccount
-                      ? `Sign in with that email${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate tenant.`
+                      ? `Sign in with that email${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate workspace.`
                   : workspacePending
                     ? "The request was saved for review. Ferocity will create an invite from Access Requests."
                     : "Ferocity will review the request, choose a sensible starting point, and create an invite or guided setup path."}

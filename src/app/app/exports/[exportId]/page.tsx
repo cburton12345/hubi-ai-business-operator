@@ -14,8 +14,8 @@ export default async function WorkspaceDataExportDetailPage({ params }: { params
   return (
     <QueuePageShell
       eyebrow="Workspace Export"
-      title="Workspace Data Package"
-      description="Manual JSON snapshot for account portability. Review before sharing outside the organization."
+      title="Workspace Backup Package"
+      description="Manual JSON snapshot for account portability, business backups, and audits. Review before sharing outside the organization."
     >
       <section className="panel section-actions">
         <div>
@@ -24,7 +24,10 @@ export default async function WorkspaceDataExportDetailPage({ params }: { params
             {exportPackage.status} / created {new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(exportPackage.requestedAt))}
           </p>
         </div>
-        <Link className="mini-button" href="/app/exports">Back to exports</Link>
+        <div className="button-row">
+          <Link className="mini-button" href={`/api/workspace-data-exports/${exportPackage.id}/download`}>Download JSON</Link>
+          <Link className="mini-button" href="/app/exports">Back to exports</Link>
+        </div>
       </section>
 
       <section className="panel">

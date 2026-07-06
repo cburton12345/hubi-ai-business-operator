@@ -4,10 +4,11 @@ import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
+import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 
 const upgradeSchema = z.object({
   reportToken: z.string().trim().min(8).max(120),
-  selectedPath: z.enum(["one_time", "starter", "growth", "operator", "agency"])
+  selectedPath: z.enum(["one_time", "job_tracker", "starter", "growth", "operator", "agency"])
 });
 
 type ReportRow = {
@@ -24,6 +25,7 @@ function redirectTo(request: NextRequest, path: string) {
 }
 
 function statusForPath(selectedPath: z.infer<typeof upgradeSchema>["selectedPath"], stripeReady: boolean) {
+  if (selectedPath === "job_tracker") return "manual_follow_up";
   if (selectedPath === "starter") return "included_with_starter";
   if (selectedPath === "growth") return "included_with_growth";
   if (selectedPath === "operator" || selectedPath === "agency") return "manual_follow_up";
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
   const upgradeStatus = statusForPath(parsed.data.selectedPath, stripeReady);
   const amountCents = parsed.data.selectedPath === "one_time" ? 4900 : 0;
   const selectedPlan =
-    parsed.data.selectedPath === "one_time" ? "ai_growth_report" : parsed.data.selectedPath === "agency" ? "pro_agency" : parsed.data.selectedPath;
+    parsed.data.selectedPath === "one_time" ? "business_autopilot_blueprint" : parsed.data.selectedPath === "agency" ? "pro_agency" : parsed.data.selectedPath;
 
   const upgradeResult = await queryPostgres<{ id: string }>(
     `
@@ -96,12 +98,43 @@ export async function POST(request: NextRequest) {
 
   const upgradeId = upgradeResult?.rows[0]?.id;
 
-  if (parsed.data.selectedPath === "starter" || parsed.data.selectedPath === "growth") {
+  await recordSalesOpportunity({
+    externalEventId: `business-grader-upgrade:${report.report_token}:${upgradeId ?? parsed.data.selectedPath}`,
+    source: "business_grader",
+    title: "Business Grader upgrade request",
+    summary: `${report.company_name || report.email} selected ${selectedPlan} from a Business Grader report scored ${report.score}/100.`,
+    email: report.email,
+    companyName: report.company_name,
+    score: report.score,
+    reportToken: report.report_token,
+    requestedPlan: selectedPlan,
+    actionHref: `/business-health-score/report/${encodeURIComponent(report.report_token)}/upgrade`,
+    moneyCents:
+      amountCents ||
+      (selectedPlan === "growth"
+        ? 19900
+        : selectedPlan === "operator"
+          ? 39900
+          : selectedPlan === "starter"
+            ? 7900
+            : selectedPlan === "job_tracker"
+              ? 3900
+              : 0),
+    metadata: {
+      upgradeId,
+      selectedPath: parsed.data.selectedPath,
+      upgradeStatus,
+      gradeLabel: report.grade_label,
+      stripeReady
+    }
+  });
+
+  if (parsed.data.selectedPath === "job_tracker" || parsed.data.selectedPath === "starter" || parsed.data.selectedPath === "growth") {
     const params = new URLSearchParams({
       source: "business_health_score_report",
       plan: parsed.data.selectedPath,
       report: report.report_token,
-      growth_report: "included"
+      blueprint: "included"
     });
     return redirectTo(request, `/start?${params.toString()}`);
   }
@@ -111,7 +144,7 @@ export async function POST(request: NextRequest) {
       source: "business_health_score_report",
       plan: selectedPlan,
       report: report.report_token,
-      growth_report: "manual"
+      blueprint: "manual"
     });
     return redirectTo(request, `/start?${params.toString()}`);
   }
@@ -119,7 +152,7 @@ export async function POST(request: NextRequest) {
   if (!stripeReady) {
     await logAppError({
       source: "api.business-health-score.upgrade",
-      message: "AI Growth Report checkout requested before Stripe one-time price was configured.",
+      message: "Business Autopilot Blueprint checkout requested before Stripe one-time price was configured.",
       severity: "info",
       metadata: {
         reportToken: report.report_token,
@@ -159,7 +192,7 @@ export async function POST(request: NextRequest) {
     const detail = await response.text();
     await logAppError({
       source: "api.business-health-score.upgrade",
-      message: "AI Growth Report Stripe checkout session creation failed.",
+      message: "Business Autopilot Blueprint Stripe checkout session creation failed.",
       severity: "warning",
       metadata: {
         reportToken: report.report_token,

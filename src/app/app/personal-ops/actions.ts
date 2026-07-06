@@ -51,7 +51,7 @@ async function upsertOwnerCommandEvent(input: {
       severity, status, owner_attention, ai_handled, ai_summary, recommended_action, action_href,
       money_cents, risk_type, confidence_score, metadata_json
     )
-    values ($1, 'personal-ops', 'Personal Ops', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '/app/personal-ops', 0, $12, 82, $13::jsonb)
+    values ($1, 'personal-ops', 'Private Owner Tasks', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '/app/personal-ops', 0, $12, 82, $13::jsonb)
     on conflict (tenant_id, platform_key, external_event_id)
     do update set
       title = excluded.title,
@@ -71,12 +71,12 @@ async function upsertOwnerCommandEvent(input: {
       `personal-ops:${input.itemId}`,
       `personal.${input.category}`,
       input.title,
-      input.notes || "Private owner task recorded in Personal Ops.",
+      input.notes || "Private owner task recorded in Private Owner Tasks.",
       priorityToSeverity(input.priority),
       input.status === "done" ? "resolved" : input.ownerAttention ? "needs_owner" : "watching",
       input.ownerAttention,
       input.status === "ai_handled",
-      input.status === "ai_handled" ? "Marked handled from Personal Ops." : null,
+      input.status === "ai_handled" ? "Marked handled from Private Owner Tasks." : null,
       input.recommendedAction,
       input.category === "money" ? "financial" : input.priority === "critical" ? "approval" : null,
       JSON.stringify({
@@ -199,7 +199,7 @@ export async function updatePersonalOpsItemAction(formData: FormData) {
       `,
       [
         tenantId,
-        "Personal Ops item updated",
+        "Private Owner Tasks item updated",
         `${item.title} moved to ${nextStatus.replaceAll("_", " ")}.`,
         JSON.stringify({ personalOpsItemId: item.id, status: nextStatus })
       ]

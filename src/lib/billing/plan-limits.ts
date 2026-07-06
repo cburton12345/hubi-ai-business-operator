@@ -38,6 +38,10 @@ function limitForPlan(planKey: string | null) {
     return { monthlyLeadLimit: 250, formsLimit: 3 };
   }
 
+  if (planKey === "job_tracker") {
+    return { monthlyLeadLimit: 75, formsLimit: 1 };
+  }
+
   if (planKey === "growth") {
     return { monthlyLeadLimit: 1000, formsLimit: 10 };
   }

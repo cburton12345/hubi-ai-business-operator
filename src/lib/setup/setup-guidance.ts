@@ -103,7 +103,7 @@ function fallbackGuidance(stats: WorkspaceStats | null, integrations: Integratio
     missing.push("SEO and page work has not been prepared yet.");
     nextActions.push({
       title: "Prepare SEO drafts and page targets",
-      why: "A service business needs useful service pages, city pages, proof, reviews, and clear calls to action before marketing compounds.",
+      why: "A business needs useful offer pages, location or audience pages when relevant, proof, reviews, and clear calls to action before marketing compounds.",
       doNext: "Generate SEO drafts and prepare hosted page targets for review.",
       href: "/app/publishing-hub",
       priority: "normal"
@@ -114,7 +114,7 @@ function fallbackGuidance(stats: WorkspaceStats | null, integrations: Integratio
     missing.push("Follow-up automation is not set.");
     nextActions.push({
       title: "Set lead and estimate follow-up",
-      why: "Most local businesses lose money by replying late or forgetting viewed estimates, stale leads, callbacks, and invoice reminders.",
+      why: "Most businesses lose money by replying late or forgetting viewed estimates, stale leads, callbacks, invoices, quotes, or carts.",
       doNext: "Run the operator scan and review the follow-up workflows.",
       href: "/app/operator",
       priority: "high"
@@ -133,13 +133,12 @@ function fallbackGuidance(stats: WorkspaceStats | null, integrations: Integratio
   }
 
   const emailReady = integrations.some((item) => ["email_provider", "resend_shared"].includes(item.provider) && (item.status === "connected" || item.credentials_status === "configured"));
-  const smsReady = integrations.some((item) => ["twilio", "twilio_shared"].includes(item.provider) && (item.status === "connected" || item.credentials_status === "configured"));
-  if (!emailReady || !smsReady) {
-    missing.push("Some live messaging providers are not connected.");
+  if (!emailReady) {
+    missing.push("Verified email is not connected yet.");
     nextActions.push({
-      title: "Keep live sends gated until providers are ready",
-      why: "Ferocity can draft emails and texts now, but live sends need verified sender/domain, consent rules, and usage limits.",
-      doNext: "Open Integrations and Controls before turning on live email or SMS.",
+      title: "Use app alerts first, then connect email",
+      why: "Ferocity can use app alerts and dashboard queues immediately. Verified email adds daily briefs, setup messages, and approved follow-up.",
+      doNext: "Open Integrations and connect Resend/email. Keep SMS optional unless the business explicitly wants it later.",
       href: "/app/integrations",
       priority: "normal"
     });
@@ -247,7 +246,7 @@ export async function getSetupGuidance(): Promise<SetupGuidance> {
     tenantId: workspace.id,
     runType: "setup_guidance",
     system:
-      "You are Ferocity's AI setup coach for local service businesses. Lead the owner in plain English. Rank what is missing and what to do next. Never claim live sends, live publishing, ad spend, or provider sync are active unless the data says so. Use existing Ferocity areas; do not invent duplicate systems. Return JSON with headline, summary, missing, nextActions, and websiteAuditNote.",
+      "You are Ferocity's AI setup coach for businesses that need more customers, faster follow-up, better marketing, cleaner operations, and revenue visibility. Lead the owner in plain English. Rank what is missing and what to do next. Use contractor/local-service defaults only when the business type calls for them. Never claim live sends, live publishing, ad spend, or provider sync are active unless the data says so. Use existing Ferocity areas; do not invent duplicate systems. Return JSON with headline, summary, missing, nextActions, and websiteAuditNote.",
     user: JSON.stringify({
       workspace,
       stats,

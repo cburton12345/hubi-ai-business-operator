@@ -13,7 +13,7 @@ Last local check: June 2, 2026.
 - Business Health Score checks marketing, lead capture, website, reviews, SEO, automation, operations, customer retention, hiring, and growth potential.
 - Reports show deterministic category scores, strengths, weaknesses, opportunity estimates, ecosystem recommendations, and Ferocity setup actions.
 - Assessment reports can start Ferocity onboarding from the report without turning on live sends, publishing, ads, payments, or billing.
-- Pricing now includes AI Growth Report as a one-time option and as an included Starter+ subscription benefit.
+- Pricing now includes the Business Autopilot Blueprint as a one-time option credited toward the first month and as an included paid-plan onboarding benefit.
 - Public CTAs updated to point users toward assessment, setup, pricing, demo, and website hookup.
 - MarketplacePro and source-tracking language included where it belongs in the setup path.
 - Database migrations added for AI agent workflows and assessment reports.

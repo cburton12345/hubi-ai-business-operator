@@ -10,14 +10,14 @@ export default async function MarketingReviewPage() {
     <QueuePageShell
       eyebrow="Admin Review"
       title="AI Generated Item Review"
-      description="Review, edit, approve, reject, publish, or archive generated content. External publishing is intentionally not connected."
+      description="Review, edit, approve, reject, publish, or archive generated content before it reaches customers or public channels."
     >
       <div className="button-row section-actions">
         <Link className="button" href="/app/marketing-os">
           Have AI Set This Up
         </Link>
         <Link className="button secondary-button" href="/app/exports">
-          Create manual export packages
+          Create export packages
         </Link>
       </div>
       <ul className="review-list">

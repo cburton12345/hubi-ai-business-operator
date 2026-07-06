@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceEstimateDetail } from "@/lib/service-ops/get-service-record-detail";
-import { deleteEstimateLineItemAction, saveEstimateLineItemAction, updateEstimateAction } from "../../actions";
+import { convertEstimateToJobAction, deleteEstimateLineItemAction, saveEstimateLineItemAction, updateEstimateAction } from "../../actions";
 
 const statuses = ["draft", "sent_manually", "approved", "declined", "expired"];
 
@@ -49,6 +49,14 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
         </section>
         <section className="panel span-5 form-stack">
           <h2>Estimate Workflow</h2>
+          <div className="notice-card">
+            <div>
+              <strong>Terms</strong>
+              <p className="muted">{estimate.paymentTerms || "No payment terms saved yet."}</p>
+              <p className="muted">Deposit: {estimate.depositRequired}</p>
+              {estimate.acceptanceNotes ? <p className="muted">{estimate.acceptanceNotes}</p> : null}
+            </div>
+          </div>
           <form action={updateEstimateAction} className="form-stack">
             <input name="estimateId" type="hidden" value={estimate.id} />
             <label>
@@ -67,6 +75,39 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
             </label>
             <button className="button" type="submit">Save estimate</button>
           </form>
+        </section>
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Turn This Bid Into Work</h2>
+              <p className="muted">
+                When the customer says yes, create the job from this estimate so scheduling, field notes, proof, and invoicing stay connected.
+              </p>
+            </div>
+            <span className="pill">{estimate.linkedJobs.length ? "job created" : "ready"}</span>
+          </div>
+          {estimate.linkedJobs.length ? (
+            <ul className="list">
+              {estimate.linkedJobs.map((job) => (
+                <li className="list-row" key={job.id}>
+                  <div>
+                    <h4>{job.title}</h4>
+                    <p className="muted">{job.status} / {job.schedule}</p>
+                  </div>
+                  <Link className="mini-button" href={`/app/service/jobs/${job.id}`}>Open job</Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <form action={convertEstimateToJobAction} className="compact-form">
+              <input name="estimateId" type="hidden" value={estimate.id} />
+              <input name="scheduledStart" type="datetime-local" aria-label="Scheduled start" />
+              <input name="scheduledEnd" type="datetime-local" aria-label="Scheduled end" />
+              <input name="serviceArea" placeholder="Service area" defaultValue="" />
+              <input name="dispatcherNotes" placeholder="Crew notes or materials to prep" defaultValue={estimate.internalNotes} />
+              <button className="mini-button" type="submit">Create job</button>
+            </form>
+          )}
         </section>
       </div>
     </QueuePageShell>

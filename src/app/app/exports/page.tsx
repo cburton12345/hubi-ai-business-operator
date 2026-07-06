@@ -17,17 +17,45 @@ export default async function ExportsPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Manual Publishing"
-      title="Content Export Packages"
-      description="Prepare copy packages for manual use. External publishing is not connected."
+      eyebrow="Data Safety"
+      title="Backups & Export Packages"
+      description="Create workspace snapshots, review marketing export packages, and keep customer data portable. Google Sheets and Drive sync should connect here later after OAuth is ready."
     >
+      <section className="grid cards-grid">
+        {[
+          {
+            title: "Downloadable workspace backup",
+            status: "available now",
+            body: "Owners and admins can create a JSON snapshot of core workspace data and download it for safekeeping, audits, or offboarding."
+          },
+          {
+            title: "Google Sheets / Drive backup",
+            status: "provider planned",
+            body: "A good customer-friendly destination once Google OAuth is connected. This should be an extra copy, not the only backup."
+          },
+          {
+            title: "Database recovery",
+            status: "platform responsibility",
+            body: "Supabase backups, RLS, audit logs, and least-privilege keys remain the real protection against hacks or accidental damage."
+          }
+        ].map((item) => (
+          <article className="panel" key={item.title}>
+            <span className="pill">{item.status}</span>
+            <h2>{item.title}</h2>
+            <p className="muted">{item.body}</p>
+          </article>
+        ))}
+      </section>
+
       <section className="panel section-actions">
         <div>
-          <h2>Workspace Data Export</h2>
-          <p className="muted">Create a manual JSON snapshot for business offboarding, audits, or account portability.</p>
+          <h2>Workspace Data Backup</h2>
+          <p className="muted">
+            Create a manual JSON snapshot of brands, services, forms, leads, AI work, approvals, customers, estimates, jobs, invoices, and content packages.
+          </p>
         </div>
         <form action={createWorkspaceDataExportAction}>
-          <button className="mini-button" type="submit">Create workspace export</button>
+          <button className="mini-button" type="submit">Create backup package</button>
         </form>
       </section>
 
@@ -49,7 +77,12 @@ export default async function ExportsPage() {
           {
             key: "actions",
             label: "Actions",
-            render: (row) => <Link className="mini-button" href={`/app/exports/${row.id}`}>View JSON</Link>
+            render: (row) => (
+              <div className="button-row">
+                <Link className="mini-button" href={`/app/exports/${row.id}`}>View</Link>
+                <Link className="mini-button" href={`/api/workspace-data-exports/${row.id}/download`}>Download</Link>
+              </div>
+            )
           }
         ]}
       />
@@ -76,7 +109,7 @@ export default async function ExportsPage() {
       <section className="panel section-actions">
         <div>
           <h2>Review-First Export Queue</h2>
-          <p className="muted">Marketing OS, proof, SEO, and growth page outputs land here before anything leaves Ferocity.</p>
+          <p className="muted">Marketing, proof, SEO, and growth page outputs land here before anything leaves Ferocity.</p>
         </div>
       </section>
 

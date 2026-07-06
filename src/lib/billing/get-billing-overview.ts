@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type BillingPlanRow = {
@@ -16,6 +17,7 @@ export type BillingOverview = {
     status: string;
     seats: number;
     currentPeriodEnd: string;
+    hasStripeCustomer: boolean;
   } | null;
   plans: BillingPlanRow[];
   usage: {
@@ -28,6 +30,9 @@ export type BillingOverview = {
     publishingQueueItems: number;
     reviewRequestsThisMonth: number;
     followUpsOpen: number;
+    laborRequestsThisMonth: number;
+    workerIntakeThisMonth: number;
+    laborMatchesThisMonth: number;
   };
   featureGates: {
     featureKey: string;
@@ -48,8 +53,8 @@ export type BillingOverview = {
 export async function getBillingOverview(): Promise<BillingOverview> {
   const workspaceId = await getCurrentWorkspaceId();
   const [subscription, plans, usageResult, gatesResult, stripeResult] = await Promise.all([
-    queryPostgres<{ plan_key: string; status: string; seats: number; current_period_end: Date | null }>(
-      "select plan_key, status, seats, current_period_end from public.billing_subscriptions where tenant_id = $1 limit 1",
+    queryPostgres<{ plan_key: string; status: string; seats: number; current_period_end: Date | null; external_customer_ref: string | null }>(
+      "select plan_key, status, seats, current_period_end, external_customer_ref from public.billing_subscriptions where tenant_id = $1 limit 1",
       [workspaceId]
     ),
     queryPostgres<{ id: string; plan_key: string; name: string; monthly_price_cents: number; included_brands: number; included_ai_runs: number }>(
@@ -66,6 +71,9 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       publishing_queue_items: string;
       review_requests_this_month: string;
       followups_open: string;
+      labor_requests_this_month: string;
+      worker_intake_this_month: string;
+      labor_matches_this_month: string;
     }>(
       `
       select
@@ -84,7 +92,10 @@ export async function getBillingOverview(): Promise<BillingOverview> {
           select count(*) from public.review_request_workflows
           where tenant_id = $1 and created_at >= date_trunc('month', now())
         ) as review_requests_this_month,
-        (select count(*) from public.follow_up_workflows where tenant_id = $1 and status in ('open', 'scheduled', 'missed')) as followups_open
+        (select count(*) from public.follow_up_workflows where tenant_id = $1 and status in ('open', 'scheduled', 'missed')) as followups_open,
+        (select count(*) from public.labor_staffing_requests where tenant_id = $1 and created_at >= date_trunc('month', now())) as labor_requests_this_month,
+        (select count(*) from public.labor_worker_availability where tenant_id = $1 and source = 'public_form' and created_at >= date_trunc('month', now())) as worker_intake_this_month,
+        (select count(*) from public.labor_staffing_matches where tenant_id = $1 and created_at >= date_trunc('month', now())) as labor_matches_this_month
       `,
       [workspaceId]
     ),
@@ -124,16 +135,24 @@ export async function getBillingOverview(): Promise<BillingOverview> {
     seoDraftsThisMonth: Number(usageRow?.seo_drafts_this_month ?? 0),
     publishingQueueItems: Number(usageRow?.publishing_queue_items ?? 0),
     reviewRequestsThisMonth: Number(usageRow?.review_requests_this_month ?? 0),
-    followUpsOpen: Number(usageRow?.followups_open ?? 0)
+    followUpsOpen: Number(usageRow?.followups_open ?? 0),
+    laborRequestsThisMonth: Number(usageRow?.labor_requests_this_month ?? 0),
+    workerIntakeThisMonth: Number(usageRow?.worker_intake_this_month ?? 0),
+    laborMatchesThisMonth: Number(usageRow?.labor_matches_this_month ?? 0)
   };
   const usageForFeature = (featureKey: string) => {
     if (featureKey === "seo_autopilot") return usage.seoDraftsThisMonth;
     if (featureKey === "publishing_queue") return usage.publishingQueueItems;
     if (featureKey === "review_requests") return usage.reviewRequestsThisMonth;
     if (featureKey === "follow_up_recovery") return usage.followUpsOpen;
+    if (featureKey === "labor_staffing_requests") return usage.laborRequestsThisMonth;
+    if (featureKey === "labor_worker_intake") return usage.workerIntakeThisMonth;
+    if (featureKey === "labor_match_suggestions") return usage.laborMatchesThisMonth;
     return 0;
   };
   const stripe = stripeResult?.rows[0];
+  const managedPaymentsEnabled = env.FEROCITY_MANAGED_PAYMENTS_ENABLED === "true";
+  const managedPaymentsFeeBps = Number(env.FEROCITY_MANAGED_PAYMENT_FEE_BPS ?? 150);
 
   return {
     subscription: sub
@@ -141,7 +160,8 @@ export async function getBillingOverview(): Promise<BillingOverview> {
           planKey: sub.plan_key,
           status: sub.status,
           seats: sub.seats,
-          currentPeriodEnd: sub.current_period_end?.toISOString() ?? ""
+          currentPeriodEnd: sub.current_period_end?.toISOString() ?? "",
+          hasStripeCustomer: Boolean(sub.external_customer_ref)
         }
       : null,
     plans: (plans?.rows ?? []).map((plan) => ({
@@ -170,6 +190,14 @@ export async function getBillingOverview(): Promise<BillingOverview> {
         label: "Stripe connection",
         status: stripe?.status === "connected" && stripe.credentials_status === "configured" ? "ready" : "needs_setup",
         detail: stripe?.status === "connected" ? "Stripe is marked connected." : "Add Stripe keys and webhook secret before paid subscriptions are live."
+      },
+      {
+        label: "Stripe Connect managed payments",
+        status: managedPaymentsEnabled && env.STRIPE_CONNECT_CLIENT_ID ? "ready" : "needs_setup",
+        detail:
+          managedPaymentsEnabled && env.STRIPE_CONNECT_CLIENT_ID
+            ? `Managed payments are enabled with a ${Number.isFinite(managedPaymentsFeeBps) ? managedPaymentsFeeBps / 100 : 1.5}% platform-fee target. Confirm Connect onboarding and fee pass-through before live use.`
+            : "Managed payments are not live. Use customer-owned Stripe or manual payment tracking until Stripe Connect onboarding, fee policy, payout, dispute, and webhook handling are finished."
       },
       {
         label: "Subscription record",

@@ -10,8 +10,8 @@ export default async function WebhooksPage({ searchParams }: { searchParams: Pro
   return (
     <QueuePageShell
       eyebrow="Webhooks"
-      title="Webhook Framework"
-      description="Prepared inbound and outbound event structure for future integrations. External delivery is still disabled."
+      title="Webhook Connections"
+      description="Create controlled event endpoints for systems that should send work, leads, status changes, or owner alerts into Ferocity."
     >
       {params.token ? (
         <section className="panel section-actions success-panel">

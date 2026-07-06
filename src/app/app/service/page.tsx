@@ -14,8 +14,8 @@ export default async function ServiceOpsPage() {
   return (
     <QueuePageShell
       eyebrow="Service Operations"
-      title="Field Service Command Center"
-      description="Manage customers, estimates, scheduled jobs, invoices, and manual AI-assisted follow-up for the selected organization."
+      title="Field Work Center"
+      description="Manage customers, estimates, scheduled jobs, invoices, and AI-assisted follow-up for the selected organization."
     >
       <div className="section-actions button-row">
         <form action={scanServiceOpsAction}>
@@ -24,6 +24,8 @@ export default async function ServiceOpsPage() {
         <Link className="button secondary-button" href="/app/service/routes">Route planning</Link>
         <Link className="button secondary-button" href="/app/service/tech">Technician workflow</Link>
         <Link className="button secondary-button" href="/app/service/inventory">Inventory</Link>
+        <Link className="button secondary-button" href="/app/job-tracker">Jobs & Money</Link>
+        <Link className="button" href="/app/cash-collection">Cash Collection</Link>
       </div>
 
       <div className="grid section-actions">

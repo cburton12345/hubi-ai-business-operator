@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { applySetupPlanAction, previewSetupPlanAction } from "./actions";
 import type { SetupPlan } from "@/lib/setup/setup-planner";
@@ -23,7 +23,7 @@ function applyModeLabel(mode: string) {
 function verticalStatusLabel(status: string) {
   if (status === "active") return "Turn on";
   if (status === "paused") return "Keep paused";
-  if (status === "not_needed") return "Skip for now";
+  if (status === "not_needed") return "Skip";
   return status.replaceAll("_", " ");
 }
 
@@ -41,38 +41,51 @@ function featureModeLabel(mode: string) {
   return mode.replaceAll("_", " ");
 }
 
+function featureLabel(featureKey: string) {
+  const labels: Record<string, string> = {
+    sms_send: "manual text drafts",
+    email_send: "approved email",
+    ai_generation: "AI generation",
+    follow_up_recovery: "follow-up recovery",
+    seo_autopilot: "SEO autopilot",
+    hosted_growth_pages: "hosted growth pages",
+    growth_attribution: "growth attribution",
+    review_requests: "review requests",
+    calendar_sync: "calendar sync",
+    payment_collection: "invoice and payment tracking"
+  };
+  return labels[featureKey] ?? featureKey.replaceAll("_", " ");
+}
+
 export function SetupBuilder() {
   const [request, setRequest] = useState("I run a roofing company and want storm leads, reviews, SEO pages, and fast follow-up.");
   const [previewState, previewAction, previewPending] = useActionState(previewSetupPlanAction, initialState);
   const [applyState, applyAction, applyPending] = useActionState(applySetupPlanAction, initialState);
-  const [activePlan, setActivePlan] = useState<SetupPlan | null>(null);
-
-  useEffect(() => {
-    if (previewState.ok && previewState.plan) setActivePlan(previewState.plan);
-  }, [previewState]);
-
-  useEffect(() => {
-    if (applyState.ok && applyState.plan) setActivePlan(applyState.plan);
-  }, [applyState]);
+  const [hidePlan, setHidePlan] = useState(false);
+  const generatedPlan = applyState.ok && applyState.plan ? applyState.plan : previewState.ok && previewState.plan ? previewState.plan : null;
+  const activePlan = hidePlan ? null : generatedPlan;
 
   return (
     <section className="setup-builder-grid">
       <form action={previewAction} className="panel form-stack setup-builder-input">
         <h2>Tell Ferocity What You Need</h2>
-        <p className="muted">Use normal words. This first version creates a setup plan without spending AI tokens.</p>
+        <p className="muted">Use normal words. Ferocity turns the request into a reviewed setup plan before anything changes.</p>
         <textarea
           name="request"
           rows={8}
           value={request}
-          onChange={(event) => setRequest(event.target.value)}
-          placeholder="Example: I run a roofing company and want storm leads, review requests, missed-call text back, and invoice follow-up."
+          onChange={(event) => {
+            setRequest(event.target.value);
+            setHidePlan(false);
+          }}
+          placeholder="Example: I run a roofing company and want storm leads, review requests, fast follow-up, and invoice follow-up."
         />
         {previewState.error ? <p className="form-error">{previewState.error}</p> : null}
         <div className="button-row">
           <button className="button" type="submit" disabled={previewPending}>
             {previewPending ? "Building plan..." : "Preview changes"}
           </button>
-          <button className="button secondary-button" type="button" onClick={() => setActivePlan(null)}>
+          <button className="button secondary-button" type="button" onClick={() => setHidePlan(true)}>
             Edit plan
           </button>
           <Link className="button secondary-button" href="/app">
@@ -85,7 +98,7 @@ export function SetupBuilder() {
         <div className="list-row flush-row">
           <div>
             <h2>Setup Plan</h2>
-            <p className="muted">Nothing live changes until you apply. Applying this version records the plan for audit and future undo.</p>
+            <p className="muted">Nothing live changes until you apply. Applied plans are recorded so the team can review what changed.</p>
           </div>
           <span className="pill">review first</span>
         </div>
@@ -132,7 +145,7 @@ export function SetupBuilder() {
                 <ul className="plain-list">
                   {activePlan.serviceTargets.map((target) => (
                     <li key={target.featureKey}>
-                      {target.featureKey.replaceAll("_", " ")}: {featureModeLabel(target.mode)}
+                      {featureLabel(target.featureKey)}: {featureModeLabel(target.mode)}
                     </li>
                   ))}
                 </ul>

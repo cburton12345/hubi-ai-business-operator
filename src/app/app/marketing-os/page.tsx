@@ -17,22 +17,25 @@ export default async function MarketingOsPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Marketing OS"
-      title="Build The Marketing Department"
-      description="A simple operating layer for business profile memory, AI setup, content campaigns, media, graphics, video jobs, approvals, publishing readiness, and plan limits."
+      eyebrow="Marketing"
+      title="Bring In More Work"
+      description="Plan marketing, create draft content, use real business proof, prepare graphics or videos, and keep publishing under review."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Simple Mode</h2>
+            <h2>Tell Ferocity What You Need</h2>
             <p className="muted">Tell Ferocity what the business needs. Ferocity prepares draft work and keeps live sends, publishing, ads, and provider jobs behind review.</p>
           </div>
           <div className="button-row">
             <Link className="button" href="/app/build-system">
-              <Bot size={16} /> Have AI Set This Up
+              <Bot size={16} /> Let Ferocity Set This Up
             </Link>
             <Link className="button secondary-button" href="/app/build-system">
-              <Wand2 size={16} /> Have AI Update This For Me
+              <Wand2 size={16} /> Update This For Me
+            </Link>
+            <Link className="button secondary-button" href="/app/growth-calendar">
+              <CalendarDays size={16} /> Growth Calendar
             </Link>
           </div>
         </div>
@@ -89,6 +92,9 @@ export default async function MarketingOsPage() {
           <Link className="mini-button" href="/app/calendar">
             <CalendarDays size={14} /> Calendar
           </Link>
+          <Link className="mini-button" href="/app/growth-calendar">
+            Growth plan
+          </Link>
         </div>
         <div className="grid">
           {dashboard.blueprints.map((blueprint) => (
@@ -101,7 +107,7 @@ export default async function MarketingOsPage() {
               <span className="pill">{blueprint.minimumPlanKey}</span>
             </form>
           ))}
-          {dashboard.blueprints.length === 0 ? <p className="muted">Campaign blueprints will appear after the Marketing OS migration runs.</p> : null}
+          {dashboard.blueprints.length === 0 ? <p className="muted">Campaign starters will appear after the marketing setup is ready.</p> : null}
         </div>
       </section>
 
@@ -145,7 +151,7 @@ export default async function MarketingOsPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Advanced Settings</h2>
-            <p className="muted">Power users can still open the controls directly. Normal users can stay in Simple Mode.</p>
+            <p className="muted">Power users can still open the controls directly. Everyone else can start with the guided path.</p>
           </div>
           <div className="button-row">
             <Link className="mini-button" href="/app/controls">Usage limits</Link>
@@ -157,7 +163,7 @@ export default async function MarketingOsPage() {
       </section>
 
       <div className="grid section-actions">
-        <ListPanel title="Business Profile Memory" empty="No business profile memory yet. Run Quick Setup." rows={dashboard.profiles} />
+        <ListPanel title="Business Memory" empty="No business memory yet. Run Quick Setup." rows={dashboard.profiles} />
         <ListPanel title="Website Imports" empty="No website import requests yet." rows={dashboard.websiteImports} processWebsiteImports />
         <ListPanel title="Campaigns" empty="No content studio campaigns yet." rows={dashboard.campaigns} />
         <ListPanel title="Review-Ready Outputs" empty="No campaign outputs yet." rows={dashboard.outputs} />

@@ -30,24 +30,32 @@ export const plannedConnections = [
   {
     provider: "resend_shared",
     displayName: "Ferocity Shared Email",
-    notes: "Starter Resend route managed by Ferocity. Customer-owned email can replace it after sender/domain setup.",
-    envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"],
-    setupItems: ["Set EMAIL_PROVIDER to resend", "Add the Resend API key", "Use a verified sender", "Keep approval required"],
-    callbackPath: null,
+    notes: "Starter Resend route managed by Ferocity. Outbound email and inbound replies can flow through Ferocity after sender and inbound webhook setup.",
+    envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS", "EMAIL_REPLY_TO_ADDRESS", "RESEND_INBOUND_WEBHOOK_SECRET"],
+    setupItems: [
+      "Set EMAIL_PROVIDER to resend",
+      "Add the Resend API key",
+      "Use a verified sender",
+      "Set a reply-to address that routes back into Ferocity",
+      "Add a Resend inbound webhook to Ferocity",
+      "Map inbound addresses to workspaces and brands",
+      "Keep customer replies and sends review-visible"
+    ],
+    callbackPath: "/api/integrations/resend/inbound",
     riskLevel: "medium",
     setupMode: "managed_default",
-    liveActionRule: "Transactional email can be sent only through approved templates and workspace rules."
+    liveActionRule: "Transactional email sends require approved templates. Inbound replies can create leads/messages but do not trigger automatic sends."
   },
   {
     provider: "twilio_shared",
-    displayName: "Ferocity Shared SMS",
-    notes: "Starter SMS route managed by Ferocity. Customer-owned Twilio can replace it after number and consent setup.",
+    displayName: "Optional SMS Provider",
+    notes: "Optional future SMS delivery. Ferocity defaults to app alerts, email, dashboard queues, and manual text drafts so owners can start without telecom setup.",
     envVars: [],
-    setupItems: ["Confirm consent rules", "Keep review required", "Switch to customer Twilio when compliance is ready"],
+    setupItems: ["Use app alerts and email by default", "Keep manual text drafts available", "Add SMS only if consent, compliance, and cost limits are ready"],
     callbackPath: "/api/integrations/twilio/status",
     riskLevel: "high",
-    setupMode: "managed_default",
-    liveActionRule: "SMS sends require consent, approval gates, and plan limits."
+    setupMode: "optional_later",
+    liveActionRule: "SMS is optional. Live SMS sends require explicit opt-in, consent, approval gates, and plan limits."
   },
   {
     provider: "supabase_auth",
@@ -63,13 +71,66 @@ export const plannedConnections = [
   {
     provider: "stripe",
     displayName: "Stripe Billing",
-    notes: "Stripe-hosted Checkout is available when the secret key, webhook secret, and Ferocity price IDs are configured. A publishable key is only needed later for embedded client-side payment elements.",
-    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID_STARTER", "STRIPE_PRICE_ID_GROWTH", "STRIPE_PRICE_ID_OPERATOR", "STRIPE_PRICE_ID_AI_GROWTH_REPORT"],
-    setupItems: ["Create Stripe products/prices", "Set billing portal return URL", "Register webhook endpoint", "Map Stripe customer to workspace", "Add publishable key only if embedded payment elements are added later"],
+    notes: "Stripe-hosted Checkout is available when the secret key, webhook secret, and Ferocity price IDs are configured. Customer-owned Stripe payment links can be prepared when invoice payment keys and webhooks are ready. Managed payment platform fees use the separate Stripe Connect readiness path.",
+    envVars: [
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "STRIPE_PRICE_ID_JOB_TRACKER",
+      "STRIPE_PRICE_ID_STARTER",
+      "STRIPE_PRICE_ID_GROWTH",
+      "STRIPE_PRICE_ID_OPERATOR",
+      "STRIPE_PRICE_ID_AI_GROWTH_REPORT"
+    ],
+    setupItems: [
+      "Create Stripe products/prices",
+      "Set billing portal return URL",
+      "Register webhook endpoint",
+      "Map Stripe customer to workspace",
+      "Use customer-owned Stripe for payment links unless Stripe Connect managed payments is intentionally added",
+      "Do not absorb processor, payout, refund, dispute, chargeback, or instant-payout fees by default",
+      "Add publishable key only if embedded payment elements are added later"
+    ],
     callbackPath: "/api/integrations/stripe/webhook",
     riskLevel: "high",
     setupMode: "customer_or_platform_owned",
-    liveActionRule: "Payment links and ledgers can be prepared; billing ownership and refunds stay controlled."
+    liveActionRule: "Stripe payment links and ledgers can be prepared when configured; billing ownership, refunds, disputes, payouts, and platform fees stay controlled."
+  },
+  {
+    provider: "stripe_connect",
+    displayName: "Stripe Connect Managed Payments",
+    notes: "Future managed-payments path for connected Stripe accounts and Ferocity platform fees. This should not block normal subscription billing or customer-owned Stripe links.",
+    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_CLIENT_ID", "FEROCITY_MANAGED_PAYMENTS_ENABLED", "FEROCITY_MANAGED_PAYMENT_FEE_BPS"],
+    setupItems: [
+      "Create Stripe Connect platform profile",
+      "Add STRIPE_CONNECT_CLIENT_ID",
+      "Keep FEROCITY_MANAGED_PAYMENTS_ENABLED false until onboarding is tested",
+      "Create connected account onboarding and account-status refresh",
+      "Store connected accounts in payment_provider_accounts",
+      "Calculate application fees from the active payment_fee_policies row",
+      "Pass through processor, payout, refund, dispute, chargeback, bank-return, and instant-payout fees",
+      "Add customer-facing fee disclosure before live use"
+    ],
+    callbackPath: "/api/integrations/stripe/webhook",
+    riskLevel: "high",
+    setupMode: "connect_platform",
+    liveActionRule: "Managed payments stay off until Connect onboarding, account status, fee disclosure, payout, refund, and dispute handling are verified."
+  },
+  {
+    provider: "quickbooks",
+    displayName: "QuickBooks / Accounting Export",
+    notes: "Accounting sync is provider-gated. Ferocity can prepare clean job cost, invoice, payment, receipt, reimbursement, and ledger records before any live accounting push.",
+    envVars: [],
+    setupItems: [
+      "Keep manual exports and owner review available first",
+      "Map customers, invoices, payments, expenses, reimbursements, and job costs",
+      "Require owner approval before sending accounting data",
+      "Add QuickBooks OAuth credentials when live sync is ready",
+      "Log every accounting export or sync attempt"
+    ],
+    callbackPath: null,
+    riskLevel: "high",
+    setupMode: "provider_later",
+    liveActionRule: "Accounting exports can be prepared for review. Live QuickBooks sync stays disabled until OAuth, mapping, approvals, and audit logs are ready."
   },
   {
     provider: "google_business_profile",
@@ -194,24 +255,24 @@ export const plannedConnections = [
   {
     provider: "email_provider",
     displayName: "Email Provider",
-    notes: "Email delivery later. Follow-up messages are draft-only now.",
-    envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"],
-    setupItems: ["Choose provider", "Verify sender domain", "Configure unsubscribe/compliance footer", "Keep lead replies draft-only until approved"],
-    callbackPath: null,
+    notes: "Email delivery and inbound reply capture. Follow-up sends stay approval-gated.",
+    envVars: ["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS", "EMAIL_REPLY_TO_ADDRESS", "RESEND_INBOUND_WEBHOOK_SECRET"],
+    setupItems: ["Choose provider", "Verify sender domain", "Configure unsubscribe/compliance footer", "Set a reply-to inbox", "Configure inbound replies", "Keep lead replies draft-only until approved"],
+    callbackPath: "/api/integrations/resend/inbound",
     riskLevel: "high",
     setupMode: "api_key",
-    liveActionRule: "Email sends require approved templates, sender compliance, and plan limits."
+    liveActionRule: "Email sends require approved templates, sender compliance, and plan limits. Inbound replies can be recorded in conversations."
   },
   {
     provider: "twilio",
-    displayName: "Twilio",
-    notes: "SMS delivery later. Lead replies are draft-only now.",
-    envVars: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
-    setupItems: ["Verify number", "Configure messaging compliance", "Confirm consent before sending", "Keep SMS replies draft-only until approved"],
+    displayName: "Optional Twilio SMS",
+    notes: "Optional SMS delivery later. Launch default is push/app alerts, email, dashboard queues, and manual text drafts.",
+    envVars: ["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
+    setupItems: ["Keep disabled unless the business explicitly wants SMS", "Verify number", "Configure messaging compliance", "Confirm consent before sending", "Keep SMS replies draft-only until approved"],
     callbackPath: "/api/integrations/twilio/status",
     riskLevel: "high",
     setupMode: "api_key",
-    liveActionRule: "SMS sends require consent, approval gates, and plan limits."
+    liveActionRule: "SMS is optional. Live SMS sends require consent, approval gates, plan limits, and explicit workspace opt-in."
   },
   {
     provider: "review_platform",

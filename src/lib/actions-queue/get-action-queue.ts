@@ -232,7 +232,7 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       { label: "Approved", value: num(metrics?.approved), detail: "Ready for manual/provider queue" },
       { label: "Blocked", value: num(metrics?.blocked), detail: "Stopped by policy" },
       { label: "Live providers", value: num(metrics?.live_providers), detail: "Should stay low until ready" },
-      { label: "Consent granted", value: num(metrics?.consent_granted), detail: "SMS/email/phone records" },
+      { label: "Consent granted", value: num(metrics?.consent_granted), detail: "customer contact records" },
       { label: "Missing consent", value: num(metrics?.missing_consent), detail: "Needs review first" }
     ],
     actions: (actionResult?.rows ?? []).map((row) => ({

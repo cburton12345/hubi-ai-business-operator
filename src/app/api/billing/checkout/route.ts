@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/lib/env";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
+import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 
 const checkoutSchema = z.object({
-  plan: z.enum(["free", "starter", "growth", "operator", "pro_agency"]),
+  plan: z.enum(["free", "job_tracker", "starter", "growth", "operator", "pro_agency"]),
   source: z.string().max(120).optional()
 });
 
 const priceEnvByPlan = {
   free: null,
+  job_tracker: "STRIPE_PRICE_ID_JOB_TRACKER",
   starter: "STRIPE_PRICE_ID_STARTER",
   growth: "STRIPE_PRICE_ID_GROWTH",
   operator: "STRIPE_PRICE_ID_OPERATOR",
@@ -69,17 +72,40 @@ export async function POST(request: NextRequest) {
   }
 
   const origin = request.nextUrl.origin;
+  const appSession = await getCurrentAppSession();
+  const workspace = appSession ? await getCurrentWorkspace() : null;
+  const metadata: Record<string, string> = {
+    plan_key: parsed.data.plan,
+    source: parsed.data.source ?? "pricing"
+  };
+
+  if (workspace && workspace.accountType !== "internal") {
+    metadata.tenant_id = workspace.id;
+    metadata.workspace_slug = workspace.slug;
+    metadata.workspace_name = workspace.name;
+  }
+
+  if (appSession?.userId) {
+    metadata.user_id = appSession.userId;
+  }
+
   const body = new URLSearchParams({
     mode: "subscription",
     "line_items[0][price]": priceId,
     "line_items[0][quantity]": "1",
     success_url: `${origin}/checkout/success?plan=${encodeURIComponent(parsed.data.plan)}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/checkout/cancel?plan=${encodeURIComponent(parsed.data.plan)}`,
-    "metadata[plan_key]": parsed.data.plan,
-    "metadata[source]": parsed.data.source ?? "pricing",
-    "subscription_data[metadata][plan_key]": parsed.data.plan,
-    "subscription_data[metadata][source]": parsed.data.source ?? "pricing"
+    client_reference_id: workspace?.id ?? appSession?.userId ?? parsed.data.source ?? "public_checkout"
   });
+
+  if (appSession?.email) {
+    body.set("customer_email", appSession.email);
+  }
+
+  for (const [key, value] of Object.entries(metadata)) {
+    body.set(`metadata[${key}]`, value);
+    body.set(`subscription_data[metadata][${key}]`, value);
+  }
 
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -105,10 +131,10 @@ export async function POST(request: NextRequest) {
     return startFallback(request, parsed.data.plan, "stripe_error");
   }
 
-  const session = (await response.json()) as { url?: string };
-  if (!session.url) {
+  const checkoutSession = (await response.json()) as { url?: string };
+  if (!checkoutSession.url) {
     return startFallback(request, parsed.data.plan, "stripe_missing_url");
   }
 
-  return NextResponse.redirect(session.url, 303);
+  return NextResponse.redirect(checkoutSession.url, 303);
 }

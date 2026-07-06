@@ -1,4 +1,4 @@
-# LifeOps Event Senders
+# Connected Systems Event Senders
 
 Ferocity Owner Command receives owner-level events at:
 
@@ -14,6 +14,12 @@ External systems should send only high-signal events:
 - automation failure
 - low confidence decision
 - human approval required
+
+Owner-facing destination:
+
+- Important events appear in **Owner Command**.
+- High-signal items also roll into **Daily Brief**.
+- Immediate notifications are reserved for money, risk, customer trouble, safety, payroll, failed automation, urgent bid opportunities, low confidence, or owner approval.
 
 ## Shared Environment Contract
 

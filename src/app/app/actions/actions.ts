@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { scanActionQueueForTenant } from "@/lib/actions-queue/scan-action-queue";
 import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendEmailWithResend } from "@/lib/email/resend";
@@ -95,6 +96,11 @@ async function logProviderUsage(input: {
 export async function scanActionQueueAction() {
   await requirePermission("ai:queue");
   const workspaceId = await getCurrentWorkspaceId();
+  await scanActionQueueForTenant(workspaceId);
+  revalidatePath("/app/actions");
+  revalidatePath("/app/automation-command");
+  revalidatePath("/app/owner-command-center");
+  return;
 
   await queryPostgres(
     `

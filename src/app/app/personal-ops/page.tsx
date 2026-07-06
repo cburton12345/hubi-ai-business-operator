@@ -20,8 +20,8 @@ export default async function PersonalOpsPage() {
   return (
     <QueuePageShell
       eyebrow="Private owner layer"
-      title="Personal Ops"
-      description="A private queue for the owner's reminders, people to contact, paperwork, money items, waiting-on-someone tasks, and personal projects. Important items can surface in Owner Command without becoming customer CRM records."
+      title="Private Owner Tasks"
+      description="A private queue for the owner's reminders, people to contact, paperwork, money items, waiting-on-someone tasks, and personal projects. Important items can surface in Owner Feed without becoming customer CRM records."
     >
       <section className="grid section-actions">
         <Metric label="Open" value={dashboard.metrics.open} icon={<Clock size={18} />} />
@@ -73,7 +73,7 @@ export default async function PersonalOpsPage() {
               Due date
               <input name="dueAt" type="datetime-local" />
             </label>
-            <button className="button" type="submit">Add To Personal Ops</button>
+            <button className="button" type="submit">Add To Private Owner Tasks</button>
           </form>
         </section>
 
@@ -95,7 +95,7 @@ export default async function PersonalOpsPage() {
       </section>
 
       <section className="panel section-actions">
-        <h2>All Personal Ops</h2>
+        <h2>All Private Owner Tasks</h2>
         <ItemList items={dashboard.items} empty="No personal ops items yet." />
       </section>
     </QueuePageShell>

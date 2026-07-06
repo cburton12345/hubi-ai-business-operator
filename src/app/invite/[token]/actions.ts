@@ -17,7 +17,7 @@ const acceptInviteSchema = z.object({
 });
 
 function appUrl(path: string) {
-  const baseUrl = env.FEROCITY_APP_URL ?? "http://localhost:3000";
+  const baseUrl = env.FEROCITY_APP_URL ?? "https://ferocity.live";
   return new URL(path, baseUrl).toString();
 }
 
@@ -115,7 +115,7 @@ Your Ferocity account is ready.
 You can open your workspace here:
 ${appUrl("/app")}
 
-Start with Build My System if you want Ferocity to guide setup, or use the dashboard to review leads, automations, service ops, and growth work.`,
+Start with Autopilot Setup if you want Ferocity to guide setup, or use the dashboard to review leads, automations, service ops, and growth work.`,
     tenantId: invite.tenant_id,
     eventKey: "invite_accepted",
     metadata: {

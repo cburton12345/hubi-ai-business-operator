@@ -493,7 +493,7 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     reviewWorkflows.length > 0
       ? {
           title: "Ask happy customers for reviews",
-          detail: "Review requests are ready to send manually until SMS/email/GBP providers are connected.",
+          detail: "Review requests are ready for approval. Use email when connected, manual text drafts when needed, and GBP only after the account is connected.",
           href: "/app/growth",
           urgency: "medium" as const
         }

@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  Users,
   Wand2,
   Workflow
 } from "lucide-react";
@@ -34,11 +35,39 @@ const employees = [
     icon: Wand2
   },
   {
-    name: "AI Growth Manager",
-    job: "Looks for the next practical way to create more qualified demand.",
-    handles: ["Lead sources", "Reviews", "SEO gaps", "Campaign priorities"],
-    href: "/app/growth",
+    name: "AI Owner Chief of Staff",
+    job: "Turns business signals into the owner's shortest action list.",
+    handles: ["Daily briefing", "Money radar", "Risks", "Owner decisions"],
+    href: "/app/owner-command-center",
     icon: Sparkles
+  },
+  {
+    name: "AI Scheduling Helper",
+    job: "Helps plan the day from jobs, workers, callbacks, routes, and priorities.",
+    handles: ["Worker day plans", "Callbacks", "Schedules", "Missed-work alerts"],
+    href: "/app/operations-workforce",
+    icon: Clock3
+  },
+  {
+    name: "AI Dispatch Helper",
+    job: "Keeps job assignments, field proof, mileage, field costs, and updates visible.",
+    handles: ["Job assignments", "Field proof", "Mileage", "Customer updates"],
+    href: "/app/operations-workforce",
+    icon: BriefcaseBusiness
+  },
+  {
+    name: "AI Staffing Helper",
+    job: "Helps owners find workers or subcontractors without turning Ferocity into a staffing free-for-all.",
+    handles: ["Worker requests", "Availability intake", "Match suggestions", "Owner approval"],
+    href: "/app/labor-bench",
+    icon: Users
+  },
+  {
+    name: "AI Collections Helper",
+    job: "Finds unpaid invoices and prepares payment follow-up.",
+    handles: ["Overdue invoices", "Payment reminders", "Ledgers", "Cash alerts"],
+    href: "/app/cash-collection",
+    icon: ClipboardList
   },
   {
     name: "AI Marketing Manager",
@@ -48,8 +77,15 @@ const employees = [
     icon: Megaphone
   },
   {
+    name: "AI Growth Manager",
+    job: "Looks for the next practical way to create more qualified demand.",
+    handles: ["Lead sources", "Reviews", "SEO gaps", "Campaign priorities"],
+    href: "/app/growth",
+    icon: Sparkles
+  },
+  {
     name: "AI Content Manager",
-    job: "Creates draft-first content from services, proof, reviews, and media.",
+    job: "Creates review-ready content from services, proof, reviews, and media.",
     handles: ["Blogs", "Social posts", "GBP posts", "Emails"],
     href: "/app/drafts",
     icon: FileText
@@ -91,8 +127,8 @@ const employees = [
   },
   {
     name: "AI Automation Manager",
-    job: "Suggests useful workflows and keeps live actions behind approvals.",
-    handles: ["Rules", "Templates", "Approval gates", "Usage limits"],
+    job: "Suggests useful workflows and keeps important actions behind approvals.",
+    handles: ["Rules", "Templates", "Approvals", "Spending controls"],
     href: "/app/automation",
     icon: Workflow
   },
@@ -113,9 +149,17 @@ const employees = [
 ];
 
 const quickActions = [
+  ["Tell Me What Needs Done", "AI reads owner events, money, leads, jobs, invoices, workforce, and automation blockers.", "/app/attention-command"],
+  ["Track Jobs And Bids", "AI routes bids, jobs, materials, worker payments, customer balances, and profit visibility.", "/app/job-tracker"],
+  ["Plan Today", "AI turns jobs, callbacks, worker schedules, estimates, invoices, and owner priorities into a daily work list.", "/app/operations-workforce"],
+  ["Plan Crew Day", "AI points to worker itineraries, open assignments, and employee-facing field actions.", "/app/crew-itinerary"],
+  ["Handle Field Costs", "AI routes field costs, mileage, photos, proof, and payback review without making it the headline.", "/app/employee"],
+  ["Find Workers", "AI prepares worker requests, reviews availability, suggests matches, and keeps contact behind owner approval.", "/app/labor-bench"],
+  ["Collect Money", "AI checks unpaid invoices, payment follow-up, ledgers, and cash collection alerts.", "/app/cash-collection"],
+  ["Set Reminders", "AI routes owner reminders, private tasks, goals, and push notifications into the right view.", "/app/personal-ops"],
   ["Get More Leads", "AI checks SEO, reviews, source tracking, stale leads, campaign ideas, and follow-up gaps.", "/app/growth"],
   ["Get More Reviews", "AI prepares review requests, proof capture, testimonial content, and approval-safe reminders.", "/app/review"],
-  ["Create Campaign", "AI drafts landing page, social posts, GBP ideas, emails, SMS, ad copy, and source tracking.", "/app/marketing-os"],
+  ["Create Campaign", "AI drafts landing page, social posts, GBP ideas, emails, ad copy, and source tracking.", "/app/marketing-os"],
   ["Improve Website", "AI imports website context and prepares homepage, service, proof, and conversion improvements.", "/app/website"],
   ["Improve SEO", "AI prepares useful service/city pages, internal linking, refreshes, and content ideas.", "/app/seo"],
   ["Reactivate Leads", "AI finds old leads and prepares reply drafts, tasks, and call scripts for approval.", "/app/operator"],
@@ -173,10 +217,42 @@ export default async function AiWorkforcePage() {
 
   return (
     <QueuePageShell
-      eyebrow="AI Mode"
-      title="AI Workforce Command Center"
-      description="Manage Ferocity like a team of AI employees. Traditional menus stay available; this layer simply makes the work easier to start, preview, and approve."
+      eyebrow="AI Workforce"
+      title="AI Workforce"
+      description="Tell Ferocity what outcome you want. It routes the request to the right AI helper, reads Business Info, prepares the work, and logs what happened."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <Bot size={18} /> One AI Front Door
+            </h2>
+            <p className="muted">
+              Owners should not need to choose the perfect module. Ask &quot;why are leads down,&quot; &quot;who has not paid,&quot;
+              &quot;what should crews do today,&quot; &quot;respond to these reviews,&quot; or &quot;publish a holiday post.&quot; Ferocity routes the request to the right helper.
+            </p>
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/app/business-brain">Business Info</Link>
+            <Link className="button secondary-button" href="/app/automation-timeline">Automation Timeline</Link>
+          </div>
+        </div>
+        <div className="setup-step-grid">
+          {[
+            ["Ask", "Owner asks in normal words instead of hunting for a page."],
+            ["Route", "Ferocity picks sales, scheduling, collections, marketing, reviews, finance, or setup."],
+            ["Read", "The AI helper reads Business Info before preparing work."],
+            ["Log", "Every prepared, blocked, approved, or completed action goes to the Automation Timeline."]
+          ].map(([title, body], index) => (
+            <div className="setup-step-card" key={title}>
+              <span className="step-dot">{index + 1}</span>
+              <h3>{title}</h3>
+              <p className="muted">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
@@ -184,20 +260,20 @@ export default async function AiWorkforcePage() {
               <Bot size={18} /> One Platform, Two Ways To Use It
             </h2>
             <p className="muted">
-              1. AI Mode lets owners say what they want. 2. Traditional Mode keeps every CRM, review, website, content, automation, reporting,
+              Tell Ferocity what you want done. Direct tools stay available for every CRM, review, website, content, automation, reporting,
               messaging, lead, billing, customer portal, integration, and settings page available.
             </p>
           </div>
           <div className="inline-actions">
-            <span className="pill">1. AI Mode</span>
-            <span className="pill">2. Traditional Mode</span>
+            <span className="pill">ask in plain English</span>
+            <span className="pill">review important actions</span>
           </div>
         </div>
         <div className="setup-step-grid">
           {[
             ["1", "AI learns the business", "Use simple input, website import, existing records, and manual edits."],
             ["2", "AI builds a plan", "Ferocity shows what will be created, changed, or queued before anything applies."],
-            ["3", "Owner approves", "Live sends, publishing, ads, sync, and spend stay gated by controls."],
+            ["3", "Owner approves", "Messages, public posts, ads, and spending stay under owner control."],
             ["4", "Ferocity monitors results", "The same loop watches leads, jobs, reviews, invoices, revenue, and follow-up."]
           ].map(([number, title, body]) => (
             <div className="setup-step-card" key={number}>
@@ -219,15 +295,15 @@ export default async function AiWorkforcePage() {
             </h2>
             <p className="muted">
               These are the actual agent loops. They use existing Ferocity leads, messages, reviews, invoices, drafts, action queues, and timeline records.
-              Customer sends and publishing stay gated unless policies, keys, consent, and approvals allow them.
+              Customer messages and public posts wait for the right approvals.
             </p>
           </div>
           <Link className="mini-button" href="/app/actions">Open action queue</Link>
         </div>
         {!agentDashboard.tableReady ? (
           <div className="callout">
-            <h3>Agent workflow tables need the latest migration</h3>
-            <p className="muted">The UI is ready, but the database still needs migration 051 before these controls can run.</p>
+            <h3>AI checks are not ready yet</h3>
+            <p className="muted">Ferocity can still prepare work here. Automatic scheduled checks need one more setup step before they can run.</p>
           </div>
         ) : null}
         <div className="grid">
@@ -367,7 +443,7 @@ export default async function AiWorkforcePage() {
           <div>
             <h2>Background AI Employees</h2>
             <p className="muted">
-              Ferocity can run scheduled AI agent workflows through the protected monitor endpoint. Agents prepare drafts, tasks, review work, internal alerts, and outputs while live customer sends and publishing stay gated.
+              Ferocity can run scheduled AI checks when they are turned on. AI prepares drafts, tasks, review work, internal alerts, and outputs while customer messages and public posts stay under owner control.
             </p>
           </div>
           <span className={`pill ${monitorReady ? "" : "high"}`}>{monitorReady ? "monitor ready" : "needs AI_WORKFORCE_CRON_TOKEN"}</span>
@@ -394,10 +470,10 @@ export default async function AiWorkforcePage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>AI Mode Activity</h2>
-            <p className="muted">Commands are logged in the existing operator timeline so the work stays auditable with the rest of Ferocity.</p>
+            <h2>Recent AI Help</h2>
+          <p className="muted">Commands are logged so the owner can see what Ferocity prepared, changed, or could not finish.</p>
           </div>
-          <Link className="mini-button" href="/app/operator">Timeline</Link>
+          <Link className="mini-button" href="/app/operator">Open work feed</Link>
         </div>
         <ul className="list">
           {history.map((event) => (
@@ -409,7 +485,7 @@ export default async function AiWorkforcePage() {
                 </p>
                 <p>{event.body}</p>
                 {event.metadata_json?.prepared?.length ? (
-                  <p className="muted">{event.metadata_json.prepared.length} prepared item(s), review required before live action.</p>
+                  <p className="muted">{event.metadata_json.prepared.length} prepared item(s), review required before use.</p>
                 ) : null}
               </div>
               <span className={`pill ${event.metadata_json?.blocked?.length ? "high" : ""}`}>
@@ -419,7 +495,7 @@ export default async function AiWorkforcePage() {
           ))}
           {history.length === 0 ? (
             <li className="list-row">
-              <span className="muted">No AI Mode commands have been executed yet.</span>
+              <span className="muted">No AI setup commands have been run yet.</span>
             </li>
           ) : null}
         </ul>
@@ -463,7 +539,7 @@ export default async function AiWorkforcePage() {
             <h2>
               <ShieldCheck size={18} /> Safety Rules
             </h2>
-            <p className="muted">The AI Workforce is allowed to prepare and recommend. Live business actions still need the right keys, limits, consent, and approvals.</p>
+            <p className="muted">The AI Workforce can prepare and recommend. Messages, public posts, payment requests, ads, and other important actions still need the right approvals.</p>
           </div>
           <Link className="mini-button" href="/app/go-live">Go Live scan</Link>
         </div>
@@ -472,7 +548,7 @@ export default async function AiWorkforcePage() {
             ["No duplicate systems", "AI actions map to existing Ferocity records and workflows."],
             ["Preview before apply", "Setup, content, automations, ads, and publishing should show a plan first."],
             ["Draft-first marketing", "SEO pages, GBP posts, social content, ads, and review responses stay reviewable."],
-            ["Provider gates", "Email, SMS, payments, calendars, ads, and sync need keys and controls before live use."],
+            ["Connected tools", "Email, app alerts, payments, calendars, ads, and other tools follow approval and spending rules."],
             ["Traditional mode stays", "Power users can still use every normal page, setting, and dashboard."],
             ["Easy to expand", "New AI employees should be data/config additions, not another duplicate app."]
           ].map(([title, body]) => (

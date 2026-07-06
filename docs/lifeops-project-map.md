@@ -1,10 +1,10 @@
-# LifeOps Project Map
+# Connected Systems Project Map
 
 Source:
 
 `C:\Users\schem\Documents\Codex\2026-05-31\we-need-a-folder-that-says\outputs\project-where-things-live\README.md`
 
-This document is the local evidence used to enrich Ferocity's LifeOps connection registry.
+This document is the local evidence used to enrich Ferocity's Connected Systems registry.
 
 ## Confirmed Or Mostly Confirmed
 
@@ -32,9 +32,9 @@ This document is the local evidence used to enrich Ferocity's LifeOps connection
 
 ## Current Vs Legacy Rules
 
-- `GovFlow`, `BidOps`, and `Bid Ops` should route to the same LifeOps platform record: `bidops`.
-- `Alive`, `GuardianSignal`, and `Guardian Signal` should route to the same LifeOps platform record: `guardiansignal`.
-- `4Bid`, `4 Bid`, and `4bid` should route to the current LifeOps platform record: `4bid`.
+- `GovFlow`, `BidOps`, and `Bid Ops` should route to the same Connected Systems platform record: `bidops`.
+- `Alive`, `GuardianSignal`, and `Guardian Signal` should route to the same Connected Systems platform record: `guardiansignal`.
+- `4Bid`, `4 Bid`, and `4bid` should route to the current Connected Systems platform record: `4bid`.
 - For 4Bid, prefer `C:\Users\schem\OneDrive\Documents\GitHub\4bid` when available. Old `4bid-clean`, `fourbid.onrender.com`, and `4bid-api.onrender.com` references are legacy unless explicitly requested.
 - For GuardianSignal, prefer `C:\Users\schem\Alive` and `carecheck-health-alerts`. Old `alive-apk-preview` is legacy unless explicitly requested.
 

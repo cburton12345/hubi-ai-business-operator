@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceJobDetail } from "@/lib/service-ops/get-service-record-detail";
-import { createJobProofRequestAction, updateJobAction } from "../../actions";
+import { createInvoiceFromJobAction, createJobProofRequestAction, updateJobAction } from "../../actions";
 
 const statuses = ["unscheduled", "scheduled", "in_progress", "completed", "canceled", "lost"];
 
@@ -19,6 +19,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           <dl className="detail-grid">
             <Detail label="Status" value={job.status} />
             <Detail label="Service area" value={job.serviceArea || "Not set"} />
+            <Detail label="Source estimate" value={job.estimateTitle ? `${job.estimateTitle} / ${job.estimateTotal}` : "Not linked"} />
             <div className="detail-wide">
               <dt>Dispatcher notes</dt>
               <dd>{job.dispatcherNotes || "No dispatcher notes."}</dd>
@@ -56,9 +57,40 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
         <section className="panel span-12">
           <div className="list-row flush-row">
             <div>
+              <h2>Turn This Job Into Money</h2>
+              <p className="muted">
+                Create the invoice from the job so the bid, work, balance, payment request, and ledger stay connected.
+              </p>
+            </div>
+            <span className="pill">{job.linkedInvoices.length ? "invoice created" : "ready"}</span>
+          </div>
+          {job.linkedInvoices.length ? (
+            <ul className="list">
+              {job.linkedInvoices.map((invoice) => (
+                <li className="list-row" key={invoice.id}>
+                  <div>
+                    <h4>{invoice.title}</h4>
+                    <p className="muted">{invoice.status} / {invoice.total} total / {invoice.balanceDue} due</p>
+                  </div>
+                  <Link className="mini-button" href={`/app/service/invoices/${invoice.id}`}>Open invoice</Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <form action={createInvoiceFromJobAction} className="compact-form">
+              <input name="jobId" type="hidden" value={job.id} />
+              <input name="dueDate" type="date" aria-label="Due date" />
+              <button className="mini-button" type="submit">Create invoice</button>
+            </form>
+          )}
+        </section>
+
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
               <h2>Customer Proof</h2>
               <p className="muted">
-                After real work is done, prepare a proof link for photos, video, testimonial, rating, and consent. Send manually until live messaging is connected.
+                After real work is done, prepare a proof link for photos, video, testimonial, rating, and consent. Send by approved email or manual text draft when ready.
               </p>
             </div>
             <Link className="mini-button" href="/app/proof">Open proof engine</Link>

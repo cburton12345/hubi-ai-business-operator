@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Code2, ExternalLink, FileText, MousePointerClick, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Code2, ExternalLink, FileText, MousePointerClick, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getPublicFormRows } from "@/lib/forms/get-public-forms";
 import { getHostedGrowthPages } from "@/lib/sites/hosted-growth-pages";
@@ -16,6 +16,16 @@ export default async function WebsiteConnectorPage() {
   const primaryForm = activeForms[0] ?? forms[0];
   const formUrl = primaryForm ? firstFormUrl(primaryForm.publicKey) : `${appUrl}/forms/YOUR_FORM_KEY`;
   const trackedFormUrl = `${formUrl}?utm_source=website&utm_medium=button&utm_campaign=request_quote`;
+  const formKey = primaryForm?.publicKey ?? "YOUR_FORM_KEY";
+  const oneLineSnippet = `<script src="${appUrl}/ferocity.js" data-form-key="${formKey}" data-mode="floating" data-button-label="Request a quote" defer></script>`;
+  const inlineSnippet = `<div id="ferocity-quote"></div>
+<script
+  src="${appUrl}/ferocity.js"
+  data-form-key="${formKey}"
+  data-target="#ferocity-quote"
+  data-button-label="Request a quote"
+  defer
+></script>`;
   const connectedHostedPages = hostedPages.filter((page) => page.formPublicKey).length;
 
   return (
@@ -53,32 +63,57 @@ export default async function WebsiteConnectorPage() {
           Hosted pages
         </Link>
         <Link className="button secondary-button" href="/app/build-system">
-          Have AI Set This Up
+          Let Ferocity Set This Up
         </Link>
         <Link className="button secondary-button" href="/app/marketing-os">
-          Marketing OS
+          Marketing
         </Link>
       </div>
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">Recommended setup order</p>
-            <h2>Hook up the site without confusing the owner.</h2>
+            <p className="eyebrow">Easiest path</p>
+            <h2>One line can add a tracked quote button.</h2>
             <p className="muted">
-              Start with lead capture and tracking. Use reviewed drafts for SEO and marketing. Turn on live publishing only after the account, limits,
-              and approvals are ready.
+              Put this before the closing body tag or in the site builder&apos;s custom code area. It adds a floating quote button,
+              opens the Ferocity form, and keeps source, campaign, page, and referrer data attached.
+            </p>
+          </div>
+          <span className="pill">copy this</span>
+        </div>
+        <pre className="json-block">{oneLineSnippet}</pre>
+        <div className="button-row section-actions">
+          <a className="button" href={trackedFormUrl} target="_blank" rel="noreferrer">
+            Test form <ExternalLink size={16} />
+          </a>
+          <Link className="button secondary-button" href="/app/forms">
+            Choose form
+          </Link>
+          <Link className="button secondary-button" href="/app/marketing-os">
+            Import website
+          </Link>
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Guided setup</p>
+            <h2>Ferocity should tell the owner exactly what to do.</h2>
+            <p className="muted">
+              The simple path is capture first, then tracking, then draft marketing, then optional publishing. Owners should not have to understand APIs.
             </p>
           </div>
           <span className="pill">plain steps</span>
         </div>
         <div className="grid section-actions">
           {[
-            ["1", "Import website facts", "Read the public page into Marketing OS for review. Do not publish."],
-            ["2", "Add lead capture", "Use a quote button, embedded Ferocity form, or hosted growth page."],
-            ["3", "Track sources", "Attach UTM, page, referrer, service, city, and campaign data to leads."],
-            ["4", "Draft SEO and content", "Prepare service pages, city pages, GBP posts, review asks, and campaigns."],
-            ["5", "Approve live actions", "Only then enable CMS publishing, email, SMS, payments, ads, or provider sync."]
+            ["1", "Paste the website URL", "Ferocity reads the public site and finds services, service areas, contact gaps, and likely conversion issues."],
+            ["2", "Add the one-line script", "The quote button and source tracking start working without rebuilding the website."],
+            ["3", "Test one lead", "Submit the form once and confirm it lands in Leads with page and campaign details."],
+            ["4", "Let AI build the growth plan", "Prepare service pages, city pages, GBP posts, review asks, and campaigns from the business context."],
+            ["5", "Choose publishing path", "Keep drafts in Ferocity, export to the customer website, use hosted pages, or connect a CMS when credentials are ready."]
           ].map(([number, title, body]) => (
             <article className="panel span-4" key={title}>
               <span className="pill">{number}</span>
@@ -141,10 +176,14 @@ export default async function WebsiteConnectorPage() {
 
         <div className="grid section-actions">
           <div className="span-6">
+            <h3>Inline quote button</h3>
+            <pre className="json-block">{inlineSnippet}</pre>
+          </div>
+          <div className="span-6">
             <h3>Quote button</h3>
             <pre className="json-block">{`<a href="${trackedFormUrl}">Request a quote</a>`}</pre>
           </div>
-          <div className="span-6">
+          <div className="span-12">
             <h3>Embedded form</h3>
             <pre className="json-block">{`<iframe
   src="${trackedFormUrl}"
@@ -165,16 +204,41 @@ export default async function WebsiteConnectorPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
+            <h2>Where do I paste this?</h2>
+            <p className="muted">The owner version should be this simple. Paste once, then test one lead.</p>
+          </div>
+          <CheckCircle2 size={22} />
+        </div>
+        <div className="grid">
+          {[
+            ["WordPress", "Appearance or plugin custom code area, before </body>."],
+            ["Wix / Squarespace / GoDaddy", "Settings or custom code injection, footer/body end."],
+            ["Shopify", "theme.liquid before </body> or a custom app/embed area."],
+            ["Webflow", "Page settings or project custom code, before </body>."],
+            ["Netlify / custom site", "Add the snippet to the layout or HTML template before </body>."],
+            ["Not sure", "Send this page to the website person. They only need the snippet and form test link."]
+          ].map(([title, body]) => (
+            <article className="panel span-4" key={title}>
+              <h3>{title}</h3>
+              <p className="muted">{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
             <h2>
               <ShieldCheck size={18} /> Safe Defaults
             </h2>
             <p className="muted">Ferocity can prepare the work, but public actions stay controlled.</p>
           </div>
-          <span className="pill">approval first</span>
+          <span className="pill">review before public changes</span>
         </div>
         <ul className="plain-list">
           <li>SEO and marketing drafts can be exported or published only through an approved connection.</li>
-          <li>Email, SMS, review requests, paid ads, and provider sync stay behind permissions and service controls.</li>
+          <li>Email, review requests, paid ads, and provider sync stay behind permissions and service controls.</li>
           <li>Lead source, campaign, page, service, city, estimate, job, invoice, review, and revenue data stay part of the same loop.</li>
           <li>Power users can keep using direct settings, forms, integrations, SEO, growth pages, and reports.</li>
         </ul>

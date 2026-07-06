@@ -61,12 +61,14 @@ export default async function ControlsPage() {
                     <p className="muted">
                       {control.category} / {control.featureKey} / {control.usagePeriod}
                     </p>
+                    <p className={control.planAllowed ? "muted" : "muted high-text"}>{control.planRule}</p>
                     <p>{control.plainRule}</p>
                   </div>
                   <div className="inline-actions">
                     <span className={`pill ${control.mode === "off" ? "high" : control.mode === "review_required" ? "medium" : ""}`}>
                       {modeLabel(control.mode)}
                     </span>
+                    {!control.planAllowed ? <span className="pill high">higher tier</span> : null}
                     {control.costed ? <span className="pill medium">costed</span> : null}
                     {control.publicFacing ? <span className="pill high">public</span> : null}
                   </div>

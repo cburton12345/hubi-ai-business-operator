@@ -22,7 +22,7 @@ const inviteFromRequestSchema = z.object({
 });
 
 function inviteUrl(token: string) {
-  const baseUrl = env.FEROCITY_APP_URL ?? "http://localhost:3000";
+  const baseUrl = env.FEROCITY_APP_URL ?? "https://ferocity.live";
   return new URL(`/invite/${token}`, baseUrl).toString();
 }
 

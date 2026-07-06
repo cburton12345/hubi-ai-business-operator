@@ -44,7 +44,7 @@ export default async function CheckoutSuccessPage({
             <div>
               <h2>Still controlled</h2>
               <p className="muted">
-                Checkout does not turn on SMS, email, publishing, ad spend, provider sync, or customer messaging by itself.
+                Checkout does not turn on publishing, ad spend, provider sync, or customer messaging by itself. Email and app alerts still follow workspace controls.
               </p>
             </div>
             <CheckCircle2 size={24} />

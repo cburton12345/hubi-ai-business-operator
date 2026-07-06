@@ -2,11 +2,23 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 
 const goals = [
+  ["find_gaps", "Tell me what is missing"],
+  ["make_more_money", "Grow booked income"],
   ["seo_reviews", "Get more leads with SEO and reviews"],
-  ["fast_lead_response", "Respond faster and recover stale leads"],
-  ["automations", "Set up follow-up automations"],
+  ["fast_lead_response", "Improve lead response and stale lead follow-up"],
   ["operations", "Organize jobs, estimates, invoices, and tasks"],
   ["not_sure", "I am not sure yet"]
+];
+
+const autopilotOptions = [
+  ["owner_briefing", "Tell me what needs attention"],
+  ["lead_follow_up", "Lead replies and follow-up"],
+  ["estimate_chasing", "Estimate follow-up"],
+  ["invoice_collection", "Invoice reminders and money tracking"],
+  ["jobs_tasks", "Jobs, tasks, and worker day plans"],
+  ["reviews_proof", "Reviews, testimonials, and customer proof"],
+  ["seo_marketing", "SEO, Google profile, and marketing drafts"],
+  ["website_tracking", "Website tracking and quote forms"]
 ];
 
 const leadSourceOptions = [
@@ -17,7 +29,7 @@ const leadSourceOptions = [
   ["reviews", "Reviews"],
   ["facebook", "Facebook / community groups"],
   ["paid_ads", "Paid ads"],
-  ["marketplacepro", "MarketplacePro"],
+  ["marketplace", "Marketplace / partner leads"],
   ["phone_calls", "Phone calls"],
   ["manual_referrals", "Referrals / manual leads"]
 ];
@@ -28,7 +40,7 @@ const websiteConnectionOptions = [
   ["embed_form", "Embed a Ferocity form"],
   ["hosted_pages", "Use Ferocity hosted pages"],
   ["publish_to_existing_site", "Publish approved SEO/content to my site"],
-  ["marketplacepro", "Connect MarketplacePro leads"]
+  ["marketplace", "Connect marketplace or partner leads"]
 ];
 
 export default async function StartPage({
@@ -37,12 +49,12 @@ export default async function StartPage({
   searchParams: Promise<{ error?: string; source?: string; plan?: string; billing?: string }>;
 }) {
   const params = await searchParams;
-  const plan = ["free", "starter", "growth", "operator", "pro_agency"].includes(params.plan ?? "") ? params.plan : "not_sure";
+  const plan = ["free", "job_tracker", "starter", "growth", "operator", "pro_agency"].includes(params.plan ?? "") ? params.plan : "not_sure";
   const billingMessage =
     params.billing === "free_plan"
       ? "Free starts with bounded lead capture, source tracking, and manual work. Paid plans unlock higher usage, automations, payments, and integrations."
       : params.billing === "stripe_not_ready"
-      ? "Online checkout is not available for this plan yet. Your request will save the selected plan for setup."
+      ? "Your setup request will save the selected plan. Ferocity will confirm checkout before any billing starts."
       : params.billing === "manual_plan"
         ? "This plan needs a manual setup conversation before checkout."
         : params.billing === "stripe_error"
@@ -58,34 +70,36 @@ export default async function StartPage({
           </Link>
           <div>
             <Link href="/demo">Demo</Link>
-            <Link href="/business-health-score">Health Score</Link>
+            <Link href="/business-health-score">Free Grader</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/features">Features</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
+            <Link href="/install">Install App</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
 
         <section className="public-hero">
-          <p className="eyebrow">Start with Ferocity</p>
-          <h1>Tell us what you want Ferocity to set up.</h1>
+          <p className="eyebrow">Start your AI autopilot</p>
+          <h1>Tell Ferocity what is eating your time.</h1>
           <p className="muted">
-            Tell us about the business, the work you want organized first, and the plan that seems closest. Customer messages,
-            publishing, ad changes, and billing actions are not turned on from this form.
+            Share the basics, choose what AI should help run, and Ferocity builds the first operating plan. It can start with recommendations,
+            then move into approved follow-up, jobs, payments, reviews, marketing, and daily owner alerts when the business is ready.
+            The goal is less stress, fewer missed things, and more control over the day.
           </p>
           <div className="button-row">
-            <Link className="button secondary-button" href="/demo/tour">
-              Take the tour first
-            </Link>
-            <Link className="button secondary-button" href="/business-health-score">
-              Business Health Score
+            <Link className="button" href="/business-health-score">
+              Run free grader first
             </Link>
             <Link className="button secondary-button" href="/pricing">
-              View tiers
+              Compare plans
             </Link>
             <Link className="button secondary-button" href="/connect-website">
-              Website hookup
+              Connect website
+            </Link>
+            <Link className="button secondary-button" href="/install">
+              Install app
             </Link>
           </div>
         </section>
@@ -99,8 +113,8 @@ export default async function StartPage({
             </label>
 
             <div>
-              <p className="eyebrow">Request access</p>
-              <h2>Business details</h2>
+              <p className="eyebrow">AI setup request</p>
+              <h2>Give Ferocity enough context to build the first relief plan.</h2>
             </div>
 
             {params.error ? (
@@ -147,13 +161,34 @@ export default async function StartPage({
               </select>
             </label>
             <label>
-              Main goal
-              <select name="mainGoal" defaultValue="seo_reviews">
+              Biggest outcome wanted first
+              <select name="mainGoal" defaultValue="find_gaps">
                 {goals.map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
+              </select>
+            </label>
+            <fieldset className="form-fieldset">
+              <legend>What should AI help run?</legend>
+              <p className="muted">Pick the parts you want Ferocity to watch, prepare, remind, or help automate.</p>
+              <div className="checkbox-grid">
+                {autopilotOptions.map(([value, label]) => (
+                  <label className="checkbox-row" key={value}>
+                    <input name="autopilotAreas" type="checkbox" value={value} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <label>
+              How much should AI do at first?
+              <select name="autonomyMode" defaultValue="approval_first">
+                <option value="recommend_only">Recommend only</option>
+                <option value="approval_first">Prepare work, ask before messages or public changes</option>
+                <option value="low_risk_auto">Handle low-risk repeat work after setup</option>
+                <option value="not_sure">Help me choose</option>
               </select>
             </label>
             <fieldset className="form-fieldset">
@@ -173,6 +208,7 @@ export default async function StartPage({
               <select name="requestedPlan" defaultValue={plan}>
                 <option value="not_sure">Not sure yet</option>
                 <option value="free">Free</option>
+                <option value="job_tracker">Job Tracker</option>
                 <option value="starter">Starter</option>
                 <option value="growth">Growth</option>
                 <option value="operator">Operator</option>
@@ -180,11 +216,11 @@ export default async function StartPage({
               </select>
             </label>
             <label>
-              What do you want Ferocity to help with first?
+              Anything Ferocity should know?
               <textarea
                 name="message"
                 rows={5}
-                placeholder="Example: I run a roofing company and want storm leads, review requests, SEO pages, and fast follow-up."
+                placeholder="Example: We are a roofing company in Eau Claire. We want more storm jobs, faster follow-up, more reviews, and better tracking."
               />
             </label>
             <label className="checkbox-row">
@@ -193,10 +229,10 @@ export default async function StartPage({
             </label>
             <label className="checkbox-row">
               <input name="createWorkspace" type="checkbox" defaultChecked />
-              <span>Create a starter workspace and send me an invite link.</span>
+              <span>Create a starter business account and send me an invite link if I am eligible.</span>
             </label>
             <button className="button" type="submit">
-              Request access <ArrowRight size={16} />
+              Build my first plan <ArrowRight size={16} />
             </button>
           </form>
 
@@ -204,10 +240,11 @@ export default async function StartPage({
             <p className="eyebrow">What happens next</p>
             <div className="stacked-list">
               {[
-                "Free can start with a small lead capture workspace. Paid tiers unlock higher usage, automations, payments, and integrations.",
-                "The website connection plan shows what to add: quote link, embedded form, hosted page, approved SEO publishing, or MarketplacePro source.",
-                "Lead sources are mapped so forms, SEO, ads, reviews, calls, and MarketplacePro can be tracked.",
-                "If selected, Ferocity creates a locked trial workspace and owner invite link.",
+                "Ferocity looks for the highest-value next steps first: missed leads, poor website conversion, aging estimates, missing reviews, unpaid invoices, unclear lead sources, and work that keeps pulling the owner back in.",
+                "You choose what AI helps with first. Ferocity can start with recommendations, ask for review before important actions, or help handle safe repeat work later.",
+                "The website connection plan shows the practical next step: quote link, embedded form, hosted page, approved SEO publishing, or marketplace source.",
+                "Lead sources are mapped so forms, SEO, ads, reviews, calls, referrals, and partner sources can be tied to jobs and revenue.",
+                "If selected, Ferocity creates a private trial account and owner invite link.",
                 "Customer messages, publishing, ad changes, and billing actions stay under your control.",
                 "The public demo stays public. The real dashboard stays private."
               ].map((item) => (

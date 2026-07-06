@@ -53,7 +53,7 @@ export default async function ProofEnginePage() {
 
       <section className="panel section-actions">
         <h2>Create Proof Request</h2>
-        <p className="muted">Create a customer-facing link. Send it manually by email, SMS, or your own system until live provider sends are connected.</p>
+        <p className="muted">Create a customer-facing proof link for photos, videos, testimonials, ratings, and consent.</p>
         <form action={createProofRequestAction} className="compact-form">
           <select name="customerId" required>
             <option value="">Select customer</option>

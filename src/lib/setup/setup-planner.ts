@@ -86,9 +86,9 @@ export function buildSetupPlan(request: string): SetupPlan {
   const wantsWebsite = hasAny(lower, ["website", "site", "wordpress", "webflow", "cms", "form", "embed"]);
   const wantsPayments = hasAny(lower, ["payment", "pay", "stripe", "ledger", "bookkeeping", "collect"]);
 
-  const businessType = isRoofing ? "Roofing / storm service" : isRental ? "Rental business" : isSoftware ? "Software / SaaS" : "Local service business";
-  const templateKey = isRoofing ? "roofing_storm" : isRental ? "rental_operator" : isSoftware ? "software_growth" : "local_service";
-  const templateName = isRoofing ? "Roofing storm growth" : isRental ? "Rental lead recovery" : isSoftware ? "Software growth loop" : "Local service operator";
+  const businessType = isRoofing ? "Roofing / storm service" : isRental ? "Rental business" : isSoftware ? "Software / SaaS" : "Growth-focused business";
+  const templateKey = isRoofing ? "roofing_storm" : isRental ? "rental_operator" : isSoftware ? "software_growth" : "business_operator";
+  const templateName = isRoofing ? "Roofing storm growth" : isRental ? "Rental lead recovery" : isSoftware ? "Software growth loop" : "Business operator";
   const goal = wantsSeo || wantsAds ? "Grow demand and track ROI" : wantsFollowUp || wantsWorkflow ? "Run cleaner operations and recover leads" : "Set up the business foundation";
 
   const changes: SetupPlanChange[] = [];
@@ -220,7 +220,7 @@ export function buildSetupPlan(request: string): SetupPlan {
     changes.push({
       area: "Follow-up",
       title: "Set lead recovery and missed callback workflow",
-      summary: "Queue stale lead checks, callback reminders, estimate follow-ups, and draft replies for review before any email or SMS sends.",
+      summary: "Queue stale lead checks, callback reminders, estimate follow-ups, app alerts, email drafts, and manual text drafts.",
       targetHref: "/app/operator",
       riskLevel: "medium",
       applyMode: "manual_review"
@@ -321,8 +321,8 @@ export function buildSetupPlan(request: string): SetupPlan {
     });
     changes.push({
       area: "Payments",
-      title: "Prepare payment collection and ledger workflow",
-      summary: "Prepare Stripe invoice payment links when keys are present, manual payment recording, payment history, and ledger entries before customer-facing sends.",
+      title: "Prepare invoice, payment tracking, and ledger workflow",
+      summary: "Prepare Stripe invoice payment links only when keys and webhooks are present, plus manual payment recording, payment history, and ledger entries before customer-facing sends.",
       targetHref: "/app/service",
       riskLevel: "high",
       applyMode: "manual_review"
@@ -332,7 +332,7 @@ export function buildSetupPlan(request: string): SetupPlan {
   changes.push({
     area: "Safety",
     title: "Keep public and paid actions controlled",
-    summary: "Use draft-only or review-required modes for AI, email, SMS, publishing, ads, reviews, and provider sync until tier limits are final.",
+    summary: "Use draft-only or review-required modes for AI, app alerts, email, manual text drafts, publishing, ads, reviews, and provider sync until tier limits are final.",
     targetHref: "/app/controls",
     riskLevel: "high",
     applyMode: "manual_review"
@@ -368,7 +368,7 @@ export function buildSetupPlan(request: string): SetupPlan {
       "Protect AI/provider usage with controls and limits"
     ],
     blockedUntil: [
-      "Email/SMS provider keys and consent rules are configured",
+      "Verified email, app notification rules, and consent controls are configured",
       "Domain and sender verification are complete",
       "Paid plan limits and overage rules are approved",
       "Public publishing and ad permissions are reviewed"

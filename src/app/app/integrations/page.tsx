@@ -8,18 +8,25 @@ function ownerLabel(value: string) {
   return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
 }
 
+function plainConnectionStatus(value: string | null | undefined) {
+  if (!value) return "Not started";
+  if (value === "configured" || value === "connected" || value === "ready") return "Ready";
+  if (value === "missing" || value === "needs_setup" || value === "not_configured") return "Needs setup";
+  return value.replaceAll("_", " ");
+}
+
 function setupNotice(params: { setup?: string; provider?: string; missing?: string }) {
   if (!params.setup) return null;
   if (params.setup === "missing_credentials") {
     return {
-      title: "Provider app keys are not added yet",
-      body: `${params.provider ?? "This provider"} is ready in Ferocity, but it needs ${params.missing ?? "provider credentials"} before the account connection screen can open.`
+      title: "This connection needs one more setup step",
+      body: `${params.provider ?? "This connection"} is listed in Ferocity, but the account connection is not ready yet.`
     };
   }
   if (params.setup === "unsupported") {
     return {
-      title: "Provider is not wired for OAuth yet",
-      body: `${params.provider ?? "That provider"} can still be tracked manually or by API key, but it does not have a Ferocity OAuth setup path yet.`
+      title: "This connection is not available yet",
+      body: `${params.provider ?? "That connection"} can still be tracked manually for now.`
     };
   }
   return null;
@@ -43,20 +50,20 @@ export default async function IntegrationsPage({
     <QueuePageShell
       eyebrow="Connect Tools"
       title="Connect The Outside Tools"
-      description="Ferocity should route work to proven providers, not rebuild them. Use managed defaults when useful, then switch to customer-owned accounts when keys, permissions, and approval rules are ready."
+      description="Connect the tools the business already uses: email, payments, calendars, websites, ads, reviews, and other systems."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Provider Readiness</h2>
-            <p className="muted">Connect the tools in steps. Keys and OAuth can be added later; live actions stay off until reviewed.</p>
+            <h2>Connection Readiness</h2>
+            <p className="muted">Connect tools in steps. Ferocity can still help before every account is connected.</p>
           </div>
           <div className="inline-actions">
             <Link className="button" href="/app/build-system">
-              Have AI Set This Up
+              Let Ferocity Set This Up
             </Link>
             <Link className="button secondary-button" href="/app/marketing-os">
-              Marketing OS
+              Marketing
             </Link>
           </div>
         </div>
@@ -66,11 +73,11 @@ export default async function IntegrationsPage({
             <strong>{connected}</strong>
           </section>
           <section className="panel span-4 metric">
-            <span className="muted">Need keys</span>
+            <span className="muted">Need connection</span>
             <strong>{missingKeys}</strong>
           </section>
           <section className="panel span-4 metric">
-            <span className="muted">Live actions on</span>
+            <span className="muted">Important actions on</span>
             <strong>{liveActions}</strong>
           </section>
         </div>
@@ -86,7 +93,7 @@ export default async function IntegrationsPage({
               <p className="muted">{notice.body}</p>
             </div>
             <Link className="button secondary-button" href="/app/credentials">
-              Add Keys Later
+              Finish Later
             </Link>
           </div>
         </section>
@@ -96,9 +103,9 @@ export default async function IntegrationsPage({
         <div className="list-row flush-row">
           <div>
             <h2>Customer Account Setup</h2>
-            <p className="muted">
-              Ferocity can help a business connect existing accounts or walk them through creating accounts. Ownership, billing, ad spend, and
-              public publishing stay with the business unless they explicitly approve managed service work.
+              <p className="muted">
+              Ferocity can help a business connect the accounts it already uses or walk through creating the right ones. The business stays in control
+              of billing, ad spend, and public posts.
             </p>
           </div>
           <Link className="button" href="/app/build-system">
@@ -108,11 +115,11 @@ export default async function IntegrationsPage({
         <div className="grid">
           <section className="span-3">
             <h3>1. Connect</h3>
-            <p className="muted">Owner signs in to Google, Meta, Reddit, Microsoft, reviews, email, SMS, calendar, or payments.</p>
+            <p className="muted">Owner signs in to Google, Meta, Reddit, Microsoft, reviews, email, calendars, payments, and communication tools.</p>
           </section>
           <section className="span-3">
             <h3>2. Read First</h3>
-            <p className="muted">Ferocity pulls account status, sources, spend, leads, reviews, and reporting where permissions allow.</p>
+            <p className="muted">Ferocity reads what it is allowed to read: leads, reviews, spend, traffic, and reports.</p>
           </section>
           <section className="span-3">
             <h3>3. Draft Work</h3>
@@ -120,7 +127,7 @@ export default async function IntegrationsPage({
           </section>
           <section className="span-3">
             <h3>4. Approve</h3>
-            <p className="muted">Live sends, publishing, syncing, billing, and ad budget changes stay gated by tier and approval rules.</p>
+            <p className="muted">Messages, public posts, billing, and ad budget changes wait for approval.</p>
           </section>
         </div>
       </section>
@@ -133,7 +140,7 @@ export default async function IntegrationsPage({
             </h2>
             <p className="muted">Useful for early setup. These still flow through review, consent, and the Action Queue.</p>
           </div>
-          <span className="pill">{managed.length} routes</span>
+          <span className="pill">{managed.length} options</span>
         </div>
         <div className="grid">
           {managed.map((row) => (
@@ -146,9 +153,9 @@ export default async function IntegrationsPage({
         <div className="list-row flush-row">
           <div>
             <h2>
-              <KeyRound size={18} /> Bring Your Own Tools
+              <KeyRound size={18} /> Connect Your Own Tools
             </h2>
-            <p className="muted">Customer-owned accounts for billing, SMS, email, calendars, analytics, publishing, ads, and reviews.</p>
+            <p className="muted">Customer-owned accounts for billing, email, calendars, analytics, publishing, ads, reviews, and customer communication.</p>
           </div>
           <span className="pill">{customerOwned.length} tools</span>
         </div>
@@ -164,8 +171,8 @@ export default async function IntegrationsPage({
 
 function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number] }) {
   const canMarkReady = row.missingEnvVars.length === 0;
-  const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not the default route";
-  const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No fallback routes";
+  const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not used by default";
+  const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No backup use";
 
   return (
     <section className="span-4">
@@ -184,22 +191,22 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
         </li>
         <li className="list-row">
           <strong>Status</strong>
-          <span className="pill">{row.accountStatus ?? row.status}</span>
+          <span className="pill">{plainConnectionStatus(row.accountStatus ?? row.status)}</span>
         </li>
         <li className="list-row">
-          <strong>Keys</strong>
-          <span className="pill">{row.envVars.length === 0 ? "No tenant key needed" : row.credentialsStatus}</span>
+          <strong>Connection</strong>
+          <span className="pill">{row.envVars.length === 0 ? "No extra setup needed" : plainConnectionStatus(row.credentialsStatus)}</span>
         </li>
         <li className="list-row">
           <strong>Setup</strong>
-          <span className="pill">{row.setupMode.replaceAll("_", " ")}</span>
+          <span className="pill">{plainConnectionStatus(row.setupMode)}</span>
         </li>
         <li className="list-row">
-          <strong>Default for</strong>
+          <strong>Used for</strong>
           <span className="muted">{activeRoutes}</span>
         </li>
         <li className="list-row">
-          <strong>Fallback for</strong>
+          <strong>Backup for</strong>
           <span className="muted">{fallbackRoutes}</span>
         </li>
       </ul>
@@ -214,8 +221,8 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
             </li>
           ))}
         </ul>
-        <p className="muted">Missing keys: {row.missingEnvVars.length > 0 ? row.missingEnvVars.join(", ") : "None"}</p>
-        <p className="muted">Callback: {row.callbackPath ?? "None"}</p>
+        <p className="muted">Missing connection steps: {row.missingEnvVars.length > 0 ? row.missingEnvVars.length : "None"}</p>
+        <p className="muted">Can receive updates: {row.callbackPath ? "Yes" : "Not yet"}</p>
         <div className="button-row">
           {row.oauthStartPath ? (
             <Link className="mini-button" href={row.oauthStartPath}>
@@ -223,7 +230,7 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
             </Link>
           ) : null}
           <Link className="mini-button secondary-button" href="/app/credentials">
-            Add Keys
+            Finish setup
           </Link>
         </div>
         <form action={updateIntegrationReadinessAction} className="inline-actions">

@@ -37,7 +37,7 @@ export default async function GrowthOperatorPage() {
           </button>
         </form>
         <Link className="button secondary-button" href="/app/seo">
-          SEO Autopilot
+          SEO
         </Link>
         <Link className="button secondary-button" href="/app/sites">
           Growth Sites
@@ -134,7 +134,7 @@ export default async function GrowthOperatorPage() {
 
         <section className="panel span-6">
           <h2>Pages To Create Or Refresh</h2>
-          <p className="muted">Local SEO opportunities based on real brand services, locations, page inventory, and future metric imports.</p>
+          <p className="muted">Local SEO opportunities based on real brand services, locations, page inventory, and connected traffic metrics when available.</p>
           <ul className="list">
             {dashboard.seoOpportunities.map((item) => (
               <li className="list-row" key={item.id}>
@@ -311,7 +311,7 @@ export default async function GrowthOperatorPage() {
           <div className="list-row flush-row">
             <div>
               <h2>Publishing Queue</h2>
-              <p className="muted">Approval and scheduling readiness for website, GBP, social, email, and SMS publishing.</p>
+              <p className="muted">Review and scheduling for website, GBP, social, email, and customer communication drafts.</p>
             </div>
             <Radio size={20} />
           </div>
@@ -346,7 +346,7 @@ export default async function GrowthOperatorPage() {
               <li className="list-row">
                 <div>
                   <h3>No publishing queue items</h3>
-                  <p className="muted">Approved drafts can be queued without connecting provider keys yet.</p>
+                  <p className="muted">Approved drafts can be queued before outside publishing accounts are connected.</p>
                 </div>
               </li>
             ) : null}

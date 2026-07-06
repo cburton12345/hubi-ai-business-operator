@@ -1,5 +1,6 @@
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
+import { getOwnerNeeds, type OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import Link from "next/link";
 
@@ -8,7 +9,7 @@ function money(cents: number) {
 }
 
 export default async function ReportsPage() {
-  const [snapshot, report] = await Promise.all([getDashboardSnapshot(), getReportingDashboard()]);
+  const [snapshot, report, ownerNeeds] = await Promise.all([getDashboardSnapshot(), getReportingDashboard(), getOwnerNeeds()]);
 
   return (
     <QueuePageShell
@@ -23,7 +24,7 @@ export default async function ReportsPage() {
             <p className="muted">What is working, what is stuck, and what to do next.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/build-system">Build My System</Link>
+            <Link className="button" href="/app/build-system">Let Ferocity set it up</Link>
             <Link className="button secondary-button" href="/app/operator">Open operator console</Link>
             <Link className="button secondary-button" href="/app/growth">Open growth loop</Link>
           </div>
@@ -31,9 +32,25 @@ export default async function ReportsPage() {
         <div className="grid section-actions">
           <Metric label="Revenue collected" value={money(report.leadToRevenue.collectedRevenueCents)} />
           <Metric label="Open pipeline" value={money(report.leadToRevenue.openPipelineCents)} />
-          <Metric label="Needs attention" value={snapshot.todayPlan.length + report.activeAlerts} />
+          <Metric label="Needs attention" value={snapshot.todayPlan.length + report.activeAlerts + ownerNeeds.length} />
           <Metric label="Provider gaps" value={report.providerGaps.length} />
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>What Ferocity Needs From You</h2>
+            <p className="muted">The short owner list behind the reporting: keys, items to review, stuck automation, low-confidence AI, customer issues, workforce checks, and report follow-up.</p>
+          </div>
+          <Link className="button secondary-button" href="/app/owner-command-center">Owner Feed</Link>
+        </div>
+        <ul className="list">
+          {ownerNeeds.slice(0, 6).map((need) => (
+            <OwnerNeedRow key={need.id} need={need} />
+          ))}
+          {ownerNeeds.length === 0 ? <li className="list-row"><span className="muted">No owner blockers found right now.</span></li> : null}
+        </ul>
       </section>
 
       <div className="grid section-actions">
@@ -73,7 +90,7 @@ export default async function ReportsPage() {
             <li className="list-row">
               <div>
                 <h3>Protect spend and tokens</h3>
-                <p className="muted">Review AI, SMS, email, publishing, and ads limits before turning on live actions.</p>
+                <p className="muted">Review AI, app alerts, email, publishing, and ads limits before turning on live actions.</p>
               </div>
               <Link className="mini-button" href="/app/controls">Controls</Link>
             </li>
@@ -206,6 +223,28 @@ function Metric({ label, value }: { label: string; value: number | string }) {
       <span className="muted">{label}</span>
       <strong>{value}</strong>
     </section>
+  );
+}
+
+function priorityClass(priority: string) {
+  if (priority === "critical" || priority === "high") return "high";
+  if (priority === "medium") return "medium";
+  return "";
+}
+
+function OwnerNeedRow({ need }: { need: OwnerNeed }) {
+  return (
+    <li className="list-row">
+      <div>
+        <h3>{need.title}</h3>
+        <p className="muted">{need.detail}</p>
+      </div>
+      <div className="inline-actions">
+        <span className={`pill ${priorityClass(need.priority)}`}>{need.priority}</span>
+        <span className="pill">{need.category}</span>
+        <Link className="mini-button" href={need.href}>{need.actionLabel}</Link>
+      </div>
+    </li>
   );
 }
 

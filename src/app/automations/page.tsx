@@ -1,25 +1,25 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { BellRing, CalendarClock, FileCheck2, MailCheck, Megaphone, MessageSquareReply, ShieldCheck, Star } from "lucide-react";
 
-const marketplaceProUrl = "https://marketplacepro.live";
+export const metadata: Metadata = {
+  title: "AI Business Automations for Leads, Reviews, Estimates, and Invoices",
+  description:
+    "Ferocity AI automations help businesses respond to leads, recover stale opportunities, follow up on estimates and invoices, request reviews, and keep important work visible.",
+  alternates: {
+    canonical: "/automations"
+  }
+};
 
 const automationGroups = [
   {
     title: "Lead response",
-    body: (
-      <>
-        Reply faster to new leads, missed calls, quote requests, and{" "}
-        <Link className="inline-link" href={marketplaceProUrl}>
-          MarketplacePro
-        </Link>{" "}
-        inquiries.
-      </>
-    ),
+    body: "Reply faster to new leads, missed calls, quote requests, marketplace inquiries, and partner inquiries.",
     items: ["Speed-to-lead draft", "Unanswered lead alert", "Callback reminder", "Stale lead recovery"],
     icon: MessageSquareReply
   },
   {
-    title: "Estimates and money",
+    title: "Estimates and invoices",
     body: "Keep open estimates and unpaid invoices from slipping through the cracks.",
     items: ["Estimate follow-up", "Viewed estimate reminder", "Invoice follow-up", "Won/lost tracking"],
     icon: FileCheck2
@@ -65,24 +65,31 @@ export default function AutomationsPage() {
             <Link href="/pricing">Plans</Link>
             <Link href="/about">About</Link>
             <Link href="/integrations">Integrations</Link>
+            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
 
         <section className="public-hero">
-          <p className="eyebrow">Ferocity automations</p>
-          <h1>Automations that help run the business.</h1>
+          <p className="eyebrow">AI automations</p>
+          <h1>Ferocity watches the business and prepares the next action.</h1>
           <p className="muted">
-            Ferocity focuses on practical follow-up, reminders, review requests, marketing drafts, and operator alerts. Customer messages,
-            publishing, connected accounts, and ad spend stay under review and approval.
+            AI agents can monitor leads, estimates, invoices, reviews, jobs, marketing, and owner alerts. They prepare the work,
+            then the business controls what sends, publishes, syncs, or spends.
           </p>
           <div className="button-row">
             <Link className="button" href="/start?source=automations">
-              Start my setup
+              Get my setup plan
+            </Link>
+            <Link className="button secondary-button" href="/business-health-score">
+              Run free grader
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans
+            </Link>
+            <Link className="button secondary-button" href="/install">
+              Install app
             </Link>
             <Link className="button secondary-button" href="/demo/tour">
               Take the tour
@@ -111,17 +118,17 @@ export default function AutomationsPage() {
         <section className="panel">
           <div className="list-row flush-row">
             <div>
-              <h2>Safe By Default</h2>
+              <h2>Automation without losing control</h2>
               <p className="muted">
-                Ferocity creates the draft, shows the next action, and logs what changed. It does not send customer messages, publish pages,
-                connect outside accounts, or spend money without the right permissions, consent rules, and plan controls.
+                Ferocity creates the draft, shows the next action, and logs what changed. Customer messages, public publishing,
+                connected-account sync, payments, and ad spend stay behind the right permissions, consent rules, and plan controls.
               </p>
             </div>
             <ShieldCheck size={22} />
           </div>
           <div className="button-row">
             <Link className="mini-button" href="/start?source=automations_safe">
-              Start setup
+              Get plan
             </Link>
             <Link className="mini-button secondary-button" href="/pricing">
               Compare plans
@@ -132,9 +139,9 @@ export default function AutomationsPage() {
         <section className="panel">
           <div className="list-row flush-row">
             <div>
-              <h2>Email, SMS, And Connected Tools</h2>
+              <h2>Email, App Alerts, And Connected Tools</h2>
               <p className="muted">
-                Ferocity is built to work with trusted tools for email, SMS, calendars, payments, websites, and publishing. Businesses can
+                Ferocity is built to work with trusted tools for email, app alerts, calendars, payments, websites, and publishing. Businesses can
                 use managed connection paths or bring their own accounts as their plan and usage grow.
               </p>
             </div>

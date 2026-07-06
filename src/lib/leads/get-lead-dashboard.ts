@@ -1,3 +1,4 @@
+import { manualSmsHref } from "@/lib/communication/manual-sms";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { demoLeads } from "@/lib/leads/demo-leads";
 import { queryPostgres } from "@/lib/db/postgres";
@@ -19,6 +20,8 @@ export type LeadDashboardRow = {
   grade: string;
   assignedTo: string;
   duplicateKey: string;
+  smsHref: string;
+  canText: boolean;
 };
 
 type LeadRow = {
@@ -99,23 +102,28 @@ export async function getLeadDashboardRows() {
     );
 
     if (result) {
-      return result.rows.map((lead) => ({
-        id: lead.id,
-        brandName: lead.brand_name,
-        brandSlug: lead.brand_slug,
-        leadType: lead.lead_type,
-        status: lead.status,
-        qualificationStatus: lead.qualification_status,
-        priority: lead.priority,
-        name: lead.name ?? "Unknown",
-        email: lead.email ?? "",
-        phone: lead.phone ?? "",
-        createdAt: lead.created_at,
-        score: Number(lead.score ?? 0),
-        grade: lead.grade ?? "unscored",
-        assignedTo: lead.assigned_to ?? "Unassigned",
-        duplicateKey: (lead.email || lead.phone || "").toLowerCase()
-      }));
+      return result.rows.map((lead) => {
+        const name = lead.name ?? "there";
+        return {
+          id: lead.id,
+          brandName: lead.brand_name,
+          brandSlug: lead.brand_slug,
+          leadType: lead.lead_type,
+          status: lead.status,
+          qualificationStatus: lead.qualification_status,
+          priority: lead.priority,
+          name: lead.name ?? "Unknown",
+          email: lead.email ?? "",
+          phone: lead.phone ?? "",
+          createdAt: lead.created_at,
+          score: Number(lead.score ?? 0),
+          grade: lead.grade ?? "unscored",
+          assignedTo: lead.assigned_to ?? "Unassigned",
+          duplicateKey: (lead.email || lead.phone || "").toLowerCase(),
+          smsHref: manualSmsHref(lead.phone, `Hi ${name}, thanks for reaching out to ${lead.brand_name}. I wanted to follow up and see what you need help with.`),
+          canText: Boolean(lead.phone)
+        };
+      });
     }
 
     return demoLeads;
@@ -163,7 +171,9 @@ export async function getLeadDashboardRows() {
       score: 0,
       grade: "unscored",
       assignedTo: "Unassigned",
-      duplicateKey: (lead.email || lead.phone || "").toLowerCase()
+      duplicateKey: (lead.email || lead.phone || "").toLowerCase(),
+      smsHref: manualSmsHref(lead.phone, `Hi ${lead.name ?? "there"}, thanks for reaching out to ${brand?.name ?? "us"}. I wanted to follow up and see what you need help with.`),
+      canText: Boolean(lead.phone)
     };
   });
 }

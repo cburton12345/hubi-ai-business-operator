@@ -1,59 +1,156 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Ferocity Pricing: AI Workforce for Modern Businesses",
+  description:
+    "Compare Ferocity plans for AI lead response, follow-up, marketing, operations, payments, reviews, owner alerts, and approved repeat work.",
+  alternates: {
+    canonical: "/pricing"
+  }
+};
 
 const plans = [
   {
     key: "free",
     name: "Free",
     price: "$0",
-    fit: "For trying Ferocity with a Business Health Score, real workspace, one lead form, and basic source tracking.",
-    included: ["Business Health Score", "1 workspace", "1 brand", "1 user", "1 lead form", "Business profile memory", "Basic CRM"],
-    limits: "Good for evaluation and light use. No live SMS/email, payment links, background automations, MarketplacePro sync, or provider publishing.",
+    fit: "For seeing where money is leaking before paying.",
+    included: [
+      "Business Grader",
+      "Business Health Score",
+      "1 workspace",
+      "1 brand",
+      "1 user",
+      "1 tracked lead form",
+      "Business profile memory",
+      "Basic CRM",
+      "Starter source tracking"
+    ],
+    limits: "Shows the gaps and starts the first command center. Payment links, heavier automation, website publishing, marketplace connections, and larger AI usage unlock on paid plans or connected accounts.",
     cta: "Start Free"
   },
   {
-    key: "ai_growth_report",
-    name: "AI Growth Report",
+    key: "autopilot_blueprint",
+    name: "Business Autopilot Blueprint",
     price: "$49",
-    fit: "A one-time growth plan before a subscription, included with Starter and higher.",
-    included: ["Complete business audit", "Competitor comparison", "SEO analysis", "Review analysis", "Lead capture analysis", "Automation analysis", "Custom 90-day action plan"],
-    limits: "Buy once if you are not ready for a subscription. Included once with Starter and higher. Does not turn on live sends, publishing, payments, ads, or background automations.",
-    cta: "Unlock Report"
+    fit: "For owners who want the autopilot plan before subscribing.",
+    included: [
+      "Full business audit",
+      "Lost revenue opportunities",
+      "Top automation recommendations",
+      "Lead follow-up plan",
+      "SEO and review plan",
+      "What Ferocity should run first",
+      "30/60/90 day action plan",
+      "Credited toward first paid month"
+    ],
+    limits: "Included with every paid plan. Standalone buyers can apply the $49 toward their first month if they upgrade within 30 days. It gives the owner a real setup path: what Ferocity should build, track, and run first.",
+    cta: "Get Blueprint"
+  },
+  {
+    key: "job_tracker",
+    name: "Job Tracker",
+    price: "$39/mo",
+    fit: "For owners who need bids, jobs, materials, people paid, and job profit without the full growth engine.",
+    included: [
+      "Everything in Free",
+      "Simple Mode job tracker",
+      "Bids with line items",
+      "Payment terms and deposit notes",
+      "Material lists",
+      "People/subcontractor payments",
+      "Basic worker request and availability intake",
+      "Basic invoices and payment notes",
+      "Job money board",
+      "Receipt and reimbursement tracking",
+      "Daily job reminders"
+    ],
+    limits:
+      "A real working tier for owners who need clean job and money visibility. Advanced AI marketing, automated publishing, advanced integrations, and background operator automations unlock higher up.",
+    cta: "Start Job Tracker"
   },
   {
     key: "starter",
     name: "Starter",
     price: "$79/mo",
-    fit: "For businesses that mainly need lead capture, simple pipeline, and basic follow-up.",
-    included: ["Everything in Free", "1 included AI Growth Report", "Website import requests", "More leads", "Basic pipeline", "Review/before-after graphic drafts", "Basic reports"],
-    limits: "Good for getting organized first. Provider sends still require verified email/SMS accounts and approval.",
+    fit: "For a business that wants AI watching leads, follow-up, reviews, jobs, and owner alerts.",
+    included: [
+      "Everything in Job Tracker",
+      "Business Autopilot Blueprint included",
+      "Lead form and source tracking",
+      "Lead and estimate follow-up queue",
+      "Owner attention dashboard",
+      "Basic AI follow-up drafts",
+      "Review request drafts",
+      "Before/after proof drafts",
+      "Basic labor match suggestions",
+      "Basic pipeline and reports",
+      "App alerts for owner attention",
+      "Email-ready setup notifications"
+    ],
+    limits: "Starter is a working business system, not a thin audit. It organizes leads, jobs, follow-up, reviews, proof, owner alerts, and basic AI drafts. Growth unlocks heavier marketing, SEO/GEO, publishing plans, attribution, and larger AI usage.",
     cta: "Start Starter"
   },
   {
     key: "growth",
     name: "Growth",
     price: "$199/mo",
-    fit: "For businesses that want SEO, reviews, marketing drafts, customer proof, and attribution.",
-    included: ["Everything in Starter", "AI Growth Report refreshes", "Content Studio campaigns", "SEO/service page drafts", "Review request workflows", "Customer proof engine", "GBP/content drafts", "Attribution"],
-    limits: "Good for growth work. Live publishing, ad changes, and message sends stay behind approval and connected accounts.",
+    fit: "For businesses that want Ferocity creating demand and proving what turns into revenue.",
+    included: [
+      "Everything in Starter",
+      "Weekly growth briefs",
+      "Content Studio campaigns",
+      "SEO/GEO traffic engine",
+      "30-day content strategy",
+      "Website and marketing platform planning",
+      "Review request workflows",
+      "Customer proof engine",
+      "GBP/content drafts",
+      "Attribution"
+    ],
+    limits: "Best when the business wants more demand, stronger proof, and clearer source-to-revenue tracking. Live publishing, ad changes, and message sends wait until accounts are connected and the business is ready.",
     cta: "Start Growth"
   },
   {
     key: "operator",
     name: "Operator",
     price: "$399/mo",
-    fit: "For businesses that want jobs, estimates, invoices, scheduling, and operations visibility.",
-    included: ["Everything in Growth", "Deeper operations plan", "AI video job foundation", "Operator Console", "Jobs and estimates", "Invoices and ledgers", "Proof-to-content workflow", "Scheduling foundation"],
-    limits: "Good for teams that need sales, service work, payment visibility, and reporting in the same workspace.",
+    fit: "For businesses that want Ferocity helping run the operating day, not just marketing.",
+    included: [
+      "Everything in Growth",
+      "Owner Command Center",
+      "AI monitoring and briefing",
+      "AI receptionist / sales assistant workflows",
+      "AI office manager workflows",
+      "Operator Console",
+      "Jobs and estimates",
+      "Invoices and ledgers",
+      "Proof-to-content workflow",
+      "Scheduling foundation",
+      "Higher Labor Bench limits"
+    ],
+    limits: "Best when the owner wants one place for sales, work, payments, team visibility, alerts, AI-recommended next actions, and fewer things slipping through the cracks.",
     cta: "Start Operator"
   },
   {
     key: "pro_agency",
     name: "Pro / Agency",
     price: "Custom",
-    fit: "For multi-brand operators, agencies, or advanced service businesses.",
-    included: ["Multi-brand AI Growth Reports", "Multi-brand workspaces", "Advanced integrations", "Higher usage", "MarketplacePro connection", "Expanded reporting"],
-    limits: "For larger teams, multiple brands, and implementation support.",
+    fit: "For owners with several businesses, agencies, franchises, multi-brand operators, or advanced teams.",
+    included: [
+      "Everything in Operator",
+      "Multi-brand blueprints",
+      "Multi-brand workspaces",
+      "Advanced integrations",
+      "Higher AI and automation usage",
+      "Marketplace connections",
+      "Expanded reporting",
+      "Multi-location operating views",
+      "Implementation support path"
+    ],
+    limits: "For serious operators who need more brands, more usage, more integrations, and more implementation help without turning Ferocity into a confusing mega-app.",
     cta: "Talk to Ferocity"
   }
 ];
@@ -62,17 +159,76 @@ const includedByDefault = [
   "Public demo and product tour",
   "Safe setup request form",
   "One workspace per email when automatic creation is selected",
-  "Lead source tracking seeds for website, SEO, reviews, calls, ads, referrals, and MarketplacePro",
+  "Lead source tracking seeds for website, SEO, reviews, calls, ads, referrals, and marketplace sources",
   "Private dashboard protection for workspace data"
 ];
 
 const paidOrConnected = [
   "Higher lead, proof, workspace, brand, and user limits",
-  "Full AI setup runs, Content Studio usage, graphics, and larger content generation",
-  "Live email/SMS sends through verified providers",
-  "Payment links, invoice reminders, and ledger workflows",
-  "Publishing to customer websites, hosted pages, GBP, ads, video providers, or MarketplacePro sync",
-  "Advanced automations, background scans, reporting, and implementation help"
+  "Business Autopilot Blueprint included with paid plans",
+  "Full AI setup runs, Content Studio usage, SEO/GEO planning, graphics, and larger content generation",
+  "Verified email and app/push alerts for owner attention, reports, setup messages, and customer follow-up",
+  "Invoice reminders, ledger workflows, manual payment records, and payment links when payments are connected",
+  "Higher worker intake, labor matching, and placement-support limits",
+  "Publishing to customer websites, hosted pages, Google profile, ads, video tools, or marketplace connections",
+  "Advanced automations, background scans, reporting, and implementation help",
+  "More autopilot permissions only when the business turns them on"
+];
+
+const paymentModes = [
+  {
+    name: "Manual tracking",
+    fee: "No processing fee",
+    detail: "Record cash, check, Zelle, outside Stripe, or other payments so invoices, ledgers, and reports stay accurate."
+  },
+  {
+    name: "Connect your Stripe",
+    fee: "Stripe fees only",
+    detail: "Use the business owner's Stripe account for online payment links. Ferocity tracks requests, payments, reminders, and ledger entries."
+  },
+  {
+    name: "Ferocity Managed Payments",
+    fee: "Planned: Ferocity fee plus payment processor fees",
+    detail: "Future Stripe Connect path for owners who want payment setup help. Processor, payout, dispute, refund, and instant payout fees pass through to the business."
+  }
+];
+
+const choiceGuide = [
+  {
+    name: "Free",
+    answer: "Use this when they want to see the leaks before paying.",
+    detail: "Runs the grader, starts the workspace, captures a lead form, and shows the first command-center path."
+  },
+  {
+    name: "Business Autopilot Blueprint",
+    answer: "Use this when they want a serious autopilot diagnosis first.",
+    detail: "Shows what is leaking money, what Ferocity can fix, which automations should run first, and how the first 30/60/90 days should be set up."
+  },
+  {
+    name: "Job Tracker",
+    answer: "Use this when they mainly need jobs and job money under control.",
+    detail: "Good for operators who are not ready for AI marketing yet but need one clean place for bids, project costs, people paid, receipts, reimbursements, and material lists."
+  },
+  {
+    name: "Starter",
+    answer: "Use this when they want AI doing meaningful daily work.",
+    detail: "Good for lead capture, source tracking, follow-up queue, owner alerts, reviews, proof drafts, simple jobs, basic reports, and AI-prepared replies."
+  },
+  {
+    name: "Growth",
+    answer: "Use this when they want more demand and better proof.",
+    detail: "Adds AI-search checks, SEO plans, reviews, proof capture, content campaigns, Google profile work, website and marketing platform planning, and attribution."
+  },
+  {
+    name: "Operator",
+    answer: "Use this when the owner wants Ferocity to help run the business day.",
+    detail: "Adds jobs, estimates, invoices, scheduling, workforce visibility, daily work lists, owner alerts, and revenue tracking."
+  },
+  {
+    name: "Pro / Agency",
+    answer: "Use this when one owner or team has multiple businesses, brands, locations, or higher usage.",
+    detail: "Adds multi-brand workspaces, advanced integrations, higher AI and automation limits, marketplace connections, expanded reporting, and implementation support."
+  }
 ];
 
 export default function PricingPage() {
@@ -86,26 +242,29 @@ export default function PricingPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
-            <Link href="/business-health-score">Health Score</Link>
+            <Link href="/business-health-score">Free Grader</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/integrations">Integrations</Link>
+            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
           </div>
         </nav>
 
         <section className="public-hero">
           <p className="eyebrow">Plan structure</p>
-          <h1>The Operating System for contractors, landlords, and small businesses.</h1>
+          <h1>Start free. Upgrade when you want Ferocity taking work off your plate.</h1>
           <p className="muted">
-            CRM, marketing, reviews, AI setup, estimates, payments, operations, and ecosystem access in one hub. Start with the free score. Get the AI Growth Report with Starter and higher, or buy it once before subscribing.
+            Ferocity is priced by how much of the business you want it to help run. Start with a free audit, use Job Tracker for jobs and job money,
+            add Growth to create demand, or use Operator when you want Ferocity watching leads, jobs, invoices, reviews, workers, and owner alerts.
+            Pro / Agency supports owners with several businesses, multi-brand workspaces, multi-location operations, and advanced teams. Every paid plan includes the Business Autopilot Blueprint so setup starts with a real diagnosis, not guesswork.
           </p>
           <div className="button-row">
-            <Link className="button" href="/start?source=pricing">
-              Start setup
+            <Link className="button" href="/business-health-score">
+              Run free grader
             </Link>
-            <Link className="button secondary-button" href="/business-health-score">
-              Business Health Score
+            <Link className="button secondary-button" href="/start?source=pricing">
+              Get my setup plan
             </Link>
             <Link className="button secondary-button" href="/demo/tour">
               Take the tour
@@ -113,13 +272,30 @@ export default function PricingPage() {
             <Link className="button secondary-button" href="/automations">
               See automations
             </Link>
+            <Link className="button secondary-button" href="/install">
+              Install app
+            </Link>
             <Link className="button secondary-button" href="/connect-website">
-              Website hookup
+              Connect website
             </Link>
           </div>
         </section>
 
-        <section className="pricing-grid" id="ai-growth-report">
+        <section className="panel">
+          <p className="eyebrow">Which one should I choose?</p>
+          <h2>Choose the outcome you want first.</h2>
+          <div className="grid section-actions">
+            {choiceGuide.map((item) => (
+              <article className="panel span-4" key={item.name}>
+                <h3>{item.name}</h3>
+                <strong>{item.answer}</strong>
+                <p className="muted">{item.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="pricing-grid" id="business-autopilot-blueprint">
           {plans.map((plan) => (
             <article className="panel pricing-card" key={plan.name}>
               <div>
@@ -136,7 +312,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               <p className="muted">{plan.limits}</p>
-              <Link className="button" href={plan.key === "ai_growth_report" ? "/business-health-score" : `/start?source=pricing&plan=${plan.key}`}>
+              <Link className="button" href={plan.key === "autopilot_blueprint" ? "/business-health-score" : `/start?source=pricing&plan=${plan.key}`}>
                 {plan.cta}
               </Link>
             </article>
@@ -168,12 +344,39 @@ export default function PricingPage() {
           </article>
         </section>
 
+        <section className="panel section-actions">
+          <p className="eyebrow">Autopilot levels</p>
+          <h2>The plan controls how much Ferocity can run.</h2>
+          <p className="muted">
+            Every business can start with recommendations and manual approval. Higher tiers unlock more AI work, more usage,
+            more reporting, and more connected-account actions. The owner still chooses what stays manual.
+          </p>
+        </section>
+
+        <section className="panel section-actions">
+          <p className="eyebrow">Payment options</p>
+          <h2>Ferocity should help collect money without hiding fees.</h2>
+          <p className="muted">
+            Businesses can track manual payments, connect their own Stripe account, or later choose a managed payment setup. Ferocity should never
+            quietly absorb processor fees, chargebacks, refunds, bank-return fees, instant-payout fees, or card network costs.
+          </p>
+          <div className="grid section-actions">
+            {paymentModes.map((mode) => (
+              <article className="panel span-4" key={mode.name}>
+                <span className="pill">{mode.fee}</span>
+                <h3>{mode.name}</h3>
+                <p className="muted">{mode.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="panel">
           <div className="list-row flush-row">
             <div>
-              <h2>Ferocity is the hub, not just a CRM</h2>
+              <h2>Ferocity is the AI operating system, not just a CRM.</h2>
               <p className="muted">
-                MarketplacePro, BidOps, 4Bid, Homes4Rent, and Guardian Signal can appear as ecosystem options when they match a real business need. Ferocity keeps the operating loop in one place.
+                Marketplace, bid, rental, safety, and partner-system connections can appear when they match a real business need. Ferocity keeps the operating loop in one place.
               </p>
             </div>
             <ShieldCheck size={22} />
@@ -182,11 +385,11 @@ export default function PricingPage() {
 
         <section className="grid section-actions">
           {[
-            "MarketplacePro Access",
-            "BidOps Opportunities",
-            "Homes4Rent Integration",
-            "Guardian Signal Integration",
-            "4Bid Marketplace Access"
+            "Marketplace lead access",
+            "Bid opportunity monitoring",
+            "Rental workflow connection",
+            "Safety alert connection",
+            "Partner marketplace access"
           ].map((item) => (
             <div className="panel span-4 metric" key={item}>
               <span className="muted">Ecosystem</span>

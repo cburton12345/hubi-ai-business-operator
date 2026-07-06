@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, CheckCircle2, CircleDollarSign, LockKeyhole, SlidersHorizontal, WandSparkles } from "lucide-react";
+import { Bot, CheckCircle2, CircleDollarSign, LockKeyhole, SlidersHorizontal, WandSparkles, Workflow } from "lucide-react";
 import { getCurrentWorkspace, getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 
@@ -39,18 +39,21 @@ export default async function WelcomePage() {
       <div className="topbar">
         <div>
           <p className="eyebrow">Welcome</p>
-          <h1>Set up {workspace.name} without turning on risky stuff.</h1>
+          <h1>Start {workspace.name} the simple way.</h1>
           <p className="muted">
-            Your workspace is real. It starts in setup mode so your business info, lead capture, reviews, SEO, automations, and billing can be
-            checked before anything sends, publishes, syncs, or spends.
+            Use AI guided mode when you want Ferocity to lead. Use manual mode when you just need to add a customer, job, invoice, field cost,
+            reminder, worker, or payment record yourself.
           </p>
         </div>
         <div className="inline-actions">
-          <Link className="button" href="/app/ai-workforce">
-            1. AI Mode
+          <Link className="button" href="/app/build-system">
+            Let Ferocity guide me
+          </Link>
+          <Link className="button secondary-button" href="/app/service-command">
+            Do it myself
           </Link>
           <Link className="button secondary-button" href="/app/setup">
-            2. Traditional Mode
+            Settings
           </Link>
         </div>
       </div>
@@ -62,60 +65,97 @@ export default async function WelcomePage() {
         <Metric label="Lead forms" value={stats.forms} />
       </section>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">What do you need first?</p>
+            <h2>Start with the business problem, not the menu.</h2>
+            <p className="muted">
+              Ferocity has a lot inside it. These shortcuts keep the first move simple.
+            </p>
+          </div>
+          <Link className="mini-button" href="/app/feature-map">See every tool</Link>
+        </div>
+        <div className="path-grid">
+          {[
+            ["I need more leads", "Plan website, SEO, reviews, proof, campaigns, and lead source tracking.", "/app/growth-calendar"],
+            ["I need to follow up", "Work new leads, stale leads, callbacks, estimates, and customer replies.", "/app/lead-command"],
+            ["I need to track jobs and bids", "Track bids, jobs, materials, worker payments, money owed, and job profit.", "/app/job-tracker"],
+            ["I need to collect money", "See unpaid invoices, payment follow-up, manual payments, and ledger visibility.", "/app/cash-collection"],
+            ["I need to plan workers", "Build the crew day, assign work, check time, mileage, and field proof.", "/app/crew-itinerary"],
+            ["I need Ferocity to guide me", "Tell Ferocity the outcome and preview the setup or work plan first.", "/app/ai-workforce"]
+          ].map(([title, detail, href]) => (
+            <Link className="path-card" href={href} key={title}>
+              <CheckCircle2 size={18} />
+              <strong>{title}</strong>
+              <span>{detail}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <section className="grid section-actions">
         <article className="panel span-6">
-          <Bot size={20} />
-          <h2>1. AI Mode</h2>
+          <Workflow size={20} />
+          <h2>Let Ferocity guide setup</h2>
           <p className="muted">
-            Tell Ferocity what you want done. AI employees prepare plans, drafts, workflows, and next actions using the same CRM, review, website,
-            content, automation, reporting, messaging, lead, billing, and settings systems.
+            Tell Ferocity what the business needs. It recommends services, lead sources, follow-up, reviews, payments, SEO, and automations before
+            anything goes live.
+          </p>
+          <Link className="mini-button" href="/app/build-system">
+            Start guided setup
+          </Link>
+        </article>
+
+        <article className="panel span-6">
+          <Bot size={20} />
+          <h2>Use the AI Workforce</h2>
+          <p className="muted">
+            Use the AI Workforce when you want Ferocity to prepare replies, follow-up, content, reviews, setup work, and next actions for approval.
           </p>
           <Link className="mini-button" href="/app/ai-workforce">
-            Manage AI employees
+            AI Workforce
           </Link>
         </article>
 
         <article className="panel span-6">
           <SlidersHorizontal size={20} />
-          <h2>2. Traditional Mode</h2>
+          <h2>Add basic work manually</h2>
           <p className="muted">
-            Use the normal menus when you want full control. Nothing is removed or hidden: leads, settings, reviews, automations, websites,
-            billing, messaging, reports, and integrations stay available.
+            Add customers, leads, bids, jobs, invoices, field costs, materials, payments, workers, and reminders without asking AI.
           </p>
-          <Link className="mini-button" href="/app/setup">
-            Open setup
+          <Link className="mini-button" href="/app/service-command">
+            Open manual tools
           </Link>
         </article>
 
         <article className="panel span-6">
           <WandSparkles size={20} />
-          <h2>1. Tell Ferocity what to build</h2>
+          <h2>Connect the outside world</h2>
           <p className="muted">
-            Use plain words. Ferocity will preview setup changes for services, lead routing, SEO, reviews, follow-up, and automations before
-            applying anything.
+            Website forms, customer portals, proof links, payment links, email, app alerts, Google, ads, and reviews can be added when the business is ready.
           </p>
-          <Link className="mini-button" href="/app/build-system">
-            Start setup
+          <Link className="mini-button" href="/app/customer-touchpoints">
+            Connect touchpoints
           </Link>
         </article>
 
         <article className="panel span-6">
           <CheckCircle2 size={20} />
-          <h2>2. Check the basics</h2>
+          <h2>Check Today</h2>
           <p className="muted">
-            Confirm company name, services, service area, lead form, templates, and the first safe growth loop.
+            See leads, follow-up, invoices, worker plans, customer issues, and AI-prepared actions that need attention.
           </p>
-          <Link className="mini-button" href="/app/go-live">
-            Go live checklist
+          <Link className="mini-button" href="/app/attention-command">
+            Open Today
           </Link>
         </article>
 
         <article className="panel span-6">
           <LockKeyhole size={20} />
-          <h2>3. Keep live actions locked</h2>
+          <h2>Keep control</h2>
           <p className="muted">
-            SMS, email, publishing, provider sync, review requests, and ad spend stay gated until keys, consent rules, limits, and approvals are
-            ready.
+            Turn AI help on or off, require review, control spending, and keep messages, public posts, and payment requests under owner control.
           </p>
           <Link className="mini-button" href="/app/controls">
             Open controls
@@ -124,10 +164,9 @@ export default async function WelcomePage() {
 
         <article className="panel span-6">
           <CircleDollarSign size={20} />
-          <h2>4. Upgrade when ready</h2>
+          <h2>Know what is paid</h2>
           <p className="muted">
-            Trial/setup data stays on this tenant. When billing and tier limits are ready, the workspace upgrades in place instead of moving
-            data somewhere else.
+            Plans, limits, subscription status, payment-link readiness, and managed payment rules live in billing.
           </p>
           <Link className="mini-button" href="/app/billing">
             Billing readiness

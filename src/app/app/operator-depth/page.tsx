@@ -8,7 +8,7 @@ export default async function OperatorDepthPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Operator Depth"
+      eyebrow="Advanced Diagnostics"
       title="Cross-Project Operating Depth"
       description="The deeper business layer inspired by MarketplacePro, 4Bid, and GovFlow: service areas, crew bench, connector health, source scoring, review queues, support, and public endpoint logs."
     >

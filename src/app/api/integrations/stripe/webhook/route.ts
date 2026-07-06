@@ -62,6 +62,14 @@ function metadata(record: Record<string, unknown>) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function mapStripeSubscriptionStatus(status: string, eventType: string) {
+  if (status === "canceled" || eventType === "customer.subscription.deleted") return "cancelled";
+  if (status === "active") return "active";
+  if (status === "trialing") return "trialing";
+  if (status === "past_due" || status === "unpaid") return "past_due";
+  return "trialing";
+}
+
 async function handleCheckoutCompleted(event: StripeEvent, object: Record<string, unknown>) {
   const meta = metadata(object);
   if (textValue(meta, "ferocity_kind") === "service_invoice_payment") {
@@ -75,6 +83,39 @@ async function handleCheckoutCompleted(event: StripeEvent, object: Record<string
       ? textValue(object.customer_details as Record<string, unknown>, "email")
       : null);
   const planKey = textValue(meta, "plan_key") ?? "not_sure";
+  const tenantId = textValue(meta, "tenant_id");
+  const customerId = textValue(object, "customer");
+  const subscriptionId = textValue(object, "subscription");
+
+  if (tenantId && planKey && subscriptionId) {
+    await queryPostgres(
+      `
+      insert into public.billing_subscriptions (
+        tenant_id,
+        plan_key,
+        status,
+        external_customer_ref,
+        external_subscription_ref,
+        metadata_json,
+        updated_at
+      )
+      values ($1, $2, 'trialing', $3, $4, $5::jsonb, now())
+      on conflict (tenant_id) do update
+      set plan_key = excluded.plan_key,
+          external_customer_ref = excluded.external_customer_ref,
+          external_subscription_ref = excluded.external_subscription_ref,
+          metadata_json = public.billing_subscriptions.metadata_json || excluded.metadata_json,
+          updated_at = now()
+      `,
+      [
+        tenantId,
+        planKey,
+        customerId,
+        subscriptionId,
+        JSON.stringify({ stripeEventId: event.id, checkoutSessionId: textValue(object, "id"), source: "checkout.session.completed" })
+      ]
+    );
+  }
 
   if (email) {
     await queryPostgres(
@@ -200,7 +241,7 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
   const customerId = textValue(object, "customer");
   const subscriptionId = textValue(object, "id");
   const status = textValue(object, "status") ?? "active";
-  const mappedStatus = status === "canceled" || event.type === "customer.subscription.deleted" ? "cancelled" : status;
+  const mappedStatus = mapStripeSubscriptionStatus(status, event.type);
 
   if (tenantId && planKey && subscriptionId) {
     await queryPostgres(

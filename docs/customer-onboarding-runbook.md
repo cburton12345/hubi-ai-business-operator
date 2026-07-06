@@ -8,6 +8,8 @@
 4. Create at least one workspace user from `/app/access`.
 5. Review `/app/settings` and complete the onboarding checklist.
 6. Confirm lead forms at `/app/forms`.
+7. Open `/app/billing` and confirm the selected plan, usage limits, and Stripe portal status.
+8. Confirm `/reset-password` works for the owner email before handing off access.
 
 ## Weekly Marketing Operation
 
@@ -33,3 +35,10 @@
 - Do not auto-change ad budgets.
 - Do not auto-route sensitive leads externally.
 - Do not claim pricing, guarantees, licenses, insurance, testimonials, or results unless verified in the brand profile.
+
+## Connected System Checks
+
+1. Add only the systems the customer actually uses from `/app/lifeops-connections`.
+2. Keep each system paused until its token, tenant mapping, and first test event are verified.
+3. Confirm Owner Command Center shows the test event before calling the integration live.
+4. Pause or disconnect systems from Ferocity before removing credentials in the source product.

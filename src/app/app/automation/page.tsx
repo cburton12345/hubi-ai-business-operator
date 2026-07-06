@@ -13,7 +13,7 @@ const automationReadiness = [
   ["Stale lead recovery", "Finds old open leads and queues next actions.", "ready to scan"],
   ["Estimate follow-up", "Finds aging or viewed estimates and prepares reminders.", "ready to scan"],
   ["Invoice follow-up", "Finds unpaid balances and prepares payment reminders.", "ready to scan"],
-  ["Payment collection", "Prepares invoice payment requests and ledger entries.", "Stripe-ready"],
+  ["Payment readiness", "Prepares invoice payment requests, manual payment records, and ledger entries. Live links require Stripe.", "Stripe-gated"],
   ["Review request", "Queues requests after completed work with interception rules.", "review required"],
   ["SEO refresh", "Prepares service and city page updates from real business context.", "draft only"],
   ["Publishing", "Holds external posts/pages until approval and provider connection.", "approval required"]
@@ -35,7 +35,7 @@ export default async function AutomationPage() {
             <p className="muted">Ferocity separates finding the work, drafting the next action, and doing anything customer-facing.</p>
           </div>
           <div className="button-row">
-            <a className="button" href="/app/build-system">Build My System</a>
+            <a className="button" href="/app/build-system">Let Ferocity set it up</a>
             <form action={runMarketingAutomationAction}>
               <button className="button secondary-button" type="submit">Run workspace automations</button>
             </form>

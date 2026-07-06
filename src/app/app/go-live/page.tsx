@@ -103,7 +103,6 @@ function connected(item: IntegrationStatus | undefined) {
 
 function buildChecks(stats: LaunchStats | null, integrations: IntegrationStatus[], emailHealth: EmailProviderHealth): LaunchCheck[] {
   const emailReady = emailHealth.status === "ready";
-  const smsReady = connected(integration(integrations, "twilio")) || connected(integration(integrations, "twilio_shared"));
   const marketplaceReady = connected(integration(integrations, "marketplacepro"));
   const stripeReady = connected(integration(integrations, "stripe"));
   const gbpReady = connected(integration(integrations, "google_business_profile"));
@@ -167,11 +166,11 @@ function buildChecks(stats: LaunchStats | null, integrations: IntegrationStatus[
       button: "Connect email"
     },
     {
-      title: "SMS provider",
-      body: smsReady ? "SMS route is configured." : "SMS needs Twilio or shared SMS setup plus consent and compliance rules.",
-      status: smsReady ? "ready" : "needs_provider",
-      href: "/app/integrations",
-      button: "Connect SMS"
+      title: "App alerts and email",
+      body: emailReady ? "Default communication stack is ready. SMS can stay optional; manual text drafts are available when needed." : "Email needs setup. App alerts and dashboard queues can still carry owner work.",
+      status: emailReady ? "ready" : "needs_provider",
+      href: "/app/notifications",
+      button: "Open alerts"
     },
     {
       title: "Google profile / reviews",

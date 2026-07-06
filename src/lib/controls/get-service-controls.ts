@@ -1,4 +1,13 @@
-import { getServiceUsage, type OveragePolicy, type ServiceMode } from "@/lib/controls/service-gates";
+import {
+  getServiceUsage,
+  getWorkspacePlanKey,
+  minimumPlanForFeature,
+  planMeetsMinimum,
+  planName,
+  type OveragePolicy,
+  type PlanKey,
+  type ServiceMode
+} from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -16,6 +25,10 @@ export type ServiceControl = {
   plainRule: string;
   costed: boolean;
   publicFacing: boolean;
+  currentPlanKey: PlanKey;
+  minimumPlanKey: PlanKey;
+  planAllowed: boolean;
+  planRule: string;
 };
 
 const featureOrder = [
@@ -53,6 +66,7 @@ function labelFor(featureKey: string) {
 
 export async function getServiceControls() {
   const workspaceId = await getCurrentWorkspaceId();
+  const currentPlanKey = await getWorkspacePlanKey(workspaceId);
   const result = await queryPostgres<{
     feature_key: string;
     status: string;
@@ -83,6 +97,8 @@ export async function getServiceControls() {
       const currentUsage = await getServiceUsage(workspaceId, row.feature_key);
       const remaining = row.usage_limit === null ? null : Math.max(row.usage_limit - currentUsage, 0);
       const metadata = row.metadata_json ?? {};
+      const minimumPlanKey = minimumPlanForFeature(row.feature_key);
+      const planAllowed = planMeetsMinimum(currentPlanKey, minimumPlanKey);
 
       return {
         featureKey: row.feature_key,
@@ -97,7 +113,11 @@ export async function getServiceControls() {
         overagePolicy: metadata.overagePolicy ?? "block",
         plainRule: metadata.plainRule ?? "Use this service only when it is useful and approved.",
         costed: Boolean(metadata.costed),
-        publicFacing: Boolean(metadata.publicFacing)
+        publicFacing: Boolean(metadata.publicFacing),
+        currentPlanKey,
+        minimumPlanKey,
+        planAllowed,
+        planRule: planAllowed ? `Included on ${planName(currentPlanKey)}.` : `Requires ${planName(minimumPlanKey)} or higher.`
       } satisfies ServiceControl;
     })
   );

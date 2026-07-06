@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, BellRing, Bot, CalendarClock, ChartNoAxesCombined, FileCheck2, Megaphone, MessageSquareText, Star } from "lucide-react";
 
-const marketplaceProUrl = "https://marketplacepro.live";
-
 const tour = [
   {
     step: "1",
@@ -21,15 +19,7 @@ const tour = [
   {
     step: "3",
     title: "A lead comes in",
-    body: (
-      <>
-        A website form, phone call,{" "}
-        <Link className="inline-link" href={marketplaceProUrl}>
-          MarketplacePro
-        </Link>{" "}
-        request, or quote request becomes a tracked lead.
-      </>
-    ),
+    body: "A website form, phone call, marketplace request, partner request, or quote request becomes a tracked lead.",
     result: "Source: storm roof repair page / Priority: high / Needs reply",
     icon: MessageSquareText
   },

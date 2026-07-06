@@ -10,7 +10,7 @@ export default async function WorkspaceSettingsPage() {
     <QueuePageShell
       eyebrow="Workspace Settings"
       title="Organization Readiness"
-      description="Customer-facing workspace profile, onboarding checklist, usage placeholders, and billing placeholders without Stripe."
+      description="Customer-facing workspace profile, onboarding checklist, usage summary, billing status, and export rules."
     >
       <div className="grid">
         <form action={updateWorkspaceSettingsAction} className="panel span-6 form-stack">
@@ -28,7 +28,7 @@ export default async function WorkspaceSettingsPage() {
             <input name="defaultReportEmail" type="email" defaultValue={settings.defaultReportEmail} />
           </label>
           <label>
-            Plan placeholder
+            Plan key
             <input name="planKey" defaultValue={settings.planKey} />
           </label>
           <label>
@@ -48,12 +48,12 @@ export default async function WorkspaceSettingsPage() {
         </form>
 
         <section className="panel span-6">
-          <h2>Usage Placeholder</h2>
+          <h2>Usage Summary</h2>
           <pre>{JSON.stringify(settings.usage, null, 2)}</pre>
         </section>
 
         <section className="panel span-6">
-          <h2>Billing Placeholder</h2>
+          <h2>Billing Status</h2>
           <ul className="list">
             <li className="list-row">
               <strong>Plan</strong>
@@ -64,8 +64,8 @@ export default async function WorkspaceSettingsPage() {
               <span className="pill">{settings.billingStatus}</span>
             </li>
             <li className="list-row">
-              <strong>Stripe</strong>
-              <span className="pill">not connected</span>
+              <strong>Payment system</strong>
+              <span className="pill">{settings.billingStatus === "active" ? "ready" : "review"}</span>
             </li>
           </ul>
         </section>

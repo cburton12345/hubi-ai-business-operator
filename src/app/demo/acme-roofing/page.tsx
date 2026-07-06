@@ -1,20 +1,10 @@
 import Link from "next/link";
 
-const marketplaceProUrl = "https://marketplacepro.live";
-
 const steps = [
   { title: "Get found", body: "Storm repair, roof replacement, gutter, and service-area pages move through review." },
   {
     title: "Catch the lead",
-    body: (
-      <>
-        Forms, calls,{" "}
-        <Link className="inline-link" href={marketplaceProUrl}>
-          MarketplacePro
-        </Link>{" "}
-        requests, and quote requests become tracked opportunities.
-      </>
-    )
+    body: "Forms, calls, marketplace requests, partner requests, and quote requests become tracked opportunities."
   },
   { title: "Follow up fast", body: "Missed callbacks, stale leads, estimate follow-ups, and review requests surface in one queue." },
   { title: "Prove ROI", body: "Ferocity connects the page or campaign to leads, booked jobs, invoices, reviews, and revenue." }

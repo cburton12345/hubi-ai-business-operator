@@ -13,7 +13,7 @@ export default async function CredentialsPage() {
     <QueuePageShell
       eyebrow="Credentials"
       title="Provider Credential Checklist"
-      description="See which provider keys are configured without exposing secret values. Live actions stay disabled until each integration is reviewed."
+      description="See which connected-account secrets are configured without exposing secret values. Live actions stay disabled until each integration is reviewed."
     >
       <div className="grid section-actions">
         <section className="panel span-4">

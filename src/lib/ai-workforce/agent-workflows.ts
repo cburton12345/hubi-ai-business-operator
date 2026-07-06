@@ -1,4 +1,5 @@
 import { sendTransactionalEmail } from "@/lib/email/transactional";
+import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -89,6 +90,14 @@ const defaultWorkflows = [
     plainName: "Get found"
   }
 ];
+
+const agentRequiredFeatures: Record<string, string[]> = {
+  lead_response_agent: ["ai_generation", "follow_up_recovery"],
+  follow_up_agent: ["follow_up_recovery"],
+  review_agent: ["review_requests"],
+  invoice_reminder_agent: ["payment_collection"],
+  seo_marketing_agent: ["seo_autopilot"]
+};
 
 function nextRunSql(cadenceKey: string) {
   if (cadenceKey === "every_15_min") return "now() + interval '15 minutes'";
@@ -748,8 +757,64 @@ async function runAgentWorkflowForTenant(input: {
   if (!workflow) return { ok: false, message: "Agent workflow tables are not ready yet." };
   if (workflow.status !== "active") return { ok: false, message: "This agent is paused. Turn it on before running it." };
 
+  const requiredFeatures = agentRequiredFeatures[agentKey] ?? ["ai_generation"];
+  const gates = await Promise.all(requiredFeatures.map((featureKey) => getServiceGate(tenantId, featureKey)));
+  const blockedGate = gates.find((gate) => !gate.enabled);
   const runId = await createRun(tenantId, workflow.id, workflow.agent_key, input.source);
   if (!runId) return { ok: false, message: "Could not start the agent run." };
+
+  if (blockedGate) {
+    const summary = `${workflow.agent_key} blocked: ${blockedGate.reason}`;
+    await recordOutput({
+      tenantId,
+      workflowId: workflow.id,
+      runId,
+      agentKey: workflow.agent_key,
+      outputType: "plan_gate",
+      title: summary,
+      status: "blocked",
+      metadata: {
+        featureKey: blockedGate.featureKey,
+        planKey: blockedGate.planKey,
+        minimumPlanKey: blockedGate.minimumPlanKey,
+        usageLimit: blockedGate.usageLimit,
+        currentUsage: blockedGate.currentUsage,
+        remaining: blockedGate.remaining,
+        reason: blockedGate.reason
+      }
+    });
+    await finishRun({
+      tenantId,
+      workflowId: workflow.id,
+      agentKey: workflow.agent_key,
+      runId,
+      status: "completed",
+      summary,
+      output: {
+        cadenceKey: workflow.cadence_key,
+        runMode: workflow.run_mode,
+        blocked: true,
+        blockedFeature: blockedGate.featureKey,
+        reason: blockedGate.reason,
+        planKey: blockedGate.planKey,
+        minimumPlanKey: blockedGate.minimumPlanKey
+      }
+    });
+    await logAgentTimeline({
+      tenantId,
+      agentKey: workflow.agent_key,
+      title: "AI agent workflow blocked by plan or limit",
+      body: summary,
+      metadata: {
+        runId,
+        workflowId: workflow.id,
+        blockedFeature: blockedGate.featureKey,
+        planKey: blockedGate.planKey,
+        minimumPlanKey: blockedGate.minimumPlanKey
+      }
+    });
+    return { ok: false, message: summary };
+  }
 
   try {
     const result =

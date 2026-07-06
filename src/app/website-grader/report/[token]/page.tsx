@@ -5,6 +5,7 @@ import type {
   BusinessHealthCategory,
   BusinessHealthOpportunity,
   EcosystemRecommendation,
+  MissedRevenueEstimate,
   WebsiteGradeFinding,
   WebsiteGradeStep
 } from "@/lib/website-grader/grader";
@@ -14,10 +15,12 @@ type ReportMetadata = {
   strengths?: WebsiteGradeFinding[];
   weaknesses?: WebsiteGradeFinding[];
   opportunities?: BusinessHealthOpportunity[];
+  missedRevenue?: MissedRevenueEstimate;
   ecosystemRecommendations?: EcosystemRecommendation[];
   operations?: {
     city?: string | null;
     state?: string | null;
+    serviceArea?: string | null;
     googleBusinessProfileUrl?: string | null;
   };
 };
@@ -85,12 +88,12 @@ export default async function WebsiteGraderReportPage({
         <section className="public-shell">
           <nav className="public-nav">
             <Link className="brand-mark" href="/">Ferocity</Link>
-            <div><Link href="/website-grader">Business Health Score</Link></div>
+            <div><Link href="/website-grader">Business Grader</Link></div>
           </nav>
           <section className="public-hero">
             <p className="eyebrow">Report not found</p>
-            <h1>This Business Health Score is not available.</h1>
-            <Link className="button" href="/website-grader">Run a new score</Link>
+            <h1>This Business Grader report is not available.</h1>
+            <Link className="button" href="/website-grader">Run a new grader</Link>
           </section>
         </section>
       </main>
@@ -118,7 +121,7 @@ export default async function WebsiteGraderReportPage({
             Ferocity
           </Link>
           <div>
-            <Link href="/website-grader">Business Health Score</Link>
+            <Link href="/website-grader">Business Grader</Link>
             <Link href="/demo">Demo</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/login">Sign in</Link>
@@ -126,12 +129,12 @@ export default async function WebsiteGraderReportPage({
         </nav>
 
         <section className="public-hero">
-          <p className="eyebrow">Ferocity Business Health Score</p>
+          <p className="eyebrow">Ferocity Business Grader</p>
           <h1>{report.company_name || extraction.title || "Business health report"}</h1>
           <p className="muted">
             {failed
               ? "Ferocity could not scan the public page. You can still start setup and add the website details later."
-              : "This report shows the business score, category scores, strengths, weaknesses, opportunity estimates, and what Ferocity would fix first."}
+              : "This report shows the Business Health Score, category scores, strengths, weaknesses, missed revenue estimate, and what Ferocity would fix first."}
           </p>
           <div className="button-row">
             {hasRealWebsite ? (
@@ -140,7 +143,7 @@ export default async function WebsiteGraderReportPage({
               </a>
             ) : null}
             <Link className="button secondary-button" href="/website-grader">
-              Run another score
+              Run another grader
             </Link>
             <Link className="button secondary-button" href="/pricing">
               See plans
@@ -150,7 +153,7 @@ export default async function WebsiteGraderReportPage({
 
         <section className="grid">
           <div className="panel span-4 metric">
-            <span className="muted">Overall Score</span>
+            <span className="muted">Business Health Score</span>
             <strong>{report.score}/100</strong>
             <small className={`pill ${scoreClass(report.score)}`}>{report.grade_label}</small>
           </div>
@@ -219,6 +222,21 @@ export default async function WebsiteGraderReportPage({
 
         <section className="panel section-actions">
           <h2>
+            <Sparkles size={18} /> Estimated Revenue Being Left On The Table
+          </h2>
+          <div className="notice-card">
+            <div>
+              <strong>{metadata.missedRevenue?.label ?? opportunities.find((item) => item.label === "Potential Revenue Increase")?.value ?? "$15,000 - $85,000 annually"}</strong>
+              <p className="muted">
+                {metadata.missedRevenue?.explanation ??
+                  "This is a directional estimate based on gaps in lead capture, follow-up, local SEO, reviews, and conversion tracking."}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel section-actions">
+          <h2>
             <Sparkles size={18} /> Opportunity Estimates
           </h2>
           <p className="muted">These are estimates only. Actual results depend on traffic, pricing, close rate, service area, and execution.</p>
@@ -256,7 +274,7 @@ export default async function WebsiteGraderReportPage({
 
           <div className="panel span-5">
             <h2>
-              <CheckCircle2 size={18} /> Recommended Actions
+              <CheckCircle2 size={18} /> Top 5 Actions
             </h2>
             <ul className="list">
               {steps.map((step) => (
@@ -265,6 +283,9 @@ export default async function WebsiteGraderReportPage({
                     <h3>{step.title}</h3>
                     <p>{step.body}</p>
                     <p className="muted">{step.ferocityArea}</p>
+                    <p className="muted">
+                      Impact: {step.impact} Difficulty: {step.difficulty}. ROI: {step.estimatedRoi}. Time: {step.timeToImplement}.
+                    </p>
                   </div>
                   <span className={`pill ${step.priority === "high" ? "high" : ""}`}>{step.priority}</span>
                 </li>
@@ -317,7 +338,7 @@ export default async function WebsiteGraderReportPage({
             <input name="leadSources" type="hidden" value="website_form" />
             <input name="leadSources" type="hidden" value="local_seo" />
             <input name="leadSources" type="hidden" value="reviews" />
-            <input name="message" type="hidden" value={`Started from Ferocity Business Health Score report ${report.report_token}. Score: ${report.score}/100 (${report.grade_label}).`} />
+            <input name="message" type="hidden" value={`Started from Ferocity Business Grader report ${report.report_token}. Score: ${report.score}/100 (${report.grade_label}).`} />
             <label className="hidden-field">
               Website
               <input name="website" tabIndex={-1} autoComplete="off" />
@@ -326,8 +347,8 @@ export default async function WebsiteGraderReportPage({
               <p className="eyebrow">Next step</p>
               <h2>Fix these problems with Ferocity</h2>
               <p className="muted">
-                Ferocity can use this score as the starting point for AI setup, CRM automation, review generation, growth work,
-                source tracking, invoices, and operator visibility.
+                Your business scored {report.score}/100. Ferocity can automate lead follow-up, review generation, customer
+                communication, marketing, payment visibility, and business operations to help close the gaps identified in this report.
               </p>
             </div>
             <label className="checkbox-row">

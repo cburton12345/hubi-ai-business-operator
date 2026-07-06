@@ -36,7 +36,7 @@ function setupRequestFor(command: string) {
     return `${command}. Set up review requests, customer proof capture, testimonial content, reputation workflows, and approval-safe follow-up.`;
   }
   if (hasAny(lower, ["campaign", "storm", "hail", "facebook", "instagram", "ad", "promotion", "referral"])) {
-    return `${command}. Set up marketing campaign drafts, landing page targets, source tracking, social/GBP/email/SMS/ad copy, and keep publishing or spend behind approval.`;
+    return `${command}. Set up marketing campaign drafts, landing page targets, source tracking, social, GBP, email, customer messages, and ad copy. Keep publishing or spend behind approval.`;
   }
   if (hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow", "landing page"])) {
     return `${command}. Set up website connector, lead forms, page drafts, SEO targets, source tracking, and draft-first publishing controls.`;
@@ -116,7 +116,7 @@ async function ownerCommandEvent(workspaceId: string, command: string, prepared:
       hasBlocked,
       !hasBlocked,
       summary,
-      hasBlocked ? "Open Build My System and resolve the blocked setup items." : "Open Build My System to review the prepared setup, marketing, SEO, and workflow records.",
+      hasBlocked ? "Open Setup Assistant and resolve the blocked setup items." : "Open Setup Assistant to review the prepared setup, marketing, SEO, and workflow records.",
       hasBlocked ? "approval" : null,
       hasBlocked ? 78 : 88,
       JSON.stringify({
@@ -135,7 +135,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   await requirePermission("ai:queue");
   const parsed = commandSchema.safeParse({ command: formData.get("command") });
   if (!parsed.success) {
-    return { ok: false, message: "Tell the AI Workforce what you want done in normal words." };
+    return { ok: false, message: "Tell the Ask AI what you want done in normal words." };
   }
 
   const workspaceId = await getCurrentWorkspaceId();
@@ -209,13 +209,13 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     await scanGrowthLoopAction();
     await scanServiceOpsAction();
     await scanActionQueueAction();
-    prepared.push("Ran AI Mode monitoring scans across lead-to-job, growth, service ops, and action queue systems.");
+    prepared.push("Ran Guided setup monitoring scans across lead-to-job, growth, service ops, and action queue systems.");
   }
 
   await timeline(
     workspaceId,
-    "AI Workforce prepared work",
-    "AI Mode translated an owner command into existing Ferocity setup, marketing, SEO, action queue, and timeline records.",
+    "Ask AI prepared work",
+    "Guided setup translated an owner command into existing Ferocity setup, marketing, SEO, action queue, and timeline records.",
     {
       command,
       prepared,
@@ -238,7 +238,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
 
   return {
     ok: blocked.length === 0,
-    message: blocked.length === 0 ? "AI Mode prepared work inside existing Ferocity systems. Review before anything goes live." : "AI Mode prepared some work, but one or more steps need attention.",
+    message: blocked.length === 0 ? "Guided setup prepared work inside existing Ferocity systems. Review before anything goes live." : "Guided setup prepared some work, but one or more steps need attention.",
     prepared,
     blocked
   };

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ferocity">
+  <rect width="512" height="512" rx="112" fill="#111827"/>
+  <path d="M126 322c0-91 74-165 165-165h95l-44 64h-51c-56 0-101 45-101 101v37h-64v-37Z" fill="#f8fafc"/>
+  <path d="M195 354c0-58 47-105 105-105h54l-43 62h-11c-23 0-43 19-43 43v47h-62v-47Z" fill="#f97316"/>
+  <path d="M126 157h206l-43 64H126v-64Z" fill="#38bdf8"/>
+  <circle cx="366" cy="174" r="23" fill="#f97316"/>
+</svg>

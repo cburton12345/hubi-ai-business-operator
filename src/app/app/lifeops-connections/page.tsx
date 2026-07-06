@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Cable, CheckCircle2, Copy, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getLifeOpsConnections, type LifeOpsConnection } from "@/lib/lifeops/get-lifeops-connections";
-import { updateLifeOpsConnectionAction } from "./actions";
+import { createLifeOpsConnectionAction, updateLifeOpsConnectionAction } from "./actions";
 
 function statusTone(status: string) {
   if (status === "connected") return "";
@@ -21,15 +21,15 @@ export default async function LifeOpsConnectionsPage() {
 
   return (
     <QueuePageShell
-      eyebrow="LifeOps connections"
-      title="Connect Owner Brands And Platforms"
-      description="Register each outside brand, app, or personal system that should send owner-level events into Ferocity without merging codebases."
+      eyebrow="Connected systems"
+      title="Connect Owner Systems"
+      description="Register each outside brand, app, website, or platform that should send owner-level events into Ferocity without merging codebases."
     >
       <section className="grid section-actions">
         <Metric label="Connected" value={dashboard.metrics.connected} />
         <Metric label="Planned" value={dashboard.metrics.planned} />
         <Metric label="Needs attention" value={dashboard.metrics.needsAttention} tone={dashboard.metrics.needsAttention ? "high" : ""} />
-        <Metric label="Personal/LifeOps" value={dashboard.metrics.personal} />
+        <Metric label="Personal systems" value={dashboard.metrics.personal} />
       </section>
 
       <section className="panel section-actions">
@@ -39,8 +39,8 @@ export default async function LifeOpsConnectionsPage() {
               <Cable size={18} /> How Other Brands Feed Ferocity
             </h2>
             <p className="muted">
-              Other systems send important events to the Owner Command intake. Ferocity records the event, ranks owner attention, and routes it to
-              Owner Command or Personal Ops. This does not give Ferocity destructive control over those products.
+              Other systems send important events to the Owner Feed intake. Ferocity records the event, ranks owner attention, and routes it to
+              Owner Feed or Private Owner Tasks. This does not give Ferocity destructive control over those products, and you can disconnect or archive a system later.
             </p>
           </div>
           <span className={`pill ${dashboard.tokenConfigured ? "" : "high"}`}>{dashboard.tokenConfigured ? "token ready" : "token missing"}</span>
@@ -48,7 +48,7 @@ export default async function LifeOpsConnectionsPage() {
         <div className="grid section-actions">
           <section className="panel span-6">
             <h3>Endpoint</h3>
-            <pre className="json-block">POST {dashboard.endpoint}</pre>
+            <pre className="json-block">POST https://ferocity.live{dashboard.endpoint}</pre>
             <p className="muted">Use `Authorization: Bearer OWNER_COMMAND_CENTER_TOKEN` from the sending system.</p>
           </section>
           <section className="panel span-6">
@@ -64,10 +64,68 @@ export default async function LifeOpsConnectionsPage() {
           </section>
         </div>
         <div className="button-row">
-          <Link className="button" href="/app/owner-command-center">Owner Command</Link>
-          <Link className="button secondary-button" href="/app/personal-ops">Personal Ops</Link>
+          <Link className="button" href="/app/owner-command-center">Owner Feed</Link>
+          <Link className="button secondary-button" href="/app/personal-ops">Private Owner Tasks</Link>
           <Link className="button secondary-button" href="/app/integrations">Provider Integrations</Link>
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Register Another System</h2>
+            <p className="muted">
+              Add a future brand, app, website, marketplace, or personal system here. It can start sending owner events with the same endpoint and token.
+            </p>
+          </div>
+          <span className="pill">no code needed</span>
+        </div>
+        <form action={createLifeOpsConnectionAction} className="grid">
+          <label className="span-3">
+            System key
+            <input name="platformKey" placeholder="preferred-trailer" required />
+          </label>
+          <label className="span-3">
+            Display name
+            <input name="platformName" placeholder="Preferred Trailer" required />
+          </label>
+          <label className="span-3">
+            Type
+            <select name="platformType" defaultValue="business">
+              <option value="business">Business</option>
+              <option value="marketplace">Marketplace</option>
+              <option value="software">Software</option>
+              <option value="personal">Personal</option>
+              <option value="safety">Safety</option>
+              <option value="finance">Finance</option>
+              <option value="property">Property</option>
+              <option value="operations">Operations</option>
+            </select>
+          </label>
+          <label className="span-3">
+            Owner layer
+            <select name="ownerLayer" defaultValue="owner_command">
+              <option value="owner_command">Owner Feed</option>
+              <option value="personal_ops">Private Owner Tasks</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label className="span-4">
+            Website or app URL
+            <input name="externalBaseUrl" placeholder="https://example.com" />
+          </label>
+          <label className="span-4">
+            Event types
+            <input name="eventScope" placeholder="payment.issue, support.contact, lead.hot" />
+          </label>
+          <label className="span-4">
+            Notes
+            <input name="notes" placeholder="What should Ferocity watch for?" />
+          </label>
+          <div className="span-12 button-row">
+            <button className="button" type="submit">Register System</button>
+          </div>
+        </form>
       </section>
 
       <section className="panel section-actions">
@@ -78,7 +136,7 @@ export default async function LifeOpsConnectionsPage() {
             </h2>
             <p className="muted">
               These are the brands and platforms Ferocity expects to hear from. Planned means registered. Connected means Ferocity has received a
-              valid owner event from that system or you manually marked it ready.
+              valid owner event from that system or you manually marked it ready. Disconnect pauses the system. Archive hides it from this active list while keeping event history.
             </p>
           </div>
           <span className="pill">{dashboard.connections.length} systems</span>
@@ -122,7 +180,7 @@ export default async function LifeOpsConnectionsPage() {
 function Metric({ label, value, tone = "" }: { label: string; value: number; tone?: string }) {
   return (
     <section className="metric-card span-3">
-      <small className={`pill ${tone}`}>lifeops</small>
+      <small className={`pill ${tone}`}>owner systems</small>
       <strong>{value}</strong>
       <span>{label}</span>
     </section>
@@ -156,8 +214,9 @@ function ConnectionCard({ connection }: { connection: LifeOpsConnection }) {
         <button className="mini-button" name="status" value="connected" type="submit">
           <CheckCircle2 size={13} /> Connected
         </button>
-        <button className="mini-button secondary-button" name="status" value="paused" type="submit">Pause</button>
+        <button className="mini-button secondary-button" name="status" value="paused" type="submit">Disconnect</button>
         <button className="mini-button secondary-button" name="status" value="needs_attention" type="submit">Needs attention</button>
+        <button className="mini-button secondary-button" name="status" value="archived" type="submit">Archive</button>
       </form>
       {connection.actionHref ? <Link className="mini-button" href={connection.actionHref}>Open route</Link> : null}
     </section>

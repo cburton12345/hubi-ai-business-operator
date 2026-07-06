@@ -3,8 +3,11 @@ import { z } from "zod";
 import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendFerocityNotificationEmail, sendTransactionalEmail } from "@/lib/email/transactional";
+import { ensureDefaultAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
+import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
+import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -17,6 +20,8 @@ const accessRequestSchema = z.object({
   requestedPlan: z.string().trim().max(80).optional(),
   mainGoal: z.string().trim().max(120).optional(),
   leadSources: z.array(z.string().trim().max(80)).optional(),
+  autopilotAreas: z.array(z.string().trim().max(80)).optional(),
+  autonomyMode: z.string().trim().max(80).optional(),
   message: z.string().trim().max(2500).optional(),
   sourceDetail: z.string().trim().max(240).optional(),
   consentToContact: z.literal("on"),
@@ -76,12 +81,32 @@ function normalizeLeadSources(values: string[] | undefined) {
     "reviews",
     "facebook",
     "paid_ads",
+    "marketplace",
     "marketplacepro",
     "phone_calls",
     "manual_referrals"
   ]);
   const unique = Array.from(new Set((values ?? []).filter((value) => allowed.has(value))));
   return unique.length ? unique : ["website_form", "local_seo", "phone_calls"];
+}
+
+function normalizeAutopilotAreas(values: string[] | undefined) {
+  const allowed = new Set([
+    "owner_briefing",
+    "lead_follow_up",
+    "estimate_chasing",
+    "invoice_collection",
+    "jobs_tasks",
+    "reviews_proof",
+    "seo_marketing",
+    "website_tracking"
+  ]);
+  return Array.from(new Set((values ?? []).filter((value) => allowed.has(value))));
+}
+
+function normalizeAutonomyMode(value: string | undefined | null) {
+  const allowed = new Set(["recommend_only", "approval_first", "low_risk_auto", "not_sure"]);
+  return value && allowed.has(value) ? value : "approval_first";
 }
 
 function growthSourceFor(key: string) {
@@ -93,6 +118,7 @@ function growthSourceFor(key: string) {
     reviews: { family: "gbp", name: "Reviews", campaign: "Review flow" },
     facebook: { family: "referral", name: "Facebook and community", campaign: "Community presence" },
     paid_ads: { family: "paid", name: "Paid ads", campaign: "Campaign tracking" },
+    marketplace: { family: "referral", name: "Marketplace and partner leads", campaign: "Partner lead sources" },
     marketplacepro: { family: "referral", name: "MarketplacePro", campaign: "Marketplace leads" },
     phone_calls: { family: "direct", name: "Phone calls", campaign: "Call intake" },
     manual_referrals: { family: "referral", name: "Referrals and manual leads", campaign: "Referral tracking" }
@@ -242,6 +268,8 @@ async function sendAccessRequestEmails(input: {
   businessType?: string;
   requestedPlan?: string;
   mainGoal?: string;
+  autopilotAreas?: string[];
+  autonomyMode?: string;
   message?: string;
   workspaceStatus?: "created" | "reused" | "existing" | "pending" | "request_only";
   workspaceSlug?: string;
@@ -326,6 +354,8 @@ Company: ${input.companyName || "not provided"}
 Business type: ${input.businessType || "not provided"}
 Requested plan: ${input.requestedPlan || "not sure"}
 Main goal: ${input.mainGoal || "not provided"}
+AI mode: ${input.autonomyMode || "approval_first"}
+Autopilot areas: ${input.autopilotAreas?.length ? input.autopilotAreas.join(", ") : "not selected"}
 Workspace status: ${input.workspaceStatus || "request_only"}
 ${workspaceLine}
 Invite created: ${inviteUrl ? "yes" : "no"}
@@ -373,6 +403,8 @@ async function createStarterWorkspace(input: {
   websiteUrl?: string;
   requestedPlan?: string;
   mainGoal?: string;
+  autopilotAreas?: string[];
+  autonomyMode?: string;
   message?: string;
   leadSources?: string[];
   websiteConnectionPlan?: string | null;
@@ -479,7 +511,10 @@ async function createStarterWorkspace(input: {
   const baseSlug = slugify(workspaceName) || `workspace-${randomSessionToken().slice(0, 6).toLowerCase()}`;
   const workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 5).toLowerCase()}`;
   const brandSlug = slugify(workspaceName) || "main-brand";
-  const planKey = input.requestedPlan && ["free", "starter", "growth", "operator"].includes(input.requestedPlan) ? input.requestedPlan : "free";
+  const planKey =
+    input.requestedPlan && ["free", "job_tracker", "starter", "growth", "operator"].includes(input.requestedPlan)
+      ? input.requestedPlan
+      : "free";
   const token = randomSessionToken();
 
   const workspaceResult = await queryPostgres<{ id: string; slug: string }>(
@@ -582,6 +617,9 @@ async function createStarterWorkspace(input: {
     leadSources: input.leadSources
   });
 
+  await ensureDefaultAgentWorkflows(workspace.id);
+  await upsertPushNotificationPreferences(workspace.id, getDefaultPushNotificationPreferences());
+
   await queryPostgres(
     `
     insert into public.billing_subscriptions (
@@ -637,6 +675,8 @@ async function createStarterWorkspace(input: {
         planKey,
         leadFormKey,
         leadSources: normalizeLeadSources(input.leadSources),
+        autopilotAreas: normalizeAutopilotAreas(input.autopilotAreas),
+        autonomyMode: normalizeAutonomyMode(input.autonomyMode),
         websiteConnectionPlan: input.websiteConnectionPlan,
         liveActionsEnabled: false
       })
@@ -660,6 +700,8 @@ async function createStarterWorkspace(input: {
         brandId,
         leadFormKey,
         leadSources: normalizeLeadSources(input.leadSources),
+        autopilotAreas: normalizeAutopilotAreas(input.autopilotAreas),
+        autonomyMode: normalizeAutonomyMode(input.autonomyMode),
         websiteConnectionPlan: input.websiteConnectionPlan,
         inviteCreated: true,
         liveActionsEnabled: false
@@ -689,6 +731,8 @@ export async function POST(request: NextRequest) {
     requestedPlan: String(formData.get("requestedPlan") ?? ""),
     mainGoal: String(formData.get("mainGoal") ?? ""),
     leadSources: formData.getAll("leadSources").map(String),
+    autopilotAreas: formData.getAll("autopilotAreas").map(String),
+    autonomyMode: String(formData.get("autonomyMode") ?? ""),
     message: String(formData.get("message") ?? ""),
     sourceDetail: String(formData.get("sourceDetail") ?? ""),
     consentToContact: formData.get("consentToContact"),
@@ -762,6 +806,8 @@ export async function POST(request: NextRequest) {
         consentToContact: true,
         submittedAt: new Date().toISOString(),
         leadSources: normalizeLeadSources(parsed.data.leadSources),
+        autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+        autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
         websiteConnectionPlan: emptyToNull(parsed.data.websiteConnectionPlan),
         launchMode: parsed.data.createWorkspace === "on" ? "auto_workspace_requested" : "request_access_no_auto_workspace",
         nextStep: parsed.data.createWorkspace === "on" ? "workspace_invite_created_when_safe" : "review_then_invite_or_setup_call"
@@ -781,6 +827,31 @@ export async function POST(request: NextRequest) {
     return redirectTo(request, "/start?error=save");
   }
 
+  await recordSalesOpportunity({
+    externalEventId: `access-request:${result.rows[0].id}`,
+    source: "access_request",
+    title: "New Ferocity setup request",
+    summary: `${parsed.data.companyName || parsed.data.email} requested ${parsed.data.requestedPlan || "a Ferocity setup"} for ${parsed.data.mainGoal || "business operations"}.`,
+    email: parsed.data.email,
+    name: parsed.data.name,
+    phone: parsed.data.phone,
+    companyName: parsed.data.companyName,
+    businessType: parsed.data.businessType,
+    websiteUrl: parsed.data.websiteUrl,
+    requestedPlan: parsed.data.requestedPlan,
+    actionHref: "/app/access-requests",
+    moneyCents: parsed.data.requestedPlan && !["free", "not_sure"].includes(parsed.data.requestedPlan) ? 9900 : 0,
+    metadata: {
+      accessRequestId: result.rows[0].id,
+      mainGoal: parsed.data.mainGoal,
+      leadSources: normalizeLeadSources(parsed.data.leadSources),
+      autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+      autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
+      websiteConnectionPlan: parsed.data.websiteConnectionPlan,
+      createWorkspace: parsed.data.createWorkspace === "on"
+    }
+  });
+
   if (parsed.data.createWorkspace === "on") {
     const created = await createStarterWorkspace({
       requestId: result.rows[0].id,
@@ -793,6 +864,8 @@ export async function POST(request: NextRequest) {
       websiteConnectionPlan: parsed.data.websiteConnectionPlan,
       requestedPlan: parsed.data.requestedPlan,
       mainGoal: parsed.data.mainGoal,
+      autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+      autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
       message: parsed.data.message,
       leadSources: normalizeLeadSources(parsed.data.leadSources)
     });
@@ -808,6 +881,8 @@ export async function POST(request: NextRequest) {
           businessType: parsed.data.businessType,
           requestedPlan: parsed.data.requestedPlan,
           mainGoal: parsed.data.mainGoal,
+          autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+          autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
           message: parsed.data.message,
           workspaceStatus: "existing",
           workspaceSlug: created.workspaceSlug,
@@ -828,6 +903,8 @@ export async function POST(request: NextRequest) {
         businessType: parsed.data.businessType,
         requestedPlan: parsed.data.requestedPlan,
         mainGoal: parsed.data.mainGoal,
+        autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+        autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
         message: parsed.data.message,
         workspaceStatus: created.reused ? "reused" : "created",
         workspaceSlug: created.workspaceSlug,
@@ -855,6 +932,8 @@ export async function POST(request: NextRequest) {
       businessType: parsed.data.businessType,
       requestedPlan: parsed.data.requestedPlan,
       mainGoal: parsed.data.mainGoal,
+      autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+      autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
       message: parsed.data.message,
       workspaceStatus: "pending"
     });
@@ -870,6 +949,8 @@ export async function POST(request: NextRequest) {
     businessType: parsed.data.businessType,
     requestedPlan: parsed.data.requestedPlan,
     mainGoal: parsed.data.mainGoal,
+    autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+    autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
     message: parsed.data.message,
     workspaceStatus: "request_only"
   });

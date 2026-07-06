@@ -1,4 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { getPushNotificationPreferences, pushPreferencesAllowEvent, type PushRiskType } from "@/lib/push/preferences";
+import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type AlertCandidate = {
@@ -13,6 +15,25 @@ type AlertCandidate = {
 
 function addIf(candidates: AlertCandidate[], condition: boolean, candidate: AlertCandidate) {
   if (condition) candidates.push(candidate);
+}
+
+function pushEventType(alert: AlertCandidate) {
+  return `alert.${alert.category}.${alert.key}`.slice(0, 120);
+}
+
+function shouldPushAlert(alert: AlertCandidate, previousLastPushAt?: string | null) {
+  if (alert.severity !== "high" && !["billing", "form", "system", "approval"].includes(alert.category)) return false;
+  if (!previousLastPushAt) return true;
+  const lastPushMs = new Date(previousLastPushAt).getTime();
+  if (!Number.isFinite(lastPushMs)) return true;
+  return Date.now() - lastPushMs > 6 * 60 * 60 * 1000;
+}
+
+function alertRiskType(alert: AlertCandidate): PushRiskType {
+  if (alert.category === "billing") return "financial";
+  if (alert.category === "form" || alert.category === "system" || alert.category === "integration") return "automation";
+  if (alert.category === "approval") return "approval";
+  return "revenue";
 }
 
 export async function runWorkspaceAlertScan() {
@@ -232,7 +253,57 @@ export async function runWorkspaceAlertScan() {
     });
   }
 
+  const pushPreferences = await getPushNotificationPreferences(workspaceId);
+
   for (const alert of candidates) {
+    const previousResult = await queryPostgres<{ metadata_json: Record<string, unknown> }>(
+      "select metadata_json from public.operator_alerts where tenant_id = $1 and alert_key = $2 limit 1",
+      [workspaceId, alert.key]
+    );
+    const previousMetadata = previousResult?.rows[0]?.metadata_json ?? {};
+    const previousLastPushAt = typeof previousMetadata.lastPushAt === "string" ? previousMetadata.lastPushAt : null;
+    const riskType = alertRiskType(alert);
+    const pushAllowed =
+      shouldPushAlert(alert, previousLastPushAt) &&
+      pushPreferencesAllowEvent({
+        preferences: pushPreferences,
+        severity: alert.severity,
+        status: "needs_owner",
+        ownerAttention: true,
+        moneyCents: typeof alert.metadata.moneyCents === "number" ? alert.metadata.moneyCents : 0,
+        riskType
+      });
+    let nextMetadata = alert.metadata;
+
+    if (pushAllowed) {
+      const pushResult = await sendWorkspacePushNotifications({
+        tenantId: workspaceId,
+        eventType: pushEventType(alert),
+        title: alert.title,
+        body: alert.summary,
+        url: alert.actionHref,
+        tag: `alert-${alert.key}`,
+        metadata: {
+          alertKey: alert.key,
+          category: alert.category,
+          severity: alert.severity,
+          riskType
+        }
+      });
+      nextMetadata = {
+        ...alert.metadata,
+        lastPushAt: new Date().toISOString(),
+        lastPushResult: {
+          ok: pushResult.ok,
+          sent: pushResult.sent,
+          failed: pushResult.failed,
+          skipped: pushResult.skipped,
+          subscriptionCount: pushResult.subscriptionCount,
+          missing: pushResult.missing
+        }
+      };
+    }
+
     await queryPostgres(
       `
       insert into public.operator_alerts (tenant_id, alert_key, category, severity, status, title, summary, action_href, metadata_json, last_seen_at, updated_at)
@@ -258,7 +329,7 @@ export async function runWorkspaceAlertScan() {
         alert.title,
         alert.summary,
         alert.actionHref,
-        JSON.stringify(alert.metadata)
+        JSON.stringify(nextMetadata)
       ]
     );
   }

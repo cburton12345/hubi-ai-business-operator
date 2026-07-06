@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { hasAdminSession } from "@/lib/auth/admin-session";
 import { appSessionCookieName, getCurrentAppSession } from "@/lib/auth/session";
 import { hashSessionToken } from "@/lib/auth/password";
 import { queryPostgres } from "@/lib/db/postgres";
@@ -23,8 +24,9 @@ export async function switchWorkspaceAction(formData: FormData) {
   if (!parsed.success) return;
 
   const cookieStore = await cookies();
-  const session = await getCurrentAppSession();
+  const [session, adminSession] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
   const token = cookieStore.get(appSessionCookieName)?.value;
+  let allowedToSwitch = false;
 
   if (session && token) {
     const allowed = await queryPostgres(
@@ -41,6 +43,7 @@ export async function switchWorkspaceAction(formData: FormData) {
     );
 
     if ((allowed?.rowCount ?? 0) > 0) {
+      allowedToSwitch = true;
       await queryPostgres(
         `
         update public.app_sessions
@@ -50,15 +53,20 @@ export async function switchWorkspaceAction(formData: FormData) {
         [hashSessionToken(token), parsed.data.workspaceId]
       );
     }
+  } else if (adminSession) {
+    const allowed = await queryPostgres("select id from public.tenants where id = $1 and status <> 'archived' limit 1", [parsed.data.workspaceId]);
+    allowedToSwitch = (allowed?.rowCount ?? 0) > 0;
   }
 
-  cookieStore.set(selectedWorkspaceCookieName, parsed.data.workspaceId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30
-  });
+  if (allowedToSwitch) {
+    cookieStore.set(selectedWorkspaceCookieName, parsed.data.workspaceId, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30
+    });
+  }
 
   revalidatePath("/app");
   redirect(parsed.data.next?.startsWith("/app") ? parsed.data.next : "/app");

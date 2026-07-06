@@ -150,7 +150,7 @@ export default async function PublishingHubPage() {
             <li className="list-row">
               <div>
                 <h3>No drafts yet</h3>
-                <p className="muted">Generate SEO drafts or ask AI Workforce to prepare website and marketing work.</p>
+                <p className="muted">Generate SEO drafts or have the AI Workforce prepare website and marketing work.</p>
               </div>
             </li>
           ) : null}

@@ -1,6 +1,6 @@
 # Owner Command Center Intake
 
-Slashboard is now the prototype and specification for Ferocity's Owner Command Center. Connected systems should publish important owner-level events into Ferocity instead of becoming separate dashboards.
+Ferocity is the production home for the Owner Command Center. Connected systems should publish important owner-level events into Ferocity instead of becoming separate dashboards or duplicate workflow systems.
 
 ## Endpoint
 
@@ -11,7 +11,7 @@ Send either:
 - `Authorization: Bearer <OWNER_COMMAND_CENTER_TOKEN>`
 - `x-ferocity-owner-event-token: <OWNER_COMMAND_CENTER_TOKEN>`
 
-The endpoint is safe by default. It records an event; it does not send messages, publish content, spend money, change ads, or mutate outside systems.
+The endpoint is safe by default. It records an event, runs owner-level AI triage when AI generation is enabled, stores the decision for audit, and can notify the owner. It does not send messages, publish content, spend money, change ads, or mutate outside systems.
 
 ## Payload Example
 

@@ -9,9 +9,13 @@ export type ServiceEstimateDetail = {
   title: string;
   status: string;
   total: string;
+  paymentTerms: string;
+  depositRequired: string;
+  acceptanceNotes: string;
   customerSummary: string;
   internalNotes: string;
   followUpDraft: string;
+  linkedJobs: { id: string; title: string; status: string; schedule: string }[];
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
 };
 
@@ -23,9 +27,13 @@ export type ServiceJobDetail = {
   status: string;
   schedule: string;
   serviceArea: string;
+  estimateId: string;
+  estimateTitle: string;
+  estimateTotal: string;
   dispatcherNotes: string;
   completionNotes: string;
   nextAction: string;
+  linkedInvoices: { id: string; title: string; status: string; total: string; balanceDue: string }[];
   proofRequests: { id: string; publicToken: string; requestType: string; status: string; createdAt: string; url: string }[];
   proofSubmissions: { id: string; title: string; status: string; assetCount: number; createdAt: string }[];
 };
@@ -57,7 +65,7 @@ function formatDateTime(start: Date | null, end: Date | null) {
 
 export async function getServiceEstimateDetail(estimateId: string): Promise<ServiceEstimateDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [estimateResult, itemsResult] = await Promise.all([
+  const [estimateResult, itemsResult, jobsResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -68,9 +76,14 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       customer_summary: string | null;
       internal_notes: string | null;
       manual_follow_up_draft: string | null;
+      payment_terms: string | null;
+      deposit_required_cents: number | null;
+      acceptance_notes: string | null;
     }>(
       `
-      select e.id, e.customer_id, c.name as customer_name, e.title, e.status, e.total_cents, e.customer_summary, e.internal_notes, e.manual_follow_up_draft
+      select e.id, e.customer_id, c.name as customer_name, e.title, e.status, e.total_cents,
+        e.customer_summary, e.internal_notes, e.manual_follow_up_draft,
+        e.payment_terms, e.deposit_required_cents, e.acceptance_notes
       from public.service_estimates e
       join public.customers c on c.id = e.customer_id
       where e.tenant_id = $1 and e.id = $2
@@ -86,6 +99,16 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       order by position, name
       `,
       [workspaceId, estimateId]
+    ),
+    queryPostgres<{ id: string; title: string; status: string; scheduled_start: Date | null; scheduled_end: Date | null }>(
+      `
+      select id, title, status, scheduled_start, scheduled_end
+      from public.service_jobs
+      where tenant_id = $1 and estimate_id = $2
+      order by created_at desc
+      limit 5
+      `,
+      [workspaceId, estimateId]
     )
   ]);
   const estimate = estimateResult?.rows[0];
@@ -98,9 +121,18 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
     title: estimate.title,
     status: estimate.status,
     total: formatMoney(estimate.total_cents),
+    paymentTerms: estimate.payment_terms ?? "",
+    depositRequired: formatMoney(estimate.deposit_required_cents ?? 0),
+    acceptanceNotes: estimate.acceptance_notes ?? "",
     customerSummary: estimate.customer_summary ?? "",
     internalNotes: estimate.internal_notes ?? "",
     followUpDraft: estimate.manual_follow_up_draft ?? "",
+    linkedJobs: (jobsResult?.rows ?? []).map((job) => ({
+      id: job.id,
+      title: job.title,
+      status: job.status,
+      schedule: formatDateTime(job.scheduled_start, job.scheduled_end)
+    })),
     lineItems: (itemsResult?.rows ?? []).map((item) => ({
       id: item.id,
       name: item.name,
@@ -115,7 +147,7 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
 
 export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [result, requestsResult, submissionsResult] = await Promise.all([
+  const [result, requestsResult, submissionsResult, invoicesResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -125,14 +157,32 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       scheduled_start: Date | null;
       scheduled_end: Date | null;
       service_area: string | null;
+      estimate_id: string | null;
+      estimate_title: string | null;
+      estimate_total_cents: number | null;
       dispatcher_notes: string | null;
       completion_notes: string | null;
       ai_next_action: string | null;
     }>(
       `
-      select j.id, j.customer_id, c.name as customer_name, j.title, j.status, j.scheduled_start, j.scheduled_end, j.service_area, j.dispatcher_notes, j.completion_notes, j.ai_next_action
+      select
+        j.id,
+        j.customer_id,
+        c.name as customer_name,
+        j.title,
+        j.status,
+        j.scheduled_start,
+        j.scheduled_end,
+        j.service_area,
+        j.estimate_id,
+        e.title as estimate_title,
+        e.total_cents as estimate_total_cents,
+        j.dispatcher_notes,
+        j.completion_notes,
+        j.ai_next_action
       from public.service_jobs j
       join public.customers c on c.id = j.customer_id
+      left join public.service_estimates e on e.id = j.estimate_id and e.tenant_id = j.tenant_id
       where j.tenant_id = $1 and j.id = $2
       limit 1
       `,
@@ -162,6 +212,16 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       limit 10
       `,
       [workspaceId, jobId]
+    ),
+    queryPostgres<{ id: string; title: string; status: string; total_cents: number; amount_paid_cents: number }>(
+      `
+      select id, title, status, total_cents, amount_paid_cents
+      from public.service_invoices
+      where tenant_id = $1 and job_id = $2
+      order by created_at desc
+      limit 5
+      `,
+      [workspaceId, jobId]
     )
   ]);
   const job = result?.rows[0];
@@ -175,9 +235,19 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
     status: job.status,
     schedule: formatDateTime(job.scheduled_start, job.scheduled_end),
     serviceArea: job.service_area ?? "",
+    estimateId: job.estimate_id ?? "",
+    estimateTitle: job.estimate_title ?? "",
+    estimateTotal: formatMoney(job.estimate_total_cents ?? 0),
     dispatcherNotes: job.dispatcher_notes ?? "",
     completionNotes: job.completion_notes ?? "",
     nextAction: job.ai_next_action ?? "",
+    linkedInvoices: (invoicesResult?.rows ?? []).map((invoice) => ({
+      id: invoice.id,
+      title: invoice.title,
+      status: invoice.status,
+      total: formatMoney(invoice.total_cents),
+      balanceDue: formatMoney(Math.max(invoice.total_cents - invoice.amount_paid_cents, 0))
+    })),
     proofRequests: (requestsResult?.rows ?? []).map((request) => ({
       id: request.id,
       publicToken: request.public_token,

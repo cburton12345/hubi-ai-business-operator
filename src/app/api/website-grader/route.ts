@@ -4,6 +4,7 @@ import { randomSessionToken } from "@/lib/auth/password";
 import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
+import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 import { gradeWebsiteUrl, type OperationsAssessmentInput } from "@/lib/website-grader/grader";
 
 const operationAnswerSchema = z.enum(["strong", "some", "missing", "not_sure"]);
@@ -17,6 +18,7 @@ const graderSchema = z.object({
   businessType: z.string().trim().max(120).optional(),
   city: z.string().trim().max(120).optional(),
   state: z.string().trim().max(80).optional(),
+  serviceArea: z.string().trim().max(220).optional(),
   leadResponse: operationAnswerSchema.optional(),
   followUp: operationAnswerSchema.optional(),
   reviews: operationAnswerSchema.optional(),
@@ -68,6 +70,7 @@ export async function POST(request: NextRequest) {
     businessType: optionalFormString(formData, "businessType"),
     city: optionalFormString(formData, "city"),
     state: optionalFormString(formData, "state"),
+    serviceArea: optionalFormString(formData, "serviceArea"),
     leadResponse: optionalFormString(formData, "leadResponse"),
     followUp: optionalFormString(formData, "followUp"),
     reviews: optionalFormString(formData, "reviews"),
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
     industry: parsed.data.businessType,
     city: parsed.data.city,
     state: parsed.data.state,
+    serviceArea: parsed.data.serviceArea,
     leadResponse: parsed.data.leadResponse,
     followUp: parsed.data.followUp,
     reviews: parsed.data.reviews,
@@ -138,6 +142,24 @@ export async function POST(request: NextRequest) {
       message: gradeResult.message,
       metadata: { websiteUrl: submittedWebsiteUrl, reportToken: result?.rows[0]?.report_token ?? reportToken }
     });
+    await recordSalesOpportunity({
+      externalEventId: `business-grader:${result?.rows[0]?.report_token ?? reportToken}`,
+      source: "business_grader",
+      title: "Business Grader report needs follow-up",
+      summary: `${parsed.data.companyName || parsed.data.email} tried the Business Grader, but the website scan failed. Follow up and offer a setup review.`,
+      email: parsed.data.email,
+      name: parsed.data.name,
+      companyName: parsed.data.companyName,
+      businessType: parsed.data.businessType,
+      websiteUrl: submittedWebsiteUrl,
+      reportToken: result?.rows[0]?.report_token ?? reportToken,
+      actionHref: `/business-health-score/report/${encodeURIComponent(result?.rows[0]?.report_token ?? reportToken)}`,
+      metadata: {
+        scanStatus: "failed",
+        error: gradeResult.message,
+        operations
+      }
+    });
     return redirectTo(request, `/business-health-score/report/${encodeURIComponent(result?.rows[0]?.report_token ?? reportToken)}?scan=failed`);
   }
 
@@ -172,6 +194,7 @@ export async function POST(request: NextRequest) {
         strengths: gradeResult.report.strengths,
         weaknesses: gradeResult.report.weaknesses,
         opportunities: gradeResult.report.opportunities,
+        missedRevenue: gradeResult.report.missedRevenue,
         ecosystemRecommendations: gradeResult.report.ecosystemRecommendations,
         noPublishing: true,
         noCustomerMessages: true,
@@ -181,6 +204,28 @@ export async function POST(request: NextRequest) {
       request.headers.get("user-agent")
     ]
   );
+
+  await recordSalesOpportunity({
+    externalEventId: `business-grader:${result?.rows[0]?.report_token ?? reportToken}`,
+    source: "business_grader",
+    title: "New Business Grader lead",
+    summary: `${parsed.data.companyName || parsed.data.email} scored ${gradeResult.report.score}/100. Recommended path: follow up and turn the report into a Ferocity setup plan.`,
+    email: parsed.data.email,
+    name: parsed.data.name,
+    companyName: parsed.data.companyName,
+    businessType: parsed.data.businessType,
+    websiteUrl: submittedWebsiteUrl,
+    score: gradeResult.report.score,
+    reportToken: result?.rows[0]?.report_token ?? reportToken,
+    actionHref: `/business-health-score/report/${encodeURIComponent(result?.rows[0]?.report_token ?? reportToken)}`,
+    moneyCents: Math.max(0, Math.round((gradeResult.report.missedRevenue.low + gradeResult.report.missedRevenue.high) / 2) * 100),
+    metadata: {
+      gradeLabel: gradeResult.report.gradeLabel,
+      categoryScores: gradeResult.report.categories,
+      missedRevenue: gradeResult.report.missedRevenue,
+      operations
+    }
+  });
 
   return redirectTo(request, `/business-health-score/report/${encodeURIComponent(result?.rows[0]?.report_token ?? reportToken)}`);
 }

@@ -9,9 +9,9 @@ export default async function WorkspaceOnboardingPage() {
 
   return (
     <QueuePageShell
-      eyebrow="SaaS Onboarding"
-      title="Create an Organization Workspace"
-      description="Set up an external business workspace, primary brand, marketing context, automation preferences, and lead form."
+      eyebrow="Customer Onboarding"
+      title="Create A Business Autopilot Workspace"
+      description="Set up the business brain, owner controls, marketing context, automation preferences, and lead form for a customer workspace."
     >
       <form action={createWorkspaceOnboardingAction} className="onboarding-grid">
         <section className="panel form-stack">
@@ -162,6 +162,9 @@ export default async function WorkspaceOnboardingPage() {
           <h2>
             <WandSparkles size={18} /> Automation
           </h2>
+          <p className="muted">
+            These create drafts and setup seeds. Live sends, publishing, ads, and provider actions still depend on controls and connected accounts.
+          </p>
           <label className="checkbox-row">
             <input name="autoCreateLowRiskDrafts" type="checkbox" defaultChecked />
             Auto-create low-risk drafts

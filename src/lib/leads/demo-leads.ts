@@ -19,7 +19,9 @@ export const demoLeads: LeadDashboardRow[] = [
     score: 0,
     grade: "unscored",
     assignedTo: "Unassigned",
-    duplicateKey: "intake@example.com"
+    duplicateKey: "intake@example.com",
+    smsHref: "sms:?&body=Hi%2C%20thanks%20for%20reaching%20out.%20I%20wanted%20to%20follow%20up%20and%20see%20what%20you%20need%20help%20with.",
+    canText: false
   },
   {
     id: "demo-trailer-quote",
@@ -36,7 +38,9 @@ export const demoLeads: LeadDashboardRow[] = [
     score: 0,
     grade: "unscored",
     assignedTo: "Unassigned",
-    duplicateKey: "(555) 010-0000"
+    duplicateKey: "(555) 010-0000",
+    smsHref: "sms:5550100000?&body=Hi%2C%20thanks%20for%20reaching%20out%20to%20Preferred%20Trailer%20Rental.%20I%20wanted%20to%20follow%20up%20and%20see%20what%20you%20need%20help%20with.",
+    canText: true
   }
 ];
 

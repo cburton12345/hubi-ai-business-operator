@@ -50,7 +50,7 @@ export default async function OperatorConsolePage() {
 
   return (
     <QueuePageShell
-      eyebrow="Operator Console"
+      eyebrow="Sales Console"
       title="Lead-To-Job Operating Loop"
       description="A focused vertical for conversations, pipeline movement, callbacks, appointments, and revenue readiness. Provider sends stay disabled until integrations are connected."
     >
@@ -64,10 +64,10 @@ export default async function OperatorConsolePage() {
           Leads
         </Link>
         <Link className="button secondary-button" href="/app/service">
-          Service Ops
+          Work Records
         </Link>
         <Link className="button secondary-button" href="/app/growth">
-          Growth Loop
+          Growth
         </Link>
       </div>
 
@@ -86,7 +86,7 @@ export default async function OperatorConsolePage() {
           <div className="list-row flush-row">
             <div>
               <h2>Unified Conversations</h2>
-              <p className="muted">Two-way SMS/email-ready architecture with internal notes and customer-visible draft messages.</p>
+              <p className="muted">Customer-visible drafts, approved email replies, manual text drafts, and internal notes in one place.</p>
             </div>
             <MessageSquareText size={20} />
           </div>
@@ -240,7 +240,7 @@ export default async function OperatorConsolePage() {
 
         <section className="panel span-6">
           <h2>Message Templates</h2>
-          <p className="muted">Provider-ready templates for SMS/email/manual workflows. Approval stays required.</p>
+          <p className="muted">Ready-to-review templates for email, customer updates, and manual follow-up.</p>
           <ul className="list">
             {dashboard.templates.map((template) => (
               <li className="list-row" key={template.id}>

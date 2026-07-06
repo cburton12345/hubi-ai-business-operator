@@ -23,6 +23,9 @@ type OperationalCountsRow = {
   action_queue: string;
   unpaid_invoices: string;
   overdue_invoices: string;
+  labor_open_requests: string;
+  labor_available_workers: string;
+  labor_match_approvals: string;
   payments_collected_cents: string;
   invoice_balance_cents: string;
   pipeline_value_cents: string;
@@ -48,6 +51,37 @@ type InvoiceFollowUpRow = {
   due_date: string | null;
 };
 
+type OwnerSummaryRow = {
+  income_today_cents: string;
+  income_week_cents: string;
+  income_30d_cents: string;
+  expenses_today_cents: string;
+  expenses_week_cents: string;
+  expenses_30d_cents: string;
+  job_cost_30d_cents: string;
+  overhead_30d_cents: string;
+  hours_today: string;
+  hours_week: string;
+  working_now: string;
+  scheduled_today: string;
+  open_assignments: string;
+  active_workers: string;
+  off_workers: string;
+  itinerary_needed: string;
+  expense_review: string;
+  payroll_review: string;
+  recurring_expenses: string;
+  recurring_due: string;
+};
+
+type ItineraryNeedRow = {
+  id: string;
+  name: string;
+  role_type: string;
+  trade: string | null;
+  availability_status: string;
+};
+
 type DailyPriority = {
   id: string;
   title: string;
@@ -64,13 +98,16 @@ function money(cents: string | number | null | undefined) {
 }
 
 async function loadOperationalSnapshot(workspaceId: string) {
-  const [countsResult, followUpResult, invoiceResult] = await Promise.all([
+  const [countsResult, followUpResult, invoiceResult, ownerSummaryResult, itineraryResult] = await Promise.all([
     queryPostgres<OperationalCountsRow>(
       `
       select
         (select count(*) from public.follow_up_workflows where tenant_id = $1 and status in ('open', 'missed') and coalesce(due_at, created_at) <= now()) as followups_due,
         (select count(*) from public.outbound_action_queue where tenant_id = $1 and status in ('needs_review', 'approved')) as action_queue,
         (select count(*) from public.service_invoices where tenant_id = $1 and status in ('draft', 'sent_manually', 'partially_paid', 'overdue')) as unpaid_invoices,
+        (select count(*) from public.labor_staffing_requests where tenant_id = $1 and status in ('open','matching','approval_needed','contacting')) as labor_open_requests,
+        (select count(*) from public.labor_worker_availability where tenant_id = $1 and status in ('available','needs_review')) as labor_available_workers,
+        (select count(*) from public.labor_staffing_matches where tenant_id = $1 and status = 'suggested') as labor_match_approvals,
         (
           select count(*) from public.service_invoices
           where tenant_id = $1 and status in ('sent_manually', 'partially_paid', 'overdue')
@@ -124,10 +161,113 @@ async function loadOperationalSnapshot(workspaceId: string) {
       limit 6
       `,
       [workspaceId]
+    ),
+    queryPostgres<OwnerSummaryRow>(
+      `
+      with worker_hours as (
+        select
+          coalesce(sum(extract(epoch from (coalesce(clock_out_at, now()) - clock_in_at)) / 3600 - (break_minutes::numeric / 60))
+            filter (where clock_in_at::date = current_date), 0) as hours_today,
+          coalesce(sum(extract(epoch from (coalesce(clock_out_at, now()) - clock_in_at)) / 3600 - (break_minutes::numeric / 60))
+            filter (where clock_in_at >= date_trunc('week', now())), 0) as hours_week
+        from public.operations_time_entries
+        where tenant_id = $1
+      ),
+      expense_totals as (
+        select
+          coalesce(sum(amount_cents + tax_cents) filter (where coalesce(expense_date, created_at::date) = current_date and status <> 'rejected'), 0) as expenses_today_cents,
+          coalesce(sum(amount_cents + tax_cents) filter (where coalesce(expense_date, created_at::date) >= date_trunc('week', now())::date and status <> 'rejected'), 0) as expenses_week_cents,
+          coalesce(sum(amount_cents + tax_cents) filter (where coalesce(expense_date, created_at::date) >= current_date - interval '30 days' and status <> 'rejected'), 0) as expenses_30d_cents,
+          coalesce(sum(amount_cents + tax_cents) filter (where coalesce(expense_date, created_at::date) >= current_date - interval '30 days' and status <> 'rejected' and assign_to = 'job'), 0) as job_expense_30d_cents,
+          coalesce(sum(amount_cents + tax_cents) filter (where coalesce(expense_date, created_at::date) >= current_date - interval '30 days' and status <> 'rejected' and assign_to = 'overhead'), 0) as overhead_30d_cents
+        from public.operations_expenses
+        where tenant_id = $1
+      ),
+      material_totals as (
+        select
+          coalesce(sum(cost_cents) filter (where created_at >= current_date - interval '30 days' and status <> 'rejected'), 0) as material_30d_cents
+        from public.operations_material_logs
+        where tenant_id = $1
+      ),
+      income_totals as (
+        select
+          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at)::date = current_date and status in ('succeeded','manual')), 0) as income_today_cents,
+          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at) >= date_trunc('week', now()) and status in ('succeeded','manual')), 0) as income_week_cents,
+          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at) >= now() - interval '30 days' and status in ('succeeded','manual')), 0) as income_30d_cents
+        from public.service_invoice_payments
+        where tenant_id = $1
+      )
+      select
+        income.income_today_cents::text,
+        income.income_week_cents::text,
+        income.income_30d_cents::text,
+        expenses.expenses_today_cents::text,
+        expenses.expenses_week_cents::text,
+        expenses.expenses_30d_cents::text,
+        (expenses.job_expense_30d_cents + materials.material_30d_cents)::text as job_cost_30d_cents,
+        expenses.overhead_30d_cents::text,
+        hours.hours_today::text,
+        hours.hours_week::text,
+        (select count(*) from public.operations_time_entries where tenant_id = $1 and status = 'open')::text as working_now,
+        (select count(*) from public.operations_assignments where tenant_id = $1 and scheduled_start::date = current_date and status in ('scheduled','in_progress','blocked'))::text as scheduled_today,
+        (select count(*) from public.operations_assignments where tenant_id = $1 and status in ('scheduled','in_progress','blocked','missed'))::text as open_assignments,
+        (select count(*) from public.operations_workers where tenant_id = $1 and availability_status <> 'inactive')::text as active_workers,
+        (select count(*) from public.operations_workers where tenant_id = $1 and availability_status in ('off','blocked'))::text as off_workers,
+        (
+          select count(*)
+          from public.operations_workers w
+          where w.tenant_id = $1
+            and w.availability_status in ('available','scheduled')
+            and not exists (
+              select 1
+              from public.operations_assignments a
+              where a.tenant_id = w.tenant_id
+                and (a.worker_id = w.id or exists (
+                  select 1 from public.operations_crew_members cm
+                  where cm.tenant_id = w.tenant_id and cm.worker_id = w.id and cm.crew_id = a.crew_id
+                ))
+                and a.status in ('scheduled','in_progress','blocked')
+                and a.scheduled_start::date = current_date
+            )
+        )::text as itinerary_needed,
+        (
+          (select count(*) from public.operations_expenses where tenant_id = $1 and status = 'needs_review') +
+          (select count(*) from public.operations_mileage_entries where tenant_id = $1 and status = 'needs_review') +
+          (select count(*) from public.operations_material_logs where tenant_id = $1 and status = 'needs_review')
+        )::text as expense_review,
+        (select count(*) from public.operations_payroll_exports where tenant_id = $1 and status in ('draft','ready','failed'))::text as payroll_review,
+        (select count(*) from public.recurring_operating_expenses where tenant_id = $1 and status = 'active')::text as recurring_expenses,
+        (select count(*) from public.recurring_operating_expenses where tenant_id = $1 and status = 'active' and next_due_date <= current_date + interval '7 days')::text as recurring_due
+      from worker_hours hours, expense_totals expenses, material_totals materials, income_totals income
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<ItineraryNeedRow>(
+      `
+      select w.id, w.name, w.role_type, w.trade, w.availability_status
+      from public.operations_workers w
+      where w.tenant_id = $1
+        and w.availability_status in ('available','scheduled')
+        and not exists (
+          select 1
+          from public.operations_assignments a
+          where a.tenant_id = w.tenant_id
+            and (a.worker_id = w.id or exists (
+              select 1 from public.operations_crew_members cm
+              where cm.tenant_id = w.tenant_id and cm.worker_id = w.id and cm.crew_id = a.crew_id
+            ))
+            and a.status in ('scheduled','in_progress','blocked')
+            and a.scheduled_start::date = current_date
+        )
+      order by w.name
+      limit 6
+      `,
+      [workspaceId]
     )
   ]);
 
   const counts = countsResult?.rows[0];
+  const ownerSummary = ownerSummaryResult?.rows[0];
 
   return {
     metrics: {
@@ -135,6 +275,9 @@ async function loadOperationalSnapshot(workspaceId: string) {
       actionQueue: Number(counts?.action_queue ?? 0),
       unpaidInvoices: Number(counts?.unpaid_invoices ?? 0),
       overdueInvoices: Number(counts?.overdue_invoices ?? 0),
+      laborOpenRequests: Number(counts?.labor_open_requests ?? 0),
+      laborAvailableWorkers: Number(counts?.labor_available_workers ?? 0),
+      laborMatchApprovals: Number(counts?.labor_match_approvals ?? 0),
       paymentsCollected: money(counts?.payments_collected_cents),
       invoiceBalance: money(counts?.invoice_balance_cents),
       pipelineValue: money(counts?.pipeline_value_cents),
@@ -156,7 +299,38 @@ async function loadOperationalSnapshot(workspaceId: string) {
       status: row.status,
       balanceDue: money(row.balance_due_cents),
       dueDate: row.due_date
-    }))
+    })),
+    ownerSummary: {
+      incomeToday: money(ownerSummary?.income_today_cents),
+      incomeWeek: money(ownerSummary?.income_week_cents),
+      income30d: money(ownerSummary?.income_30d_cents),
+      expensesToday: money(ownerSummary?.expenses_today_cents),
+      expensesWeek: money(ownerSummary?.expenses_week_cents),
+      expenses30d: money(ownerSummary?.expenses_30d_cents),
+      jobCost30d: money(ownerSummary?.job_cost_30d_cents),
+      overhead30d: money(ownerSummary?.overhead_30d_cents),
+      net30d: money(Number(ownerSummary?.income_30d_cents ?? 0) - Number(ownerSummary?.expenses_30d_cents ?? 0)),
+      hoursToday: Number(ownerSummary?.hours_today ?? 0),
+      hoursWeek: Number(ownerSummary?.hours_week ?? 0),
+      workingNow: Number(ownerSummary?.working_now ?? 0),
+      scheduledToday: Number(ownerSummary?.scheduled_today ?? 0),
+      openAssignments: Number(ownerSummary?.open_assignments ?? 0),
+      activeWorkers: Number(ownerSummary?.active_workers ?? 0),
+      offWorkers: Number(ownerSummary?.off_workers ?? 0),
+      itineraryNeeded: Number(ownerSummary?.itinerary_needed ?? 0),
+      expenseReview: Number(ownerSummary?.expense_review ?? 0),
+      payrollReview: Number(ownerSummary?.payroll_review ?? 0),
+      recurringExpenses: Number(ownerSummary?.recurring_expenses ?? 0),
+      recurringDue: Number(ownerSummary?.recurring_due ?? 0),
+      recurringExpensesReady: true,
+      itineraryNeeds: (itineraryResult?.rows ?? []).map((worker) => ({
+        id: worker.id,
+        name: worker.name,
+        roleType: worker.role_type,
+        trade: worker.trade ?? "General",
+        status: worker.availability_status
+      }))
+    }
   };
 }
 
@@ -169,6 +343,8 @@ function buildTodayPlan(input: {
   overdueInvoices: number;
   pendingDrafts: number;
   pendingApprovals: number;
+  laborOpenRequests: number;
+  laborMatchApprovals: number;
 }): DailyPriority[] {
   const priorities: DailyPriority[] = [];
 
@@ -221,6 +397,26 @@ function buildTodayPlan(input: {
       detail: "Approve, edit, or reject queued messages and automation steps before anything live can send.",
       href: "/app/actions",
       buttonLabel: "Review actions",
+      urgency: "medium"
+    });
+  }
+
+  if (input.laborMatchApprovals > 0) {
+    priorities.push({
+      id: "labor-matches",
+      title: `${input.laborMatchApprovals} worker match${input.laborMatchApprovals === 1 ? "" : "es"} need review`,
+      detail: "Ferocity found possible worker or subcontractor matches. Approve contact before anyone is reached.",
+      href: "/app/labor-bench",
+      buttonLabel: "Review matches",
+      urgency: "medium"
+    });
+  } else if (input.laborOpenRequests > 0) {
+    priorities.push({
+      id: "labor-requests",
+      title: `${input.laborOpenRequests} worker request${input.laborOpenRequests === 1 ? "" : "s"} open`,
+      detail: "Open staffing needs should be matched, imported from worker intake, or marked manual before jobs get stuck.",
+      href: "/app/labor-bench",
+      buttonLabel: "Find workers",
       urgency: "medium"
     });
   }
@@ -351,7 +547,8 @@ export async function getDashboardSnapshot() {
         todayPlan: buildTodayPlan(metrics),
         operator: {
           followUps: operational.followUps,
-          invoiceFollowUps: operational.invoiceFollowUps
+          invoiceFollowUps: operational.invoiceFollowUps,
+          ownerSummary: operational.ownerSummary
         },
         reporting: {
           leadsByBrand: (leadsByBrand?.rows ?? []).map((row) => ({ label: row.label, count: Number(row.count) })),
@@ -381,7 +578,8 @@ export async function getDashboardSnapshot() {
       todayPlan: buildTodayPlan(metrics),
       operator: {
         followUps: operational.followUps,
-        invoiceFollowUps: operational.invoiceFollowUps
+        invoiceFollowUps: operational.invoiceFollowUps,
+        ownerSummary: operational.ownerSummary
       },
       reporting: {
         leadsByBrand: [],
@@ -431,7 +629,8 @@ export async function getDashboardSnapshot() {
     todayPlan: buildTodayPlan(metrics),
     operator: {
       followUps: operational.followUps,
-      invoiceFollowUps: operational.invoiceFollowUps
+      invoiceFollowUps: operational.invoiceFollowUps,
+      ownerSummary: operational.ownerSummary
     },
     reporting: {
       leadsByBrand: [],

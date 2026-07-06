@@ -12,6 +12,10 @@ function statusIcon(status: string) {
   return status === "done" || status === "active" ? <CheckCircle2 size={16} /> : <Circle size={16} />;
 }
 
+function plainAutomationLevel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 export default async function OperatorSetupPage() {
   const dashboard = await getOperatorSetupDashboard();
   const plans = Array.from(new Map(dashboard.planFeatures.map((feature) => [feature.planKey, feature])).values());
@@ -20,20 +24,26 @@ export default async function OperatorSetupPage() {
     <QueuePageShell
       eyebrow="Setup"
       title="Choose What Ferocity Should Run"
-      description="Turn on the parts the business needs now. Keep advanced tools and live integrations off until the plan, keys, and approval rules are ready."
+      description="Turn on what helps now, leave off what does not, and add connections later when they are useful."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Choose How You Want To Work</h2>
-            <p className="muted">1. AI Mode is the simple path. 2. Traditional Mode keeps every manual control available for administrators and power users.</p>
+            <h2>Only Use What Helps</h2>
+            <p className="muted">
+              Ferocity should explain the benefit first, then let the owner choose: use it, pause it, skip it, or set it up later.
+              No one should have to understand technical setup to get value.
+            </p>
           </div>
           <div className="inline-actions">
-            <Link className="button" href="/app/ai-workforce">
-              <Bot size={16} /> 1. AI Mode
+            <Link className="button" href="/app/build-system">
+              <Bot size={16} /> Let Ferocity guide me
+            </Link>
+            <Link className="button secondary-button" href="/app/role-views">
+              Choose a view
             </Link>
             <span className="pill">
-              <SlidersHorizontal size={14} /> 2. Traditional Mode below
+              <SlidersHorizontal size={14} /> Direct controls below
             </span>
           </div>
         </div>
@@ -50,7 +60,7 @@ export default async function OperatorSetupPage() {
                     {statusIcon(vertical.status)} {vertical.name}
                   </h2>
                   <p className="muted">{vertical.description}</p>
-                  <p className="muted">Starts on {vertical.minimumPlanKey}</p>
+                  <p className="muted">Available on {vertical.minimumPlanKey}</p>
                 </div>
                 <span className="pill">{vertical.status}</span>
               </div>
@@ -58,18 +68,18 @@ export default async function OperatorSetupPage() {
                 <label>
                   Use this
                   <select name="status" defaultValue={vertical.status}>
-                    <option value="not_started">not_started</option>
-                    <option value="active">active</option>
-                    <option value="paused">paused</option>
-                    <option value="not_needed">not_needed</option>
+                    <option value="not_started">Not yet</option>
+                    <option value="active">Use this</option>
+                    <option value="paused">Pause it</option>
+                    <option value="not_needed">Not needed</option>
                   </select>
                 </label>
                 <label>
                   Priority
                   <select name="priority" defaultValue={vertical.priority}>
-                    <option value="low">low</option>
-                    <option value="normal">normal</option>
-                    <option value="high">high</option>
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
                   </select>
                 </label>
               </div>
@@ -92,8 +102,8 @@ export default async function OperatorSetupPage() {
                         </h3>
                         <p className="muted">{step.goal}</p>
                         <p className="muted">
-                          {step.minimumPlanKey} / {step.automationLevel}
-                          {step.requiresProvider ? ` / needs ${step.providerKey}` : ""}
+                          {step.minimumPlanKey} / {plainAutomationLevel(step.automationLevel)}
+                          {step.requiresProvider ? " / needs a connection" : ""}
                         </p>
                       </div>
                       {step.href ? (
@@ -104,11 +114,11 @@ export default async function OperatorSetupPage() {
                     </div>
                     <div className="two-col">
                       <select name="status" defaultValue={step.status}>
-                        <option value="not_started">not_started</option>
-                        <option value="in_progress">in_progress</option>
-                        <option value="done">done</option>
-                        <option value="blocked">blocked</option>
-                        <option value="skipped">skipped</option>
+                        <option value="not_started">Not yet</option>
+                        <option value="in_progress">Working on it</option>
+                        <option value="done">Done</option>
+                        <option value="blocked">Needs help</option>
+                        <option value="skipped">Skip it</option>
                       </select>
                       <button className="mini-button" type="submit">
                         Save step
@@ -128,9 +138,9 @@ export default async function OperatorSetupPage() {
           <PlugZap size={18} /> Tool Connections
         </h2>
         <div className="list-row flush-row">
-          <p className="muted">These are not live switches. They show what must be true before Ferocity sends, publishes, syncs, or charges.</p>
+          <p className="muted">These show which outside tools still need to be connected before Ferocity can send, post, collect, or import automatically.</p>
           <Link className="mini-button" href="/app/controls">
-            Service controls
+            Approval rules
           </Link>
         </div>
         <div className="grid">
@@ -144,12 +154,12 @@ export default async function OperatorSetupPage() {
                   <span className={`pill ${provider.riskLevel}`}>{provider.riskLevel}</span>
                 </li>
                 <li className="list-row">
-                  <strong>Missing keys</strong>
+                  <strong>Missing connection steps</strong>
                   <span className="pill">{provider.missingEnvVars.length}</span>
                 </li>
                 <li className="list-row">
-                  <strong>Callback</strong>
-                  <span className="muted">{provider.callbackPath ?? "None"}</span>
+                  <strong>Status</strong>
+                  <span className="muted">{provider.callbackPath ? "Can receive updates after setup" : "Manual for now"}</span>
                 </li>
               </ul>
               <p>{provider.liveActionRule}</p>
@@ -162,7 +172,7 @@ export default async function OperatorSetupPage() {
         <h2>
           <ShieldCheck size={18} /> Paid Tiers
         </h2>
-        <p className="muted">Simple tiers for later packaging. Smaller businesses can start with the basics; larger operators can add scheduling, reviews, attribution, and integrations.</p>
+        <p className="muted">Simple plans for later packaging. Smaller businesses can start with the basics; larger companies can add scheduling, reviews, source tracking, and more connections.</p>
         <div className="grid">
           {plans.map((plan) => (
             <section className="span-4" key={plan.planKey}>

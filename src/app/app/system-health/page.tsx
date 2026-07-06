@@ -41,6 +41,9 @@ type HealthStats = {
   marketplace_events: string;
   public_forms: string;
   pages: string;
+  labor_requests: string;
+  labor_workers: string;
+  labor_matches: string;
   operator_depth_records: string;
 };
 
@@ -88,6 +91,9 @@ async function getSystemHealthData() {
         (select count(*) from public.marketplacepro_sync_events where tenant_id = $1)::text as marketplace_events,
         (select count(*) from public.forms where tenant_id = $1 and active = true and public_key is not null)::text as public_forms,
         (select count(*) from public.brand_landing_pages where tenant_id = $1 and status <> 'archived')::text as pages,
+        (select count(*) from public.labor_staffing_requests where tenant_id = $1 and status <> 'cancelled')::text as labor_requests,
+        (select count(*) from public.labor_worker_availability where tenant_id = $1 and status <> 'archived')::text as labor_workers,
+        (select count(*) from public.labor_staffing_matches where tenant_id = $1)::text as labor_matches,
         (
           (select count(*) from public.service_area_targets where tenant_id = $1 and status <> 'archived') +
           (select count(*) from public.connector_run_history where tenant_id = $1) +
@@ -228,8 +234,8 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       button: "Billing"
     },
     {
-      title: "Integration placeholders",
-      body: count(stats?.integrations) > 0 ? `${stats?.integrations} integration placeholder(s) found.` : "No integration placeholders exist.",
+      title: "Integration records",
+      body: count(stats?.integrations) > 0 ? `${stats?.integrations} integration record(s) found.` : "No integration records exist yet.",
       status: count(stats?.integrations) > 0 ? "ok" : "needs_setup",
       href: "/app/integrations",
       button: "Integrations"
@@ -246,7 +252,7 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       body: encryptionReady
         ? tenantCredentials > 0
           ? `${tenantCredentials} tenant-owned credential record(s) stored. Live actions are still gated.`
-          : "Encryption is ready. No tenant-owned provider keys have been added yet."
+          : "Encryption is ready. No tenant-owned connected account secrets have been added yet."
         : credentialsNeedKey > 0
           ? `${credentialsNeedKey} credential record(s) need CREDENTIAL_ENCRYPTION_KEY before secrets can be stored.`
           : "Set CREDENTIAL_ENCRYPTION_KEY before accepting tenant-owned provider secrets.",
@@ -261,11 +267,11 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
         : "Background AI monitoring is intentionally disabled until AI_WORKFORCE_CRON_TOKEN is configured.",
       status: env.AI_WORKFORCE_CRON_TOKEN ? "ok" : "needs_setup",
       href: "/app/ai-workforce",
-      button: "AI Mode"
+      button: "Guided setup"
     },
     {
       title: "Provider callbacks",
-      body: count(stats?.callback_integrations) >= 3 ? `${stats?.callback_integrations} callback-ready integration(s) found.` : "Few provider callback stubs are registered.",
+      body: count(stats?.callback_integrations) >= 3 ? `${stats?.callback_integrations} callback-ready integration(s) found.` : "Add callback records for the connected systems that should send events to Ferocity.",
       status: count(stats?.callback_integrations) >= 3 ? "ok" : "warning",
       href: "/app/integrations",
       button: "Callbacks"
@@ -282,18 +288,28 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       button: "Email"
     },
     {
-      title: "SMS sending",
-      body: smsLive ? "SMS provider route is configured." : "SMS is not connected or intentionally paused.",
-      status: smsLive ? "ok" : "not_connected",
+      title: "Optional SMS",
+      body: smsLive ? "Optional SMS is configured. App alerts, email, and dashboard queues remain the default path." : "SMS is optional and not required for launch. Use app alerts, email, dashboard queues, and manual text drafts by default.",
+      status: smsLive ? "ok" : "paused",
       href: "/app/integrations",
-      button: "SMS"
+      button: "SMS settings"
     },
     {
       title: "MarketplacePro bridge",
-      body: marketplace ? `MarketplacePro is ${marketplace.status}; ${stats?.marketplace_connections ?? 0} mapping(s), ${stats?.marketplace_events ?? 0} event(s).` : "MarketplacePro placeholder is missing.",
+      body: marketplace ? `MarketplacePro is ${marketplace.status}; ${stats?.marketplace_connections ?? 0} mapping(s), ${stats?.marketplace_events ?? 0} event(s).` : "MarketplacePro is not connected for this workspace yet.",
       status: marketplace ? (connected(marketplace) ? "ok" : "paused") : "needs_setup",
       href: "/app/integrations",
       button: "Marketplace"
+    },
+    {
+      title: "Labor Bench",
+      body:
+        count(stats?.labor_requests) > 0 || count(stats?.labor_workers) > 0 || count(stats?.labor_matches) > 0
+          ? `${stats?.labor_requests} worker request(s), ${stats?.labor_workers} worker record(s), ${stats?.labor_matches} match record(s).`
+          : "No worker requests, worker intake, or match records yet.",
+      status: count(stats?.labor_requests) > 0 || count(stats?.labor_workers) > 0 || count(stats?.labor_matches) > 0 ? "ok" : "needs_setup",
+      href: "/app/labor-bench",
+      button: "Labor"
     },
     {
       title: "Operator depth",

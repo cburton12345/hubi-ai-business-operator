@@ -60,6 +60,7 @@ export async function sendEmailWithResend(input: ResendEmailInput): Promise<Rese
     body: JSON.stringify({
       from: env.EMAIL_FROM_ADDRESS,
       to: [input.to],
+      reply_to: env.EMAIL_REPLY_TO_ADDRESS ?? env.EMAIL_FROM_ADDRESS,
       subject: input.subject,
       text: input.text,
       html: textToHtml(input.text),

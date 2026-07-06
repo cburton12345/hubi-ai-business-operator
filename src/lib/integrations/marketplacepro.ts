@@ -38,7 +38,9 @@ export const marketplaceProEventSchema = z.object({
     "worker_contact_requests",
     "follows",
     "notifications",
-    "support_requests"
+    "support_requests",
+    "payments",
+    "traffic_events"
   ]),
   marketplaceObjectId: z.string().min(1),
   marketplaceAccountId: z.string().optional(),
@@ -157,7 +159,12 @@ function eventTypeForTable(table: MarketplaceProEventInput["marketplaceTable"], 
     "worker_contact_request_submitted",
     "follow_created",
     "notification_logged",
-    "support_request_created"
+    "support_request_created",
+    "payment_completed",
+    "payment_failed",
+    "checkout_session_completed",
+    "checkout_session_failed",
+    "traffic_event_logged"
   ]);
   if (explicit && allowed.has(explicit)) return explicit;
   if (table === "posts") return "post_created";
@@ -167,14 +174,17 @@ function eventTypeForTable(table: MarketplaceProEventInput["marketplaceTable"], 
   if (table === "worker_contact_requests") return "worker_contact_request_submitted";
   if (table === "follows") return "follow_created";
   if (table === "notifications") return "notification_logged";
+  if (table === "payments") return "payment_completed";
+  if (table === "traffic_events") return "traffic_event_logged";
   return "support_request_created";
 }
 
 function operationalFamilyForTable(table: MarketplaceProEventInput["marketplaceTable"]) {
   if (table === "posts" || table === "offers" || table === "worker_contact_requests") return "lead";
-  if (table === "notifications") return "communication";
+  if (table === "payments") return "revenue";
+  if (table === "traffic_events" || table === "notifications" || table === "follows") return "marketing";
   if (table === "support_requests") return "system";
-  return "marketplace";
+  return "lead";
 }
 
 function titleForEvent(input: MarketplaceProEventInput) {
@@ -186,6 +196,8 @@ function titleForEvent(input: MarketplaceProEventInput) {
   if (input.marketplaceTable === "worker_contact_requests") return "MarketplacePro worker contact request";
   if (input.marketplaceTable === "follows") return "MarketplacePro alert created";
   if (input.marketplaceTable === "notifications") return "MarketplacePro notification logged";
+  if (input.marketplaceTable === "payments") return "MarketplacePro payment activity";
+  if (input.marketplaceTable === "traffic_events") return "MarketplacePro traffic activity";
   return "MarketplacePro support request";
 }
 

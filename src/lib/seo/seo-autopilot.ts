@@ -50,6 +50,58 @@ export type SeoPageOpportunitySummary = {
   nextStep: string;
 };
 
+export type SeoTrafficEngineDashboard = {
+  metrics: {
+    visibilityChecks: number;
+    strategyItems: number;
+    authorityTasks: number;
+    publishingConnections: number;
+  };
+  visibilityChecks: {
+    id: string;
+    brandName: string;
+    platformKey: string;
+    checkName: string;
+    queryText: string;
+    status: string;
+    score: number | null;
+  }[];
+  strategyItems: {
+    id: string;
+    brandName: string;
+    contentType: string;
+    title: string;
+    targetKeyword: string | null;
+    publishTarget: string;
+    status: string;
+    scheduledFor: string | null;
+    priorityScore: number;
+  }[];
+  authorityTasks: {
+    id: string;
+    brandName: string;
+    taskType: string;
+    title: string;
+    status: string;
+    priorityScore: number;
+  }[];
+  publishingConnections: {
+    id: string;
+    brandName: string;
+    providerKey: string;
+    displayName: string;
+    status: string;
+    livePublishEnabled: boolean;
+  }[];
+};
+
+export type ActivateSeoTrafficEngineResult = GenerateSeoAutopilotResult & {
+  visibilityChecksCreated: number;
+  strategyItemsCreated: number;
+  authorityTasksCreated: number;
+  publishingConnectionsCreated: number;
+};
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -117,6 +169,160 @@ function topicCluster(row: SeoBrandRow) {
       keyword: seeds[3] ?? `${service} questions`,
       type: "blog" as const,
       angle: `Help buyers compare options without making unverified superiority claims.`
+    }
+  ];
+}
+
+function platformChecks(row: SeoBrandRow) {
+  const service = serviceName(row);
+  const area = areaName(row);
+  return [
+    {
+      platformKey: "google",
+      checkName: "Google local search",
+      queryText: `${service} ${area}`
+    },
+    {
+      platformKey: "google_ai_overviews",
+      checkName: "Google AI answer surface",
+      queryText: `Who should I call for ${service} in ${area}?`
+    },
+    {
+      platformKey: "chatgpt",
+      checkName: "ChatGPT recommendation prompt",
+      queryText: `Recommend a trustworthy ${service} company near ${area}.`
+    },
+    {
+      platformKey: "perplexity",
+      checkName: "Perplexity comparison prompt",
+      queryText: `Best ${service} options around ${area} with reviews and proof.`
+    },
+    {
+      platformKey: "reddit",
+      checkName: "Reddit/community visibility",
+      queryText: `${area} ${service} recommendations`
+    },
+    {
+      platformKey: "google_business_profile",
+      checkName: "Google Business Profile activity",
+      queryText: `${row.brand_name} Google reviews photos posts`
+    }
+  ];
+}
+
+function contentStrategy(row: SeoBrandRow) {
+  const service = serviceName(row);
+  const area = areaName(row);
+  const base = topicCluster(row);
+  return [
+    {
+      contentType: "service_page",
+      title: `${service} service page`,
+      targetKeyword: `${service} ${area}`,
+      targetPrompt: `Who offers ${service} near ${area}?`,
+      publishTarget: "customer_website",
+      priorityScore: 92,
+      scheduledOffset: 1
+    },
+    {
+      contentType: "city_page",
+      title: `${area} ${service} page`,
+      targetKeyword: `${area} ${service}`,
+      targetPrompt: `Which local company handles ${service} in ${area}?`,
+      publishTarget: "customer_website",
+      priorityScore: 88,
+      scheduledOffset: 4
+    },
+    {
+      contentType: "gbp_post",
+      title: `${service} Google Business update`,
+      targetKeyword: `${service} help`,
+      targetPrompt: `Recent ${service} activity from ${row.brand_name}`,
+      publishTarget: "google_business_profile",
+      priorityScore: 76,
+      scheduledOffset: 7
+    },
+    {
+      contentType: "blog_article",
+      title: base[0]?.title ?? `${service} questions in ${area}`,
+      targetKeyword: base[0]?.keyword ?? `${service} questions`,
+      targetPrompt: `What should customers know before hiring for ${service}?`,
+      publishTarget: "customer_website",
+      priorityScore: 74,
+      scheduledOffset: 10
+    },
+    {
+      contentType: "faq",
+      title: `${service} FAQ for ${area}`,
+      targetKeyword: `${service} FAQ`,
+      targetPrompt: `Answer common ${service} questions for customers in ${area}.`,
+      publishTarget: "manual_export",
+      priorityScore: 70,
+      scheduledOffset: 14
+    },
+    {
+      contentType: "proof_page",
+      title: `${service} customer proof and review page`,
+      targetKeyword: `${service} reviews ${area}`,
+      targetPrompt: `Show real proof, reviews, photos, and completed work for ${service}.`,
+      publishTarget: "customer_website",
+      priorityScore: 84,
+      scheduledOffset: 18
+    },
+    {
+      contentType: "social_post",
+      title: `${service} proof post`,
+      targetKeyword: `${service} local proof`,
+      targetPrompt: `Create a local proof post from completed work and customer permission.`,
+      publishTarget: "social",
+      priorityScore: 64,
+      scheduledOffset: 22
+    },
+    {
+      contentType: "comparison_page",
+      title: `${service} decision guide`,
+      targetKeyword: `best ${service} ${area}`,
+      targetPrompt: `Help customers compare options for ${service} without fake claims.`,
+      publishTarget: "customer_website",
+      priorityScore: 68,
+      scheduledOffset: 28
+    }
+  ];
+}
+
+function authorityTasks(row: SeoBrandRow) {
+  const service = serviceName(row);
+  const area = areaName(row);
+  return [
+    {
+      taskType: "customer_proof",
+      title: "Turn completed jobs into proof",
+      description: `Collect photos, reviews, and permission after ${service} jobs in ${area}.`,
+      priorityScore: 94
+    },
+    {
+      taskType: "local_citation",
+      title: "Check core local listings",
+      description: "Confirm name, address/service area, phone, website, categories, and descriptions match across trusted directories.",
+      priorityScore: 78
+    },
+    {
+      taskType: "directory_profile",
+      title: "Improve service directory profiles",
+      description: `Add service details, photos, review links, and clear CTAs for ${service}.`,
+      priorityScore: 70
+    },
+    {
+      taskType: "community_visibility",
+      title: "Find relevant community questions",
+      description: `Look for local Facebook, Reddit, and neighborhood questions where useful ${service} advice would help.`,
+      priorityScore: 66
+    },
+    {
+      taskType: "internal_linking",
+      title: "Connect service, city, proof, and contact pages",
+      description: "Build internal links so visitors and search engines can move from useful content to the quote request.",
+      priorityScore: 82
     }
   ];
 }
@@ -319,6 +525,313 @@ export async function getSeoPageOpportunitySummary(): Promise<SeoPageOpportunity
     status: row.status,
     nextStep: row.next_step
   }));
+}
+
+export async function getSeoTrafficEngineDashboard(): Promise<SeoTrafficEngineDashboard> {
+  const workspaceId = await getCurrentWorkspaceId();
+  const [visibilityResult, strategyResult, authorityResult, connectionResult] = await Promise.all([
+    queryPostgres<{
+      id: string;
+      brand_name: string;
+      platform_key: string;
+      check_name: string;
+      query_text: string;
+      status: string;
+      visibility_score: number | null;
+    }>(
+      `
+      select v.id, coalesce(b.name, 'Workspace') as brand_name, v.platform_key, v.check_name, v.query_text, v.status, v.visibility_score
+      from public.ai_search_visibility_checks v
+      left join public.brands b on b.id = v.brand_id
+      where v.tenant_id = $1
+      order by v.created_at desc
+      limit 12
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      brand_name: string;
+      content_type: string;
+      title: string;
+      target_keyword: string | null;
+      publish_target: string;
+      status: string;
+      scheduled_for: Date | null;
+      priority_score: number;
+    }>(
+      `
+      select s.id, coalesce(b.name, 'Workspace') as brand_name, s.content_type, s.title, s.target_keyword, s.publish_target, s.status, s.scheduled_for, s.priority_score
+      from public.seo_content_strategy_items s
+      left join public.brands b on b.id = s.brand_id
+      where s.tenant_id = $1
+      order by s.scheduled_for nulls last, s.priority_score desc, s.created_at desc
+      limit 16
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      brand_name: string;
+      task_type: string;
+      title: string;
+      status: string;
+      priority_score: number;
+    }>(
+      `
+      select a.id, coalesce(b.name, 'Workspace') as brand_name, a.task_type, a.title, a.status, a.priority_score
+      from public.seo_authority_tasks a
+      left join public.brands b on b.id = a.brand_id
+      where a.tenant_id = $1
+      order by a.priority_score desc, a.created_at desc
+      limit 12
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      brand_name: string;
+      provider_key: string;
+      display_name: string;
+      status: string;
+      live_publish_enabled: boolean;
+    }>(
+      `
+      select c.id, coalesce(b.name, 'Workspace') as brand_name, c.provider_key, c.display_name, c.status, c.live_publish_enabled
+      from public.brand_publishing_connections c
+      left join public.brands b on b.id = c.brand_id
+      where c.tenant_id = $1 and c.status <> 'archived'
+      order by c.updated_at desc
+      limit 12
+      `,
+      [workspaceId]
+    )
+  ]);
+
+  const visibilityChecks = (visibilityResult?.rows ?? []).map((item) => ({
+    id: item.id,
+    brandName: item.brand_name,
+    platformKey: item.platform_key,
+    checkName: item.check_name,
+    queryText: item.query_text,
+    status: item.status,
+    score: item.visibility_score
+  }));
+  const strategyItems = (strategyResult?.rows ?? []).map((item) => ({
+    id: item.id,
+    brandName: item.brand_name,
+    contentType: item.content_type,
+    title: item.title,
+    targetKeyword: item.target_keyword,
+    publishTarget: item.publish_target,
+    status: item.status,
+    scheduledFor: item.scheduled_for ? new Date(item.scheduled_for).toISOString().slice(0, 10) : null,
+    priorityScore: item.priority_score
+  }));
+  const authorityRows = (authorityResult?.rows ?? []).map((item) => ({
+    id: item.id,
+    brandName: item.brand_name,
+    taskType: item.task_type,
+    title: item.title,
+    status: item.status,
+    priorityScore: item.priority_score
+  }));
+  const publishingConnections = (connectionResult?.rows ?? []).map((item) => ({
+    id: item.id,
+    brandName: item.brand_name,
+    providerKey: item.provider_key,
+    displayName: item.display_name,
+    status: item.status,
+    livePublishEnabled: item.live_publish_enabled
+  }));
+
+  return {
+    metrics: {
+      visibilityChecks: visibilityChecks.length,
+      strategyItems: strategyItems.length,
+      authorityTasks: authorityRows.length,
+      publishingConnections: publishingConnections.length
+    },
+    visibilityChecks,
+    strategyItems,
+    authorityTasks: authorityRows,
+    publishingConnections
+  };
+}
+
+export async function activateSeoTrafficEngine(workspaceId: string): Promise<ActivateSeoTrafficEngineResult> {
+  const rows = await loadSeoBrandRows(workspaceId);
+  const draftResult = await generateSeoAutopilotDrafts(workspaceId);
+  let visibilityChecksCreated = 0;
+  let strategyItemsCreated = 0;
+  let authorityTasksCreated = 0;
+  let publishingConnectionsCreated = 0;
+
+  for (const row of rows) {
+    for (const connection of [
+      {
+        providerKey: "manual_export",
+        displayName: "Manual export",
+        targetUrl: row.landing_pages[0]?.slug ? `/${row.landing_pages[0].slug}` : row.primary_location
+      },
+      {
+        providerKey: "customer_website",
+        displayName: "Customer website",
+        targetUrl: row.landing_pages[0]?.slug ? `/${row.landing_pages[0].slug}` : null
+      },
+      {
+        providerKey: "google_business_profile",
+        displayName: "Google Business Profile",
+        targetUrl: null
+      }
+    ]) {
+      const result = await queryPostgres<{ id: string }>(
+        `
+        insert into public.brand_publishing_connections (
+          tenant_id, brand_id, provider_key, display_name, target_url, status, live_publish_enabled, requires_approval, metadata_json
+        )
+        values ($1, $2, $3, $4, $5, 'not_connected', false, true, $6::jsonb)
+        on conflict (tenant_id, brand_id, provider_key)
+        do update set updated_at = now(), metadata_json = public.brand_publishing_connections.metadata_json || excluded.metadata_json
+        returning id
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          connection.providerKey,
+          connection.displayName,
+          connection.targetUrl,
+          JSON.stringify({ seededBy: "seo_geo_growth_engine", livePublishDisabled: true, approvalRequired: true })
+        ]
+      );
+      if (result?.rows[0]?.id) publishingConnectionsCreated += 1;
+    }
+
+    for (const check of platformChecks(row)) {
+      const result = await queryPostgres<{ id: string }>(
+        `
+        insert into public.ai_search_visibility_checks (
+          tenant_id, brand_id, platform_key, check_name, query_text, result_summary, status, next_check_at, metadata_json
+        )
+        values ($1, $2, $3, $4, $5, $6, 'manual_check', now() + interval '30 days', $7::jsonb)
+        on conflict (tenant_id, brand_id, platform_key, query_text)
+        do update set
+          check_name = excluded.check_name,
+          result_summary = excluded.result_summary,
+          next_check_at = excluded.next_check_at,
+          metadata_json = public.ai_search_visibility_checks.metadata_json || excluded.metadata_json,
+          updated_at = now()
+        returning id
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          check.platformKey,
+          check.checkName,
+          check.queryText,
+          "Ready for a human or connected provider to check. Do not claim visibility until evidence is recorded.",
+          JSON.stringify({ seededBy: "seo_geo_growth_engine", evidenceRequired: true })
+        ]
+      );
+      if (result?.rows[0]?.id) visibilityChecksCreated += 1;
+    }
+
+    for (const item of contentStrategy(row)) {
+      const result = await queryPostgres<{ id: string }>(
+        `
+        insert into public.seo_content_strategy_items (
+          tenant_id, brand_id, strategy_name, content_type, title, target_keyword, target_prompt,
+          service_focus, city_focus, publish_target, status, scheduled_for, priority_score, metadata_json
+        )
+        values ($1, $2, '30-day local SEO and AI search plan', $3, $4, $5, $6, $7, $8, $9, 'planned', current_date + ($10::int), $11, $12::jsonb)
+        on conflict (tenant_id, brand_id, strategy_name, title, content_type)
+        do update set
+          target_keyword = excluded.target_keyword,
+          target_prompt = excluded.target_prompt,
+          service_focus = excluded.service_focus,
+          city_focus = excluded.city_focus,
+          publish_target = excluded.publish_target,
+          scheduled_for = excluded.scheduled_for,
+          priority_score = excluded.priority_score,
+          metadata_json = public.seo_content_strategy_items.metadata_json || excluded.metadata_json,
+          updated_at = now()
+        returning id
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          item.contentType,
+          item.title,
+          item.targetKeyword,
+          item.targetPrompt,
+          serviceName(row),
+          areaName(row),
+          item.publishTarget,
+          item.scheduledOffset,
+          item.priorityScore,
+          JSON.stringify({
+            seededBy: "seo_geo_growth_engine",
+            draftFirst: true,
+            sourcesToUse: ["brand profile", "services", "service areas", "reviews", "customer proof", "lead source data"]
+          })
+        ]
+      );
+      if (result?.rows[0]?.id) strategyItemsCreated += 1;
+    }
+
+    for (const task of authorityTasks(row)) {
+      const result = await queryPostgres<{ id: string }>(
+        `
+        insert into public.seo_authority_tasks (
+          tenant_id, brand_id, task_type, title, description, status, priority_score, due_at, metadata_json
+        )
+        values ($1, $2, $3, $4, $5, 'open', $6, now() + interval '14 days', $7::jsonb)
+        on conflict (tenant_id, brand_id, task_type, title)
+        do update set
+          description = excluded.description,
+          priority_score = excluded.priority_score,
+          due_at = excluded.due_at,
+          metadata_json = public.seo_authority_tasks.metadata_json || excluded.metadata_json,
+          updated_at = now()
+        returning id
+        `,
+        [
+          row.tenant_id,
+          row.brand_id,
+          task.taskType,
+          task.title,
+          task.description,
+          task.priorityScore,
+          JSON.stringify({ seededBy: "seo_geo_growth_engine", noSpam: true, noPaidLinkScheme: true })
+        ]
+      );
+      if (result?.rows[0]?.id) authorityTasksCreated += 1;
+    }
+
+    await queryPostgres(
+      `
+      insert into public.operator_timeline_events (
+        tenant_id, brand_id, event_family, event_type, title, body, metadata_json
+      )
+      values ($1, $2, 'seo', 'growth_engine_prepared', $3, $4, $5::jsonb)
+      `,
+      [
+        row.tenant_id,
+        row.brand_id,
+        `${row.brand_name}: SEO/GEO growth engine prepared`,
+        "Ferocity prepared AI-search checks, a 30-day content plan, authority tasks, publishing connection stubs, and draft SEO assets. Live publishing remains off.",
+        JSON.stringify({ seededBy: "seo_geo_growth_engine", livePublishingEnabled: false })
+      ]
+    );
+  }
+
+  return {
+    ...draftResult,
+    visibilityChecksCreated,
+    strategyItemsCreated,
+    authorityTasksCreated,
+    publishingConnectionsCreated
+  };
 }
 
 export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<GenerateSeoAutopilotResult> {

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { queryPostgres } from "@/lib/db/postgres";
+import { hasAdminSession } from "@/lib/auth/admin-session";
 import { appSessionCookieName, getCurrentAppSession } from "@/lib/auth/session";
 
 export const selectedWorkspaceCookieName = "ferocity_selected_workspace";
@@ -17,7 +18,9 @@ export async function getCurrentWorkspace(): Promise<CurrentWorkspace> {
   const cookieStore = await cookies();
   const selectedCookie = cookieStore.get(selectedWorkspaceCookieName)?.value;
   const session = await getCurrentAppSession();
-  const selectedId = session?.selectedTenantId ?? selectedCookie ?? fallbackWorkspaceId;
+  const adminSession = await hasAdminSession();
+  const canUseGlobalWorkspaceSelection = adminSession || session?.platformRole === "super_admin";
+  const selectedId = session?.selectedTenantId ?? (canUseGlobalWorkspaceSelection ? selectedCookie : null) ?? fallbackWorkspaceId;
 
   const result = await queryPostgres<{
     id: string;
@@ -30,12 +33,15 @@ export async function getCurrentWorkspace(): Promise<CurrentWorkspace> {
     select t.id, t.name, t.slug, t.account_type, tu.role
     from public.tenants t
     left join public.tenant_users tu on tu.tenant_id = t.id and tu.user_id = $2 and tu.status = 'active'
-    where t.id = $1
-       or t.slug = $3
+    where (t.id = $1 or t.slug = $3)
+      and (
+        $4::boolean = true
+        or tu.user_id is not null
+      )
     order by case when t.id = $1 then 0 else 1 end
     limit 1
     `,
-    [selectedId, session?.userId ?? null, selectedId]
+    [selectedId, session?.userId ?? null, selectedId, canUseGlobalWorkspaceSelection]
   );
   const row = result?.rows[0];
 

@@ -8,6 +8,18 @@
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: browser-safe anon key. Do not use it for privileged server operations.
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only privileged key. Store in Render runtime secrets only.
 - `OPENAI_API_KEY`: optional server-only key for real AI provider calls.
+- `STRIPE_SECRET_KEY`: server-only Stripe key for checkout and the billing portal.
+- `STRIPE_WEBHOOK_SECRET`: server-only Stripe webhook signing secret.
+- `STRIPE_PRICE_ID_STARTER`: Stripe recurring price for Starter.
+- `STRIPE_PRICE_ID_GROWTH`: Stripe recurring price for Growth.
+- `STRIPE_PRICE_ID_OPERATOR`: Stripe recurring price for Operator.
+- `EMAIL_PROVIDER`: email provider selector, currently `resend` for live sending.
+- `EMAIL_API_KEY`: server-only email API key.
+- `EMAIL_FROM_ADDRESS`: verified sender address.
+- `EMAIL_REPLY_TO_ADDRESS`: verified inbound/reply address.
+- `RESEND_INBOUND_WEBHOOK_SECRET`: server-only secret for inbound Resend webhooks.
+- `FEROCITY_APP_URL`: canonical production URL, normally `https://ferocity.live`.
+- `OWNER_COMMAND_CENTER_TOKEN`: server-only bearer token for owner operations events from connected systems.
 
 ## Before Customer Beta
 
@@ -15,10 +27,13 @@
 - Confirm `ADMIN_ACCESS_TOKEN` is long, unique, and stored only in Render.
 - Confirm `DATABASE_URL` is stored only in Render or local secret storage.
 - Confirm `OPENAI_API_KEY` is configured only if real AI provider calls are desired.
-- Confirm Render deploy runs `npm run start:render` so migrations apply before app start.
+- Confirm Netlify environment variables match the production env checklist.
+- Confirm Supabase migrations have been applied before depending on new database constraints.
 - Run `npm run prod:check`.
 - Run `npm run db:verify-rls` against the target database.
-- Run `npm run render:smoke` after deployment.
+- Run `npm run launch:smoke` locally before deployment against local start or preview.
+- Run `npm run launch:smoke` after deployment with `FEROCITY_SMOKE_URL=https://ferocity.live`.
+- Run `npm run owner:smoke:marketplacepro`, `npm run owner:smoke:4bid`, and `npm run owner:smoke:guardiansignal` after production env is confirmed.
 
 ## Migration Review Process
 
@@ -45,15 +60,15 @@
 ## Error Handling
 
 - Public lead API failures are logged to `app_error_events`.
-- Use Render logs for runtime stack traces.
+- Use Netlify deploy logs and function logs for runtime stack traces.
 - Treat repeated `critical` or `error` events as beta blockers.
 - Review `/app/safety` and `/app/alerts` after every production deploy.
 
 ## Secret Rotation
 
 1. Rotate database password in Supabase.
-2. Update Render `DATABASE_URL`.
-3. Trigger deploy.
+2. Update Netlify `DATABASE_URL`.
+3. Trigger deploy only after local checks pass.
 4. Verify `/login`, `/`, and one protected route.
 5. Rotate admin token and invalidate old shared copies.
 
@@ -86,3 +101,7 @@
 - Confirm all user-facing workspace language says workspace or organization.
 - Confirm service-role keys are server-only and never exposed to browser bundles.
 - Confirm external integrations remain placeholders until explicit connection phases.
+- Confirm Stripe customer portal opens only from `/app/billing` for signed-in users.
+- Confirm `/reset-password` sends Supabase recovery links to `/reset-password/update`.
+- Confirm Resend inbound webhook secret is configured before enabling inbound routing.
+- Confirm MarketplacePro revenue/traffic migration is applied before accepting `payments` or `traffic_events`.

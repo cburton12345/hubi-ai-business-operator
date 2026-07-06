@@ -145,6 +145,19 @@ const jobProofRequestSchema = z.object({
   requestType: z.enum(["job_proof", "review_proof", "testimonial", "before_after", "general"]).default("job_proof")
 });
 
+const estimateToJobSchema = z.object({
+  estimateId: z.string().uuid(),
+  scheduledStart: z.string().optional(),
+  scheduledEnd: z.string().optional(),
+  serviceArea: z.string().max(180).optional(),
+  dispatcherNotes: z.string().max(1200).optional()
+});
+
+const jobToInvoiceSchema = z.object({
+  jobId: z.string().uuid(),
+  dueDate: z.string().optional()
+});
+
 function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
@@ -563,6 +576,240 @@ export async function createInvoiceAction(formData: FormData) {
   revalidatePath("/app/service");
 }
 
+export async function convertEstimateToJobAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = estimateToJobSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    scheduledStart: String(formData.get("scheduledStart") ?? ""),
+    scheduledEnd: String(formData.get("scheduledEnd") ?? ""),
+    serviceArea: String(formData.get("serviceArea") ?? ""),
+    dispatcherNotes: String(formData.get("dispatcherNotes") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const existingJobResult = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.service_jobs
+    where tenant_id = $1 and estimate_id = $2
+    order by created_at desc
+    limit 1
+    `,
+    [workspaceId, parsed.data.estimateId]
+  );
+  const existingJob = existingJobResult?.rows[0];
+  if (existingJob) {
+    revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+    revalidatePath(`/app/service/jobs/${existingJob.id}`);
+    return;
+  }
+
+  const estimateResult = await queryPostgres<{
+    id: string;
+    brand_id: string | null;
+    customer_id: string;
+    title: string;
+    status: string;
+    internal_notes: string | null;
+  }>(
+    `
+    select id, brand_id, customer_id, title, status, internal_notes
+    from public.service_estimates
+    where tenant_id = $1 and id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.estimateId]
+  );
+  const estimate = estimateResult?.rows[0];
+  if (!estimate) return;
+
+  const scheduledStart = dateTimeOrNull(parsed.data.scheduledStart);
+  const jobResult = await queryPostgres<{ id: string }>(
+    `
+    insert into public.service_jobs (
+      tenant_id, brand_id, customer_id, estimate_id, title, status, scheduled_start, scheduled_end,
+      service_area, dispatcher_notes, ai_next_action
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    returning id
+    `,
+    [
+      workspaceId,
+      estimate.brand_id,
+      estimate.customer_id,
+      estimate.id,
+      estimate.title,
+      scheduledStart ? "scheduled" : "unscheduled",
+      scheduledStart,
+      dateTimeOrNull(parsed.data.scheduledEnd),
+      emptyToNull(parsed.data.serviceArea),
+      emptyToNull(parsed.data.dispatcherNotes) ?? estimate.internal_notes,
+      scheduledStart ? "Confirm crew, materials, and customer arrival window." : "Schedule this approved work, assign the right person, and prep materials."
+    ]
+  );
+  const job = jobResult?.rows[0];
+  if (!job) return;
+
+  if (estimate.status !== "approved") {
+    await queryPostgres(
+      `
+      update public.service_estimates
+      set status = 'approved', updated_at = now()
+      where tenant_id = $1 and id = $2 and status in ('draft', 'sent_manually')
+      `,
+      [workspaceId, estimate.id]
+    );
+  }
+
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "job",
+    type: "estimate_converted_to_job",
+    title: "Estimate converted to job",
+    body: `${estimate.title} is now ready for scheduling and field work.`,
+    entityType: "job",
+    entityId: job.id,
+    sourceTable: "service_estimates",
+    sourceId: estimate.id,
+    metadata: { estimateId: estimate.id, customerId: estimate.customer_id }
+  });
+
+  revalidatePath("/app/service");
+  revalidatePath("/app/job-tracker");
+  revalidatePath("/app/service-command");
+  revalidatePath(`/app/service/estimates/${estimate.id}`);
+  revalidatePath(`/app/service/jobs/${job.id}`);
+  revalidatePath(`/app/service/customers/${estimate.customer_id}`);
+}
+
+export async function createInvoiceFromJobAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = jobToInvoiceSchema.safeParse({
+    jobId: formData.get("jobId"),
+    dueDate: String(formData.get("dueDate") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const existingInvoiceResult = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.service_invoices
+    where tenant_id = $1 and job_id = $2 and status <> 'void'
+    order by created_at desc
+    limit 1
+    `,
+    [workspaceId, parsed.data.jobId]
+  );
+  const existingInvoice = existingInvoiceResult?.rows[0];
+  if (existingInvoice) {
+    revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
+    revalidatePath(`/app/service/invoices/${existingInvoice.id}`);
+    return;
+  }
+
+  const jobResult = await queryPostgres<{
+    id: string;
+    brand_id: string | null;
+    customer_id: string;
+    estimate_id: string | null;
+    title: string;
+    status: string;
+    estimate_total_cents: number | null;
+  }>(
+    `
+    select j.id, j.brand_id, j.customer_id, j.estimate_id, j.title, j.status, e.total_cents as estimate_total_cents
+    from public.service_jobs j
+    left join public.service_estimates e on e.id = j.estimate_id and e.tenant_id = j.tenant_id
+    where j.tenant_id = $1 and j.id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.jobId]
+  );
+  const job = jobResult?.rows[0];
+  if (!job) return;
+
+  const totalCents = job.estimate_total_cents ?? 0;
+  const invoiceResult = await queryPostgres<{ id: string }>(
+    `
+    insert into public.service_invoices (
+      tenant_id, brand_id, customer_id, job_id, estimate_id, title, subtotal_cents, total_cents,
+      due_date, internal_notes, manual_payment_notes
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10)
+    returning id
+    `,
+    [
+      workspaceId,
+      job.brand_id,
+      job.customer_id,
+      job.id,
+      job.estimate_id,
+      `Invoice - ${job.title}`,
+      totalCents,
+      emptyToNull(parsed.data.dueDate),
+      `Created from job ${job.title}. Review line items and payment terms before sending.`,
+      "Payment request can be prepared from this invoice. Customer-facing sends still require approval."
+    ]
+  );
+  const invoice = invoiceResult?.rows[0];
+  if (!invoice) return;
+
+  if (job.estimate_id) {
+    await queryPostgres(
+      `
+      insert into public.invoice_line_items (tenant_id, invoice_id, name, description, quantity, unit_price_cents, total_cents, position)
+      select tenant_id, $3::uuid, name, description, quantity, unit_price_cents, total_cents, position
+      from public.estimate_line_items
+      where tenant_id = $1 and estimate_id = $2
+      order by position, name
+      `,
+      [workspaceId, job.estimate_id, invoice.id]
+    );
+  }
+
+  const copiedItemsResult = await queryPostgres<{ count: string }>(
+    `
+    select count(*)::text
+    from public.invoice_line_items
+    where tenant_id = $1 and invoice_id = $2
+    `,
+    [workspaceId, invoice.id]
+  );
+  if (Number(copiedItemsResult?.rows[0]?.count ?? 0) === 0) {
+    await queryPostgres(
+      `
+      insert into public.invoice_line_items (tenant_id, invoice_id, name, quantity, unit_price_cents, total_cents)
+      values ($1, $2, $3, 1, $4, $4)
+      `,
+      [workspaceId, invoice.id, job.title, totalCents]
+    );
+  }
+
+  await recalculateInvoiceTotal(workspaceId, invoice.id);
+
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "revenue",
+    type: "job_converted_to_invoice",
+    title: "Invoice created from job",
+    body: `${job.title} now has a draft invoice ready for review.`,
+    entityType: "invoice",
+    entityId: invoice.id,
+    sourceTable: "service_jobs",
+    sourceId: job.id,
+    metadata: { jobId: job.id, estimateId: job.estimate_id, customerId: job.customer_id }
+  });
+
+  revalidatePath("/app/service");
+  revalidatePath("/app/cash-collection");
+  revalidatePath("/app/service-command");
+  revalidatePath(`/app/service/jobs/${job.id}`);
+  revalidatePath(`/app/service/invoices/${invoice.id}`);
+  revalidatePath(`/app/service/customers/${job.customer_id}`);
+}
+
 export async function updateEstimateAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = estimateStatusSchema.safeParse({
@@ -846,7 +1093,7 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
       jsonb_build_object(
         'mode', 'prepared',
         'plainStatus', 'Stripe payment collection is prepared. No customer charge is made until an approved link is sent.',
-        'nextStep', 'Connect Stripe keys, account ownership, webhook verification, and approval rules before sending a payment link.'
+        'nextStep', 'Review the invoice balance, customer email, and approval rules before sending this payment link.'
       )
     )
     returning id

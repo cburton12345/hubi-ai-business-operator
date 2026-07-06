@@ -20,8 +20,8 @@ const commandPlans: CommandPlan[] = [
     employees: ["AI Business Setup Manager", "AI Growth Manager", "AI Automation Manager", "AI Website Manager"],
     prepares: ["Check missing setup pieces", "Run operator/growth/service scans", "Review website and SEO readiness", "Route owner to the next useful action"],
     routes: [
-      { label: "Build My System", href: "/app/build-system" },
-      { label: "Owner Command", href: "/app/owner-command-center" },
+      { label: "Let Ferocity set it up", href: "/app/build-system" },
+      { label: "Owner Feed", href: "/app/owner-command-center" },
       { label: "Business Health Score", href: "/business-health-score" }
     ]
   },
@@ -31,8 +31,8 @@ const commandPlans: CommandPlan[] = [
     employees: ["AI Growth Manager", "AI SEO Manager", "AI Marketing Manager", "AI Ad Manager"],
     prepares: ["Review current lead sources", "Find SEO/service-area gaps", "Create campaign ideas", "Prepare follow-up and attribution checks"],
     routes: [
-      { label: "Growth Loop", href: "/app/growth" },
-      { label: "Marketing OS", href: "/app/marketing-os" },
+      { label: "Growth", href: "/app/growth-calendar" },
+      { label: "Marketing", href: "/app/marketing-os" },
       { label: "SEO", href: "/app/seo" }
     ]
   },
@@ -51,9 +51,9 @@ const commandPlans: CommandPlan[] = [
     title: "Create a campaign",
     ownerWords: "Create a storm damage campaign.",
     employees: ["AI Marketing Manager", "AI Content Manager", "AI Website Manager", "AI Ad Manager"],
-    prepares: ["Draft landing page", "Draft social and GBP posts", "Draft email/SMS copy", "Prepare ad copy and audience notes"],
+    prepares: ["Draft landing page", "Draft social and GBP posts", "Draft customer message copy", "Prepare ad copy and audience notes"],
     routes: [
-      { label: "Marketing OS", href: "/app/marketing-os" },
+      { label: "Marketing", href: "/app/marketing-os" },
       { label: "Growth Sites", href: "/app/sites" },
       { label: "Drafts", href: "/app/drafts" }
     ]
@@ -73,9 +73,9 @@ const commandPlans: CommandPlan[] = [
     title: "Reactivate old leads",
     ownerWords: "Follow up with everyone from last month.",
     employees: ["AI Sales Assistant", "AI Follow-Up Manager", "AI Receptionist"],
-    prepares: ["Find stale leads", "Draft reply options", "Queue callback tasks", "Keep email/SMS sends behind approval"],
+    prepares: ["Find stale leads", "Draft reply options", "Queue callback tasks", "Keep customer messages behind review"],
     routes: [
-      { label: "Operator Console", href: "/app/operator" },
+      { label: "Sales Console", href: "/app/operator" },
       { label: "Leads", href: "/app/leads" },
       { label: "Action Queue", href: "/app/actions" }
     ]
@@ -86,9 +86,64 @@ const commandPlans: CommandPlan[] = [
     employees: ["AI Business Setup Manager", "AI Automation Manager", "AI Growth Manager"],
     prepares: ["Build business profile", "Create services and service areas", "Prepare forms, templates, workflows, reviews, and SEO drafts", "Show preview before applying"],
     routes: [
-      { label: "Build My System", href: "/app/build-system" },
+      { label: "Let Ferocity set it up", href: "/app/build-system" },
       { label: "Setup", href: "/app/setup" },
       { label: "Go Live Check", href: "/app/go-live" }
+    ]
+  },
+  {
+    title: "Track jobs, bids, and profit",
+    ownerWords: "Help me track jobs, bids, materials, money paid out, and profit.",
+    employees: ["AI Office Manager", "AI Job Coordinator", "AI Finance Helper"],
+    prepares: ["Open the simple job tracker", "Surface bids, job costs, worker payments, customer balances, and materials", "Route field costs and proof to owner review", "Keep detailed work records available for office staff"],
+    routes: [
+      { label: "Jobs & Money", href: "/app/job-tracker" },
+      { label: "Work Records", href: "/app/service" },
+      { label: "Cash Collection", href: "/app/cash-collection" }
+    ]
+  },
+  {
+    title: "Collect money and follow up",
+    ownerWords: "Show who owes money and help me send reminders.",
+    employees: ["AI Collections Helper", "AI Follow-Up Manager", "AI Office Manager"],
+    prepares: ["Find unpaid invoices and customer balances", "Prepare reminder drafts without sending automatically", "Show payment-link readiness and manual payment records", "Track how many follow-ups happened"],
+    routes: [
+      { label: "Cash Collection", href: "/app/cash-collection" },
+      { label: "Manual Text Drafts", href: "/app/text-queue" },
+      { label: "Invoices And Ledger", href: "/app/cash-collection" }
+    ]
+  },
+  {
+    title: "Plan workers and the day",
+    ownerWords: "Plan my workers for tomorrow and tell me who still needs an itinerary.",
+    employees: ["AI Dispatch Helper", "AI Scheduling Helper", "AI Workforce Helper"],
+    prepares: ["Check assignments and crew day plans", "Show workers missing an itinerary", "Route punch-in, mileage, field proof, and time review to the right tools", "Keep employee-facing actions simple"],
+    routes: [
+      { label: "Crew Day", href: "/app/crew-itinerary" },
+      { label: "Employee View", href: "/app/employee" },
+      { label: "Workers & Schedule", href: "/app/operations-workforce" }
+    ]
+  },
+  {
+    title: "Set reminders and owner tasks",
+    ownerWords: "Remind me tomorrow to call a customer and check today's goals.",
+    employees: ["AI Chief of Staff", "AI Reminder Helper", "AI Office Manager"],
+    prepares: ["Open owner reminders and private tasks", "Route urgent items to Today", "Use push notification settings when available", "Keep personal owner tasks separate from customer records"],
+    routes: [
+      { label: "Private Owner Tasks", href: "/app/personal-ops" },
+      { label: "Today", href: "/app/attention-command" },
+      { label: "Notifications", href: "/app/notifications" }
+    ]
+  },
+  {
+    title: "Handle field costs and proof",
+    ownerWords: "Let workers submit costs, mileage, photos, and proof from the field.",
+    employees: ["AI Field Coordinator", "AI Office Manager", "AI Payroll Helper"],
+    prepares: ["Open the employee-facing field view", "Route field costs and mileage to owner review", "Keep proof, photos, and job notes connected to work records", "Prepare payroll review without running payroll automatically"],
+    routes: [
+      { label: "Employee View", href: "/app/employee" },
+      { label: "Field Costs / Proof", href: "/app/operations-workforce#field-work" },
+      { label: "Payroll Review", href: "/app/operations-workforce#payroll" }
     ]
   }
 ];
@@ -96,6 +151,11 @@ const commandPlans: CommandPlan[] = [
 function pickPlan(input: string) {
   const lower = input.toLowerCase();
   if (lower.includes("audit") || lower.includes("missing") || lower.includes("what do i need") || lower.includes("what next") || lower.includes("check everything")) return commandPlans[0];
+  if (lower.includes("bid") || lower.includes("quote") || lower.includes("material") || lower.includes("profit") || lower.includes("job cost") || lower.includes("track jobs")) return commandPlans[7];
+  if (lower.includes("owe") || lower.includes("collect") || lower.includes("unpaid") || lower.includes("invoice") || lower.includes("bill") || lower.includes("reminder text")) return commandPlans[8];
+  if (lower.includes("worker") || lower.includes("crew") || lower.includes("itinerary") || lower.includes("schedule") || lower.includes("dispatch")) return commandPlans[9];
+  if (lower.includes("remind") || lower.includes("goal") || lower.includes("tomorrow") || lower.includes("personal task")) return commandPlans[10];
+  if (lower.includes("receipt") || lower.includes("field cost") || lower.includes("mileage") || lower.includes("proof") || lower.includes("photo") || lower.includes("payroll")) return commandPlans[11];
   if (lower.includes("review") || lower.includes("testimonial")) return commandPlans[2];
   if (lower.includes("storm") || lower.includes("campaign") || lower.includes("hail") || lower.includes("ad")) return commandPlans[3];
   if (lower.includes("website") || lower.includes("homepage") || lower.includes("page")) return commandPlans[4];
@@ -105,7 +165,7 @@ function pickPlan(input: string) {
 }
 
 export function AiCommandPanel({
-  title = "Tell The AI Workforce What You Want",
+  title = "Tell Ferocity What You Want Done",
   description = "This preview does not send, publish, spend, or change records. It shows the safe plan and routes you to existing Ferocity systems.",
   initialCommand = "Get me more roofing leads.",
   submitLabel = "Prepare work in Ferocity"
@@ -155,7 +215,7 @@ export function AiCommandPanel({
           <div className="list-row flush-row">
             <div>
               <h3>{executeState.message}</h3>
-              <p className="muted">Review the prepared records in Traditional Mode before anything goes live.</p>
+              <p className="muted">Review the prepared work before anything goes live.</p>
             </div>
             <span className={`pill ${executeState.ok ? "" : "high"}`}>{executeState.ok ? "prepared" : "needs attention"}</span>
           </div>
@@ -194,7 +254,7 @@ export function AiCommandPanel({
           </ul>
         </section>
         <section className="panel span-6">
-          <h3>Where This Maps In Traditional Mode</h3>
+          <h3>Where To Review This</h3>
           <ul className="list">
             {plan.routes.map((route) => (
               <li className="list-row" key={route.href}>

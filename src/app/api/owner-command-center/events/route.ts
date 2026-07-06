@@ -3,6 +3,9 @@ import { z } from "zod";
 import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
+import { triageOwnerEvent } from "@/lib/owner-command-center/triage-owner-event";
+import { getPushNotificationPreferences, pushPreferencesAllowEvent } from "@/lib/push/preferences";
+import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 
 const eventSchema = z.object({
   tenantId: z.string().uuid().optional(),
@@ -32,6 +35,25 @@ function bearerToken(request: Request) {
   return request.headers.get("x-ferocity-owner-event-token")?.trim() ?? "";
 }
 
+function hasPushWorthySignal(event: z.infer<typeof eventSchema>) {
+  if (!event.tenantId) return false;
+  if (event.ownerAttention) return true;
+  if (event.status === "needs_owner" || event.status === "critical") return true;
+  if (event.severity === "high" || event.severity === "critical") return true;
+  if (event.moneyCents > 0) return true;
+  return Boolean(event.riskType);
+}
+
+function ownerNotificationBody(event: z.infer<typeof eventSchema>) {
+  const parts = [
+    event.platformName,
+    event.moneyCents > 0 ? `$${Math.round(event.moneyCents / 100).toLocaleString()} at stake` : null,
+    event.recommendedAction ? event.recommendedAction : event.summary
+  ].filter(Boolean);
+
+  return parts.join(" - ").slice(0, 180);
+}
+
 export async function POST(request: Request) {
   const expectedToken = env.OWNER_COMMAND_CENTER_TOKEN;
   if (!expectedToken || bearerToken(request) !== expectedToken) {
@@ -51,6 +73,59 @@ export async function POST(request: Request) {
   }
 
   const event = parsed.data;
+  if (event.tenantId) {
+    const connectionResult = await queryPostgres<{ connection_status: string }>(
+      `
+      select connection_status
+      from public.owner_platform_connections
+      where tenant_id = $1 and platform_key = $2
+      limit 1
+      `,
+      [event.tenantId, event.platformKey]
+    );
+    const connectionStatus = connectionResult?.rows[0]?.connection_status;
+    if (connectionStatus === "paused" || connectionStatus === "archived") {
+      return NextResponse.json({
+        error: "Owner event intake is disconnected for this platform.",
+        status: connectionStatus
+      }, { status: 409 });
+    }
+  }
+
+  const triageDecision = event.tenantId
+    ? await triageOwnerEvent({
+        tenantId: event.tenantId,
+        platformKey: event.platformKey,
+        platformName: event.platformName,
+        eventType: event.eventType,
+        title: event.title,
+        summary: event.summary,
+        severity: event.severity,
+        status: event.status,
+        ownerAttention: event.ownerAttention,
+        aiHandled: event.aiHandled,
+        recommendedAction: event.recommendedAction,
+        actionHref: event.actionHref,
+        moneyCents: event.moneyCents,
+        riskType: event.riskType,
+        confidenceScore: event.confidenceScore,
+        metadata: event.metadata
+      })
+    : null;
+
+  const effectiveEvent = {
+    ...event,
+    severity: triageDecision?.severity ?? event.severity,
+    status: triageDecision?.status ?? event.status,
+    ownerAttention: triageDecision?.ownerAttention ?? event.ownerAttention,
+    aiHandled: triageDecision?.aiHandled ?? event.aiHandled,
+    aiSummary: triageDecision?.aiSummary ?? event.aiSummary,
+    recommendedAction: triageDecision?.recommendedAction ?? event.recommendedAction,
+    moneyCents: triageDecision?.moneyCents ?? event.moneyCents,
+    riskType: triageDecision?.riskType ?? event.riskType,
+    confidenceScore: triageDecision?.confidenceScore ?? event.confidenceScore
+  };
+
   const result = await queryPostgres<{ id: string }>(
     `
     insert into public.owner_command_events (
@@ -86,17 +161,28 @@ export async function POST(request: Request) {
       event.eventType,
       event.title,
       event.summary,
-      event.severity,
-      event.status,
-      event.ownerAttention,
-      event.aiHandled,
-      event.aiSummary ?? null,
-      event.recommendedAction ?? null,
+      effectiveEvent.severity,
+      effectiveEvent.status,
+      effectiveEvent.ownerAttention,
+      effectiveEvent.aiHandled,
+      effectiveEvent.aiSummary ?? null,
+      effectiveEvent.recommendedAction ?? null,
       event.actionHref ?? null,
-      event.moneyCents,
-      event.riskType ?? null,
-      event.confidenceScore,
-      JSON.stringify({ ...event.metadata, intake: "owner_command_center" }),
+      effectiveEvent.moneyCents,
+      effectiveEvent.riskType ?? null,
+      effectiveEvent.confidenceScore,
+      JSON.stringify({
+        ...event.metadata,
+        intake: "owner_command_center",
+        aiTriage: triageDecision
+          ? {
+              decisionStatus: triageDecision.decisionStatus,
+              escalationReasons: triageDecision.escalationReasons,
+              makeMoneyNext: triageDecision.makeMoneyNext,
+              liveActionAllowed: triageDecision.liveActionAllowed
+            }
+          : null
+      }),
       event.occurredAt ?? null
     ]
   );
@@ -109,6 +195,43 @@ export async function POST(request: Request) {
       metadata: { platformKey: event.platformKey, externalEventId: event.externalEventId }
     });
     return NextResponse.json({ error: "Event was not saved." }, { status: 500 });
+  }
+
+  if (event.tenantId && triageDecision) {
+    await queryPostgres(
+      `
+      insert into public.owner_ai_decisions (
+        tenant_id, owner_event_id, decision_type, model_provider, model_name, decision_status,
+        input_json, output_json, confidence_score, owner_attention, live_action_allowed, escalation_reasons
+      )
+      values ($1, $2::uuid, 'triage', $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, false, $10::text[])
+      `,
+      [
+        event.tenantId,
+        result.rows[0].id,
+        process.env.AI_PROVIDER || "openai",
+        process.env.AI_MODEL || "gpt-4.1-mini",
+        triageDecision.decisionStatus,
+        JSON.stringify({
+          platformKey: event.platformKey,
+          platformName: event.platformName,
+          eventType: event.eventType,
+          title: event.title,
+          summary: event.summary,
+          severity: event.severity,
+          status: event.status,
+          ownerAttention: event.ownerAttention,
+          moneyCents: event.moneyCents,
+          riskType: event.riskType ?? null,
+          confidenceScore: event.confidenceScore,
+          metadata: event.metadata
+        }),
+        JSON.stringify(triageDecision),
+        triageDecision.confidenceScore,
+        triageDecision.ownerAttention,
+        triageDecision.escalationReasons
+      ]
+    );
   }
 
   if (event.tenantId) {
@@ -131,6 +254,56 @@ export async function POST(request: Request) {
         })
       ]
     );
+  }
+
+  if (hasPushWorthySignal(effectiveEvent)) {
+    const preferences = await getPushNotificationPreferences(event.tenantId!);
+    const preferencesAllowPush = pushPreferencesAllowEvent({
+      preferences,
+      severity: effectiveEvent.severity,
+      status: effectiveEvent.status,
+      ownerAttention: effectiveEvent.ownerAttention,
+      moneyCents: effectiveEvent.moneyCents,
+      riskType: effectiveEvent.riskType ?? null
+    });
+
+    if (!preferencesAllowPush) {
+      return NextResponse.json({ ok: true, id: result.rows[0].id, push: "filtered_by_preferences" });
+    }
+
+    const pushResult = await sendWorkspacePushNotifications({
+      tenantId: event.tenantId!,
+      eventType: `owner.${event.eventType}`,
+      title: event.title,
+      body: ownerNotificationBody(effectiveEvent),
+      url: event.actionHref ?? "/app/owner-command-center",
+      tag: `owner-${event.platformKey}-${event.eventType}`,
+      metadata: {
+        ownerEventId: result.rows[0].id,
+        platformKey: event.platformKey,
+        platformName: event.platformName,
+        severity: effectiveEvent.severity,
+        status: effectiveEvent.status,
+        riskType: effectiveEvent.riskType ?? null,
+        moneyCents: effectiveEvent.moneyCents
+      }
+    });
+
+    if (pushResult.failed > 0 || pushResult.missing.length > 0) {
+      await logAppError({
+        source: "api.owner-command-center.events.push",
+        message: "Owner event push notification did not fully send.",
+        severity: pushResult.missing.length > 0 ? "info" : "warning",
+        metadata: {
+          ownerEventId: result.rows[0].id,
+          platformKey: event.platformKey,
+          sent: pushResult.sent,
+          failed: pushResult.failed,
+          skipped: pushResult.skipped,
+          missing: pushResult.missing
+        }
+      });
+    }
   }
 
   return NextResponse.json({ ok: true, id: result.rows[0].id });

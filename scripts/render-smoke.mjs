@@ -1,4 +1,4 @@
-const baseUrl = (process.env.RENDER_SMOKE_URL ?? "https://hubi-ai-business-operator.onrender.com").replace(/\/$/, "");
+const baseUrl = (process.env.RENDER_SMOKE_URL ?? process.env.FEROCITY_SMOKE_URL ?? "https://ferocity.live").replace(/\/$/, "");
 
 const checks = [
   { path: "/", label: "public landing page" },
@@ -14,4 +14,4 @@ for (const check of checks) {
   }
 }
 
-console.log(`Render smoke passed for ${baseUrl}`);
+console.log(`Smoke passed for ${baseUrl}`);

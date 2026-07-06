@@ -1,19 +1,32 @@
 import pg from "pg";
+import fs from "node:fs";
 
 const { Client } = pg;
 
+function loadEnvFile(path) {
+  if (!fs.existsSync(path)) return;
+  for (const line of fs.readFileSync(path, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+
+loadEnvFile(".env.local");
+loadEnvFile(".env");
+
 const tenantId = process.env.TENANT_ID ?? "11111111-1111-4111-8111-111111111111";
-const email = process.env.ADMIN_EMAIL;
-const authUserId = process.env.ADMIN_AUTH_USER_ID ?? "33333333-3333-4333-8333-333333333333";
+const requestedAuthUserId = process.env.ADMIN_AUTH_USER_ID ?? "33333333-3333-4333-8333-333333333333";
 const outsiderAuthUserId = "44444444-4444-4444-8444-444444444444";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is required.");
-  process.exit(1);
-}
-
-if (!email) {
-  console.error("ADMIN_EMAIL is required.");
   process.exit(1);
 }
 
@@ -27,14 +40,71 @@ const client = new Client({
 await client.connect();
 
 try {
-  await client.query(
+  let email = process.env.ADMIN_EMAIL;
+
+  if (!email) {
+    const holder = await client.query(
+      `
+      select email
+      from public.users
+      where auth_user_id = $1
+      limit 1
+      `,
+      [requestedAuthUserId]
+    );
+
+    email = holder.rows[0]?.email;
+  }
+
+  if (!email) {
+    throw new Error("ADMIN_EMAIL is required, or ADMIN_AUTH_USER_ID must already belong to a user.");
+  }
+
+  const adminUser = await client.query(
     `
-    update public.users
-    set auth_user_id = $1, updated_at = now()
-    where email = $2
+    select id, email, auth_user_id
+    from public.users
+    where lower(email) = lower($1)
+    limit 1
     `,
-    [authUserId, email]
+    [email]
   );
+
+  if (adminUser.rowCount !== 1) {
+    throw new Error(`No user found for ADMIN_EMAIL=${email}. Run db:bootstrap-admin first.`);
+  }
+
+  let authUserId = adminUser.rows[0].auth_user_id;
+
+  if (!authUserId) {
+    const holder = await client.query(
+      `
+      select email
+      from public.users
+      where auth_user_id = $1
+      limit 1
+      `,
+      [requestedAuthUserId]
+    );
+
+    if (holder.rowCount && holder.rows[0].email.toLowerCase() !== email.toLowerCase()) {
+      throw new Error(
+        `ADMIN_AUTH_USER_ID is already attached to ${holder.rows[0].email}. ` +
+          "Set ADMIN_AUTH_USER_ID to the Supabase auth user id for ADMIN_EMAIL, or clear the duplicate test id."
+      );
+    }
+
+    await client.query(
+      `
+      update public.users
+      set auth_user_id = $1, updated_at = now()
+      where id = $2
+      `,
+      [requestedAuthUserId, adminUser.rows[0].id]
+    );
+
+    authUserId = requestedAuthUserId;
+  }
 
   await client.query("begin");
   await client.query("set local role authenticated");

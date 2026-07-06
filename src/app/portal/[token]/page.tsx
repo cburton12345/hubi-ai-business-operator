@@ -39,7 +39,10 @@ export default async function CustomerPortalPage({
       <section className="public-shell">
         <p className="eyebrow">{portal.organizationName}</p>
         <h1>{portal.customerName}</h1>
-        <p className="muted">Customer portal summary for estimates, scheduled work, and invoices. Messages and payments are still handled manually by the business.</p>
+        <p className="muted">
+          Customer portal summary for estimates, scheduled work, invoices, recurring plans, and job proof. Payment links appear only when the
+          business has prepared them through a connected provider.
+        </p>
         <div className="button-row">
           <a className="button" href={`/portal/${token}?proof=1`}>
             Share job photos or testimonial

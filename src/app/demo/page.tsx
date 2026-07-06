@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   ArrowRight,
   Bot,
@@ -12,18 +13,27 @@ import {
   Star
 } from "lucide-react";
 
+export const metadata: Metadata = {
+  title: "Ferocity Demo: AI Operating System for Businesses",
+  description:
+    "See how Ferocity watches a business, tells the owner what needs attention, and automates approved work.",
+  alternates: {
+    canonical: "/demo"
+  }
+};
+
 const loopSteps = [
   {
-    title: "Set up the system",
-    body: "Tell Ferocity what the business does, where it works, which services matter, and what should stay approval-only.",
-    result: "Services, cities, sources, review flow, and follow-up rules",
+    title: "Grade the business",
+    body: "Ferocity checks how leads, reviews, follow-up, website conversion, jobs, and invoices are working together.",
+    result: "Business score, key gaps, and top actions",
     icon: Bot
   },
   {
-    title: "Start growth channels",
-    body: "Use local SEO, Google profile activity, reviews, referrals, ads, website forms, and MarketplacePro without losing source tracking.",
-    result: "Every channel gets tied to a source",
-    icon: Megaphone
+    title: "Tell the owner what needs done",
+    body: "Ferocity turns leads, jobs, callbacks, estimates, invoices, reviews, and worker activity into a practical action list.",
+    result: "Owner briefing, daily work list, risk alerts, and next actions",
+    icon: CalendarClock
   },
   {
     title: "Catch and follow up",
@@ -32,10 +42,10 @@ const loopSteps = [
     icon: MessageSquareText
   },
   {
-    title: "Turn work into proof",
-    body: "Completed jobs feed reviews, customer proof, before/after content, SEO updates, and clearer revenue reporting.",
-    result: "Reviews, proof assets, invoices, and ROI",
-    icon: ChartNoAxesCombined
+    title: "Grow the business",
+    body: "Completed jobs feed reviews, customer proof, before/after content, SEO updates, Google profile work, and clearer revenue reporting.",
+    result: "Marketing proof, reviews, paid invoices, and ROI",
+    icon: Megaphone
   }
 ];
 
@@ -46,11 +56,19 @@ const commandItems = [
 ];
 
 const proofPoints = [
-  ["Marketing OS", "Business profile memory, website import requests, one-click campaigns, media, graphics, and video job drafts."],
-  ["Growth", "SEO pages, Google profile activity, reviews, referrals, ads, and source tracking."],
+  ["Owner Command", "Daily briefing, money radar, risks, approvals, decisions, and what the AI handled."],
+  ["Operations", "Jobs, worker day plans, punch-in visibility, field proof, invoices, payment reminders, and task visibility."],
   ["Sales", "Lead inbox, suggested replies, callbacks, notes, estimates, and pipeline stages."],
-  ["Operations", "Jobs, appointments, invoices, payment reminders, customer history, and task visibility."],
-  ["Control", "Approval gates, connected-account status, usage limits, audit logs, and private dashboards."]
+  ["Finance", "Invoices, payment reminders, ledgers, collection alerts, and revenue visibility."],
+  ["Marketing", "SEO pages, Google profile activity, reviews, referrals, ads, content, proof, and source tracking."],
+  ["Control", "Approvals, connected accounts, spending limits, activity logs, and private dashboards."]
+];
+
+const controlRows = [
+  ["Follow-up", "AI can prepare replies, reminders, stale lead recovery, and estimate follow-up. The business can keep sends manual or require review before messages go out."],
+  ["Marketing", "AI can draft SEO, Google profile posts, review content, proof posts, and campaigns. Publishing waits for permission."],
+  ["Money", "AI can flag overdue invoices, prepare reminders, record payments, and show cash risk. Online payment links depend on connected Stripe settings."],
+  ["Operations", "AI can build daily work lists, job follow-up, owner queues, and worker tasks. Owners keep final control over people and schedules."]
 ];
 
 const deepLinks = [
@@ -68,10 +86,18 @@ const deepLinks = [
   },
   {
     title: "Automations",
-    body: "View the practical workflows Ferocity organizes for normal operators.",
+    body: "View the repeat workflows Ferocity can prepare, remind, log, and help run.",
     href: "/automations",
     icon: CalendarClock
   }
+];
+
+const demoLayers = [
+  ["Step 1", "Audit the business", "Business Grader shows what is missing before anyone signs up."],
+  ["Step 2", "Show what needs done", "Owner Command Center ranks today's work, money, risks, approvals, and AI-handled items."],
+  ["Step 3", "Plan the day", "Operations & Workforce tracks jobs, worker day plans, punch-ins, schedules, expenses, mileage, proof, and job cost."],
+  ["Step 4", "Work the leads", "Lead Follow-Up keeps replies, callbacks, estimates, and stale opportunities visible."],
+  ["Step 5", "Grow from the work", "Marketing turns reviews, proof, SEO, Google profile activity, campaigns, and source data into new demand."]
 ];
 
 export default function DemoPage() {
@@ -85,11 +111,12 @@ export default function DemoPage() {
           <div>
             <Link href="/about">About</Link>
             <Link href="/features">Features</Link>
-            <Link href="/business-health-score">Health Score</Link>
+            <Link href="/business-health-score">Free Grader</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/integrations">Integrations</Link>
+            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
@@ -98,26 +125,20 @@ export default function DemoPage() {
         <section className="hero-command demo-hero">
           <div className="hero-copy">
             <p className="eyebrow">Product demo</p>
-            <h1>Ferocity builds the marketing system, then runs the follow-up loop.</h1>
+            <h1>See how Ferocity turns business chaos into an owner action list.</h1>
             <p>
-              Tell Ferocity what the business does. It prepares the business profile, campaigns, content, review flow,
-              lead capture, follow-up, and safety controls so the owner is not staring at a pile of settings.
+              Ferocity watches leads, sales, jobs, workers, invoices, reviews, marketing, and customer follow-up.
+              The owner sees what matters, what AI prepared, and what needs approval, without having to babysit every corner of the business.
             </p>
             <div className="button-row">
-              <Link className="button" href="/demo/tour">
-                Start guided tour <ArrowRight size={16} />
-              </Link>
-              <Link className="button secondary-button" href="/business-health-score">
-                Business Health Score
+              <Link className="button" href="/business-health-score">
+                Run free grader <ArrowRight size={16} />
               </Link>
               <Link className="button secondary-button" href="/start?source=demo">
-                Start my setup
+                Get my setup plan
               </Link>
               <Link className="button secondary-button" href="/pricing">
                 View plans
-              </Link>
-              <Link className="button secondary-button" href="/connect-website">
-                Connect website
               </Link>
             </div>
           </div>
@@ -134,7 +155,7 @@ export default function DemoPage() {
               {[
                 ["18", "new leads", "6 need reply"],
                 ["$84k", "pipeline", "$28k viewed estimates"],
-                ["34", "content targets", "SEO, posts, reviews"],
+                ["34", "growth targets", "SEO, posts, reviews"],
                 ["12", "review asks", "ready after jobs"]
               ].map(([value, label, hint]) => (
                 <div key={label}>
@@ -157,13 +178,32 @@ export default function DemoPage() {
           </div>
         </section>
 
+        <section className="panel section-actions">
+          <p className="eyebrow">Demo map</p>
+          <h2>One system, five outcomes.</h2>
+          <p className="muted">
+            Get customers. Win jobs. Run the day. Get paid faster. Let AI handle the busy work.
+          </p>
+          <div className="grid section-actions">
+            {demoLayers.map(([step, title, body]) => (
+              <article className="panel span-4" key={title}>
+                <span className="pill">{step}</span>
+                <h3>{title}</h3>
+                <p className="muted">{body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="demo-positioning">
           <div>
             <p className="eyebrow">The operating loop</p>
-            <h2>Ferocity starts before the lead arrives.</h2>
+            <h2>Ferocity starts before the lead arrives and keeps working after the job is done.</h2>
             <p>
-              A CRM starts when somebody becomes a contact. Ferocity starts earlier with the Marketing OS: business profile
-              memory, website import, one-click campaigns, SEO drafts, media, review graphics, and approval controls.
+              A CRM starts when somebody becomes a contact. Ferocity starts earlier: website connection, SEO, reviews,
+              forms, source tracking, campaigns, and AI setup. Then it carries the lead through follow-up, work, payment,
+              proof, and reporting. It fits contractors, practices, e-commerce, agencies, sales teams, multi-location owners,
+              and connected rental workflows.
             </p>
           </div>
           <div className="demo-proof-flow">
@@ -193,7 +233,7 @@ export default function DemoPage() {
             <p className="eyebrow">What is included</p>
             <h2>One demo, five plain areas.</h2>
             <p className="muted">
-              The detailed pages are still there. This page only shows the core idea so a normal business owner can understand it quickly.
+              This page shows the core idea quickly: Ferocity helps run the loop, then uses the loop to create more booked revenue opportunities.
             </p>
           </div>
           <div className="value-ladder">
@@ -202,6 +242,23 @@ export default function DemoPage() {
                 <strong>{title}</strong>
                 <p>{body}</p>
               </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel section-actions">
+          <p className="eyebrow">Autopilot with controls</p>
+          <h2>The business chooses how much AI runs.</h2>
+          <p className="muted">
+            Ferocity can act like cruise control for the repeat work, but it does not force full automation. The owner can keep
+            messages, public posts, payments, and connected-account actions reviewed until trust is earned.
+          </p>
+          <div className="grid section-actions">
+            {controlRows.map(([title, body]) => (
+              <article className="panel span-6" key={title}>
+                <h3>{title}</h3>
+                <p className="muted">{body}</p>
+              </article>
             ))}
           </div>
         </section>
@@ -224,18 +281,21 @@ export default function DemoPage() {
             <div>
               <h2>Public demo. Private business data.</h2>
               <p className="muted">
-                This page is safe to share. Real dashboards, leads, setup controls, invoices, proof requests, and workspace data
+                This page is safe to share. Real dashboards, leads, setup controls, invoices, proof requests, and business data
                 require sign-in.
               </p>
             </div>
             <ShieldCheck size={22} />
           </div>
           <div className="button-row">
-            <Link className="button" href="/start?source=demo_bottom">
-              Start setup <ArrowRight size={16} />
+            <Link className="button" href="/business-health-score">
+              Run free grader <ArrowRight size={16} />
+            </Link>
+            <Link className="button secondary-button" href="/start?source=demo_bottom">
+              Get my setup plan
             </Link>
             <Link className="button secondary-button" href="/connect-website">
-              Website hookup
+              Connect website
             </Link>
             <Link className="button secondary-button" href="/pricing">
               Compare plans

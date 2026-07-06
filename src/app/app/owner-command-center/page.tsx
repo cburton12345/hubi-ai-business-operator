@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { AlertTriangle, Bot, BriefcaseBusiness, DollarSign, Radar, ShieldAlert, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, BriefcaseBusiness, CheckCircle2, DollarSign, Radar, ShieldAlert, Sparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOwnerCommandCenter, type OwnerCommandEvent } from "@/lib/owner-command-center/get-owner-command-center";
+import type { OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
 import { syncFerocityActivityToOwnerCommandAction, updateOwnerCommandEventAction } from "./actions";
 
 function money(cents: number) {
@@ -14,13 +15,19 @@ function severityClass(severity: string) {
   return "";
 }
 
+function priorityClass(priority: string) {
+  if (priority === "critical" || priority === "high") return "high";
+  if (priority === "medium") return "medium";
+  return "";
+}
+
 export default async function OwnerCommandCenterPage() {
   const center = await getOwnerCommandCenter();
 
   return (
     <QueuePageShell
       eyebrow="Owner View"
-      title="Owner Command Center"
+      title="Owner Feed"
       description="The AI Chief of Staff layer for all owned businesses and connected systems. It shows what happened, what matters, what AI handled, and what needs a decision."
     >
       <section className="panel section-actions">
@@ -36,8 +43,11 @@ export default async function OwnerCommandCenterPage() {
             <form action={syncFerocityActivityToOwnerCommandAction}>
               <button className="button" type="submit">Sync Ferocity Activity</button>
             </form>
-            <Link className="button secondary-button" href="/app/lifeops-connections">LifeOps Connections</Link>
-            <Link className="button secondary-button" href="/app/personal-ops">Personal Ops</Link>
+            <Link className="button" href="/app/business-brain">Business Info</Link>
+            <Link className="button" href="/app/automation-timeline">Automation Timeline</Link>
+            <Link className="button" href="/app/ai-monitoring">Daily Brief</Link>
+            <Link className="button secondary-button" href="/app/lifeops-connections">Connected Systems</Link>
+            <Link className="button secondary-button" href="/app/personal-ops">Private Owner Tasks</Link>
             <Link className="button" href="/app/ai-workforce">AI Workforce</Link>
             <Link className="button secondary-button" href="/app/operator">Operations</Link>
             <Link className="button secondary-button" href="/app/reports">Reports</Link>
@@ -59,6 +69,33 @@ export default async function OwnerCommandCenterPage() {
         <Metric label="Collected" value={money(center.metrics.collectedRevenueCents)} icon={<BriefcaseBusiness size={18} />} />
       </section>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <CheckCircle2 size={18} /> Here&apos;s What I Need From You
+            </h2>
+            <p className="muted">
+              Ferocity only interrupts for missing access, money, risk, low confidence, failed automation, customer issues, or a decision it should not make alone.
+            </p>
+          </div>
+          <Link className="button secondary-button" href="/app/reports">Open reports</Link>
+        </div>
+        <ul className="list">
+          {center.ownerRequests.slice(0, 8).map((need) => (
+            <OwnerNeedRow key={need.id} need={need} />
+          ))}
+          {center.ownerRequests.length === 0 ? (
+            <li className="list-row">
+              <div>
+                <h3>Nothing needs you right now</h3>
+                <p className="muted">No owner blockers were found across reports, provider setup, operations, workforce, Business Grader, or connected systems.</p>
+              </div>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+
       <section className="grid section-actions">
         <EventPanel title="Needs Owner Queue" empty="No owner decisions are waiting right now." events={center.needsOwner} allowActions />
         <EventPanel title="Critical Issues Queue" empty="No critical issues are open." events={center.criticalIssues} allowActions />
@@ -70,8 +107,8 @@ export default async function OwnerCommandCenterPage() {
             <DollarSign size={18} /> Make Money Next
           </h2>
           <ul className="list">
-            {center.makeMoneyNext.map((item) => (
-              <li className="list-row" key={`${item.title}-${item.href}`}>
+            {center.makeMoneyNext.map((item, index) => (
+              <li className="list-row" key={`${item.title}-${item.href}-${index}`}>
                 <div>
                   <h3>{item.title}</h3>
                   <p className="muted">{item.detail}</p>
@@ -98,11 +135,30 @@ export default async function OwnerCommandCenterPage() {
         <div className="setup-step-grid">
           <Step number="1" title="Owner View" body="What happened, what matters, what needs attention, and what to do next." />
           <Step number="2" title="Operations View" body="Leads, jobs, customers, marketing, reviews, revenue, and follow-up remain fully available." />
-          <Step number="3" title="Builder View" body="AI Workforce, workflows, integrations, rules, prompt systems, and automation controls stay available for power users." />
-          <Step number="4" title="Safe Escalation" body="Revenue, risk, disputes, legal, safety, failures, low confidence, and approval needs rise to the owner." />
+          <Step number="3" title="Business Info" body="Services, prices, territories, team, brand voice, proof, reviews, website, documents, integrations, and customer history feed the AI helpers." />
+          <Step number="4" title="Builder View" body="AI Workforce, workflows, integrations, rules, prompt systems, and automation controls stay available for power users." />
+          <Step number="5" title="Automation Timeline" body="Prepared work, approvals, blocked items, sent items, syncs, and owner decisions stay visible in one trust feed." />
+          <Step number="6" title="Safe Escalation" body="Revenue, risk, disputes, legal, safety, failures, low confidence, and approval needs rise to the owner." />
         </div>
       </section>
     </QueuePageShell>
+  );
+}
+
+function OwnerNeedRow({ need }: { need: OwnerNeed }) {
+  return (
+    <li className="list-row">
+      <div>
+        <h3>{need.title}</h3>
+        <p>{need.detail}</p>
+        <p className="muted">{need.category}</p>
+      </div>
+      <div className="inline-actions">
+        <span className={`pill ${priorityClass(need.priority)}`}>{need.priority}</span>
+        <span className="pill">{need.count}</span>
+        <Link className="mini-button" href={need.href}>{need.actionLabel}</Link>
+      </div>
+    </li>
   );
 }
 

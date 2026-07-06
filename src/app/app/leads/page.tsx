@@ -41,6 +41,9 @@ export default async function LeadsPage({
           <Link className="button secondary-button" href="/app/leads/export">
             CSV export
           </Link>
+          <Link className="button secondary-button" href="/app/text-queue">
+            Text follow-ups
+          </Link>
         </div>
 
         <section className="panel span-12">
@@ -113,6 +116,7 @@ export default async function LeadsPage({
                   <th>Score</th>
                   <th>Assigned</th>
                   <th>Duplicate</th>
+                  <th>Quick action</th>
                   <th>Created</th>
                 </tr>
               </thead>
@@ -140,6 +144,11 @@ export default async function LeadsPage({
                     </td>
                     <td>{lead.assignedTo}</td>
                     <td>{lead.duplicateKey && duplicateCounts[lead.duplicateKey] > 1 ? <span className="pill medium">possible duplicate</span> : "Unique"}</td>
+                    <td>
+                      <a className={`mini-button secondary-button ${lead.canText ? "" : "disabled-link"}`} href={lead.smsHref} aria-disabled={!lead.canText}>
+                        Text lead
+                      </a>
+                    </td>
                     <td>{new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(lead.createdAt))}</td>
                   </tr>
                 ))}

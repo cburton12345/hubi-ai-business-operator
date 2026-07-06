@@ -3,8 +3,10 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { ensureDefaultAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
 import { buildSetupPlan, type SetupPlan } from "@/lib/setup/setup-planner";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -164,6 +166,26 @@ export async function applySetupPlanAction(_state: SetupActionState, formData: F
   }
 
   await applySetupAssets(workspaceId, runId, plan, rollback);
+  await ensureDefaultAgentWorkflows(workspaceId);
+  await upsertPushNotificationPreferences(workspaceId, getDefaultPushNotificationPreferences());
+  await logSetupChange(
+    runId,
+    workspaceId,
+    "setup_asset",
+    "push_notification_preferences",
+    workspaceId,
+    null,
+    { tenant_id: workspaceId, owner_alerts_enabled: true, min_severity: "high", min_money_cents: 10000 }
+  );
+  await logSetupChange(
+    runId,
+    workspaceId,
+    "setup_asset",
+    "ai_agent_workflows",
+    workspaceId,
+    null,
+    { tenant_id: workspaceId, seeded: true, liveCustomerSends: false, livePublishing: false }
+  );
 
   if (runId) {
     await queryPostgres(
@@ -554,7 +576,7 @@ async function upsertGrowthSource(workspaceId: string, runId: string | null, bra
       cityFocus,
       `ferocity_setup_${slugify(sourceName)}`,
       isPaid ? "paused" : "active",
-      JSON.stringify({ setupOperator: true, note: "Attribution placeholder only; no ad account or spend is connected." })
+      JSON.stringify({ setupOperator: true, note: "Attribution source created for tracking. Ad spend stays off until approved." })
     ]
   );
   await logRowChange(runId, workspaceId, rollback, "growth_sources", before, result?.rows[0] ?? null);

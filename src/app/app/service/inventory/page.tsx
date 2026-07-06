@@ -10,7 +10,7 @@ export default async function ServiceInventoryPage() {
     <QueuePageShell
       eyebrow="Service Operations"
       title="Inventory And Equipment"
-      description="Track parts, materials, tools, equipment, and vehicles for the selected organization. This is manual tracking only, with integrations prepared for later."
+      description="Track parts, materials, tools, equipment, and vehicles for the selected organization."
     >
       <div className="section-actions button-row">
         <Link className="button secondary-button" href="/app/service">Service command center</Link>

@@ -32,7 +32,7 @@ export default async function BillingPage() {
           <div>
             <h2>Current Plan</h2>
             <p className="muted">
-              The workspace keeps its data when it upgrades. Live email, SMS, payment links, publishing, and provider sync stay gated by
+              The workspace keeps its data when it upgrades. Email, app alerts, Stripe payment links, publishing, and provider sync stay governed by
               connected accounts and review rules.
             </p>
           </div>
@@ -51,6 +51,21 @@ export default async function BillingPage() {
           <Link className="button secondary-button" href="/start?source=billing_upgrade">Request upgrade help</Link>
           <Link className="mini-button" href="/app/controls">Control limits</Link>
         </div>
+        <details className="panel subtle-panel">
+          <summary>Subscription account tools</summary>
+          <p className="muted">
+            Stripe handles card updates, invoices, plan changes, and cancellation. This keeps payment security outside Ferocity.
+          </p>
+          {billing.subscription?.hasStripeCustomer ? (
+            <form action="/api/billing/portal" method="post">
+              <button className="mini-button" type="submit">
+                Open Stripe billing portal
+              </button>
+            </form>
+          ) : (
+            <p className="muted">No Stripe customer is attached to this workspace yet. Start checkout before portal tools appear.</p>
+          )}
+        </details>
       </section>
 
       <div className="grid section-actions">
@@ -62,6 +77,9 @@ export default async function BillingPage() {
         <Metric label="SEO drafts this month" value={billing.usage.seoDraftsThisMonth} />
         <Metric label="Publishing queue" value={billing.usage.publishingQueueItems} />
         <Metric label="Review requests" value={billing.usage.reviewRequestsThisMonth} />
+        <Metric label="Worker requests" value={billing.usage.laborRequestsThisMonth} />
+        <Metric label="Worker intake" value={billing.usage.workerIntakeThisMonth} />
+        <Metric label="Labor matches" value={billing.usage.laborMatchesThisMonth} />
       </div>
 
       <section className="panel section-actions">
@@ -78,6 +96,32 @@ export default async function BillingPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Payment Collection Modes</h2>
+            <p className="muted">
+              Ferocity can track payments now and prepare Stripe payment links when configured. Stripe Connect managed payments and platform fees are
+              a future provider path, not an enabled live payout system yet.
+            </p>
+          </div>
+          <Link className="mini-button" href="/app/cash-collection">Open money board</Link>
+        </div>
+        <div className="grid">
+          {[
+            ["Manual payment tracking", "available", "Record payments made by cash, check, Zelle, outside Stripe, or other methods. No processing fee applies because Ferocity is only tracking the record."],
+            ["Customer-owned Stripe", "configured by keys", "The business connects Stripe for online payment links. Stripe fees apply. Ferocity tracks invoice requests, payments, ledger entries, and follow-up."],
+            ["Ferocity Managed Payments", "planned", "Future Stripe Connect path with a Ferocity platform fee plus provider fees. Processor, refund, dispute, chargeback, bank-return, and instant-payout fees pass through."]
+          ].map(([title, status, detail]) => (
+            <section className="panel span-4" key={title}>
+              <span className="pill">{status}</span>
+              <h3>{title}</h3>
+              <p className="muted">{detail}</p>
+            </section>
+          ))}
+        </div>
       </section>
 
       <section className="panel section-actions">

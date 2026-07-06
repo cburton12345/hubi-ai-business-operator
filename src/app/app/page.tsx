@@ -1,35 +1,53 @@
 import Link from "next/link";
+import type React from "react";
 import {
-  BarChart3,
+  AlertTriangle,
+  BellRing,
   Bot,
-  CalendarDays,
+  BriefcaseBusiness,
+  ChartNoAxesCombined,
   CheckCircle2,
-  CreditCard,
-  Inbox,
-  Lightbulb,
-  MousePointerClick,
+  CircleDollarSign,
+  Clock3,
+  DollarSign,
   PlugZap,
-  RefreshCw,
-  Search,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
+  Users,
   Workflow
 } from "lucide-react";
 import { getBillingOverview } from "@/lib/billing/get-billing-overview";
+import { getServiceControls, type ServiceControl } from "@/lib/controls/get-service-controls";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
-import { getServiceControls } from "@/lib/controls/get-service-controls";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
-import { scanActionQueueAction } from "./actions/actions";
-import { scanGrowthLoopAction } from "./growth/actions";
 
 function dateLabel(value: string | null) {
   if (!value) return "Due now";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Due now";
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function money(cents: number) {
+function numberLabel(value: number) {
+  return value.toLocaleString();
+}
+
+function moneyFromCents(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+}
+
+function hours(value: number) {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function controlTone(control: ServiceControl) {
+  if (!control.planAllowed || control.mode === "off") return "high";
+  if (control.mode === "review_required" || control.mode === "draft_only") return "medium";
+  return "";
+}
+
+function readableStatus(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 export default async function AppDashboardPage() {
@@ -39,669 +57,528 @@ export default async function AppDashboardPage() {
     getReportingDashboard(),
     getBillingOverview()
   ]);
-  const watchedControls = controls.controls.filter((control) => control.costed || control.publicFacing);
-  const tightControls = watchedControls.filter(
-    (control) => control.usageLimit !== null && control.remaining !== null && control.remaining <= Math.max(5, control.usageLimit * 0.1)
-  );
-  const growthRows = reporting.channelRoi.length > 0 ? reporting.channelRoi.slice(0, 5) : [];
-  const currentPlan = billing.subscription?.planKey ?? "not set";
-  const controlByKey = new Map(controls.controls.map((control) => [control.featureKey, control]));
-  const activeSnapshot = [
+
+  const ownerSummary = snapshot.operator.ownerSummary;
+  const topAttention = snapshot.todayPlan.slice(0, 4);
+  const firstMove = topAttention[0] ?? {
+    title: "Tell Ferocity what to set up first",
+    detail: "Choose where AI should help first: leads, follow-up, jobs, money, reviews, growth, or team reminders.",
+    href: "/app/ai-workforce",
+    buttonLabel: "Open AI Workforce",
+    urgency: "medium"
+  };
+  const followUps = snapshot.operator.followUps.slice(0, 3);
+  const invoiceFollowUps = snapshot.operator.invoiceFollowUps.slice(0, 3);
+  const setupBlockers = controls.controls
+    .filter((control) => !control.planAllowed || control.mode === "off" || control.mode === "review_required" || control.mode === "draft_only")
+    .slice(0, 5);
+  const activeTools = controls.controls.filter((control) => control.planAllowed && control.mode !== "off").slice(0, 6);
+  const roiRows = reporting.channelRoi.slice(0, 3);
+  const planName = billing.subscription?.planKey ? billing.subscription.planKey.replaceAll("_", " ") : "not set";
+  const commandMetrics = [
+    { label: "New leads", value: snapshot.metrics.openLeads, note: `${snapshot.metrics.followUpsDue} follow-up${snapshot.metrics.followUpsDue === 1 ? "" : "s"} due`, tone: "hot" },
+    { label: "Pipeline", value: snapshot.metrics.pipelineValue, note: "open value", tone: "money" },
+    { label: "Money owed", value: snapshot.metrics.invoiceBalance, note: `${snapshot.metrics.unpaidInvoices} invoice${snapshot.metrics.unpaidInvoices === 1 ? "" : "s"} unpaid`, tone: "trust" },
+    { label: "Team today", value: ownerSummary.scheduledToday, note: `${ownerSummary.itineraryNeeded} need plan`, tone: "draft" }
+  ];
+  const commandActions = [
+    `${snapshot.metrics.followUpsDue} follow-up${snapshot.metrics.followUpsDue === 1 ? "" : "s"} need attention.`,
+    `${snapshot.metrics.openLeads} open lead${snapshot.metrics.openLeads === 1 ? "" : "s"} need a fast response.`,
+    `${snapshot.metrics.unpaidInvoices} unpaid invoice${snapshot.metrics.unpaidInvoices === 1 ? "" : "s"} need collection visibility.`,
+    `${ownerSummary.itineraryNeeded} worker${ownerSummary.itineraryNeeded === 1 ? "" : "s"} may still need a day plan.`,
+    `${snapshot.metrics.actionQueue} AI-prepared action${snapshot.metrics.actionQueue === 1 ? "" : "s"} are waiting for review.`,
+    roiRows[0] ? `${roiRows[0].label} is the top tracked growth source right now.` : "Connect website, forms, campaigns, and sources to see what creates booked work."
+  ];
+  const workingSignals = [
     {
-      label: "Lead capture",
-      detail: "Forms and lead records",
-      href: "/app/forms",
-      status: snapshot.metrics.openLeads > 0 ? "included" : "needs_setup"
+      label: "Watching leads",
+      detail: snapshot.metrics.openLeads ? `${snapshot.metrics.openLeads} open lead${snapshot.metrics.openLeads === 1 ? "" : "s"} in view` : "No open leads waiting",
+      href: "/app/lead-command"
     },
     {
-      label: "SEO drafts",
-      detail: "Service pages and refresh ideas",
-      href: "/app/seo",
-      status: controlByKey.get("seo_autopilot")?.mode === "draft_only" ? "draft_only" : "needs_setup"
+      label: "Checking follow-up",
+      detail: snapshot.metrics.followUpsDue ? `${snapshot.metrics.followUpsDue} follow-up${snapshot.metrics.followUpsDue === 1 ? "" : "s"} due` : "No follow-ups due right now",
+      href: "/app/text-queue"
     },
     {
-      label: "Review requests",
-      detail: "Draft requests after completed work",
-      href: "/app/review",
-      status: controlByKey.get("review_requests")?.mode === "review_required" ? "needs_approval" : "needs_setup"
+      label: "Watching money",
+      detail: snapshot.metrics.unpaidInvoices ? `${snapshot.metrics.unpaidInvoices} unpaid invoice${snapshot.metrics.unpaidInvoices === 1 ? "" : "s"}` : "No unpaid invoice alerts",
+      href: "/app/cash-collection"
     },
     {
-      label: "Follow-up reminders",
-      detail: "Stale leads, estimates, invoices",
-      href: "/app/operator",
-      status: controlByKey.get("follow_up_recovery") ? "included" : "needs_setup"
+      label: "Checking team",
+      detail: ownerSummary.itineraryNeeded ? `${ownerSummary.itineraryNeeded} day plan${ownerSummary.itineraryNeeded === 1 ? "" : "s"} may be needed` : "Team plan looks quiet",
+      href: "/app/crew-itinerary"
     },
     {
-      label: "Email/SMS sending",
-      detail: "Disabled until providers and consent are ready",
-      href: "/app/integrations",
-      status: "provider_key"
-    },
-    {
-      label: "MarketplacePro sync",
-      detail: "Optional bridge, not live until connected",
-      href: "/app/integrations",
-      status: "provider_key"
+      label: "Reviewing AI work",
+      detail: snapshot.metrics.actionQueue ? `${snapshot.metrics.actionQueue} prepared action${snapshot.metrics.actionQueue === 1 ? "" : "s"} waiting` : "No AI actions waiting",
+      href: "/app/actions"
     }
   ];
+  const commandPrompts = [
+    ["What needs my attention today?", "/app/attention-command"],
+    ["Follow up with unpaid customers", "/app/cash-collection"],
+    ["Plan my workers for today", "/app/crew-itinerary"],
+    ["Get me more leads this week", "/app/growth-calendar"],
+    ["Set up my business for me", "/app/build-system"],
+    ["Show every tool", "/app/feature-map"]
+  ];
+  const sourceRows =
+    roiRows.length > 0
+      ? roiRows.map((row) => [row.label, row.revenueCents > 0 ? moneyFromCents(row.revenueCents) : `${row.leads} lead${row.leads === 1 ? "" : "s"}`, row.roiLabel] as const)
+      : [
+          ["Website/forms", `${snapshot.metrics.openLeads} leads`, "needs tracking"] as const,
+          ["Open pipeline", snapshot.metrics.pipelineValue, "active"] as const,
+          ["Collected", snapshot.metrics.paymentsCollected, "recorded"] as const
+        ];
 
   return (
-    <main className="page-shell">
-      <section className="workspace">
-        <div className="topbar">
+    <main className="section-actions">
+      <section className="panel">
+        <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">Workspace Home</p>
-            <h1>{snapshot.tenantName}</h1>
-            <p className="muted">Plain view of what needs attention, what is making money, and what Ferocity can help with next.</p>
+            <p className="eyebrow">Home</p>
+            <h1>Here is what needs attention.</h1>
+            <p className="muted">
+              Ferocity watches the business and points to the next move.
+            </p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/owner-command-center">
-              Owner Command
-            </Link>
-            <form action={scanGrowthLoopAction}>
-              <button className="button" type="submit">
-                <RefreshCw size={16} /> Find follow-ups
-              </button>
-            </form>
-            <form action={scanActionQueueAction}>
-              <button className="button secondary-button" type="submit">
-                <CheckCircle2 size={16} /> Review actions
-              </button>
-            </form>
-            <Link className="button" href="/app/operator">
-              Operator Console
-            </Link>
-            <Link className="button secondary-button" href="/app/service">
-              Service Ops
-            </Link>
-            <Link className="button" href="/app/growth">
-              Growth Loop
-            </Link>
-            <Link className="button secondary-button" href="/app/website">
-              Connect Website
-            </Link>
-            <Link className="button" href="/app/ai-workforce">
-              AI Workforce
-            </Link>
-            <Link className="button" href="/app/build-system">
-              Build My System
-            </Link>
-            <Link className="button" href="/app/go-live">
-              Go Live Check
-            </Link>
-            <Link className="button secondary-button" href="/app/system-health">
-              System Health
-            </Link>
-            <Link className="button secondary-button" href="/app/sample-tour">
-              Sample Tour
-            </Link>
-            <Link className="button secondary-button" href="/app/setup">
-              Setup
-            </Link>
+            <Link className="button" href="/app/welcome">Start Here</Link>
+            <Link className="button" href="/app/attention-command">Open Today</Link>
+            <Link className="button secondary-button" href="/app/ai-workforce">AI Workforce</Link>
+            <Link className="button secondary-button" href="/app/feature-map">All tools</Link>
           </div>
         </div>
+      </section>
 
-        <section className="clarity-band">
-          <div className="panel">
-            <div className="list-row flush-row">
-              <div>
-                <p className="eyebrow">Choose how to use Ferocity</p>
-                <h2>Owner View, AI Mode, Or Traditional Mode</h2>
-                <p className="muted">
-                  Start with Owner View when you want the shortest answer. Use AI Mode if you want Ferocity to guide setup in plain English.
-                  Use Traditional Mode when you want every manual dashboard, setting, workflow, and control.
-                </p>
-              </div>
-              <span className="pill">two paths, one platform</span>
-            </div>
-            <div className="path-grid">
-              <Link className="path-card" href="/app/owner-command-center">
-                <Sparkles size={18} />
-                <strong>0. Owner View</strong>
-                <span>See what happened, what matters, what AI handled, what needs a decision, and how to make money next.</span>
-              </Link>
-              <Link className="path-card" href="/app/ai-workforce">
-                <Bot size={18} />
-                <strong>1. AI Mode</strong>
-                <span>Tell AI employees what you want: more leads, reviews, SEO, website hookup, automations, or follow-up. Review before live action.</span>
-              </Link>
-              <Link className="path-card" href="/app/setup">
-                <SlidersHorizontal size={18} />
-                <strong>2. Traditional Mode</strong>
-                <span>Use direct menus for brands, leads, marketing, websites, automations, service ops, reports, controls, billing, and integrations.</span>
-              </Link>
-            </div>
+      <section className="panel section-actions">
+        <div className="operator-command-hero">
+          <div>
+            <p className="eyebrow">Business command bar</p>
+            <h2>Tell Ferocity the outcome. It points you to the work.</h2>
+            <p className="muted">
+              Use this when you do not know which page to open. The AI Workforce prepares plans and routes you to the right existing tools.
+            </p>
           </div>
+          <Link className="operator-command-input large-command" href="/app/ai-workforce">
+            <span>Example: who needs a follow-up, what money is waiting, or what should my crew do today?</span>
+            <strong>Open AI Workforce</strong>
+          </Link>
+        </div>
+        <div className="operator-command-chips">
+          {commandPrompts.map(([label, href]) => (
+            <Link href={href} key={label}>{label}</Link>
+          ))}
+        </div>
+      </section>
 
-          <div className="panel">
-            <div className="list-row flush-row">
-              <div>
-                <h2>What Ferocity Runs</h2>
-                <p className="muted">One growth and operations loop for getting found, capturing demand, following up, and learning what makes money.</p>
-              </div>
-              <span className="pill">review-first</span>
-            </div>
-            <div className="operating-loop">
-              <div className="loop-step">
-                <Search size={18} />
-                <strong>Get found</strong>
-                <p>SEO drafts, service pages, city pages, GBP ideas, reviews, offers, and campaigns help create more qualified demand.</p>
-              </div>
-              <div className="loop-step">
-                <Inbox size={18} />
-                <strong>Catch the lead</strong>
-                <p>Forms, marketplace leads, calls, texts, and website requests become tracked work instead of loose inbox noise.</p>
-              </div>
-              <div className="loop-step">
-                <MousePointerClick size={18} />
-                <strong>Follow up fast</strong>
-                <p>Ferocity finds stale leads, ignored estimates, missed callbacks, and unpaid invoices before they go cold.</p>
-              </div>
-              <div className="loop-step">
-                <BarChart3 size={18} />
-                <strong>Grow what works</strong>
-                <p>Ferocity connects pages, campaigns, leads, jobs, reviews, invoices, and revenue so the next move is based on proof.</p>
-              </div>
-            </div>
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Ferocity is watching</p>
+            <h2>Quiet monitoring, clear nudges.</h2>
+            <p className="muted">These are live workspace checks from the current dashboard data. No fake sends, no fake automation claims.</p>
           </div>
+          <Link className="mini-button" href="/app/automation-timeline">See activity</Link>
+        </div>
+        <div className="watch-grid">
+          {workingSignals.map((signal) => (
+            <Link className="watch-card" href={signal.href} key={signal.label}>
+              <span />
+              <strong>{signal.label}</strong>
+              <small>{signal.detail}</small>
+            </Link>
+          ))}
+        </div>
+      </section>
 
-          <aside className="panel">
-            <h2>Start Here</h2>
-            <ul className="start-list">
-              <li>
-                <span className="step-dot">1</span>
-                <div>
-                  <strong>Add your business</strong>
-                  <p className="muted">Name, services, service areas, phone, email, and brand basics.</p>
-                </div>
-                <Link className="mini-button" href="/app/setup">Start</Link>
-              </li>
-              <li>
-                <span className="step-dot">2</span>
-                <div>
-                  <strong>Choose what Ferocity handles</strong>
-                  <p className="muted">Leads, SEO, reviews, automations, jobs, invoices, or all of it.</p>
-                </div>
-                <Link className="mini-button" href="/app/build-system">Choose</Link>
-              </li>
-              <li>
-                <span className="step-dot">3</span>
-                <div>
-                  <strong>Connect lead sources</strong>
-                  <p className="muted">Forms, website, MarketplacePro, calls, email, ads, or manual entry.</p>
-                </div>
-                <Link className="mini-button" href="/app/integrations">Connect</Link>
-              </li>
-              <li>
-                <span className="step-dot">4</span>
-                <div>
-                  <strong>Set follow-up rules</strong>
-                  <p className="muted">Stale leads, missed callbacks, estimates, invoices, and reviews.</p>
-                </div>
-                <Link className="mini-button" href="/app/automation">Rules</Link>
-              </li>
-              <li>
-                <span className="step-dot">5</span>
-                <div>
-                  <strong>Review automations</strong>
-                  <p className="muted">Make sure messages, drafts, and approvals match how you work.</p>
-                </div>
-                <Link className="mini-button" href="/app/controls">Review</Link>
-              </li>
-              <li>
-                <span className="step-dot">6</span>
-                <div>
-                  <strong>Go live when ready</strong>
-                  <p className="muted">Connect providers, set limits, and approve live sending or publishing.</p>
-                </div>
-                <Link className="mini-button" href="/app/integrations">Go live</Link>
-              </li>
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Simple path</p>
+            <h2>Not sure what to do? Start here.</h2>
+            <p className="muted">
+              Ferocity can guide setup, but the basic manual tools stay one click away.
+            </p>
+          </div>
+          <Link className="button" href="/app/build-system">Let Ferocity guide me</Link>
+        </div>
+        <div className="path-grid">
+          {[
+            ["1. Tell Ferocity the goal", "Use plain words. Ferocity recommends the next setup steps before changing anything.", "/app/build-system"],
+            ["2. Add work manually", "Create customers, estimates, jobs, invoices, payments, field costs, workers, and reminders yourself.", "/app/service-command"],
+            ["3. Connect lead sources", "Add website forms, public links, tracking, customer portals, proof links, and payment-link readiness.", "/app/customer-touchpoints"],
+            ["4. Check today", "See hot leads, overdue follow-up, unpaid invoices, worker plans, and AI-prepared actions.", "/app/attention-command"]
+          ].map(([title, detail, href]) => (
+            <Link className="path-card" href={href} key={title}>
+              <strong>{title}</strong>
+              <span>{detail}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="product-console section-actions" aria-label="Unified Ferocity command center">
+        <div className="console-topbar">
+          <div>
+            <span className="eyebrow">Command center</span>
+            <strong>{snapshot.tenantName}</strong>
+          </div>
+          <span className="live-pill">Private business account</span>
+        </div>
+        <div className="console-tabs" aria-label="Command center areas">
+          {["Today", "AI Workforce", "Customers", "Jobs", "Money", "Growth"].map((tabName) => (
+            <span className={tabName === "Today" ? "active" : ""} key={tabName}>{tabName}</span>
+          ))}
+        </div>
+        <div className="preview-metrics console-metrics">
+          {commandMetrics.map((card) => (
+            <div className={`preview-metric tone-${card.tone}`} key={card.label}>
+              <span>{card.label}</span>
+              <strong>{typeof card.value === "number" ? numberLabel(card.value) : card.value}</strong>
+              <small>{card.note}</small>
+            </div>
+          ))}
+        </div>
+        <div className="console-main">
+          <section className="console-panel">
+            <div className="console-heading">
+              <h2><BellRing size={18} /> Today</h2>
+              <small>What to handle</small>
+            </div>
+            <ul className="action-stack">
+              {commandActions.map((item) => (
+                <li key={item}><span />{item}</li>
+              ))}
             </ul>
-          </aside>
-        </section>
-
-        <section className="panel">
-          <div className="list-row flush-row">
-            <div>
-              <h2>What Is Active?</h2>
-              <p className="muted">A plain status check for the main parts of Ferocity. These are setup states, not hidden API chores.</p>
+          </section>
+          <section className="console-panel">
+            <div className="console-heading">
+              <h2><Bot size={18} /> AI Workforce</h2>
+              <small>Recommended next move</small>
             </div>
-            <Link className="mini-button" href="/app/build-system">
-              Build this for me
-            </Link>
-          </div>
-          <div className="status-grid">
-            {activeSnapshot.map((item) => (
-              <Link className="status-card" href={item.href} key={item.label}>
-                <div>
-                  <h3>{item.label}</h3>
-                  <p className="muted">{item.detail}</p>
-                </div>
-                <StatusBadge status={item.status} />
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="list-row flush-row">
-            <div>
-              <h2>
-                <Workflow size={18} /> Pick Your Starting Point
-              </h2>
-              <p className="muted">Ferocity can start as a growth system, an automation system, or both. A business does not have to use every module.</p>
+            <div className="recommend-card">
+              <strong>{firstMove.title}</strong>
+              <p>{firstMove.detail}</p>
+              <Link href={firstMove.href}>{firstMove.buttonLabel}</Link>
             </div>
-            <Link className="mini-button" href="/app/setup">Choose modules</Link>
+          </section>
+        </div>
+        <div className="console-pipeline">
+          <div className="console-heading">
+            <h2><ChartNoAxesCombined size={18} /> Source to revenue</h2>
+            <small>What is creating work</small>
           </div>
-          <div className="path-grid">
-            <Link className="path-card" href="/app/ai-workforce">
-              <Sparkles size={18} />
-              <strong>I want AI employees to handle this</strong>
-              <span>Use one command center for growth, reviews, SEO, content, sales, follow-up, website, ads, and setup.</span>
-            </Link>
-            <Link className="path-card" href="/app/build-system">
-              <Sparkles size={18} />
-              <strong>I do not know how to set this up</strong>
-              <span>Describe the business in plain English and let Ferocity create a reviewed setup plan.</span>
-            </Link>
-            <Link className="path-card" href="/app/sample-tour">
-              <CalendarDays size={18} />
-              <strong>I want to see an example first</strong>
-              <span>Open a private sample tour with leads, follow-ups, estimates, reviews, automation, and ROI without touching real data.</span>
-            </Link>
-            <Link className="path-card" href="/app/growth">
-              <Search size={18} />
-              <strong>I want more leads</strong>
-              <span>SEO drafts, city/service pages, GBP ideas, reviews, campaigns, forms, and attribution.</span>
-            </Link>
-            <Link className="path-card" href="/app/automation">
-              <Workflow size={18} />
-              <strong>I want automations</strong>
-              <span>Lead follow-up, estimate reminders, invoice nudges, review requests, callbacks, and approval queues.</span>
-            </Link>
-            <Link className="path-card" href="/app/operator">
-              <MousePointerClick size={18} />
-              <strong>I want daily operations</strong>
-              <span>One console for what needs attention today, without making the owner hunt through every tool.</span>
-            </Link>
-            <Link className="path-card" href="/app/go-live">
-              <ShieldCheck size={18} />
-              <strong>I want to know if we are ready</strong>
-              <span>Run a read-only launch scan for basics, providers, approvals, limits, and public/private safety.</span>
-            </Link>
-            <Link className="path-card" href="/app/system-health">
-              <PlugZap size={18} />
-              <strong>I want to see what is broken</strong>
-              <span>Check missing setup, broken forms, stale follow-ups, provider gaps, and intentionally paused systems.</span>
-            </Link>
-          </div>
-        </section>
+          {sourceRows.map(([name, value, priority]) => (
+            <div className="pipeline-row" key={name}>
+              <strong>{name}</strong>
+              <span>{value}</span>
+              <i className={priority.includes("Needs") || priority.includes("needs") ? "bar-medium" : "bar-high"} />
+            </div>
+          ))}
+        </div>
+      </section>
 
-        <section className="panel">
+      <section className="grid section-actions">
+        <section className="panel span-6">
           <div className="list-row flush-row">
             <div>
-              <h2>What You Can Use</h2>
-              <p className="muted">Ferocity is useful before every outside tool is connected. Provider features stay controlled because email, SMS, AI, hosting, and billing can cost money.</p>
+              <p className="eyebrow">Next best action</p>
+              <h2>{firstMove.title}</h2>
+              <p className="muted">{firstMove.detail}</p>
             </div>
             <div className="inline-actions">
-              <span className="pill">Plan: {currentPlan}</span>
-              <Link className="mini-button" href="/app/billing">Tiers</Link>
+              <span className={`pill ${firstMove.urgency === "high" ? "high" : firstMove.urgency === "medium" ? "medium" : ""}`}>
+                {firstMove.urgency}
+              </span>
+              <Link className="button" href={firstMove.href}>{firstMove.buttonLabel}</Link>
             </div>
-          </div>
-          <div className="service-explainer-grid">
-            <section>
-              <h3>
-                <CheckCircle2 size={16} /> Included Workspace Tools
-              </h3>
-              <p className="muted">Use these to organize the business now.</p>
-              <ul className="plain-list">
-                <li>Leads, customers, notes, and timelines</li>
-                <li>Jobs, estimates, invoices, callbacks, and follow-up lists</li>
-                <li>SEO drafts, hosted page drafts, review workflows, reports, and operator insights</li>
-              </ul>
-              <Link className="mini-button" href="/app/setup">Set up basics</Link>
-            </section>
-            <section>
-              <h3>
-                <PlugZap size={16} /> Connect When Ready
-              </h3>
-              <p className="muted">These need keys, domains, accounts, or approval rules.</p>
-              <ul className="plain-list">
-                <li>Resend for email sending after domain verification</li>
-                <li>Twilio for SMS after number, consent, and compliance setup</li>
-                <li>Stripe, calendars, GBP, analytics, ads, Search Console, CMS, and MarketplacePro</li>
-              </ul>
-              <Link className="mini-button" href="/app/integrations">See connections</Link>
-            </section>
-            <section>
-              <h3>
-                <ShieldCheck size={16} /> Paid Or Limited Work
-              </h3>
-              <p className="muted">These stay off, draft-only, or review-required until limits and tiers are clear.</p>
-              <ul className="plain-list">
-                <li>AI generation, hosted pages, email, SMS, review requests, calendar sync, and external publishing</li>
-                <li>Monthly limits and overage rules protect the workspace from surprise costs</li>
-                <li>Public publishing and customer messages should pass review first</li>
-              </ul>
-              <Link className="mini-button" href="/app/controls">Control limits</Link>
-            </section>
           </div>
         </section>
 
-        <section className="panel">
+        <section className="panel span-3 metric">
+          <CircleDollarSign size={18} />
+          <span className="muted">Money radar</span>
+          <strong>{snapshot.metrics.invoiceBalance}</strong>
+          <span className="muted">{snapshot.metrics.unpaidInvoices} unpaid invoice{snapshot.metrics.unpaidInvoices === 1 ? "" : "s"}</span>
+        </section>
+
+        <section className="panel span-3 metric">
+          <ShieldCheck size={18} />
+          <span className="muted">Current plan</span>
+          <strong>{planName}</strong>
+          <span className="muted">{controls.summary.reviewRequired} tools require review before use</span>
+        </section>
+      </section>
+
+      <section className="grid section-actions">
+        <Metric label="Open leads" value={snapshot.metrics.openLeads} detail="New requests to review" href="/app/lead-command" icon={<BriefcaseBusiness size={16} />} tone={snapshot.metrics.openLeads ? "medium" : ""} />
+        <Metric label="Follow-ups due" value={snapshot.metrics.followUpsDue} detail="Leads, estimates, callbacks, invoices" href="/app/attention-command" icon={<Clock3 size={16} />} tone={snapshot.metrics.followUpsDue ? "high" : ""} />
+        <Metric label="Open pipeline" value={snapshot.metrics.pipelineValue} detail="Potential revenue still moving" href="/app/lead-command" icon={<DollarSign size={16} />} />
+        <Metric label="Collected" value={snapshot.metrics.paymentsCollected} detail="Payments recorded" href="/app/cash-collection" icon={<CircleDollarSign size={16} />} />
+        <Metric label="People scheduled" value={ownerSummary.scheduledToday} detail="Assignments today" href="/app/operations-workforce" icon={<Users size={16} />} tone={ownerSummary.scheduledToday ? "" : "medium"} />
+        <Metric label="Need itinerary" value={ownerSummary.itineraryNeeded} detail="Workers with no day plan" href="/app/crew-itinerary" icon={<AlertTriangle size={16} />} tone={ownerSummary.itineraryNeeded ? "high" : ""} />
+        <Metric label="Field review" value={ownerSummary.expenseReview} detail="Costs, mileage, materials" href="/app/operations-workforce#field-work" icon={<CheckCircle2 size={16} />} tone={ownerSummary.expenseReview ? "medium" : ""} />
+        <Metric label="AI review queue" value={snapshot.metrics.actionQueue} detail="Prepared actions waiting" href="/app/actions" icon={<Bot size={16} />} tone={snapshot.metrics.actionQueue ? "medium" : ""} />
+      </section>
+
+      <section className="grid section-actions">
+        <section className="panel span-6">
           <div className="list-row flush-row">
             <div>
-              <h2>Today</h2>
-              <p className="muted">The shortest path from attention to revenue. No setup language, no API chores.</p>
+              <p className="eyebrow">Owner briefing</p>
+              <h2>What Ferocity found today</h2>
+              <p className="muted">This is the short list. The full command center keeps the detailed event feed.</p>
             </div>
-            <Link className="mini-button" href="/app/operator">
-              Full console
-            </Link>
+            <Link className="mini-button" href="/app/owner-command-center">Full feed</Link>
           </div>
-          <ul className="priority-list">
-            {snapshot.todayPlan.map((item, index) => (
-              <li className="priority-row" key={item.id}>
-                <span className="priority-number">{index + 1}</span>
+          <ul className="list">
+            {topAttention.map((item) => (
+              <li className="list-row" key={item.id}>
                 <div>
                   <h3>{item.title}</h3>
                   <p className="muted">{item.detail}</p>
                 </div>
-                <span className={`pill ${item.urgency}`}>{item.urgency}</span>
-                <Link className="mini-button" href={item.href}>
-                  {item.buttonLabel}
-                </Link>
+                <div className="inline-actions">
+                  <span className={`pill ${item.urgency === "high" ? "high" : item.urgency === "medium" ? "medium" : ""}`}>{item.urgency}</span>
+                  <Link className="mini-button" href={item.href}>{item.buttonLabel}</Link>
+                </div>
               </li>
             ))}
           </ul>
         </section>
 
-        <div className="grid">
-          <Metric icon={<Inbox size={20} />} label="Open leads" value={snapshot.metrics.openLeads} href="/app/leads" />
-          <Metric icon={<MousePointerClick size={20} />} label="Need follow-up" value={snapshot.metrics.followUpsDue} href="/app/growth" />
-          <Metric icon={<CreditCard size={20} />} label="Unpaid invoices" value={snapshot.metrics.unpaidInvoices} href="/app/service" />
-          <Metric icon={<ShieldCheck size={20} />} label="Actions to review" value={snapshot.metrics.actionQueue} href="/app/actions" />
-          <Metric icon={<BarChart3 size={20} />} label="Pipeline" value={snapshot.metrics.pipelineValue} href="/app/operator" />
-          <Metric icon={<CreditCard size={20} />} label="Payments made" value={snapshot.metrics.paymentsCollected} href="/app/service" />
-          <Metric icon={<BarChart3 size={20} />} label="Visitors 30d" value={snapshot.metrics.visitors} href="/app/growth" />
-          <Metric icon={<BarChart3 size={20} />} label="Ad spend 30d" value={snapshot.metrics.adSpend} href="/app/growth" />
-        </div>
-
-        <div className="grid">
-          <section className="panel span-8">
-            <div className="list-row flush-row">
-              <div>
-                <h2>Growth To Money</h2>
-                <p className="muted">Connect marketing work to real leads, jobs, spend, and collected revenue.</p>
-              </div>
-              <Link className="mini-button" href="/app/reports">
-                Reports
-              </Link>
+        <section className="panel span-6">
+          <div className="list-row flush-row">
+            <div>
+              <p className="eyebrow">AI Workforce</p>
+              <h2>Tell Ferocity what outcome you want.</h2>
+              <p className="muted">
+                Use normal words. Ferocity shows the plan before anything important happens.
+              </p>
             </div>
-            <ul className="list">
-              {growthRows.map((row) => (
+              <Link className="button" href="/app/ai-workforce">Open AI Workforce</Link>
+          </div>
+          <div className="grid section-actions">
+            <ToolLink href="/app/business-brain" title="Business Info" detail="Services, prices, team, territory, voice, policies, and source of truth." />
+            <ToolLink href="/app/build-system" title="Build My System" detail="Guided setup for workflows, reviews, marketing, follow-up, and controls." />
+            <ToolLink href="/app/automation-timeline" title="Automation Timeline" detail="See what AI prepared, what was approved, what ran, and what failed." />
+            <ToolLink href="/app/autopilot" title="Autopilot" detail="Choose what AI can handle, what needs review, and what stays manual." />
+          </div>
+        </section>
+      </section>
+
+      <section className="grid section-actions">
+        <ListPanel title="Follow-up queue" actionHref="/app/text-queue" actionLabel="Open follow-ups" empty="No follow-ups due right now.">
+          {followUps.map((item) => (
+            <li className="list-row" key={item.id}>
+              <div>
+                <h3>{item.contactName}</h3>
+                <p className="muted">{readableStatus(item.workflowType)} by {item.channel}</p>
+                <p>{item.suggestedMessage ?? "No draft message yet."}</p>
+              </div>
+              <span className="pill">{dateLabel(item.dueAt)}</span>
+            </li>
+          ))}
+        </ListPanel>
+
+        <ListPanel title="Cash collection" actionHref="/app/cash-collection" actionLabel="Open money" empty="No invoice follow-ups are waiting.">
+          {invoiceFollowUps.map((invoice) => (
+            <li className="list-row" key={invoice.id}>
+              <div>
+                <h3>{invoice.customerName}</h3>
+                <p className="muted">{invoice.title}</p>
+                <p>{invoice.balanceDue} due {dateLabel(invoice.dueDate)}</p>
+              </div>
+              <span className="pill medium">{readableStatus(invoice.status)}</span>
+            </li>
+          ))}
+        </ListPanel>
+      </section>
+
+      <section className="grid section-actions">
+        <section className="panel span-4">
+          <p className="eyebrow">People</p>
+          <h2>Today&apos;s team picture</h2>
+          <ul className="list">
+            <li className="list-row"><span>Working now</span><strong>{numberLabel(ownerSummary.workingNow)}</strong></li>
+            <li className="list-row"><span>Hours today</span><strong>{hours(ownerSummary.hoursToday)}</strong></li>
+            <li className="list-row"><span>Open assignments</span><strong>{numberLabel(ownerSummary.openAssignments)}</strong></li>
+            <li className="list-row"><span>Payroll review</span><strong>{numberLabel(ownerSummary.payrollReview)}</strong></li>
+          </ul>
+          <div className="section-actions">
+            <Link className="button secondary-button" href="/app/operations-workforce">Manage people</Link>
+          </div>
+        </section>
+
+        <section className="panel span-4">
+          <p className="eyebrow">Growth</p>
+          <h2>What is producing work</h2>
+          <ul className="list">
+            {roiRows.length > 0 ? (
+              roiRows.map((row) => (
                 <li className="list-row" key={row.label}>
                   <div>
                     <h3>{row.label}</h3>
-                    <p className="muted">
-                      {row.leads.toLocaleString()} leads / {row.jobs.toLocaleString()} jobs / {money(row.revenueCents)} revenue / {money(row.spendCents)} spend
-                    </p>
+                    <p className="muted">{row.leads} leads, {row.jobs} jobs</p>
                   </div>
                   <span className="pill">{row.roiLabel}</span>
                 </li>
-              ))}
-              {growthRows.length === 0 ? (
-                <li className="list-row">
-                  <span className="muted">No closed-loop marketing data yet. Connect sources, forms, jobs, invoices, and spend before trusting ROI.</span>
-                </li>
-              ) : null}
-            </ul>
-          </section>
+              ))
+            ) : (
+              <li className="list-row">
+                <span className="muted">Connect forms, campaigns, or website tracking to see which sources create jobs.</span>
+              </li>
+            )}
+          </ul>
+          <div className="section-actions">
+            <Link className="button secondary-button" href="/app/growth-calendar">Open growth</Link>
+          </div>
+        </section>
 
-          <section className="panel span-4">
-            <div className="list-row flush-row">
-              <div>
-                <h2>Controls & Limits</h2>
-                <p className="muted">Costed or public-facing services that can spend money or publish/send externally.</p>
-              </div>
-              <Link className="mini-button" href="/app/controls">
-                Controls
-              </Link>
-            </div>
-            <ul className="list">
-              <li className="list-row">
-                <strong>Needs review</strong>
-                <span className="pill">{controls.summary.reviewRequired}</span>
-              </li>
-              <li className="list-row">
-                <strong>Draft only</strong>
-                <span className="pill">{controls.summary.draftOnly}</span>
-              </li>
-              <li className="list-row">
-                <strong>Near limits</strong>
-                <span className={`pill ${tightControls.length ? "high" : ""}`}>{tightControls.length}</span>
-              </li>
-              {watchedControls.slice(0, 3).map((control) => (
+        <section className="panel span-4">
+          <p className="eyebrow">Setup</p>
+          <h2>What is gated or needs review</h2>
+          <ul className="list">
+            {setupBlockers.length > 0 ? (
+              setupBlockers.map((control) => (
                 <li className="list-row" key={control.featureKey}>
                   <div>
                     <h3>{control.label}</h3>
-                    <p className="muted">
-                      {control.usageLimit === null
-                        ? `${control.currentUsage.toLocaleString()} used`
-                        : `${control.currentUsage.toLocaleString()} used / ${control.remaining?.toLocaleString()} left`}
-                    </p>
+                    <p className="muted">{control.planRule}</p>
                   </div>
-                  <StatusBadge status={control.mode === "review_required" ? "needs_approval" : control.mode === "draft_only" ? "draft_only" : "included"} />
+                  <span className={`pill ${controlTone(control)}`}>{readableStatus(control.mode)}</span>
                 </li>
-              ))}
-            </ul>
-          </section>
+              ))
+            ) : (
+              <li className="list-row">
+                <span className="muted">No setup blockers found for this business.</span>
+              </li>
+            )}
+          </ul>
+          <div className="section-actions">
+            <Link className="button secondary-button" href="/app/controls">Open controls</Link>
+          </div>
+        </section>
+      </section>
 
-          <section className="panel span-6">
-            <div className="list-row flush-row">
-              <div>
-                <h2>Needs Follow-Up</h2>
-                <p className="muted">Leads, invoices, estimates, and callbacks Ferocity found from real records.</p>
-              </div>
-              <Link className="mini-button" href="/app/growth">
-                Follow up
-              </Link>
-            </div>
-            <ul className="list">
-              {snapshot.operator.followUps.map((item) => (
-                <li className="list-row" key={item.id}>
-                  <div>
-                    <h3>{item.contactName}</h3>
-                    <p className="muted">
-                      {item.workflowType} / {item.channel} / {dateLabel(item.dueAt)}
-                    </p>
-                    {item.suggestedMessage ? <p>{item.suggestedMessage}</p> : null}
-                  </div>
-                  <Link className="mini-button" href="/app/growth">
-                    Open
-                  </Link>
-                </li>
-              ))}
-              {snapshot.operator.followUps.length === 0 ? (
-                <li className="list-row">
-                  <span className="muted">No follow-ups due. Run a scan after new leads, invoices, jobs, or estimates change.</span>
-                </li>
-              ) : null}
-            </ul>
-          </section>
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Traditional mode</p>
+            <h2>Use the full toolset when you want control.</h2>
+            <p className="muted">AI Workforce is the front door. Direct tools stay available when someone wants full control.</p>
+          </div>
+          <Link className="button secondary-button" href="/app/feature-map">Open feature map</Link>
+        </div>
+        <div className="grid section-actions">
+          <ToolLink href="/app/lead-command" title="Customers" detail="Leads, conversations, follow-up, pipeline, and customer records." />
+          <ToolLink href="/app/service-command" title="Jobs" detail="Jobs, estimates, invoices, reviews, scheduling, and daily service ops." />
+          <ToolLink href="/app/operations-workforce" title="People" detail="Workers, itineraries, time, field costs, payroll review, and staffing needs." />
+          <ToolLink href="/app/cash-collection" title="Money" detail="Invoices, payments, reminders, recurring expenses, job cost, and owner review." />
+          <ToolLink href="/app/growth-calendar" title="Growth" detail="SEO, reviews, campaigns, content drafts, website tracking, and attribution." />
+          <ToolLink href="/app/reports" title="Insights" detail="Reports, ROI, channel performance, risks, and revenue movement." />
+          <ToolLink href="/app/settings" title="Settings" detail="Workspace, users, brands, connected tools, billing, and controls." />
+          <ToolLink href="/app/automation-command" title="Automation Rules" detail="Rules, action queue, approvals, connected tools, and limits." />
+        </div>
+      </section>
 
-          <section className="panel span-6">
-            <div className="list-row flush-row">
-              <div>
-                <h2>Invoice Follow-Up</h2>
-                <p className="muted">Open balances that may need a polite payment reminder.</p>
-              </div>
-              <Link className="mini-button" href="/app/service">
-                Invoices
-              </Link>
-            </div>
-            <ul className="list">
-              {snapshot.operator.invoiceFollowUps.map((invoice) => (
-                <li className="list-row" key={invoice.id}>
-                  <div>
-                    <h3>{invoice.title}</h3>
-                    <p className="muted">
-                      {invoice.customerName} / {invoice.balanceDue} due / {invoice.dueDate ?? "No due date"}
-                    </p>
-                  </div>
-                  <Link className="mini-button" href={`/app/service/invoices/${invoice.id}`}>
-                    Open
-                  </Link>
-                </li>
-              ))}
-              {snapshot.operator.invoiceFollowUps.length === 0 ? (
-                <li className="list-row">
-                  <span className="muted">No unpaid invoice follow-ups right now.</span>
-                </li>
-              ) : null}
-            </ul>
-          </section>
-
-          <section className="panel span-6">
-            <h2>Brands</h2>
-            <ul className="list">
-              {snapshot.brands.map((brand) => (
-                <li className="list-row" key={brand.slug}>
-                  <div>
-                    <h3>{brand.name}</h3>
-                    <p className="muted">{brand.industry}</p>
-                  </div>
-                  <span className="pill">{brand.businessModel}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="panel span-6">
-            <h2>Recommendations</h2>
-            <ul className="list">
-              {snapshot.recommendations.map((item) => (
-                <li className="list-row" key={item.title}>
-                  <div>
-                    <h3>{item.title}</h3>
-                    <p className="muted">{item.summary}</p>
-                  </div>
-                  <span className={`pill ${item.riskLevel}`}>{item.riskLevel}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <Breakdown title="Leads by Brand" rows={snapshot.reporting.leadsByBrand} />
-          <Breakdown title="Leads by Source" rows={snapshot.reporting.leadsBySource} />
-          <Breakdown title="Leads by Campaign" rows={snapshot.reporting.leadsByCampaign} />
-
-          <section className="panel span-12">
-            <h2>
-              <Lightbulb size={18} /> AI Task Queue
-            </h2>
-            <div className="button-row section-actions">
-              <Link className="button secondary-button" href="/app/leads">
-                Leads
-              </Link>
-              <Link className="button secondary-button" href="/app/growth">
-                Growth Loop
-              </Link>
-              <Link className="button secondary-button" href="/app/website">
-                Website Connector
-              </Link>
-              <Link className="button secondary-button" href="/app/actions">
-                Action Queue
-              </Link>
-              <Link className="button secondary-button" href="/app/service">
-                Service Ops
-              </Link>
-              <Link className="button secondary-button" href="/app/seo">
-                SEO Autopilot
-              </Link>
-              <Link className="button secondary-button" href="/app/marketing">
-                <Sparkles size={16} /> AI Operator
-              </Link>
-              <Link className="button secondary-button" href="/app/drafts">
-                Drafts
-              </Link>
-              <Link className="button secondary-button" href="/app/approvals">
-                Approvals
-              </Link>
-              <Link className="button secondary-button" href="/app/operator">
-                Operator Console
-              </Link>
-              <Link className="button secondary-button" href="/app/reports">
-                Reports
-              </Link>
-              <Link className="button secondary-button" href="/app/alerts">
-                Alerts
-              </Link>
-              <Link className="button secondary-button" href="/app/workflows">
-                Workflows
-              </Link>
-              <Link className="button secondary-button" href="/app/integrations">
-                Integrations
-              </Link>
-            </div>
-            <ul className="list">
-              {snapshot.tasks.map((task) => (
-                <li className="list-row" key={task.title}>
-                  <div>
-                    <h3>{task.title}</h3>
-                    <p className="muted">{task.type}</p>
-                  </div>
-                  <span className="pill">{task.status}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Active services</p>
+            <h2>What Ferocity is ready to help with</h2>
+            <p className="muted">These are tools the current plan allows and that are switched on.</p>
+          </div>
+          <Link className="mini-button" href="/app/controls">Change controls</Link>
+        </div>
+        <div className="grid section-actions">
+          {activeTools.map((control) => (
+            <section className="panel span-4" key={control.featureKey}>
+              <Sparkles size={16} />
+              <h3>{control.label}</h3>
+              <p className="muted">{control.plainRule}</p>
+              <span className={`pill ${control.mode === "enabled" ? "" : "medium"}`}>{readableStatus(control.mode)}</span>
+            </section>
+          ))}
+          {activeTools.length === 0 ? (
+            <section className="panel span-12">
+              <p className="muted">No active services found yet. Start with AI Workforce or Controls to turn on the first workflow.</p>
+            </section>
+          ) : null}
         </div>
       </section>
     </main>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const labels: Record<string, string> = {
-    included: "Included",
-    limited: "Limited",
-    needs_setup: "Needs setup",
-    provider_key: "Needs provider key",
-    needs_approval: "Needs approval",
-    draft_only: "Draft only",
-    higher_plan: "Higher plan"
-  };
-  return <span className={`pill status-${status}`}>{labels[status] ?? status.replaceAll("_", " ")}</span>;
-}
-
-function Metric({ icon, label, value, href }: { icon: React.ReactNode; label: string; value: React.ReactNode; href: string }) {
+function Metric({
+  icon,
+  label,
+  value,
+  detail,
+  href,
+  tone = ""
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  detail: string;
+  href: string;
+  tone?: string;
+}) {
   return (
     <Link className="panel span-3 metric" href={href}>
-      {icon}
-      <span className="muted">{label}</span>
-      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+      <span className={`pill ${tone}`}>{icon}{label}</span>
+      <strong>{typeof value === "number" ? numberLabel(value) : value}</strong>
+      <span className="muted">{detail}</span>
     </Link>
   );
 }
 
-function Breakdown({ title, rows }: { title: string; rows: { label: string; count: number }[] }) {
+function ListPanel({
+  title,
+  actionHref,
+  actionLabel,
+  empty,
+  children
+}: {
+  title: string;
+  actionHref: string;
+  actionLabel: string;
+  empty: string;
+  children: React.ReactNode[];
+}) {
+  const rows = children.filter(Boolean);
   return (
-    <section className="panel span-4">
-      <h2>{title}</h2>
+    <section className="panel span-6">
+      <div className="list-row flush-row">
+        <div>
+          <p className="eyebrow">Queue</p>
+          <h2>{title}</h2>
+        </div>
+        <Link className="mini-button" href={actionHref}>{actionLabel}</Link>
+      </div>
       <ul className="list">
-        {rows.map((row) => (
-          <li className="list-row" key={row.label}>
-            <strong>{row.label}</strong>
-            <span className="pill">{row.count}</span>
-          </li>
-        ))}
-        {rows.length === 0 ? (
+        {rows.length > 0 ? rows : (
           <li className="list-row">
-            <span className="muted">No lead data yet</span>
+            <span className="muted">{empty}</span>
           </li>
-        ) : null}
+        )}
       </ul>
     </section>
+  );
+}
+
+function ToolLink({ href, title, detail }: { href: string; title: string; detail: string }) {
+  return (
+    <Link className="panel span-3 metric" href={href}>
+      <Workflow size={16} />
+      <strong>{title}</strong>
+      <span className="muted">{detail}</span>
+    </Link>
   );
 }
 

@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
+import { getOwnerNeeds, type OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 
@@ -36,6 +37,7 @@ export type OwnerCommandCenter = {
     collectedRevenueCents: number;
   };
   events: OwnerCommandEvent[];
+  ownerRequests: OwnerNeed[];
   needsOwner: OwnerCommandEvent[];
   criticalIssues: OwnerCommandEvent[];
   aiActions: OwnerCommandEvent[];
@@ -115,9 +117,10 @@ function buildBriefing(input: {
 
 export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
   const workspace = await getCurrentWorkspace();
-  const [snapshot, report, eventsResult, platformResult] = await Promise.all([
+  const [snapshot, report, ownerRequests, eventsResult, platformResult] = await Promise.all([
     getDashboardSnapshot(),
     getReportingDashboard(),
+    getOwnerNeeds(),
     queryPostgres<{
       id: string;
       platform_key: string;
@@ -188,7 +191,7 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
   ].slice(0, 5);
 
   const metrics = {
-    needsOwner: needsOwner.length,
+    needsOwner: needsOwner.length + ownerRequests.length,
     critical: criticalIssues.length,
     aiHandled: aiActions.length,
     openMoneyCents,
@@ -202,6 +205,7 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
     briefing: buildBriefing(metrics),
     metrics,
     events,
+    ownerRequests,
     needsOwner,
     criticalIssues,
     aiActions,

@@ -15,6 +15,10 @@ export type WebsiteGradeStep = {
   body: string;
   ferocityArea: string;
   priority: "low" | "normal" | "high";
+  impact: string;
+  difficulty: "Low" | "Medium" | "High";
+  estimatedRoi: string;
+  timeToImplement: string;
 };
 
 export type BusinessHealthCategory = {
@@ -28,6 +32,13 @@ export type BusinessHealthOpportunity = {
   label: string;
   value: string;
   detail: string;
+};
+
+export type MissedRevenueEstimate = {
+  low: number;
+  high: number;
+  label: string;
+  explanation: string;
 };
 
 export type EcosystemRecommendation = {
@@ -45,6 +56,7 @@ export type WebsiteGradeReport = {
   findings: WebsiteGradeFinding[];
   recommendedSteps: WebsiteGradeStep[];
   opportunities: BusinessHealthOpportunity[];
+  missedRevenue: MissedRevenueEstimate;
   ecosystemRecommendations: EcosystemRecommendation[];
 };
 
@@ -54,6 +66,7 @@ export type OperationsAssessmentInput = {
   industry?: string | null;
   city?: string | null;
   state?: string | null;
+  serviceArea?: string | null;
   leadResponse?: string | null;
   followUp?: string | null;
   reviews?: string | null;
@@ -230,6 +243,21 @@ function addWebsiteFindings(findings: WebsiteGradeFinding[], analysis: PublicWeb
   );
 }
 
+function gbpFindings(input: OperationsAssessmentInput): WebsiteGradeFinding[] {
+  const hasProfile = hasGoogleBusinessProfile(input);
+  return [
+    finding({
+      area: "Google Business Profile",
+      status: hasProfile ? "needs_work" : "missing",
+      title: hasProfile ? "Google profile can be reviewed next" : "Google Business Profile was not provided",
+      body: hasProfile
+        ? "Ferocity can use the profile as a setup input for review flow, posting cadence, service categories, and local authority work."
+        : "Google Maps visibility can be one of the highest-value channels for local businesses. Add the profile URL so Ferocity can guide reviews, photos, posts, and category cleanup when it applies.",
+      points: 0
+    })
+  ];
+}
+
 function operationalFindings(input: OperationsAssessmentInput, sourceCount: number): WebsiteGradeFinding[] {
   const leadResponseStatus = statusFromAnswer(input.leadResponse);
   const followUpStatus = statusFromAnswer(input.followUp);
@@ -247,7 +275,7 @@ function operationalFindings(input: OperationsAssessmentInput, sourceCount: numb
       body:
         leadResponseStatus === "good"
           ? "The business already has a lead response process. Ferocity can add source tracking, drafts, alerts, and audit logs."
-          : "Most service businesses lose money when new leads wait too long. Ferocity should set lead alerts, first-reply drafts, and stale lead recovery.",
+          : "Most businesses lose money when new leads wait too long. Ferocity should set lead alerts, first-reply drafts, and stale lead recovery.",
       points: 0
     }),
     finding({
@@ -325,8 +353,8 @@ function operationalFindings(input: OperationsAssessmentInput, sourceCount: numb
 
 function buildOpportunities(score: number, categories: BusinessHealthCategory[]): BusinessHealthOpportunity[] {
   const leadCapture = categories.find((item) => item.key === "lead_capture")?.score ?? score;
-  const reviews = categories.find((item) => item.key === "reviews")?.score ?? score;
-  const automation = categories.find((item) => item.key === "automation")?.score ?? score;
+  const reviews = categories.find((item) => item.key === "reputation")?.score ?? score;
+  const automation = categories.find((item) => item.key === "automation_readiness")?.score ?? score;
 
   const revenueLow = rangeForScore(score, 25000, 75000);
   const revenueHigh = rangeForScore(score, 75000, 150000);
@@ -361,11 +389,100 @@ function buildOpportunities(score: number, categories: BusinessHealthCategory[])
   ];
 }
 
+function buildMissedRevenueEstimate(score: number, categories: BusinessHealthCategory[]): MissedRevenueEstimate {
+  const leadCapture = categories.find((item) => item.key === "lead_capture")?.score ?? score;
+  const automation = categories.find((item) => item.key === "automation_readiness")?.score ?? score;
+  const seo = categories.find((item) => item.key === "seo")?.score ?? score;
+  const reputation = categories.find((item) => item.key === "reputation")?.score ?? score;
+  const weakness = Math.max(0.12, (400 - leadCapture - automation - seo - reputation) / 400);
+  const low = Math.round((15000 + weakness * 45000) / 5000) * 5000;
+  const high = Math.round((50000 + weakness * 125000) / 5000) * 5000;
+  return {
+    low,
+    high,
+    label: `$${low.toLocaleString()} - $${high.toLocaleString()} annually`,
+    explanation:
+      "This is a directional estimate based on gaps in lead capture, follow-up, local SEO, reviews, and conversion tracking. It is not a promise of revenue; it shows where money may be leaking."
+  };
+}
+
+function actionStep(input: WebsiteGradeStep) {
+  return input;
+}
+
+function topActions(scores: {
+  leadCaptureScore: number;
+  seoScore: number;
+  reputationScore: number;
+  automationScore: number;
+  websiteScore: number;
+}): WebsiteGradeStep[] {
+  const actions: WebsiteGradeStep[] = [
+    actionStep({
+      title: "Add automated lead follow-up",
+      body: "Create first-reply drafts, missed callback alerts, stale lead recovery, estimate follow-up, and invoice reminder queues.",
+      ferocityArea: "AI setup + CRM automation",
+      priority: scores.automationScore < 75 ? "high" : "normal",
+      impact: "Stops warm leads from going cold and gives the owner visibility into what needs attention today.",
+      difficulty: "Medium",
+      estimatedRoi: "High",
+      timeToImplement: "1-3 days for first workflows"
+    }),
+    actionStep({
+      title: "Improve Google review generation",
+      body: "Ask for reviews after completed work, intercept unhappy customers privately, and turn positive proof into marketing drafts.",
+      ferocityArea: "Review engine + proof capture",
+      priority: scores.reputationScore < 75 ? "high" : "normal",
+      impact: "Improves trust, local conversion, and Google Maps strength over time.",
+      difficulty: "Low",
+      estimatedRoi: "High",
+      timeToImplement: "Same day for draft workflow"
+    }),
+    actionStep({
+      title: "Create useful city and service page drafts",
+      body: "Prepare draft local pages tied to real services, towns, jobs, photos, reviews, and lead forms.",
+      ferocityArea: "SEO + hosted growth pages",
+      priority: scores.seoScore < 75 ? "high" : "normal",
+      impact: "Builds local search surface area without publishing thin pages automatically.",
+      difficulty: "Medium",
+      estimatedRoi: "Medium to high",
+      timeToImplement: "1-2 weeks for first reviewed batch"
+    }),
+    actionStep({
+      title: "Improve website calls-to-action",
+      body: "Make quote buttons, phone number, form, scheduling path, and source tracking obvious on the pages people land on.",
+      ferocityArea: "Website connector + forms",
+      priority: scores.leadCaptureScore < 75 ? "high" : "normal",
+      impact: "Turns more visitors into trackable leads and makes marketing attribution possible.",
+      difficulty: "Low",
+      estimatedRoi: "High",
+      timeToImplement: "Same day to 2 days"
+    }),
+    actionStep({
+      title: "Add AI missed-call handling",
+      body: "Prepare missed-call text-back and owner alerts, with live sending gated until consent and provider settings are ready.",
+      ferocityArea: "Messaging + provider controls",
+      priority: scores.automationScore < 60 ? "high" : "normal",
+      impact: "Captures calls that would otherwise disappear and routes them into follow-up.",
+      difficulty: "Medium",
+      estimatedRoi: "Medium to high",
+      timeToImplement: "2-5 days after phone provider setup"
+    })
+  ];
+
+  return actions
+    .sort((a, b) => {
+      const priorityRank = { high: 0, normal: 1, low: 2 };
+      return priorityRank[a.priority] - priorityRank[b.priority];
+    })
+    .slice(0, 5);
+}
+
 function ecosystem(input: OperationsAssessmentInput, categories: BusinessHealthCategory[]): EcosystemRecommendation[] {
   const industry = input.industry?.toLowerCase() ?? input.businessName?.toLowerCase() ?? "";
   const hiring = statusFromAnswer(input.hiring);
   const operations = statusFromAnswer(input.operations);
-  const marketing = categories.find((item) => item.key === "marketing")?.score ?? 0;
+  const marketing = categories.find((item) => item.key === "seo")?.score ?? 0;
 
   const rows: EcosystemRecommendation[] = [
     {
@@ -440,71 +557,42 @@ export async function gradeWebsiteUrl(
       ])
     : 40;
   const leadCaptureScore = scannedWebsite ? scoreClassCount(analysis.phones.length + analysis.formCount + analysis.ctaHints.length, 2) : 40;
+  const serviceAreaCoverage = input.serviceArea?.trim() ? 82 : scannedWebsite ? scoreClassCount(analysis.serviceAreaHints.length, 1) : 40;
   const seoScore = average([
     scannedWebsite ? scoreClassCount(analysis.serviceHints.length, 2) : 40,
-    scannedWebsite ? scoreClassCount(analysis.serviceAreaHints.length, 1) : 40,
-    hasGoogleBusinessProfile(input) ? 82 : 45
+    serviceAreaCoverage,
+    scannedWebsite ? (analysis.metaDescription ? 82 : 45) : 40,
+    scannedWebsite ? scoreClassCount(analysis.internalLinks.length, 6) : 40
   ]);
-  const reviewScore = average([scoreFromStatus(reviewStatus), scannedWebsite ? scoreClassCount(analysis.trustHints.length + analysis.mediaHints.length, 2) : 45]);
+  const gbpScore = average([hasGoogleBusinessProfile(input) ? 72 : 35, hasGoogleBusinessProfile(input) && input.marketingChannels?.includes("google_maps") ? 82 : 45]);
+  const reputationScore = average([scoreFromStatus(reviewStatus), scannedWebsite ? scoreClassCount(analysis.trustHints.length + analysis.mediaHints.length, 2) : 45]);
   const automationScore = average([scoreFromStatus(leadResponseStatus), scoreFromStatus(followUpStatus)]);
   const operationsScore = average([scoreFromStatus(paymentStatus), scoreFromStatus(operationsStatus)]);
-  const marketingScore = average([scoreClassCount(sourceCount, 3), seoScore, reviewScore]);
+  const marketingScore = average([scoreClassCount(sourceCount, 3), seoScore, reputationScore]);
   const retentionScore = scoreFromStatus(retentionStatus);
   const hiringScore = scoreFromStatus(hiringStatus);
   const growthPotentialScore = average([100 - marketingScore, 100 - automationScore, 100 - leadCaptureScore, 70]);
 
   const categories = [
-    category("marketing", "Marketing", marketingScore),
-    category("lead_capture", "Lead Capture", leadCaptureScore),
     category("website", "Website", websiteScore),
-    category("reviews", "Reviews", reviewScore),
     category("seo", "SEO", seoScore),
-    category("automation", "Automation", automationScore),
-    category("operations", "Operations", operationsScore),
-    category("customer_retention", "Customer Retention", retentionScore),
-    category("hiring", "Hiring", hiringScore),
-    category("growth_potential", "Growth Potential", growthPotentialScore)
+    category("google_business_profile", "Google Business Profile", gbpScore),
+    category("lead_capture", "Lead Capture", leadCaptureScore),
+    category("reputation", "Reputation", reputationScore),
+    category("automation_readiness", "Automation Readiness", automationScore),
+    category("operations_context", "Operations Context", average([operationsScore, retentionScore, hiringScore, marketingScore, growthPotentialScore]))
   ];
 
   const score = average(categories.map((item) => item.score));
   const findings: WebsiteGradeFinding[] = [];
   addWebsiteFindings(findings, analysis, scannedWebsite);
+  findings.push(...gbpFindings(input));
   findings.push(...operationalFindings(input, sourceCount));
 
   const strengths = findings.filter((item) => item.status === "good").slice(0, 5);
   const weaknesses = findings.filter((item) => item.status !== "good").slice(0, 8);
-  const recommendedSteps: WebsiteGradeStep[] = [
-    step({
-      title: "Connect lead capture",
-      body: "Add a Ferocity quote link, embedded form, or hosted page so leads keep source, page, campaign, service, city, and revenue data.",
-      ferocityArea: "Website Connector",
-      priority: leadCaptureScore >= 75 ? "normal" : "high"
-    }),
-    step({
-      title: "Build reviewed local SEO targets",
-      body: "Prepare draft service and city pages from services, service areas, completed jobs, reviews, and proof.",
-      ferocityArea: "Growth Suite",
-      priority: seoScore >= 75 ? "normal" : "high"
-    }),
-    step({
-      title: "Turn proof into marketing",
-      body: "Capture before/after photos, reviews, and testimonials after jobs so one completed job can create future marketing assets.",
-      ferocityArea: "Review Engine",
-      priority: reviewScore >= 75 ? "normal" : "high"
-    }),
-    step({
-      title: "Set fast follow-up rules",
-      body: "Create lead response, stale lead recovery, estimate follow-up, invoice reminder, and review request workflows.",
-      ferocityArea: "CRM Automation",
-      priority: automationScore >= 75 ? "normal" : "high"
-    }),
-    step({
-      title: "Unlock the full AI growth plan",
-      body: "Use the paid AI Growth Report for competitor comparison, SEO analysis, review analysis, automation analysis, and a 90-day action plan.",
-      ferocityArea: "AI Growth Report",
-      priority: "normal"
-    })
-  ];
+  const recommendedSteps = topActions({ leadCaptureScore, seoScore, reputationScore, automationScore, websiteScore });
+  const missedRevenue = buildMissedRevenueEstimate(score, categories);
 
   return {
     ok: true,
@@ -518,6 +606,7 @@ export async function gradeWebsiteUrl(
       findings,
       recommendedSteps,
       opportunities: buildOpportunities(score, categories),
+      missedRevenue,
       ecosystemRecommendations: ecosystem(input, categories)
     }
   };

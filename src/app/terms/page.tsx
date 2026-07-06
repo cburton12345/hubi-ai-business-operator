@@ -15,10 +15,10 @@ export default function TermsPage() {
         <section className="panel">
           <p className="eyebrow">Terms</p>
           <h1>Terms of Use</h1>
-          <p className="muted">Last updated: May 26, 2026</p>
+          <p className="muted">Last updated: June 30, 2026</p>
           <h2>Use of Ferocity</h2>
           <p>
-            Ferocity is an AI-assisted business operations platform for service businesses. Users are responsible for reviewing generated drafts, provider actions, customer communications, advertising changes, and published content before use.
+            Ferocity is an AI-assisted business operations platform for businesses that use it to manage growth, follow-up, operations, marketing, payments, and owner visibility. Users are responsible for reviewing generated drafts, provider actions, customer communications, advertising changes, and published content before use.
           </p>
           <h2>No automatic provider actions</h2>
           <p>
@@ -31,6 +31,18 @@ export default function TermsPage() {
           <h2>Marketing and SEO</h2>
           <p>
             Ferocity may help prepare useful content, reporting, and optimization recommendations. Search ranking, ad performance, lead volume, revenue, or business growth are not guaranteed.
+          </p>
+          <h2>No guaranteed income or growth</h2>
+          <p>
+            Ferocity may describe potential revenue, booked income, missed opportunities, growth opportunities, or estimated money left on the table. These estimates are directional and informational only. Actual results depend on the business, market, pricing, service quality, response speed, competition, customer demand, budget, connected tools, and execution.
+          </p>
+          <h2>AI autopilot and owner control</h2>
+          <p>
+            AI-assisted workflows are intended to help prepare, prioritize, draft, summarize, route, and automate approved work. Users choose which workflows are enabled, paused, review-required, or manual. Ferocity is not a substitute for human judgment, legal advice, financial advice, tax advice, compliance review, or professional supervision.
+          </p>
+          <h2>Connected services</h2>
+          <p>
+            Some features depend on third-party providers such as payment processors, email providers, phone or messaging providers, calendars, ad platforms, website platforms, review platforms, and analytics tools. Availability, delivery, fees, limits, and account rules may depend on those providers.
           </p>
           <h2>Contact</h2>
           <p>Questions can be sent to ferocityflow@outlook.com.</p>

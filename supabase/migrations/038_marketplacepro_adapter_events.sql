@@ -21,7 +21,12 @@ alter table public.marketplacepro_sync_events
     'worker_contact_request_submitted',
     'follow_created',
     'notification_logged',
-    'support_request_created'
+    'support_request_created',
+    'payment_completed',
+    'payment_failed',
+    'checkout_session_completed',
+    'checkout_session_failed',
+    'traffic_event_logged'
   ));
 
 create table if not exists public.marketplacepro_object_links (
@@ -30,7 +35,7 @@ create table if not exists public.marketplacepro_object_links (
   brand_id uuid references public.brands(id) on delete set null,
   connection_id uuid references public.marketplacepro_connections(id) on delete set null,
   marketplace_table text not null
-    check (marketplace_table in ('posts', 'offers', 'labor_pool', 'saved_providers', 'worker_contact_requests', 'follows', 'notifications', 'support_requests')),
+    check (marketplace_table in ('posts', 'offers', 'labor_pool', 'saved_providers', 'worker_contact_requests', 'follows', 'notifications', 'support_requests', 'payments', 'traffic_events')),
   marketplace_object_id text not null,
   ferocity_object_type text
     check (ferocity_object_type in ('lead', 'opportunity', 'task', 'follow_up', 'customer', 'provider_relationship', 'timeline_event', 'support_request')),
@@ -56,9 +61,9 @@ using (public.has_tenant_role(tenant_id, array['owner', 'admin', 'operator']))
 with check (public.has_tenant_role(tenant_id, array['owner', 'admin', 'operator']));
 
 update public.provider_setup_steps
-set plain_language_goal = 'Connect MarketplacePro launch tables through an adapter: posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, and support_requests.',
+set plain_language_goal = 'Connect MarketplacePro launch tables through an adapter: posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, support_requests, payments, and traffic_events.',
     callback_path = '/api/integrations/marketplacepro/events',
     live_action_rule = 'MarketplacePro remains public discovery. Ferocity imports activity for operations and follow-up; outbound sync stays paused until reviewed.',
-    metadata_json = metadata_json || '{"adapterTables":["posts","offers","labor_pool","saved_providers","worker_contact_requests","follows","notifications","support_requests"]}'::jsonb,
+    metadata_json = metadata_json || '{"adapterTables":["posts","offers","labor_pool","saved_providers","worker_contact_requests","follows","notifications","support_requests","payments","traffic_events"]}'::jsonb,
     updated_at = now()
 where provider_key = 'marketplacepro';

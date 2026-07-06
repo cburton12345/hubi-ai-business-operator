@@ -1,20 +1,49 @@
 import Link from "next/link";
-import { FileText, Search, Sparkles } from "lucide-react";
+import type React from "react";
+import { Cable, FileText, Globe2, Link2, Search, Sparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { getSeoAutopilotSummary, getSeoPageOpportunitySummary } from "@/lib/seo/seo-autopilot";
-import { generateSeoAutopilotAction } from "./actions";
+import { getSeoAutopilotSummary, getSeoPageOpportunitySummary, getSeoTrafficEngineDashboard } from "@/lib/seo/seo-autopilot";
+import { activateSeoTrafficEngineAction, generateSeoAutopilotAction } from "./actions";
 
 export default async function SeoAutopilotPage() {
-  const [rows, opportunities] = await Promise.all([getSeoAutopilotSummary(), getSeoPageOpportunitySummary()]);
+  const [rows, opportunities, trafficEngine] = await Promise.all([
+    getSeoAutopilotSummary(),
+    getSeoPageOpportunitySummary(),
+    getSeoTrafficEngineDashboard()
+  ]);
   const totalKeywords = rows.reduce((sum, row) => sum + row.keywordCount, 0);
   const totalDrafts = rows.reduce((sum, row) => sum + row.recentDraftCount, 0);
 
   return (
     <QueuePageShell
-      eyebrow="SEO Autopilot"
-      title="Draft-Only SEO Growth Engine"
-      description="Plan topic clusters, service pages, metadata, internal links, and content refreshes from real brand data. Publishing stays manual."
+      eyebrow="SEO"
+      title="SEO + AI Search Growth Engine"
+      description="Audit the business, plan useful content, prepare drafts, build authority tasks, connect publishing paths, and track which work turns into leads and revenue."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Traffic engine</p>
+            <h2>Get found before the lead exists.</h2>
+            <p className="muted">
+              Ferocity prepares the work that helps the business show up in Google, Google Business Profile when relevant, Reddit/community searches,
+              and AI answers. Then it connects that traffic to forms, calls, follow-up, jobs, invoices, reviews, and revenue.
+            </p>
+          </div>
+          <form action={activateSeoTrafficEngineAction}>
+            <button className="button" type="submit">
+              <Sparkles size={16} /> Build traffic engine
+            </button>
+          </form>
+        </div>
+        <div className="grid section-actions">
+          <MiniStep title="1. Check visibility" body="Track the searches and prompts where the business should appear." />
+          <MiniStep title="2. Plan 30 days" body="Service pages, city pages, blogs, proof, GBP posts, and FAQs." />
+          <MiniStep title="3. Prepare drafts" body="Create reviewed content and publishing queue records without live publishing." />
+          <MiniStep title="4. Build authority" body="Reviews, proof, citations, directories, community visibility, and internal links." />
+        </div>
+      </section>
+
       <div className="grid section-actions">
         <section className="panel span-4 metric">
           <Search size={20} />
@@ -27,8 +56,8 @@ export default async function SeoAutopilotPage() {
           <strong>{totalDrafts}</strong>
         </section>
         <section className="panel span-4">
-          <h2>Autopilot Mode</h2>
-          <p className="muted">Drafts and recommendations only. No Search Console, CMS, or publishing connection is active yet.</p>
+          <h2>Safe Automation</h2>
+          <p className="muted">Drafts, checks, and tasks first. Live publishing needs a connected account, approval, and tier limits.</p>
         </section>
       </div>
 
@@ -53,6 +82,106 @@ export default async function SeoAutopilotPage() {
         <Link className="button secondary-button" href="/app/marketing-os">
           Have AI Set This Up
         </Link>
+      </div>
+
+      <section className="grid section-actions">
+        <MetricPanel icon={<Globe2 size={18} />} label="AI search checks" value={trafficEngine.metrics.visibilityChecks} />
+        <MetricPanel icon={<FileText size={18} />} label="30-day plan items" value={trafficEngine.metrics.strategyItems} />
+        <MetricPanel icon={<Link2 size={18} />} label="Authority tasks" value={trafficEngine.metrics.authorityTasks} />
+        <MetricPanel icon={<Cable size={18} />} label="Publishing paths" value={trafficEngine.metrics.publishingConnections} />
+      </section>
+
+      <div className="grid section-actions">
+        <section className="panel span-6">
+          <h2>Visibility Checks</h2>
+          <p className="muted">Google, AI answers, GBP, and community searches to check before claiming wins.</p>
+          <ul className="list">
+            {trafficEngine.visibilityChecks.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.checkName}</h3>
+                  <p className="muted">{[item.brandName, item.platformKey.replaceAll("_", " ")].join(" / ")}</p>
+                  <p>{item.queryText}</p>
+                </div>
+                <span className="pill">{item.status.replaceAll("_", " ")}</span>
+              </li>
+            ))}
+            {trafficEngine.visibilityChecks.length === 0 ? (
+              <li className="list-row"><span className="muted">Build the traffic engine to create visibility checks.</span></li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Publishing Connections</h2>
+          <p className="muted">Where approved work can go later. Live publishing stays off until connected.</p>
+          <ul className="list">
+            {trafficEngine.publishingConnections.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.displayName}</h3>
+                  <p className="muted">{[item.brandName, item.providerKey.replaceAll("_", " ")].join(" / ")}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill">{item.status.replaceAll("_", " ")}</span>
+                  <span className="pill">{item.livePublishEnabled ? "live on" : "live off"}</span>
+                </div>
+              </li>
+            ))}
+            {trafficEngine.publishingConnections.length === 0 ? (
+              <li className="list-row"><span className="muted">No publishing paths yet. Use Build traffic engine or Connect Website.</span></li>
+            ) : null}
+          </ul>
+        </section>
+      </div>
+
+      <div className="grid section-actions">
+        <section className="panel span-7">
+          <h2>30-Day Content Strategy</h2>
+          <p className="muted">Useful work Ferocity can draft, export, schedule, or route to the right review queue.</p>
+          <ul className="list">
+            {trafficEngine.strategyItems.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">
+                    {[item.brandName, item.contentType.replaceAll("_", " "), item.targetKeyword].filter(Boolean).join(" / ")}
+                  </p>
+                  <p>{item.publishTarget.replaceAll("_", " ")}{item.scheduledFor ? ` / ${item.scheduledFor}` : ""}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill high">{item.priorityScore}</span>
+                  <span className="pill">{item.status.replaceAll("_", " ")}</span>
+                </div>
+              </li>
+            ))}
+            {trafficEngine.strategyItems.length === 0 ? (
+              <li className="list-row"><span className="muted">No 30-day strategy yet. Build the traffic engine to seed one.</span></li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="panel span-5">
+          <h2>Authority Work</h2>
+          <p className="muted">The non-spam signals that make local SEO and AI visibility more believable.</p>
+          <ul className="list">
+            {trafficEngine.authorityTasks.map((item) => (
+              <li className="list-row" key={item.id}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">{[item.brandName, item.taskType.replaceAll("_", " ")].join(" / ")}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill high">{item.priorityScore}</span>
+                  <span className="pill">{item.status.replaceAll("_", " ")}</span>
+                </div>
+              </li>
+            ))}
+            {trafficEngine.authorityTasks.length === 0 ? (
+              <li className="list-row"><span className="muted">No authority tasks yet. Build the traffic engine to create them.</span></li>
+            ) : null}
+          </ul>
+        </section>
       </div>
 
       <div className="grid">
@@ -130,5 +259,25 @@ export default async function SeoAutopilotPage() {
         ) : null}
       </div>
     </QueuePageShell>
+  );
+}
+
+function MiniStep({ title, body }: { title: string; body: string }) {
+  return (
+    <section className="panel span-3">
+      <h3>{title}</h3>
+      <p className="muted">{body}</p>
+    </section>
+  );
+}
+
+function MetricPanel({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <section className="metric-card span-3">
+      <small className="pill">seo + ai search</small>
+      {icon}
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </section>
   );
 }
