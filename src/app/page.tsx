@@ -33,10 +33,10 @@ const walkthroughSteps = [
 ];
 
 const whatItDoes = [
-  "Shows what needs attention today: leads, money, customers, workers, approvals, and risks.",
-  "Prepares replies, follow-ups, reminders, reviews, invoices, tasks, and marketing drafts.",
+  "Shows the leads, money, customers, workers, and risks that need attention today.",
+  "Prepares replies, reminders, reviews, invoices, task lists, and marketing drafts.",
   "Tracks where leads came from and what turned into booked income.",
-  "Keeps AI controlled: the owner chooses what runs, what needs approval, and what stays manual."
+  "Lets the owner choose what AI runs, what needs approval, and what stays manual."
 ];
 
 const fiveOutcomes = [
@@ -50,7 +50,7 @@ const fiveOutcomes = [
 const frontAndCenter = [
   ["AI employees", "Digital workers for reception, sales follow-up, office work, marketing, collections, and operations."],
   ["Owner command center", "One place to see hot leads, money leaks, overdue work, approvals, reminders, and what AI handled."],
-  ["Website-to-revenue tracking", "Connect forms, campaigns, reviews, ads, SEO/GEO work, source tracking, jobs, invoices, and outcomes."],
+  ["Website-to-revenue tracking", "Connect forms, campaigns, reviews, ads, search work, source tracking, jobs, invoices, and outcomes."],
   ["Follow-up machine", "Prepare replies, callbacks, stale lead recovery, estimate follow-up, invoice reminders, and review requests."],
   ["Booked-income loop", "Move leads into estimates, jobs or orders, invoices, payment records, reviews, proof, and better next actions."],
   ["Controlled autopilot", "Let AI prepare approved work while messages, public posts, payments, and ads stay under your control."]
@@ -78,14 +78,14 @@ const businessSystems = [
   ["AI receptionist", "Lead intake, missed messages, first replies, handoffs, booking paths, and urgent owner alerts."],
   ["AI sales assistant", "Pipeline movement, callbacks, stale lead recovery, proposal follow-up, and next-best actions."],
   ["AI office manager", "Tasks, schedules, reminders, job or order visibility, owner queues, and daily briefings."],
-  ["AI marketing assistant", "Website connection, campaign ideas, SEO/GEO drafts, reviews, proof, source tracking, and content plans."],
+  ["AI marketing assistant", "Website connection, campaign ideas, search drafts, reviews, proof, source tracking, and content plans."],
   ["AI collections helper", "Invoices, manual payment records, overdue reminders, ledgers, cash alerts, and payment links when payments are connected."],
   ["AI operations helper", "Workflows, approvals, team activity, exceptions, risks, and what needs attention today."]
 ];
 
 const connectedTools = [
   ["Website", "Lead forms, quote buttons, embedded capture, tracking helper, hosted pages, and approved publishing paths."],
-  ["Marketing platforms", "Google profile work, SEO/GEO planning, social campaigns, ads, reviews, UTM/source tracking, and proof content."],
+  ["Marketing platforms", "Google profile work, search planning, social campaigns, ads, reviews, UTM/source tracking, and proof content."],
   ["Inbox and alerts", "Email, app alerts, owner notifications, setup messages, reports, and follow-up reminders."],
   ["Payments", "Invoices, manual payment records, overdue reminders, ledger visibility, and Stripe-connected payment links when ready."],
   ["Operations", "Jobs, orders, tasks, schedules, workers, proofs, receipts, and customer history."],
@@ -140,9 +140,9 @@ export default function HomePage() {
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
             <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/start">Start</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
@@ -150,10 +150,10 @@ export default function HomePage() {
         <section className="hero-command">
           <div className="hero-copy">
             <p className="eyebrow">AI operating system for modern businesses</p>
-            <h1>Run the business without the business running you.</h1>
+            <h1>Put your business on autopilot, without giving up control.</h1>
             <p>
-              Ferocity watches leads, follow-up, jobs, payments, reviews, marketing, and owner alerts in one place.
-              It tells the business what matters, prepares the next action, and runs approved workflows so owners can get time,
+              Ferocity watches leads, follow-up, jobs, payments, reviews, marketing, and owner alerts.
+              It tells you what matters, prepares the next action, and helps run approved repeat work so you can get time,
               focus, and control back.
             </p>
             <ul className="hero-checklist" aria-label="What Ferocity does">
@@ -166,7 +166,7 @@ export default function HomePage() {
             </ul>
             <div className="button-row">
               <Link className="button" href="/business-health-score">
-                Start with free grader <ArrowRight size={16} />
+                Run the free business grader <ArrowRight size={16} />
               </Link>
               <Link className="button secondary-button" href="/demo">
                 See how it works
@@ -252,10 +252,10 @@ export default function HomePage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">Why owners buy</p>
-          <h2>Ferocity sells the result: less owner chaos, more control, more booked income.</h2>
+          <h2>Less owner chaos. More control. More booked income.</h2>
           <p className="muted">
-            Ferocity should not feel like another dashboard to babysit. AI watches the business,
-            prepares the work, connects the tools, and tells the owner what matters before money or time slips away.
+            Ferocity is not another dashboard to babysit. It watches the business, prepares the work,
+            connects the tools, and tells the owner what matters before money or time slips away.
           </p>
           <div className="grid section-actions">
             {frontAndCenter.map(([name, body]) => (
@@ -269,7 +269,7 @@ export default function HomePage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">What it does</p>
-          <h2>Your business already has software. Ferocity is the AI employee that makes the work move.</h2>
+          <h2>Your business already has software. Ferocity is the AI workforce that makes the work move.</h2>
           <p className="muted">
             Ferocity is not just a CRM, SEO tool, scheduling app, or chatbot. It connects demand, lead response,
             follow-up, jobs or orders, payments, reviews, proof, and reporting so owners can see what needs action now.
@@ -340,7 +340,7 @@ export default function HomePage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">What Ferocity actually does</p>
-          <h2>Connect the business once. Let Ferocity keep finding the next money-making action.</h2>
+          <h2>Connect the business. Let Ferocity keep finding the next money-making action.</h2>
           <div className="feature-loop">
             {autopilotSteps.map(([number, title, body]) => (
               <article key={title}>
@@ -360,8 +360,8 @@ export default function HomePage() {
           <p className="eyebrow">Owner stays in control</p>
           <h2>Autopilot does not mean giving up control.</h2>
           <p className="muted">
-            Ferocity is built so the owner decides which parts AI helps run. Some work can be prepared automatically,
-            some can wait for approval, and some stays manual until the business is ready.
+            Ferocity is built so the owner decides which parts AI helps run. Some work can be prepared,
+            some can wait for approval, and some can stay manual.
           </p>
           <div className="grid section-actions">
             {controlPromises.map(([name, body]) => (
@@ -392,7 +392,7 @@ export default function HomePage() {
           </div>
           <div className="video-copy">
             <p className="eyebrow">Watch first</p>
-            <h2>The short version: Ferocity finds leaks, sets up the operating loop, and gives the business digital employees for repeat work.</h2>
+            <h2>The short version: Ferocity finds leaks, sets up the loop, and gives the business AI help for repeat work.</h2>
             <p>
               Start with a free business audit. Then Ferocity can set up the business account, track lead sources, prepare follow-up,
               organize jobs and invoices, request reviews, create marketing proof, and report which work produced revenue.
@@ -429,7 +429,7 @@ export default function HomePage() {
         <section className="final-cta">
           <div>
             <p className="eyebrow">Start path</p>
-            <h2>Start free. Upgrade when you want Ferocity helping you get your life back.</h2>
+            <h2>Start free. Upgrade when you want Ferocity helping you get your time back.</h2>
             <p>Use the free grader to see what is leaking money and attention. Use a plan when you want Ferocity to help run follow-up, jobs, payments, reviews, marketing, and the growth loop.</p>
           </div>
           <div className="button-row">

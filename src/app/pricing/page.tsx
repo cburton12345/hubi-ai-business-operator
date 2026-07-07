@@ -90,7 +90,7 @@ const plans = [
       "App alerts for owner attention",
       "Email-ready setup notifications"
     ],
-    limits: "Starter is a working business system, not a thin audit. It organizes leads, jobs, follow-up, reviews, proof, owner alerts, and basic AI drafts. Growth unlocks heavier marketing, SEO/GEO, publishing plans, attribution, and larger AI usage.",
+    limits: "Starter is a working business system, not a thin audit. It organizes leads, jobs, follow-up, reviews, proof, owner alerts, and basic AI drafts. Growth unlocks heavier marketing, search planning, publishing plans, attribution, and larger AI usage.",
     cta: "Start Starter"
   },
   {
@@ -102,7 +102,7 @@ const plans = [
       "Everything in Starter",
       "Weekly growth briefs",
       "Content Studio campaigns",
-      "SEO/GEO traffic engine",
+      "Search traffic engine",
       "30-day content strategy",
       "Website and marketing platform planning",
       "Review request workflows",
@@ -166,7 +166,7 @@ const includedByDefault = [
 const paidOrConnected = [
   "Higher lead, proof, workspace, brand, and user limits",
   "Business Autopilot Blueprint included with paid plans",
-  "Full AI setup runs, Content Studio usage, SEO/GEO planning, graphics, and larger content generation",
+  "Full AI setup runs, Content Studio usage, search planning, graphics, and larger content generation",
   "Verified email and app/push alerts for owner attention, reports, setup messages, and customer follow-up",
   "Invoice reminders, ledger workflows, manual payment records, and payment links when payments are connected",
   "Higher worker intake, labor matching, and placement-support limits",
@@ -188,8 +188,8 @@ const paymentModes = [
   },
   {
     name: "Ferocity Managed Payments",
-    fee: "Planned: Ferocity fee plus payment processor fees",
-    detail: "Future Stripe Connect path for owners who want payment setup help. Processor, payout, dispute, refund, and instant payout fees pass through to the business."
+    fee: "Not live yet",
+    detail: "A future Stripe Connect option for owners who want payment setup help. Fees, refunds, disputes, payouts, and instant payouts must be shown clearly before this is enabled."
   }
 ];
 
@@ -243,11 +243,11 @@ export default function PricingPage() {
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
             <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/start">Start</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/integrations">Integrations</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
           </div>
         </nav>
 
@@ -255,9 +255,9 @@ export default function PricingPage() {
           <p className="eyebrow">Plan structure</p>
           <h1>Start free. Upgrade when you want Ferocity taking work off your plate.</h1>
           <p className="muted">
-            Ferocity is priced by how much of the business you want it to help run. Start with a free audit, use Job Tracker for jobs and job money,
-            add Growth to create demand, or use Operator when you want Ferocity watching leads, jobs, invoices, reviews, workers, and owner alerts.
-            Pro / Agency supports owners with several businesses, multi-brand workspaces, multi-location operations, and advanced teams. Every paid plan includes the Business Autopilot Blueprint so setup starts with a real diagnosis, not guesswork.
+            Start with the free grader. Use Job Tracker for bids, materials, and job money. Use Starter when you want AI watching leads,
+            follow-up, reviews, and owner alerts. Growth adds demand and proof. Operator helps run the day. Pro supports multiple businesses,
+            brands, locations, and higher usage.
           </p>
           <div className="button-row">
             <Link className="button" href="/business-health-score">
@@ -357,8 +357,8 @@ export default function PricingPage() {
           <p className="eyebrow">Payment options</p>
           <h2>Ferocity should help collect money without hiding fees.</h2>
           <p className="muted">
-            Businesses can track manual payments, connect their own Stripe account, or later choose a managed payment setup. Ferocity should never
-            quietly absorb processor fees, chargebacks, refunds, bank-return fees, instant-payout fees, or card network costs.
+            Businesses can track manual payments now and connect their own Stripe account for online payment links.
+            Managed payments are a future option and must show fees, refunds, disputes, bank returns, and instant-payout costs clearly before use.
           </p>
           <div className="grid section-actions">
             {paymentModes.map((mode) => (

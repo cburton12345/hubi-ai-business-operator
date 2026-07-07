@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, Code2, FileText, Globe2, MousePointerClick, S
 export const metadata: Metadata = {
   title: "Connect Your Website and Marketing Platforms to Ferocity",
   description:
-    "Add Ferocity lead capture, source tracking, SEO/GEO drafts, review requests, follow-up, and marketing attribution to an existing business website.",
+    "Add Ferocity lead capture, source tracking, search drafts, review requests, follow-up, and marketing attribution to an existing business website.",
   alternates: {
     canonical: "/connect-website"
   }
@@ -29,12 +29,12 @@ const connectionSteps = [
   },
   {
     title: "Draft SEO and marketing",
-    body: "Ferocity prepares SEO/GEO drafts, Google posts, social posts, review requests, campaign ideas, and website content paths for the owner to look over.",
+    body: "Ferocity prepares search pages, Google posts, social posts, review requests, campaign ideas, and website content paths for review.",
     icon: FileText
   },
   {
     title: "Nothing goes live by surprise",
-    body: "Website changes, customer messages, ads, payments, and publishing only happen after the right accounts are connected and the business says yes.",
+    body: "Website changes, customer messages, ads, payments, and publishing only happen after the right accounts are connected and approved.",
     icon: ShieldCheck
   }
 ];
@@ -66,9 +66,9 @@ export default function ConnectWebsitePage() {
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
             <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/start">Start</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
@@ -152,7 +152,7 @@ export default function ConnectWebsitePage() {
             <p className="eyebrow">What Ferocity tracks</p>
             <h2>Leads should not arrive as mystery contacts.</h2>
             <ul className="plain-list">
-              <li>Website form, hosted page, SEO/GEO, Google profile work, reviews, Facebook, paid ads, phone calls, referrals, and marketplace sources.</li>
+              <li>Website form, hosted page, search pages, Google profile work, reviews, Facebook, paid ads, phone calls, referrals, and marketplace sources.</li>
               <li>Page URL, source, medium, campaign, service, city, and message context when available.</li>
               <li>Lead status, follow-up task, estimate, job, invoice, review request, and revenue outcome.</li>
               <li>Website drafts and exports without surprise publishing.</li>

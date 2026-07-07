@@ -62,18 +62,18 @@ export default function AutomationsPage() {
             <Link href="/demo">Demo</Link>
             <Link href="/demo/tour">Tour</Link>
             <Link href="/features">Features</Link>
+            <Link href="/start">Start</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/about">About</Link>
             <Link href="/integrations">Integrations</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
 
         <section className="public-hero">
           <p className="eyebrow">AI automations</p>
-          <h1>Ferocity watches the business and prepares the next action.</h1>
+          <h1>Ferocity watches the business and gets the next action ready.</h1>
           <p className="muted">
             AI agents can monitor leads, estimates, invoices, reviews, jobs, marketing, and owner alerts. They prepare the work,
             then the business controls what sends, publishes, syncs, or spends.
@@ -120,7 +120,7 @@ export default function AutomationsPage() {
             <div>
               <h2>Automation without losing control</h2>
               <p className="muted">
-                Ferocity creates the draft, shows the next action, and logs what changed. Customer messages, public publishing,
+                Ferocity prepares the draft, shows the next action, and logs what changed. Customer messages, public publishing,
                 connected-account sync, payments, and ad spend stay behind the right permissions, consent rules, and plan controls.
               </p>
             </div>

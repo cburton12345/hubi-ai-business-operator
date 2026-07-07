@@ -35,8 +35,8 @@ const sections = [
   {
     group: "Growth",
     title: "AI marketing assistant",
-    body: "Create more demand with website improvements, SEO/GEO, review flow, Google profile activity, referrals, ads, campaigns, and source tracking from the same account.",
-    examples: ["Website connection", "SEO/GEO drafts", "Campaign ideas", "Lead source tracking"],
+    body: "Create more demand with website improvements, search visibility, review flow, Google profile activity, referrals, ads, campaigns, and source tracking from the same account.",
+    examples: ["Website connection", "Search drafts", "Campaign ideas", "Lead source tracking"],
     icon: Megaphone
   },
   {
@@ -172,7 +172,7 @@ const aiWorkforceRows = [
   ["AI receptionist", "Captures leads, flags urgent messages, drafts first replies, and routes conversations."],
   ["AI sales assistant", "Works callbacks, stale leads, proposals, estimate follow-up, and next-best actions."],
   ["AI office manager", "Organizes tasks, schedules, reminders, daily lists, approvals, and owner briefings."],
-  ["AI marketing assistant", "Connects website activity, marketing channels, SEO/GEO, reviews, proof, campaigns, and attribution."],
+  ["AI marketing assistant", "Connects website activity, marketing channels, search visibility, reviews, proof, campaigns, and attribution."],
   ["AI collections helper", "Prepares invoice follow-up, overdue reminders, ledger notes, manual payment tracking, and payment links when payments are connected."],
   ["AI operations helper", "Surfaces problems, automation failures, risks, team activity, and work that needs a person."]
 ];
@@ -192,7 +192,7 @@ const automationRows = [
   ["Invoice follow-up", "Draft friendly payment reminders for review."],
   ["Review request", "Ask after completed work and route unhappy feedback through a safer path."],
   ["Customer proof", "Collect job photos, testimonials, and approvals before turning them into marketing drafts."],
-  ["SEO/GEO refresh", "Keep service, city, proof, and AI-search content useful and tied to real work."]
+  ["Search refresh", "Keep service, city, proof, and AI-search content useful and tied to real work."]
 ];
 
 const safetyRows = [
@@ -211,7 +211,7 @@ const productMap = [
   },
   {
     name: "Owner Command Center",
-    use: "Know what needs done",
+    use: "Know what to do next",
     detail: "The owner view that highlights today’s work, revenue, risk, decisions, approvals, and what AI handled."
   },
   {
@@ -279,20 +279,20 @@ export default function FeaturesPage() {
             <Link href="/demo">Demo</Link>
             <Link href="/demo/tour">Tour</Link>
             <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/start">Start</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
 
         <section className="public-hero features-hero">
           <p className="eyebrow">AI workforce for modern businesses</p>
-          <h1>Ferocity gives the business AI employees for the work that keeps getting missed.</h1>
+          <h1>Ferocity gives the business an AI workforce for the work that keeps getting missed.</h1>
           <p className="muted">
-            Do not think of it as another CRM, SEO tool, chatbot, scheduling app, or field service app. Ferocity is the operating
+            Ferocity is not just another CRM, SEO tool, chatbot, scheduling app, or field service app. It is the operating
             layer for businesses with leads, follow-up, payments, marketing, jobs or orders, customer proof, and owner decisions.
             It fits contractors, practices, agencies, sales teams, e-commerce, local companies, and owners with multiple ventures.
           </p>
@@ -423,9 +423,9 @@ export default function FeaturesPage() {
         <section className="feature-command">
           <div>
             <p className="eyebrow">Plain-English setup</p>
-            <h2>Ferocity should lead the owner like a chief of staff, not wait for them to become a software expert.</h2>
-            <p className="muted">
-              A business owner should not need to know which automation, SEO page, review flow, ad source, payment reminder, or follow-up rule to build first.
+          <h2>Ferocity should lead the owner, not wait for them to figure out software.</h2>
+          <p className="muted">
+              A business owner should not need to know which automation, service page, review flow, ad source, payment reminder, or follow-up rule to build first.
               Ferocity starts with the gaps and turns them into recommended setup, draft work, owner alerts, and controlled autopilot.
             </p>
             <div className="button-row">
@@ -517,7 +517,7 @@ export default function FeaturesPage() {
         <section className="final-cta">
           <div>
             <p className="eyebrow">Best single next step</p>
-            <h2>Show the demo first. Use features as the deeper map.</h2>
+            <h2>Start with the demo. Use features when you want the full map.</h2>
             <p>
               The demo gives the quick walkthrough. This page lists the systems, automations, safety rules, and plan controls behind it.
             </p>

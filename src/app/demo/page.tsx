@@ -30,7 +30,7 @@ const loopSteps = [
     icon: Bot
   },
   {
-    title: "Tell the owner what needs done",
+    title: "Show the owner what to do next",
     body: "Ferocity turns leads, jobs, callbacks, estimates, invoices, reviews, and worker activity into a practical action list.",
     result: "Owner briefing, daily work list, risk alerts, and next actions",
     icon: CalendarClock
@@ -94,7 +94,7 @@ const deepLinks = [
 
 const demoLayers = [
   ["Step 1", "Audit the business", "Business Grader shows what is missing before anyone signs up."],
-  ["Step 2", "Show what needs done", "Owner Command Center ranks today's work, money, risks, approvals, and AI-handled items."],
+  ["Step 2", "Show what to do next", "Owner Command Center ranks today's work, money, risks, approvals, and AI-handled items."],
   ["Step 3", "Plan the day", "Operations & Workforce tracks jobs, worker day plans, punch-ins, schedules, expenses, mileage, proof, and job cost."],
   ["Step 4", "Work the leads", "Lead Follow-Up keeps replies, callbacks, estimates, and stale opportunities visible."],
   ["Step 5", "Grow from the work", "Marketing turns reviews, proof, SEO, Google profile activity, campaigns, and source data into new demand."]
@@ -112,12 +112,12 @@ export default function DemoPage() {
             <Link href="/about">About</Link>
             <Link href="/features">Features</Link>
             <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/start">Start</Link>
             <Link href="/connect-website">Connect Website</Link>
             <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/integrations">Integrations</Link>
             <Link href="/install">Install App</Link>
-            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
@@ -125,10 +125,10 @@ export default function DemoPage() {
         <section className="hero-command demo-hero">
           <div className="hero-copy">
             <p className="eyebrow">Product demo</p>
-            <h1>See how Ferocity turns business chaos into an owner action list.</h1>
+            <h1>See how Ferocity turns business chaos into an owner action plan.</h1>
             <p>
               Ferocity watches leads, sales, jobs, workers, invoices, reviews, marketing, and customer follow-up.
-              The owner sees what matters, what AI prepared, and what needs approval, without having to babysit every corner of the business.
+              The owner sees what matters, what AI prepared, and what needs approval without babysitting every corner of the business.
             </p>
             <div className="button-row">
               <Link className="button" href="/business-health-score">
@@ -198,9 +198,9 @@ export default function DemoPage() {
         <section className="demo-positioning">
           <div>
             <p className="eyebrow">The operating loop</p>
-            <h2>Ferocity starts before the lead arrives and keeps working after the job is done.</h2>
+            <h2>Ferocity starts before the lead arrives and keeps working after the sale.</h2>
             <p>
-              A CRM starts when somebody becomes a contact. Ferocity starts earlier: website connection, SEO, reviews,
+              A CRM starts when somebody becomes a contact. Ferocity starts earlier: website connection, search visibility, reviews,
               forms, source tracking, campaigns, and AI setup. Then it carries the lead through follow-up, work, payment,
               proof, and reporting. It fits contractors, practices, e-commerce, agencies, sales teams, multi-location owners,
               and connected rental workflows.
@@ -248,7 +248,7 @@ export default function DemoPage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">Autopilot with controls</p>
-          <h2>The business chooses how much AI runs.</h2>
+          <h2>The owner chooses how much AI runs.</h2>
           <p className="muted">
             Ferocity can act like cruise control for the repeat work, but it does not force full automation. The owner can keep
             messages, public posts, payments, and connected-account actions reviewed until trust is earned.

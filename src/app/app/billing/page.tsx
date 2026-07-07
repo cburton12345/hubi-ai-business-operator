@@ -113,7 +113,7 @@ export default async function BillingPage() {
           {[
             ["Manual payment tracking", "available", "Record payments made by cash, check, Zelle, outside Stripe, or other methods. No processing fee applies because Ferocity is only tracking the record."],
             ["Customer-owned Stripe", "configured by keys", "The business connects Stripe for online payment links. Stripe fees apply. Ferocity tracks invoice requests, payments, ledger entries, and follow-up."],
-            ["Ferocity Managed Payments", "planned", "Future Stripe Connect path with a Ferocity platform fee plus provider fees. Processor, refund, dispute, chargeback, bank-return, and instant-payout fees pass through."]
+            ["Ferocity Managed Payments", "not live yet", "Future Stripe Connect path with a Ferocity platform fee plus provider fees. Processor, refund, dispute, chargeback, bank-return, and instant-payout fees must be shown clearly before this is enabled."]
           ].map(([title, status, detail]) => (
             <section className="panel span-4" key={title}>
               <span className="pill">{status}</span>

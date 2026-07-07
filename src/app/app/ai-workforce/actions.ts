@@ -42,7 +42,7 @@ function setupRequestFor(command: string) {
     return `${command}. Set up website connector, lead forms, page drafts, SEO targets, source tracking, and draft-first publishing controls.`;
   }
   if (hasAny(lower, ["follow", "reactivate", "old lead", "stale", "last month", "missed call", "callback", "estimate", "invoice"])) {
-    return `${command}. Set up lead recovery, missed callback, estimate follow-up, invoice follow-up, review timing, and approval-first customer message drafts.`;
+    return `${command}. Set up lead recovery, missed callback, estimate follow-up, invoice follow-up, review timing, and customer message drafts for review.`;
   }
   if (hasAny(lower, ["setup", "set up", "business", "company", "start"])) {
     return `${command}. Set up business profile, services, service areas, lead forms, reviews, SEO drafts, automations, and go-live controls.`;
