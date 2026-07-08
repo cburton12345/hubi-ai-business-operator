@@ -143,7 +143,46 @@ async function checkProtected(route) {
   };
 }
 
+async function checkProtectedAuthenticated(route) {
+  if (!process.env.ADMIN_ACCESS_TOKEN) {
+    return {
+      route: `${route} authenticated`,
+      status: 0,
+      location: "",
+      failures: ["ADMIN_ACCESS_TOKEN is required for authenticated protected route crawl"],
+    };
+  }
+
+  const response = await fetch(urlFor(route), {
+    redirect: "follow",
+    headers: {
+      cookie: `ferocity_admin_session=${process.env.ADMIN_ACCESS_TOKEN}`,
+    },
+  });
+  const body = await response.text();
+  const looksLikeError =
+    body.includes("Application error") ||
+    body.includes("Unhandled Runtime Error") ||
+    body.includes("NEXT_REDIRECT") ||
+    body.includes("<title>404: This page could not be found</title>");
+
+  const failures = [];
+  if (response.status >= 400) failures.push(`HTTP ${response.status}`);
+  if (response.url.includes("/login")) failures.push(`authenticated request landed on login: ${response.url}`);
+  if (body.includes("Sign in to Ferocity")) failures.push("authenticated body contains login page");
+  if (looksLikeError) failures.push("error-like body");
+  if (body.trim().length < 1000) failures.push("suspiciously small protected body");
+
+  return {
+    route: `${route} authenticated`,
+    status: response.status,
+    finalUrl: response.url,
+    failures,
+  };
+}
+
 async function main() {
+  loadLocalEnv();
   const results = [];
   const workerRoute = await getPublicWorkerRoute().catch((error) => {
     console.warn(`WARN worker intake route skipped: ${error instanceof Error ? error.message : "lookup failed"}`);
@@ -156,6 +195,13 @@ async function main() {
   }
   for (const route of protectedRoutes) {
     results.push(await checkProtected(route));
+  }
+  if (process.env.ADMIN_ACCESS_TOKEN) {
+    for (const route of protectedRoutes) {
+      results.push(await checkProtectedAuthenticated(route));
+    }
+  } else {
+    console.warn("WARN authenticated protected route crawl skipped: ADMIN_ACCESS_TOKEN is not configured.");
   }
 
   const failures = results.filter((result) => result.failures.length > 0);
