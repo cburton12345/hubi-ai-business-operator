@@ -87,7 +87,7 @@ export default async function ActionsPage() {
                   <form action={sendApprovedEmailAction} className="section-actions">
                     <input name="actionId" type="hidden" value={action.id} />
                     <button className="button" type="submit">
-                      Send with Resend
+                      Send approved email with Resend
                     </button>
                   </form>
                 ) : null}
@@ -127,7 +127,7 @@ export default async function ActionsPage() {
 
         <section className="panel span-6">
           <h2>Provider Accounts</h2>
-          <p className="muted">Use Ferocity managed defaults early. Switch to customer-owned accounts when setup is ready.</p>
+          <p className="muted">Provider records show what could be used after credentials, policies, consent, and live-action settings are ready. Customer-owned accounts can replace shared/default routes later.</p>
           <ul className="list">
             {dashboard.providers.map((provider) => (
               <li className="list-row" key={provider.providerKey}>

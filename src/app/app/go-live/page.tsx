@@ -234,6 +234,29 @@ function statusIcon(status: LaunchCheck["status"]) {
   return <CircleAlert size={18} />;
 }
 
+const capabilityTruth = [
+  {
+    title: "Works as core Ferocity",
+    status: "usable now",
+    body: "Workspace setup, business info, lead forms, lead records, owner command events, AI instructions, service controls, jobs, bids, invoices, manual payment records, reminders, reviews/proof records, reports, and readiness checks."
+  },
+  {
+    title: "Works after provider setup",
+    status: "needs keys",
+    body: "Verified email sends, Stripe checkout/payment links, app push subscriptions, inbound email, OAuth providers, publishing connections, MarketplacePro events, and connected-system webhooks need the right credentials and callback configuration."
+  },
+  {
+    title: "AI prepares and escalates",
+    status: "controlled",
+    body: "AI can draft, classify, summarize, queue, recommend, create internal tasks, and flag owner attention. Customer-facing sends, public publishing, ad changes, and payment requests stay behind controls unless explicitly enabled and provider-ready."
+  },
+  {
+    title: "Not a live claim yet",
+    status: "not live",
+    body: "Managed platform-fee payments, Stripe Connect payouts, true SMS sending, automatic ad account management, direct CMS publishing, and fully autonomous public actions should not be sold as live until their providers, fees, policies, and approvals are finished."
+  }
+];
+
 export default async function GoLivePage() {
   const { stats, integrations, emailHealth } = await getLaunchReadiness();
   const checks = buildChecks(stats, integrations, emailHealth);
@@ -273,6 +296,29 @@ export default async function GoLivePage() {
             <span className="muted">Optional</span>
             <strong>{optional}</strong>
           </div>
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Capability Truth</h2>
+            <p className="muted">
+              This is the launch honesty check. If something needs a provider, approval, or manual setup, Ferocity should say that before a customer depends on it.
+            </p>
+          </div>
+          <Link className="mini-button" href="/app/system-health">System health</Link>
+        </div>
+        <div className="grid">
+          {capabilityTruth.map((item) => (
+            <article className="panel span-6" key={item.title}>
+              <div className="list-row flush-row">
+                <h3>{item.title}</h3>
+                <span className={`pill ${item.status === "not live" ? "high" : item.status === "needs keys" ? "medium" : ""}`}>{item.status}</span>
+              </div>
+              <p className="muted">{item.body}</p>
+            </article>
+          ))}
         </div>
       </section>
 

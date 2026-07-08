@@ -87,7 +87,7 @@ export default async function AttentionCommandPage() {
           <div className="list-row flush-row">
             <div>
               <p className="eyebrow">Nudges</p>
-              <h2>Ferocity will keep pushing the right things forward.</h2>
+              <h2>Ferocity keeps surfacing the right things to move forward.</h2>
               <p className="muted">Critical items should interrupt. Revenue and owner decisions get same-day nudges. Lower priority work stays in the daily brief.</p>
             </div>
             <span className={`pill ${dashboard.metrics.nudges ? "medium" : ""}`}>
@@ -171,7 +171,7 @@ export default async function AttentionCommandPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Today&apos;s Owner Checklist</h2>
-            <p className="muted">The practical stuff: send the follow-ups, collect money, handle paybacks, plan workers, review costs, and approve AI work.</p>
+            <p className="muted">The practical stuff: review follow-ups, collect or record money, handle paybacks, plan workers, review costs, and approve AI work.</p>
           </div>
           <Link className="mini-button" href="/app/text-queue">Text queue</Link>
         </div>
@@ -193,7 +193,7 @@ export default async function AttentionCommandPage() {
               <span className="priority-number">1</span>
               <div>
                 <h3>No owner checklist items right now</h3>
-                <p className="muted">Ferocity will add items here when leads, invoices, field costs, schedules, missing connections, or AI actions need attention.</p>
+                <p className="muted">Ferocity adds items here when leads, invoices, field costs, schedules, missing connections, or AI actions need attention.</p>
               </div>
               <span className="pill low">clear</span>
             </li>
@@ -301,7 +301,7 @@ export default async function AttentionCommandPage() {
           <div className="list-row flush-row">
             <div>
               <h2>Missing Connections</h2>
-              <p className="muted">The outside accounts Ferocity still needs before it can send, collect, post, import, or track more automatically.</p>
+              <p className="muted">The outside accounts Ferocity still needs before it can send, collect online payments, post, import, or sync more automatically.</p>
             </div>
             <Link className="mini-button" href="/app/integrations">Connect</Link>
           </div>
