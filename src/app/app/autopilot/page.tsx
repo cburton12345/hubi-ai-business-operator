@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, Bot, Brain, CalendarDays, CheckCircle2, DollarSign, HardHat, Inbox, Megaphone, ShieldCheck, Users, Workflow } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
+import { applyAutopilotPresetAction } from "@/app/app/controls/actions";
 
 function tone(value: number) {
   return value > 0 ? "high" : "";
@@ -95,6 +96,26 @@ export default async function AutopilotPage() {
       button: "Safety check"
     }
   ];
+  const modeCards = [
+    {
+      preset: "owner_shield",
+      title: "Owner Shield",
+      detail: "Ferocity watches leads, follow-up, reviews, payments, and daily risk. Normal work goes into the daily brief. Urgent money or customer issues can push you.",
+      button: "Use Owner Shield"
+    },
+    {
+      preset: "growth_engine",
+      title: "Growth Engine",
+      detail: "Ferocity focuses on being seen: website import, SEO drafts, growth pages, reviews, proof, campaigns, publishing plans, and source tracking.",
+      button: "Use Growth Engine"
+    },
+    {
+      preset: "manual_first",
+      title: "Manual First",
+      detail: "Keep Ferocity useful for jobs, bids, invoices, reminders, and records while AI drafts and recommendations stay conservative.",
+      button: "Use Manual First"
+    }
+  ];
 
   return (
     <QueuePageShell
@@ -108,7 +129,7 @@ export default async function AutopilotPage() {
             <p className="eyebrow">Current state</p>
             <h2>{snapshot.tenantName}</h2>
             <p className="muted">
-              Ferocity can watch the business, prepare work, remind people, summarize what happened, and recommend the next move. You decide what it can actually send, post, collect, or change.
+              Ferocity can watch the business, prepare work, remind people, summarize what happened, and recommend the next move. The point is simple: less owner chaos, more handled work, more booked income.
             </p>
           </div>
           <div className="button-row">
@@ -127,6 +148,29 @@ export default async function AutopilotPage() {
           <Metric label="Worker matches" value={snapshot.metrics.laborMatchApprovals} tone={tone(snapshot.metrics.laborMatchApprovals)} />
           <Metric label="Itineraries needed" value={snapshot.operator.ownerSummary.itineraryNeeded} tone={tone(snapshot.operator.ownerSummary.itineraryNeeded)} />
           <Metric label="Expense review" value={snapshot.operator.ownerSummary.expenseReview} tone={tone(snapshot.operator.ownerSummary.expenseReview)} />
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Choose how hands-off you want to be</p>
+            <h2>Take back the day without losing control.</h2>
+            <p className="muted">
+              Pick a mode now and adjust the details later. These modes update existing Ferocity controls, approval rules, and limits. They do not create a second system.
+            </p>
+          </div>
+          <Link className="mini-button" href="/app/controls">Fine-tune controls</Link>
+        </div>
+        <div className="grid">
+          {modeCards.map((mode) => (
+            <form action={applyAutopilotPresetAction} className="panel span-4" key={mode.preset}>
+              <input type="hidden" name="preset" value={mode.preset} />
+              <h3>{mode.title}</h3>
+              <p className="muted">{mode.detail}</p>
+              <button className="mini-button" type="submit">{mode.button}</button>
+            </form>
+          ))}
         </div>
       </section>
 
@@ -154,10 +198,10 @@ export default async function AutopilotPage() {
           <Link className="mini-button" href="/app/controls">Open controls</Link>
         </div>
         <div className="setup-step-grid">
-          <Step number="1" title="Connect" body="Website, forms, email, payments, calendar, workers, MarketplacePro, and any other places the business already uses." />
-          <Step number="2" title="Learn" body="Business Info stores services, prices, service areas, customers, proof, brand voice, rules, and history." />
-          <Step number="3" title="Watch" body="AI monitors leads, jobs, invoices, reviews, emails, workers, bids, marketing, and connected-system events." />
-          <Step number="4" title="Help without surprises" body="Ferocity can prepare, remind, summarize, and queue work. Messages, public posts, payment requests, and ads stay under owner control." />
+          <Step number="1" title="Get seen" body="Ferocity prepares the website, lead forms, SEO targets, reviews, proof, campaigns, and source tracking that bring more people in." />
+          <Step number="2" title="Catch the work" body="Leads, quote requests, calls, forms, referrals, MarketplacePro, and connected sources flow into one follow-up loop." />
+          <Step number="3" title="Move it forward" body="AI watches stale leads, estimates, jobs, invoices, reviews, reminders, workers, and customer replies." />
+          <Step number="4" title="Interrupt only when needed" body="Routine work goes to the daily brief. Owner alerts are for money, risk, customer issues, approvals, and urgent opportunities." />
         </div>
       </section>
 

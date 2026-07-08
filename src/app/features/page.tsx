@@ -168,6 +168,12 @@ const outcomeGroups = [
   ["Let AI carry busy work", "AI watches, drafts, recommends, summarizes, routes, reminds, logs, and asks for approval when needed."]
 ];
 
+const autopilotModes = [
+  ["Owner Shield", "Ferocity watches the business, keeps routine items in the daily brief, and interrupts the owner for money, risk, urgent leads, customer issues, approvals, or failures."],
+  ["Growth Engine", "Ferocity focuses on being seen and getting jobs: website connection, SEO drafts, growth pages, campaigns, reviews, proof, and source tracking."],
+  ["Manual First", "The business can still use jobs, bids, invoices, reminders, records, and reports while AI stays conservative and draft-focused."]
+];
+
 const aiWorkforceRows = [
   ["AI receptionist", "Captures leads, flags urgent messages, drafts first replies, and routes conversations."],
   ["AI sales assistant", "Works callbacks, stale leads, proposals, estimate follow-up, and next-best actions."],
@@ -315,6 +321,23 @@ export default function FeaturesPage() {
             <Link className="button secondary-button" href="/connect-website">
               Connect website
             </Link>
+          </div>
+        </section>
+
+        <section className="panel section-actions">
+          <p className="eyebrow">Customer-selectable modes</p>
+          <h2>Use Ferocity as much or as little as the business is ready for.</h2>
+          <p className="muted">
+            A customer should not need to understand every integration on day one. They can start simple, turn on the owner shield, or focus on growth first.
+            Each mode maps to the same Ferocity controls, approvals, and limits.
+          </p>
+          <div className="grid section-actions">
+            {autopilotModes.map(([title, body]) => (
+              <article className="panel span-4" key={title}>
+                <h3>{title}</h3>
+                <p className="muted">{body}</p>
+              </article>
+            ))}
           </div>
         </section>
 

@@ -33,6 +33,7 @@ const walkthroughSteps = [
 ];
 
 const whatItDoes = [
+  "Helps owners take back the day by reducing routine checking, chasing, and remembering.",
   "Shows the leads, money, customers, workers, and risks that need attention today.",
   "Prepares replies, reminders, reviews, invoices, task lists, and marketing drafts.",
   "Tracks where leads came from and what turned into booked income.",
@@ -154,7 +155,7 @@ export default function HomePage() {
             <p>
               Ferocity watches leads, follow-up, jobs, payments, reviews, marketing, and owner alerts.
               It tells you what matters, prepares the next action, and helps run approved repeat work so you can get time,
-              focus, and control back.
+              focus, and control back while the business keeps moving.
             </p>
             <ul className="hero-checklist" aria-label="What Ferocity does">
               {whatItDoes.map((item) => (
@@ -249,7 +250,7 @@ export default function HomePage() {
           <h2>Less owner chaos. More control. More booked income.</h2>
           <p className="muted">
             Ferocity is not another dashboard to babysit. It watches the business, prepares the work,
-            connects the tools, and tells the owner what matters before money or time slips away.
+            connects the tools, and tells the owner what matters before money, jobs, or time slip away.
           </p>
           <div className="grid section-actions">
             {frontAndCenter.map(([name, body]) => (
