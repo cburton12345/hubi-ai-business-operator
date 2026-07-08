@@ -204,6 +204,9 @@ export async function updateBrandProfile(formData: FormData) {
 
     revalidatePath("/app/brands");
     revalidatePath(`/app/brands/${brand.slug}`);
+    revalidatePath("/app/business-brain");
+    revalidatePath("/app/ai-workforce");
+    revalidatePath("/app/autopilot");
     revalidatePath("/app/tasks");
     redirect(`/app/brands/${brand.slug}?saved=1`);
   }
@@ -266,6 +269,9 @@ export async function updateBrandProfile(formData: FormData) {
 
   revalidatePath("/app/brands");
   revalidatePath(`/app/brands/${brand.slug}`);
+  revalidatePath("/app/business-brain");
+  revalidatePath("/app/ai-workforce");
+  revalidatePath("/app/autopilot");
   revalidatePath("/app/tasks");
   redirect(`/app/brands/${brand.slug}?saved=1`);
 }

@@ -100,9 +100,9 @@ export default async function WebsiteConnectorPage() {
         <div className="list-row flush-row">
           <div>
             <p className="eyebrow">Guided setup</p>
-            <h2>Ferocity should tell the owner exactly what to do.</h2>
+            <h2>Once the website is connected, Ferocity starts building the operating loop.</h2>
             <p className="muted">
-              The simple path is capture first, then tracking, then draft marketing, then optional publishing. Owners should not have to understand APIs.
+              The simple path is capture first, then tracking, then growth drafts, follow-up, reviews, and attribution. Owners should not have to understand APIs.
             </p>
           </div>
           <span className="pill">plain steps</span>
@@ -112,8 +112,9 @@ export default async function WebsiteConnectorPage() {
             ["1", "Paste the website URL", "Ferocity reads the public site and finds services, service areas, contact gaps, and likely conversion issues."],
             ["2", "Add the one-line script", "The quote button and source tracking start working without rebuilding the website."],
             ["3", "Test one lead", "Submit the form once and confirm it lands in Leads with page and campaign details."],
-            ["4", "Let AI build the growth plan", "Prepare service pages, city pages, GBP posts, review asks, and campaigns from the business context."],
-            ["5", "Choose publishing path", "Keep drafts in Ferocity, export to the customer website, use hosted pages, or connect a CMS when credentials are ready."]
+            ["4", "Let AI build the growth plan", "Prepare service pages, city pages, GBP posts, review asks, campaigns, and follow-up from the business instructions."],
+            ["5", "Turn on the right autopilot mode", "Owner Shield, Growth Engine, or Manual First controls what Ferocity watches, drafts, queues, and escalates."],
+            ["6", "Choose publishing path", "Keep drafts in Ferocity, export to the customer website, use hosted pages, or connect a CMS when credentials are ready."]
           ].map(([number, title, body]) => (
             <article className="panel span-4" key={title}>
               <span className="pill">{number}</span>
@@ -131,7 +132,8 @@ export default async function WebsiteConnectorPage() {
             {[
               ["Add a Ferocity form", "Put a quote button, contact link, or embedded form on the customer's website."],
               ["Carry source data", "UTM source, campaign, page URL, and referrer stay attached to the lead."],
-              ["Review before action", "Follow-up, review requests, SEO drafts, and publishing stay controlled by approvals."],
+              ["Use the AI rules", "The brand's AI instructions guide replies, follow-up timing, growth priorities, and escalation rules."],
+              ["Review before action", "Follow-up, review requests, SEO drafts, and publishing stay controlled by approvals and autopilot mode."],
               ["Tie marketing to revenue", "Leads can move into estimates, jobs, invoices, reviews, and reporting."]
             ].map(([title, body]) => (
               <li className="list-row" key={title}>

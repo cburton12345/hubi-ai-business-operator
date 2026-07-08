@@ -32,7 +32,7 @@ export default async function BrandProfilePage({
           <div>
             <p className="eyebrow">Brand Profile</p>
             <h1>{brand.name}</h1>
-            <p className="muted">Identity, positioning, marketing context, and risk settings used by the AI operator.</p>
+            <p className="muted">The editable source of truth Ferocity uses to learn the business, run the right loops, and know when to ask before acting.</p>
           </div>
           <Link className="button secondary-button" href="/app/brands">
             Back to brands
@@ -97,53 +97,59 @@ export default async function BrandProfilePage({
           </section>
 
           <section className="panel span-12 form-stack">
-            <h2>Operator Strategy</h2>
+            <h2>AI Operating Instructions</h2>
+            <p className="muted">
+              Write this in normal business language. Ferocity uses these instructions when it sets up automations, drafts replies,
+              plans growth work, follows up with leads, asks for reviews, and decides what needs owner approval.
+            </p>
             <label>
-              Description
+              What this business does
               <textarea name="description" rows={4} defaultValue={brand.description} />
             </label>
             <label>
-              Primary goal
+              Main outcome Ferocity should work toward
               <textarea name="primaryGoal" rows={3} defaultValue={brand.primaryGoal} />
             </label>
             <label>
-              Target customers
+              Ideal customers or jobs to prioritize
               <textarea name="targetCustomers" rows={3} defaultValue={brand.marketing.targetCustomers} />
             </label>
             <label>
-              CTA goals
+              What Ferocity should push people to do next
               <textarea name="ctaGoals" rows={2} defaultValue={brand.marketing.ctaGoals} />
             </label>
           </section>
 
           <section className="panel span-6 form-stack">
-            <h2>Marketing Settings</h2>
+            <h2>Growth Instructions</h2>
+            <p className="muted">Tell Ferocity how to help this business get seen, earn trust, and turn attention into booked work.</p>
             <label>
-              Ad goals
+              Ads and campaign priorities
               <textarea name="adGoals" rows={3} defaultValue={brand.marketing.adGoals} />
             </label>
             <label>
-              SEO targets
+              SEO, AI search, and location targets
               <textarea name="seoTargets" rows={3} defaultValue={brand.marketing.seoTargets} />
             </label>
             <label>
-              Review strategy
+              Review and customer proof strategy
               <textarea name="reviewStrategy" rows={3} defaultValue={brand.marketing.reviewStrategy} />
             </label>
             <label>
-              Follow-up strategy
+              Lead, estimate, invoice, and customer follow-up rules
               <textarea name="followUpStrategy" rows={3} defaultValue={brand.marketing.followUpStrategy} />
             </label>
           </section>
 
           <section className="panel span-6 form-stack">
-            <h2>Safety</h2>
+            <h2>AI Guardrails</h2>
+            <p className="muted">Use this to keep Ferocity helpful without letting it surprise customers, spend money, publish publicly, or overstep.</p>
             <label>
-              Tone of voice
+              How AI should sound when it writes
               <textarea name="toneOfVoice" rows={4} defaultValue={brand.marketing.toneOfVoice} />
             </label>
             <label>
-              Risk profile
+              Business risk level
               <select name="riskProfile" defaultValue={brand.riskProfile}>
                 <option value="normal">Normal</option>
                 <option value="regulated">Regulated</option>
@@ -151,13 +157,20 @@ export default async function BrandProfilePage({
               </select>
             </label>
             <label>
-              Approval mode
+              Default AI action rule
               <select name="approvalMode" defaultValue={brand.marketing.approvalMode}>
-                <option value="manual">Manual approval</option>
-                <option value="recommend_only">Recommend only</option>
-                <option value="low_risk_auto">Low-risk auto later</option>
+                <option value="manual">Prepare work and ask before customer-facing actions</option>
+                <option value="recommend_only">Recommend only; do not create live action tasks</option>
+                <option value="low_risk_auto">Allow low-risk internal automation when controls allow it</option>
               </select>
             </label>
+            <div className="callout">
+              <h3>Good instructions sound like this</h3>
+              <p className="muted">
+                Prioritize storm repair and emergency leads. Follow up within 10 minutes during business hours. Do not push financing unless asked.
+                Ask before publishing, sending payment links, changing prices, or contacting unhappy customers.
+              </p>
+            </div>
           </section>
 
           <section className="span-12 button-row">

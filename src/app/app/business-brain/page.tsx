@@ -51,6 +51,38 @@ export default async function BusinessBrainPage() {
         <div className="list-row flush-row">
           <div>
             <h2>
+              <Bot size={18} /> Teach Ferocity How To Run This Business
+            </h2>
+            <p className="muted">
+              Every customer should have editable AI instructions: what to prioritize, what to avoid, how to talk,
+              which customers and services matter most, what growth should focus on, and when Ferocity must ask first.
+            </p>
+          </div>
+          <div className="button-row">
+            {brain.brands[0] ? <Link className="button" href={brain.brands[0].href}>Edit AI Instructions</Link> : null}
+            <Link className="button secondary-button" href="/app/autopilot">Choose Autopilot Mode</Link>
+          </div>
+        </div>
+        <div className="setup-step-grid">
+          {[
+            ["1", "Connect the business", "Website, forms, email, payments, calendars, reviews, workers, and other tools can feed Ferocity when ready."],
+            ["2", "Set the rules", "Tell AI what to manage, what to prioritize, how to respond, and what needs approval."],
+            ["3", "Run the loops", "Ferocity watches growth, leads, jobs, invoices, reviews, reminders, and connected-system events."],
+            ["4", "Interrupt less", "Routine work goes into daily briefs. Owner alerts stay for money, risk, urgent customers, failures, and approvals."]
+          ].map(([number, title, body]) => (
+            <div className="setup-step-card" key={number}>
+              <span className="step-dot">{number}</span>
+              <h3>{title}</h3>
+              <p className="muted">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
               <Brain size={18} /> One Place For Business Facts
             </h2>
             <p className="muted">
