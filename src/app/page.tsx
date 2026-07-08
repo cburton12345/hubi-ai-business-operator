@@ -174,12 +174,6 @@ export default function HomePage() {
               <Link className="button secondary-button" href="/pricing">
                 View plans
               </Link>
-              <Link className="button secondary-button" href="/install">
-                Install app
-              </Link>
-              <Link className="button secondary-button" href="/login">
-                Sign in
-              </Link>
             </div>
             <div className="trust-strip" aria-label="Safety controls">
               <span><ShieldCheck size={15} /> No surprise changes</span>
@@ -430,7 +424,7 @@ export default function HomePage() {
           <div>
             <p className="eyebrow">Start path</p>
             <h2>Start free. Upgrade when you want Ferocity helping you get your time back.</h2>
-            <p>Use the free grader to see what is leaking money and attention. Use a plan when you want Ferocity to help run follow-up, jobs, payments, reviews, marketing, and the growth loop.</p>
+            <p>Use the free grader to see what is leaking money and attention. Pick a plan when you want Ferocity to help run follow-up, jobs, payments, reviews, marketing, and the daily operating loop.</p>
           </div>
           <div className="button-row">
             <Link className="button" href="/business-health-score">
@@ -438,9 +432,6 @@ export default function HomePage() {
             </Link>
             <Link className="button secondary-button" href="/start?source=home_bottom">
               Get my setup plan
-            </Link>
-            <Link className="button secondary-button" href="/connect-website">
-              Connect website
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans

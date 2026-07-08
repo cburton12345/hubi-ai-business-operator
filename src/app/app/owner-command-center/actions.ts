@@ -51,7 +51,7 @@ export async function updateOwnerCommandEventAction(formData: FormData) {
     set status = $3,
       owner_attention = case when $3 in ('resolved', 'ai_handled', 'watching') then false else owner_attention end,
       ai_handled = case when $3 = 'ai_handled' then true else ai_handled end,
-      ai_summary = case when $3 = 'ai_handled' then coalesce(ai_summary, 'Marked handled from the Owner Feed.') else ai_summary end,
+      ai_summary = case when $3 = 'ai_handled' then coalesce(ai_summary, 'Marked handled from Owner Events.') else ai_summary end,
       metadata_json = metadata_json || $4::jsonb,
       updated_at = now()
     where tenant_id = $1 and id = $2
@@ -108,7 +108,7 @@ export async function syncFerocityActivityToOwnerCommandAction() {
     `,
     [
       workspaceId,
-      "Owner Feed synced Ferocity activity",
+      "Owner Events synced Ferocity activity",
       `Scanned ${result.scanned} timeline events and promoted ${result.promoted} owner-visible events.`,
       JSON.stringify({
         scanned: result.scanned,

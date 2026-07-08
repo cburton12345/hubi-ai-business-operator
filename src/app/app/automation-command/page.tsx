@@ -93,7 +93,7 @@ export default async function AutomationCommandPage() {
               ["Check safety", "Consent, connected accounts, live policies, plan limits, and risk rules are checked.", "/app/safety-readiness"],
               ["Review queue", "Human approval stays visible for messages, publishing, reviews, payments, and sync.", "/app/actions"],
               ["Run or record", "Approved work can be sent, marked manual, scheduled, blocked, or logged.", "/app/actions"],
-              ["Report back", "Reports and Owner Feed show what happened, what failed, and what needs help.", "/app/owner-command-center"]
+              ["Report back", "Reports and Owner Events show what happened, what failed, and what needs help.", "/app/owner-command-center"]
             ].map(([title, detail, href]) => (
               <Link className="path-card" href={href} key={title}>
                 <GitBranch size={18} />

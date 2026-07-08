@@ -50,7 +50,7 @@ export default async function AttentionCommandPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Today"
+      eyebrow="Needs Attention"
       title="What Needs Attention, What Makes Money, What Is Blocked"
       description="A plain owner view for decisions, risks, stuck work, missing connections, AI actions, and revenue follow-up."
     >
@@ -62,7 +62,7 @@ export default async function AttentionCommandPage() {
             <p className="muted">{dashboard.briefing}</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/owner-command-center">Owner Feed</Link>
+            <Link className="button" href="/app/owner-command-center">Owner Events</Link>
             <Link className="button secondary-button" href="/app/reports">Reports</Link>
             <Link className="button secondary-button" href="/app/automation-command">Automation</Link>
           </div>

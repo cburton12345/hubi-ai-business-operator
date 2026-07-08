@@ -32,7 +32,7 @@ export default function InstallPage() {
           <h1>Install Ferocity on your phone or computer.</h1>
           <p className="muted">
             Ferocity is an installable web app. It opens like an app, stays tied to your secure Ferocity login,
-            and gives faster access to Today, Business Grader, and guided setup.
+            and gives faster access to Needs Attention, owner alerts, Business Grader, job tracking, and guided setup.
           </p>
           <div className="button-row">
             <InstallAppButton />
@@ -64,7 +64,7 @@ export default function InstallPage() {
           <h2>Ferocity works better when it is one tap away.</h2>
           <div className="path-grid">
             {[
-              ["Owner check-in", "Open Today and see decisions, risks, stuck work, missing connections, and money follow-up."],
+              ["Owner check-in", "Open Needs Attention and see decisions, risks, stuck work, missing connections, and money follow-up."],
               ["Field work", "Get faster access to schedules, proof photos, receipts, mileage, customer updates, and payroll review."],
               ["Sales follow-up", "Work new leads, stale opportunities, viewed estimates, unpaid invoices, and review requests."],
               ["Worker requests", "Post a staffing need, review matches, and approve contact from the field or office."],
@@ -88,9 +88,10 @@ export default function InstallPage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">After sign-in</p>
-          <h2>Turn on owner alerts.</h2>
+          <h2>Turn on owner alerts after you install.</h2>
           <p className="muted">
-            Push notifications are optional. Use them for owner decisions, hot leads, blocked automation, safety issues, and money follow-up.
+            Push notifications are optional. Use them for hot leads, owner decisions, blocked automation, safety issues,
+            reminders, meetings, job plans, and money follow-up.
           </p>
           <div className="button-row">
             <Link className="button secondary-button" href="/app/notifications">Open notification settings</Link>

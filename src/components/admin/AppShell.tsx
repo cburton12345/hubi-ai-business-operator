@@ -5,7 +5,7 @@ import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspace, getWorkspaceOptions } from "@/lib/workspace/current-workspace";
 
 const commandShortcuts = [
-  ["Show me what needs attention", "/app/attention-command"],
+  ["Show me what matters today", "/app/attention-command"],
   ["Create a quote", "/app/service"],
   ["Follow up with leads", "/app/lead-command"],
   ["Collect unpaid invoices", "/app/cash-collection"],
@@ -27,13 +27,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             Ferocity
           </Link>
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
-            <Link href="/app">Home</Link>
+            <Link href="/app">Command Center</Link>
             <Link href="/app/welcome">Start Here</Link>
-            <Link href="/app/attention-command">Today</Link>
+            <Link href="/app/attention-command">Needs Attention</Link>
             <Link href="/app/ai-workforce">AI Workforce</Link>
-            <Link href="/app/lead-command">Customers</Link>
+            <Link href="/app/lead-command">Leads & Customers</Link>
             <Link href="/app/service-command">Jobs</Link>
-            <Link href="/app/operations-workforce">People</Link>
+            <Link href="/app/operations-workforce">Team</Link>
             <Link href="/app/cash-collection">Money</Link>
             <Link href="/app/growth-calendar">Growth</Link>
             <Link href="/app/reports">Insights</Link>
@@ -45,13 +45,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <p>Start & AI</p>
                   <Link href="/app/welcome">Start Here</Link>
                   <Link href="/app/ai-workforce">AI Workforce</Link>
-                  <Link href="/app/build-system">Build My System</Link>
+                  <Link href="/app/build-system">Guided Setup</Link>
                   <Link href="/app/autopilot">Autopilot</Link>
                   <Link href="/app/business-brain">Business Info</Link>
                   <Link href="/app/ai-monitoring">Daily Brief</Link>
                   <Link href="/app/notifications">Notifications</Link>
                   <Link href="/app/role-views">Choose A View</Link>
-                  <Link href="/app/owner-command-center">Owner Feed</Link>
+                  <Link href="/app/owner-command-center">Owner Events</Link>
                   <Link href="/app/personal-ops">Private Owner Tasks</Link>
                   <Link href="/app/automation-timeline">Automation Timeline</Link>
                   <Link href="/app/automation-command">Automation Rules</Link>
@@ -62,8 +62,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 </section>
                 <section>
                   <p>Customers & Work</p>
-                  <Link href="/app/attention-command">Today</Link>
-                  <Link href="/app/lead-command">Customers</Link>
+                  <Link href="/app/attention-command">Needs Attention</Link>
+                  <Link href="/app/lead-command">Leads & Customers</Link>
                   <Link href="/app/leads">Leads</Link>
                   <Link href="/app/service-command">Jobs</Link>
                   <Link href="/app/employee">Employee View</Link>
@@ -71,7 +71,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/crew-itinerary">Crew Day</Link>
                   <Link href="/app/calendar">Calendar</Link>
                   <Link href="/app/tasks">Tasks</Link>
-                  <Link href="/app/operations-workforce">Workers & Schedule</Link>
+                  <Link href="/app/operations-workforce">Team & Schedule</Link>
                   <Link href="/app/labor-bench">Labor Bench</Link>
                   <Link href="/app/job-tracker">Jobs & Money</Link>
                   <Link href="/app/cash-collection">Cash Collection</Link>
@@ -166,7 +166,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <section className="operator-command-strip panel" aria-label="Ferocity command shortcuts">
           <Link className="operator-command-input" href="/app/ai-workforce">
-            <span>Tell Ferocity what you need done...</span>
+            <span>Ferocity checks the business and suggests the next move.</span>
             <strong>Open AI Workforce</strong>
           </Link>
           <div className="operator-command-chips">

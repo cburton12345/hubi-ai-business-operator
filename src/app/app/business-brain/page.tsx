@@ -59,7 +59,7 @@ export default async function BusinessBrainPage() {
             </p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/build-system">Build My System</Link>
+            <Link className="button" href="/app/build-system">Guided Setup</Link>
             <Link className="button secondary-button" href="/app/ai-workforce">AI Workforce</Link>
           </div>
         </div>

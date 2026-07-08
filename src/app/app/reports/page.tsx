@@ -43,7 +43,7 @@ export default async function ReportsPage() {
             <h2>What Ferocity Needs From You</h2>
             <p className="muted">The short owner list behind the reporting: keys, items to review, stuck automation, low-confidence AI, customer issues, workforce checks, and report follow-up.</p>
           </div>
-          <Link className="button secondary-button" href="/app/owner-command-center">Owner Feed</Link>
+          <Link className="button secondary-button" href="/app/owner-command-center">Owner Events</Link>
         </div>
         <ul className="list">
           {ownerNeeds.slice(0, 6).map((need) => (

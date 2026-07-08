@@ -102,7 +102,7 @@ export default async function OperationsWorkforcePage() {
           <div className="inline-actions">
             <Link className="mini-button" href="/app/service">Work Records</Link>
             <Link className="mini-button" href="/app/ai-walkthrough">AI Walkthrough</Link>
-            <Link className="mini-button" href="/app/owner-command-center">Owner Feed</Link>
+            <Link className="mini-button" href="/app/owner-command-center">Owner Events</Link>
           </div>
         </div>
         <ul className="priority-list">

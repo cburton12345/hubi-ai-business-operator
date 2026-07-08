@@ -212,7 +212,7 @@ const productMap = [
   {
     name: "Owner Command Center",
     use: "Know what to do next",
-    detail: "The owner view that highlights today’s work, revenue, risk, decisions, approvals, and what AI handled."
+    detail: "The owner view that highlights today's work, revenue, risk, decisions, approvals, and what AI handled."
   },
   {
     name: "Operations & Workforce",
@@ -264,7 +264,7 @@ const fieldServiceBasics = [
   ["Invoices and payments", "Invoices, manual payment records, overdue balances, invoice follow-up, ledgers, and payment links when payments are connected."],
   ["People paid and receipts", "Worker payments, subcontractor pay, receipt submissions, reimbursement review, and job-level cost tracking."],
   ["Labor bench", "Ask for workers, collect availability, review suggested matches, and keep contact or placement under owner approval."],
-  ["AI owner layer", "Today view, owner nudges, AI actions, automation timeline, and recommendations that point to the next profitable move."]
+  ["AI owner layer", "Needs Attention view, owner nudges, AI actions, automation timeline, and recommendations that point to the next profitable move."]
 ];
 
 export default function FeaturesPage() {

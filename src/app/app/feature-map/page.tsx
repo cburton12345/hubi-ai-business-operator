@@ -31,7 +31,7 @@ const workModes = [
     title: "I do not know how to set this up",
     detail: "Tell Ferocity what the business needs and get a setup plan before anything changes.",
     href: "/app/build-system",
-    label: "Build My System"
+    label: "Guided Setup"
   },
   {
     title: "I need more leads and better marketing",
@@ -43,7 +43,7 @@ const workModes = [
     title: "I need to work leads and follow up",
     detail: "Lead records, conversations, callbacks, stale leads, estimates, and pipeline movement.",
     href: "/app/lead-command",
-    label: "Customers"
+    label: "Leads & Customers"
   },
   {
     title: "I need to run jobs and collect money",
@@ -76,17 +76,17 @@ const featureGroups = [
     title: "Owner And AI",
     icon: <Bot size={18} />,
     items: [
-      ["Owner Feed", "Daily briefing, owner queue, critical issues, money radar, AI actions.", "/app/owner-command-center", "visible"],
+      ["Owner Events", "Daily briefing, owner queue, critical issues, money radar, AI actions.", "/app/owner-command-center", "visible"],
       ["Autopilot", "What Ferocity watches, what AI can handle, what needs approval, and what to connect next.", "/app/autopilot", "visible now"],
       ["Daily Brief", "Morning owner summary and watchtower for leads, jobs, money, reviews, employees, bids, competitors, and connected systems.", "/app/ai-monitoring", "visible now"],
-      ["Today", "Shortest owner list for decisions, risks, money moves, blocked automation, provider gaps, and AI actions.", "/app/attention-command", "visible now"],
+      ["Needs Attention", "Shortest owner list for decisions, risks, money moves, blocked automation, provider gaps, and AI actions.", "/app/attention-command", "visible now"],
       ["Business Info", "Shared source of truth for services, areas, customers, proof, brand voice, history, and connected tools.", "/app/business-brain", "visible now"],
       ["Automation Timeline", "Trust feed showing what Ferocity prepared, blocked, synced, handled, and still needs approved.", "/app/automation-timeline", "visible now"],
       ["Notifications", "Device push setup for owner decisions, hot leads, blocked automation, safety, and money follow-up.", "/app/notifications", "visible now"],
       ["Install App", "Install Ferocity on phone, tablet, or desktop for faster owner and field access.", "/install", "visible now"],
       ["AI Workforce", "AI employees, one-click starting points, agent runs, output queue, and the command box for business work.", "/app/ai-workforce", "visible"],
       ["Automation Rules", "AI agents, recurring rules, queued actions, consent, live policies, provider readiness, and limits.", "/app/automation-command", "visible now"],
-      ["Build My System", "Plain-English setup planner, preview changes, apply reviewed plans, change log.", "/app/build-system", "visible"],
+      ["Guided Setup", "Plain-English setup planner, preview changes, apply reviewed plans, change log.", "/app/build-system", "visible"],
       ["Private Owner Tasks", "Personal owner tasks and LifeOps-style items tied to the owner layer.", "/app/personal-ops", "advanced"],
       ["Connected Systems", "GovFlow, 4Bid, GuardianSignal, MarketplacePro, and connected-system event feeds.", "/app/lifeops-connections", "visible"]
     ]
@@ -111,7 +111,7 @@ const featureGroups = [
     title: "Leads, Sales, And Follow-Up",
     icon: <BriefcaseBusiness size={18} />,
     items: [
-      ["Customers", "Plain sales loop for new leads, hot leads, conversations, callbacks, queued follow-up, and pipeline.", "/app/lead-command", "visible now"],
+      ["Leads & Customers", "Plain sales loop for new leads, hot leads, conversations, callbacks, queued follow-up, and pipeline.", "/app/lead-command", "visible now"],
       ["Leads", "Lead list, lead details, routing, AI lead intelligence, source handling.", "/app/leads", "visible"],
       ["Public Lead Forms", "Reusable form keys and public lead capture forms.", "/app/forms", "also_more"],
       ["Action Queue", "One safety queue for messages, publishing, reviews, calendar, and billing actions.", "/app/actions", "also_more"],
@@ -221,12 +221,12 @@ export default function FeatureMapPage() {
           {[
             ["Daily Brief", "Morning summary. What happened, what matters, and what needs the owner.", "/app/ai-monitoring"],
             ["Autopilot", "What Ferocity watches, handles, queues, blocks, and recommends next.", "/app/autopilot"],
-            ["Today", "The shortest do-this-now list.", "/app/attention-command"],
+            ["Needs Attention", "The shortest do-this-now list.", "/app/attention-command"],
             ["Crew Day", "Simple itinerary for who is working, where they are going, and what needs review.", "/app/crew-itinerary"],
-            ["Owner Feed", "The full owner event feed across Ferocity and connected systems.", "/app/owner-command-center"],
+            ["Owner Events", "The full owner event feed across Ferocity and connected systems.", "/app/owner-command-center"],
       ["Business Info", "The source of truth every AI helper reads before it acts.", "/app/business-brain"],
             ["Automation Timeline", "The trust feed for what AI prepared, blocked, synced, and handled.", "/app/automation-timeline"],
-      ["Build My System", "Plain-English setup help.", "/app/build-system"],
+      ["Guided Setup", "Plain-English setup help.", "/app/build-system"],
             ["Growth", "Marketing, SEO, reviews, proof, website, campaigns, and source tracking.", "/app/growth-calendar"],
             ["Leads", "New leads, replies, callbacks, estimates, and follow-up.", "/app/lead-command"],
             ["Service", "Jobs, customers, estimates, invoices, dispatch, inventory, and reviews.", "/app/service-command"],
@@ -275,7 +275,7 @@ export default function FeatureMapPage() {
       <section className="panel section-actions">
         <h2><Users size={18} /> Simple Way To Use Ferocity</h2>
         <div className="setup-step-grid">
-          <Step number="1" title="Start with Today" body="See what needs attention, what AI handled, and what money or risk needs a decision." />
+          <Step number="1" title="Start with Needs Attention" body="See what needs attention, what AI handled, and what money or risk needs a decision." />
           <Step number="2" title="Let Ferocity set up the system" body="Use the guided setup when a business owner does not know which settings, automations, or pages to create." />
           <Step number="3" title="Run the daily loops" body="Use Growth, Leads, Service, Cash, and Operations for the work that moves the business." />
           <Step number="4" title="Use All Features when needed" body="Admins can still open every detailed tool without making normal users learn every module name." />

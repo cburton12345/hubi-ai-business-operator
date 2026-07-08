@@ -72,7 +72,7 @@ const fieldServiceBackbone = [
   ["Proof", "Job photos, before/after proof, testimonials, consent, and photo-report readiness", "/app/proof", "working"],
   ["Reputation", "Review requests, proof capture, testimonials, before/after content, and consent", "/app/review", "working"],
   ["Accounting", "Job cost view, worker payments, reimbursements, ledger records, and QuickBooks/export readiness", "/app/operations-workforce#payroll", "provider gated"],
-  ["AI help", "Today list, Owner Feed, action queue, automation timeline, and AI Workforce", "/app/attention-command", "better"]
+  ["AI help", "Needs Attention, Owner Events, action queue, automation timeline, and AI Workforce", "/app/attention-command", "better"]
 ];
 
 function statusTone(value: string) {

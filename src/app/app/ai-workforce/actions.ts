@@ -135,7 +135,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   await requirePermission("ai:queue");
   const parsed = commandSchema.safeParse({ command: formData.get("command") });
   if (!parsed.success) {
-    return { ok: false, message: "Tell the Ask AI what you want done in normal words." };
+    return { ok: false, message: "Tell the AI Workforce what you want done in normal words." };
   }
 
   const workspaceId = await getCurrentWorkspaceId();
@@ -214,7 +214,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
 
   await timeline(
     workspaceId,
-    "Ask AI prepared work",
+    "AI Workforce prepared work",
     "Guided setup translated an owner command into existing Ferocity setup, marketing, SEO, action queue, and timeline records.",
     {
       command,

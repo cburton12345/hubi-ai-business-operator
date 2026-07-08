@@ -50,12 +50,12 @@ export default async function NotificationsPage() {
             <h2>Install the app, turn on alerts, and let email handle the rest.</h2>
             <p className="muted">
               Urgent items go to the app, customer-facing or owner summary messages can use verified email, and every event still lands in
-              Today and the Owner Feed.
+              Needs Attention or Owner Events.
             </p>
           </div>
           <div className="button-row">
             <Link className="button secondary-button" href="/install">Install App</Link>
-            <Link className="button secondary-button" href="/app/attention-command">Today</Link>
+            <Link className="button secondary-button" href="/app/attention-command">Needs Attention</Link>
             <Link className="button secondary-button" href="/app/automation-command">Automation Rules</Link>
           </div>
         </div>
@@ -77,7 +77,7 @@ export default async function NotificationsPage() {
           <div className="path-card">
             <CircleAlert size={18} />
             <strong>Command center</strong>
-            <span>Everything still lands in Today and Owner Feed, even when a device or inbox is quiet.</span>
+            <span>Everything still lands in Needs Attention and Owner Events, even when a device or inbox is quiet.</span>
           </div>
         </div>
       </section>
@@ -163,12 +163,12 @@ export default async function NotificationsPage() {
             <label>
               Opens page
               <select name="actionUrl" defaultValue="/app/attention-command">
-                <option value="/app/attention-command">Today / Today</option>
+                <option value="/app/attention-command">Needs Attention</option>
                 <option value="/app/job-tracker">Job Tracker</option>
                 <option value="/app/operations-workforce">Operations & Workforce</option>
                 <option value="/app/cash-collection">Cash Collection</option>
                 <option value="/app/text-queue">Text Queue</option>
-                <option value="/app/owner-command-center">Owner Feed</option>
+                <option value="/app/owner-command-center">Owner Events</option>
               </select>
             </label>
             <label className="checkbox-row">

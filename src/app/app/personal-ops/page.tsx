@@ -21,7 +21,7 @@ export default async function PersonalOpsPage() {
     <QueuePageShell
       eyebrow="Private owner layer"
       title="Private Owner Tasks"
-      description="A private queue for the owner's reminders, people to contact, paperwork, money items, waiting-on-someone tasks, and personal projects. Important items can surface in Owner Feed without becoming customer CRM records."
+      description="A private queue for the owner's reminders, people to contact, paperwork, money items, waiting-on-someone tasks, and personal projects. Important items can surface in Owner Events without becoming customer CRM records."
     >
       <section className="grid section-actions">
         <Metric label="Open" value={dashboard.metrics.open} icon={<Clock size={18} />} />

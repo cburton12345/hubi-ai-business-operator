@@ -33,7 +33,7 @@ export default async function AIMonitoringBriefingPage() {
                 <Bot size={16} /> Generate today&apos;s brief
               </button>
             </form>
-            <Link className="button secondary-button" href="/app/owner-command-center">Owner Feed</Link>
+            <Link className="button secondary-button" href="/app/owner-command-center">Owner Events</Link>
             <Link className="button secondary-button" href="/app/notifications">Notifications</Link>
             <Link className="button secondary-button" href="/app/lifeops-connections">Connected Systems</Link>
           </div>

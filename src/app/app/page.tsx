@@ -138,7 +138,7 @@ export default async function AppDashboardPage() {
       <section className="panel">
         <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">Home</p>
+            <p className="eyebrow">Command Center</p>
             <h1>Here is what needs attention.</h1>
             <p className="muted">
               Ferocity watches the business and points to the next move.
@@ -146,7 +146,7 @@ export default async function AppDashboardPage() {
           </div>
           <div className="button-row">
             <Link className="button" href="/app/welcome">Start Here</Link>
-            <Link className="button" href="/app/attention-command">Open Today</Link>
+            <Link className="button" href="/app/attention-command">Needs Attention</Link>
             <Link className="button secondary-button" href="/app/ai-workforce">AI Workforce</Link>
             <Link className="button secondary-button" href="/app/feature-map">All tools</Link>
           </div>
@@ -210,7 +210,7 @@ export default async function AppDashboardPage() {
             ["1. Tell Ferocity the goal", "Use plain words. Ferocity recommends the next setup steps before changing anything.", "/app/build-system"],
             ["2. Add work manually", "Create customers, estimates, jobs, invoices, payments, field costs, workers, and reminders yourself.", "/app/service-command"],
             ["3. Connect lead sources", "Add website forms, public links, tracking, customer portals, proof links, and payment-link readiness.", "/app/customer-touchpoints"],
-            ["4. Check today", "See hot leads, overdue follow-up, unpaid invoices, worker plans, and AI-prepared actions.", "/app/attention-command"]
+            ["4. Check Needs Attention", "See hot leads, overdue follow-up, unpaid invoices, worker plans, and AI-prepared actions.", "/app/attention-command"]
           ].map(([title, detail, href]) => (
             <Link className="path-card" href={href} key={title}>
               <strong>{title}</strong>
@@ -229,8 +229,8 @@ export default async function AppDashboardPage() {
           <span className="live-pill">Private business account</span>
         </div>
         <div className="console-tabs" aria-label="Command center areas">
-          {["Today", "AI Workforce", "Customers", "Jobs", "Money", "Growth"].map((tabName) => (
-            <span className={tabName === "Today" ? "active" : ""} key={tabName}>{tabName}</span>
+          {["Needs Attention", "AI Workforce", "Leads", "Jobs", "Money", "Growth"].map((tabName) => (
+            <span className={tabName === "Needs Attention" ? "active" : ""} key={tabName}>{tabName}</span>
           ))}
         </div>
         <div className="preview-metrics console-metrics">
@@ -245,7 +245,7 @@ export default async function AppDashboardPage() {
         <div className="console-main">
           <section className="console-panel">
             <div className="console-heading">
-              <h2><BellRing size={18} /> Today</h2>
+              <h2><BellRing size={18} /> Needs Attention</h2>
               <small>What to handle</small>
             </div>
             <ul className="action-stack">
@@ -363,7 +363,7 @@ export default async function AppDashboardPage() {
           </div>
           <div className="grid section-actions">
             <ToolLink href="/app/business-brain" title="Business Info" detail="Services, prices, team, territory, voice, policies, and source of truth." />
-            <ToolLink href="/app/build-system" title="Build My System" detail="Guided setup for workflows, reviews, marketing, follow-up, and controls." />
+            <ToolLink href="/app/build-system" title="Guided Setup" detail="Guided setup for workflows, reviews, marketing, follow-up, and controls." />
             <ToolLink href="/app/automation-timeline" title="Automation Timeline" detail="See what AI prepared, what was approved, what ran, and what failed." />
             <ToolLink href="/app/autopilot" title="Autopilot" detail="Choose what AI can handle, what needs review, and what stays manual." />
           </div>
@@ -400,7 +400,7 @@ export default async function AppDashboardPage() {
 
       <section className="grid section-actions">
         <section className="panel span-4">
-          <p className="eyebrow">People</p>
+          <p className="eyebrow">Team</p>
           <h2>Today&apos;s team picture</h2>
           <ul className="list">
             <li className="list-row"><span>Working now</span><strong>{numberLabel(ownerSummary.workingNow)}</strong></li>
@@ -409,7 +409,7 @@ export default async function AppDashboardPage() {
             <li className="list-row"><span>Payroll review</span><strong>{numberLabel(ownerSummary.payrollReview)}</strong></li>
           </ul>
           <div className="section-actions">
-            <Link className="button secondary-button" href="/app/operations-workforce">Manage people</Link>
+            <Link className="button secondary-button" href="/app/operations-workforce">Manage team</Link>
           </div>
         </section>
 
@@ -474,9 +474,9 @@ export default async function AppDashboardPage() {
           <Link className="button secondary-button" href="/app/feature-map">Open feature map</Link>
         </div>
         <div className="grid section-actions">
-          <ToolLink href="/app/lead-command" title="Customers" detail="Leads, conversations, follow-up, pipeline, and customer records." />
+          <ToolLink href="/app/lead-command" title="Leads & Customers" detail="Leads, conversations, follow-up, pipeline, and customer records." />
           <ToolLink href="/app/service-command" title="Jobs" detail="Jobs, estimates, invoices, reviews, scheduling, and daily service ops." />
-          <ToolLink href="/app/operations-workforce" title="People" detail="Workers, itineraries, time, field costs, payroll review, and staffing needs." />
+          <ToolLink href="/app/operations-workforce" title="Team" detail="Workers, itineraries, time, field costs, payroll review, and staffing needs." />
           <ToolLink href="/app/cash-collection" title="Money" detail="Invoices, payments, reminders, recurring expenses, job cost, and owner review." />
           <ToolLink href="/app/growth-calendar" title="Growth" detail="SEO, reviews, campaigns, content drafts, website tracking, and attribution." />
           <ToolLink href="/app/reports" title="Insights" detail="Reports, ROI, channel performance, risks, and revenue movement." />

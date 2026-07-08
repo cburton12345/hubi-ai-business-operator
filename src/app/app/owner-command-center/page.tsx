@@ -27,7 +27,7 @@ export default async function OwnerCommandCenterPage() {
   return (
     <QueuePageShell
       eyebrow="Owner View"
-      title="Owner Feed"
+      title="Owner Events"
       description="The AI Chief of Staff layer for all owned businesses and connected systems. It shows what happened, what matters, what AI handled, and what needs a decision."
     >
       <section className="panel section-actions">

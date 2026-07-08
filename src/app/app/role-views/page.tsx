@@ -39,7 +39,7 @@ const modes = [
     subtitle: "Ferocity summarizes what happened, what matters, and what needs a human decision.",
     icon: <DollarSign size={18} />,
     primaryHref: "/app/owner-command-center",
-    primaryLabel: "Open Owner Feed",
+    primaryLabel: "Open Owner Events",
     links: [
       ["Attention command", "/app/attention-command"],
       ["Here is what needs you", "/app/owner-command-center"],

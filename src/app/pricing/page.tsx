@@ -283,7 +283,11 @@ export default function PricingPage() {
 
         <section className="panel">
           <p className="eyebrow">Which one should I choose?</p>
-          <h2>Choose the outcome you want first.</h2>
+          <h2>Choose the outcome you want first. Starter is a real working system.</h2>
+          <p className="muted">
+            Free shows the gaps. Job Tracker keeps jobs and job money organized. Starter adds AI watching leads, follow-up,
+            reviews, proof, and owner alerts. Growth adds demand creation. Operator helps run the business day.
+          </p>
           <div className="grid section-actions">
             {choiceGuide.map((item) => (
               <article className="panel span-4" key={item.name}>
@@ -351,6 +355,11 @@ export default function PricingPage() {
             Every business can start with recommendations and manual approval. Higher tiers unlock more AI work, more usage,
             more reporting, and more connected-account actions. The owner still chooses what stays manual.
           </p>
+          <div className="button-row">
+            <Link className="button" href="/business-health-score">Start with free grader</Link>
+            <Link className="button secondary-button" href="/start?source=pricing_autopilot&plan=starter">Start Starter</Link>
+            <Link className="button secondary-button" href="/demo">See the loop</Link>
+          </div>
         </section>
 
         <section className="panel section-actions">

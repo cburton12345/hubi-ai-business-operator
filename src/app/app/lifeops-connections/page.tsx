@@ -39,8 +39,8 @@ export default async function LifeOpsConnectionsPage() {
               <Cable size={18} /> How Other Brands Feed Ferocity
             </h2>
             <p className="muted">
-              Other systems send important events to the Owner Feed intake. Ferocity records the event, ranks owner attention, and routes it to
-              Owner Feed or Private Owner Tasks. This does not give Ferocity destructive control over those products, and you can disconnect or archive a system later.
+              Other systems send important events to the Owner Events intake. Ferocity records the event, ranks owner attention, and routes it to
+              Owner Events or Private Owner Tasks. This does not give Ferocity destructive control over those products, and you can disconnect or archive a system later.
             </p>
           </div>
           <span className={`pill ${dashboard.tokenConfigured ? "" : "high"}`}>{dashboard.tokenConfigured ? "token ready" : "token missing"}</span>
@@ -64,7 +64,7 @@ export default async function LifeOpsConnectionsPage() {
           </section>
         </div>
         <div className="button-row">
-          <Link className="button" href="/app/owner-command-center">Owner Feed</Link>
+          <Link className="button" href="/app/owner-command-center">Owner Events</Link>
           <Link className="button secondary-button" href="/app/personal-ops">Private Owner Tasks</Link>
           <Link className="button secondary-button" href="/app/integrations">Provider Integrations</Link>
         </div>
@@ -105,7 +105,7 @@ export default async function LifeOpsConnectionsPage() {
           <label className="span-3">
             Owner layer
             <select name="ownerLayer" defaultValue="owner_command">
-              <option value="owner_command">Owner Feed</option>
+              <option value="owner_command">Owner Events</option>
               <option value="personal_ops">Private Owner Tasks</option>
               <option value="both">Both</option>
             </select>

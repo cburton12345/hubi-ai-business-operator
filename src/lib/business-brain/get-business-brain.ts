@@ -312,7 +312,7 @@ export async function getBusinessBrainDashboard(): Promise<BusinessBrainDashboar
       )
     ),
     aiReadsFrom: [
-      row("setup", "Build My System", "Turns Business Brain gaps into setup plans, workflows, drafts, and safe defaults.", "active", "AI Guided setup", "/app/build-system"),
+      row("setup", "Guided Setup", "Turns Business Info gaps into setup plans, workflows, drafts, and safe defaults.", "active", "AI Guided setup", "/app/build-system"),
       row("workforce", "AI Workforce", "Routes owner requests to operators for sales, marketing, reviews, collections, scheduling, and setup.", "active", "AI operators", "/app/ai-workforce"),
       row("owner", "Owner Command", "Uses events, timelines, revenue, and risks to show what needs the owner.", "active", "Owner layer", "/app/owner-command-center"),
       row("timeline", "Automation Timeline", "Shows what Ferocity prepared, changed, blocked, synced, or needs approval for.", "active", "Trust feed", "/app/automation-timeline"),

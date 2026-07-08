@@ -147,7 +147,7 @@ export default async function WelcomePage() {
             See leads, follow-up, invoices, worker plans, customer issues, and AI-prepared actions that need attention.
           </p>
           <Link className="mini-button" href="/app/attention-command">
-            Open Today
+            Open Needs Attention
           </Link>
         </article>
 

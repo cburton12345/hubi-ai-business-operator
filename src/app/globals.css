@@ -97,6 +97,7 @@ textarea {
   justify-content: flex-end;
   gap: 8px 14px;
   min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
@@ -259,7 +260,7 @@ textarea {
 
 .operator-command-input strong {
   color: var(--accent-dark);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.2;
 }
 
@@ -268,6 +269,7 @@ textarea {
   flex-wrap: wrap;
   gap: 7px;
   align-items: center;
+  min-width: 0;
 }
 
 .operator-command-chips a {
@@ -276,7 +278,7 @@ textarea {
   min-height: 32px;
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 999px;
   background: #fbfcfd;
   color: #245347;
   font-size: 12px;
@@ -3255,12 +3257,16 @@ pre {
 
   .button-row {
     align-items: stretch;
+    gap: 8px;
   }
 
   .button-row .button,
   .button-row .secondary-button,
   .button-row .mini-button {
     flex: 1 1 100%;
+    justify-content: center;
+    min-height: 42px;
+    text-align: center;
   }
 
   .trust-strip span,
@@ -3328,6 +3334,21 @@ pre {
   .app-nav {
     width: 100%;
     margin: 0 -2px;
+  }
+
+  .operator-command-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .operator-command-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .operator-command-chips a {
+    flex: 0 0 auto;
   }
 
   .app-nav a,

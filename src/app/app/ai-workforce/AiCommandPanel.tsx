@@ -21,7 +21,7 @@ const commandPlans: CommandPlan[] = [
     prepares: ["Check missing setup pieces", "Run operator/growth/service scans", "Review website and SEO readiness", "Route owner to the next useful action"],
     routes: [
       { label: "Let Ferocity set it up", href: "/app/build-system" },
-      { label: "Owner Feed", href: "/app/owner-command-center" },
+      { label: "Owner Events", href: "/app/owner-command-center" },
       { label: "Business Health Score", href: "/business-health-score" }
     ]
   },
@@ -128,10 +128,10 @@ const commandPlans: CommandPlan[] = [
     title: "Set reminders and owner tasks",
     ownerWords: "Remind me tomorrow to call a customer and check today's goals.",
     employees: ["AI Chief of Staff", "AI Reminder Helper", "AI Office Manager"],
-    prepares: ["Open owner reminders and private tasks", "Route urgent items to Today", "Use push notification settings when available", "Keep personal owner tasks separate from customer records"],
+    prepares: ["Open owner reminders and private tasks", "Route urgent items to Needs Attention", "Use push notification settings when available", "Keep personal owner tasks separate from customer records"],
     routes: [
       { label: "Private Owner Tasks", href: "/app/personal-ops" },
-      { label: "Today", href: "/app/attention-command" },
+      { label: "Needs Attention", href: "/app/attention-command" },
       { label: "Notifications", href: "/app/notifications" }
     ]
   },
