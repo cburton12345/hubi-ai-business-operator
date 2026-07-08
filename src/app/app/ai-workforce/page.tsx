@@ -99,9 +99,9 @@ const employees = [
   },
   {
     name: "AI Receptionist",
-    job: "Prepares website chat, missed-call text back, and appointment intake.",
-    handles: ["Lead qualification", "Missed calls", "Appointments", "Intake"],
-    href: "/app/operator",
+    job: "Acts as the first line of defense for new leads and only interrupts the owner when timing or risk matters.",
+    handles: ["Lead intake", "Urgent alerts", "Reply drafts", "Appointment context"],
+    href: "/app/lead-command",
     icon: Phone
   },
   {
@@ -163,6 +163,7 @@ const quickActions = [
   ["Improve Website", "AI imports website context and prepares homepage, service, proof, and conversion improvements.", "/app/website"],
   ["Improve SEO", "AI prepares useful service/city pages, internal linking, refreshes, and content ideas.", "/app/seo"],
   ["Reactivate Leads", "AI finds old leads and prepares reply drafts, tasks, and call scripts for approval.", "/app/operator"],
+  ["Run Receptionist", "AI captures website leads, logs source and consent, drafts next steps, and pushes only urgent owner alerts.", "/app/lead-command"],
   ["Generate Content", "AI drafts posts, pages, emails, messages, and ads from real business context.", "/app/drafts"],
   ["Set Up My Business", "AI creates a reviewed setup plan for profile, services, areas, forms, automations, reviews, and SEO.", "/app/build-system"]
 ];
@@ -243,6 +244,37 @@ export default async function AiWorkforcePage() {
             ["Route", "Ferocity picks sales, scheduling, collections, marketing, reviews, finance, or setup."],
             ["Read", "The AI helper reads Business Info before preparing work."],
             ["Log", "Every prepared, blocked, approved, or completed action goes to the Automation Timeline."]
+          ].map(([title, body], index) => (
+            <div className="setup-step-card" key={title}>
+              <span className="step-dot">{index + 1}</span>
+              <h3>{title}</h3>
+              <p className="muted">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <Phone size={18} /> AI Receptionist Shield
+            </h2>
+            <p className="muted">
+              Ferocity can receive website leads, record source and consent, add them to the owner command feed, and keep normal intake out of your way. It interrupts you for urgent leads, risk, approvals, and money opportunities.
+            </p>
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/app/lead-command">Open Leads</Link>
+            <Link className="button secondary-button" href="/app/notifications">Push Alerts</Link>
+          </div>
+        </div>
+        <div className="setup-step-grid">
+          {[
+            ["Capture", "Website forms and connected sources become tracked leads with source, consent, and context."],
+            ["Triage", "Normal leads are logged for the daily briefing; urgent leads are marked for owner attention."],
+            ["Nudge", "Push alerts are reserved for high-priority lead, money, risk, approval, or failure moments."],
+            ["Prove", "Every receptionist action appears in Owner Command and the Automation Timeline."]
           ].map(([title, body], index) => (
             <div className="setup-step-card" key={title}>
               <span className="step-dot">{index + 1}</span>

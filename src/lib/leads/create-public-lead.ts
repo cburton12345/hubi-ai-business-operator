@@ -2,6 +2,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { queryPostgres } from "@/lib/db/postgres";
 import type { PublicLeadInput } from "@/lib/leads/schemas";
+import { logAppError } from "@/lib/observability/log-error";
+import { getPushNotificationPreferences, pushPreferencesAllowEvent, type PushSeverity } from "@/lib/push/preferences";
+import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 
 type FormRecord = {
   id: string;
@@ -38,6 +41,179 @@ function numericDetail(details: Record<string, unknown>, key: string) {
   const value = details[key];
   const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
+function includesAny(value: string, terms: string[]) {
+  const lower = value.toLowerCase();
+  return terms.some((term) => lower.includes(term));
+}
+
+function classifyReceptionistLead(input: PublicLeadInput): { severity: PushSeverity; ownerAttention: boolean; reason: string } {
+  const detailText = JSON.stringify(input.details ?? {});
+  const text = `${input.leadType} ${input.source ?? ""} ${input.sourceDetail ?? ""} ${input.message ?? ""} ${detailText}`;
+  const urgent = input.leadType === "case_intake" || includesAny(text, [
+    "urgent",
+    "asap",
+    "emergency",
+    "same day",
+    "today",
+    "tomorrow",
+    "leak",
+    "storm",
+    "flood",
+    "no heat",
+    "not working",
+    "broken",
+    "injury",
+    "accident",
+    "lawsuit"
+  ]);
+
+  if (urgent) {
+    return {
+      severity: "high",
+      ownerAttention: true,
+      reason: "urgent language, legal intake, or same-day risk"
+    };
+  }
+
+  return {
+    severity: "medium",
+    ownerAttention: false,
+    reason: "normal lead captured and queued for follow-up"
+  };
+}
+
+function leadContactLabel(input: PublicLeadInput) {
+  return input.name?.trim() || input.email?.trim() || input.phone?.trim() || "New lead";
+}
+
+function sourceLabel(input: PublicLeadInput) {
+  return [input.source ?? "website", input.sourceDetail].filter(Boolean).join(" / ");
+}
+
+async function recordReceptionistLeadEvent({
+  tenantId,
+  brandId,
+  formId,
+  leadId,
+  input
+}: {
+  tenantId: string;
+  brandId: string;
+  formId: string;
+  leadId: string;
+  input: PublicLeadInput;
+}) {
+  const classification = classifyReceptionistLead(input);
+  const status = classification.ownerAttention ? "needs_owner" : "ai_handled";
+  const title = classification.ownerAttention ? "AI Receptionist found a lead worth interrupting you" : "AI Receptionist captured a lead";
+  const summary = [
+    `${leadContactLabel(input)} came in from ${sourceLabel(input)}.`,
+    input.message ? `Message: ${input.message.slice(0, 180)}` : "No message was included.",
+    classification.ownerAttention
+      ? "Ferocity saved the lead and flagged it for owner review."
+      : "Ferocity saved the lead, source, consent, and follow-up context without needing owner interruption."
+  ].join(" ");
+  const actionHref = `/app/lead-command`;
+  const metadata = {
+    formId,
+    leadId,
+    leadType: input.leadType,
+    source: input.source ?? "website",
+    sourceDetail: input.sourceDetail ?? null,
+    consentToContact: input.consentToContact,
+    utm: input.utm ?? null,
+    details: input.details ?? {},
+    receptionistReason: classification.reason
+  };
+
+  try {
+    const ownerEvent = await queryPostgres<{ id: string }>(
+      `
+      insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, ai_handled, ai_summary, recommended_action, action_href,
+        money_cents, risk_type, confidence_score, metadata_json
+      )
+      values ($1, 'ferocity', 'Ferocity', $2, 'lead.receptionist_intake', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 'revenue', $12, $13::jsonb)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do update
+      set title = excluded.title,
+          summary = excluded.summary,
+          severity = excluded.severity,
+          status = excluded.status,
+          owner_attention = excluded.owner_attention,
+          ai_handled = excluded.ai_handled,
+          ai_summary = excluded.ai_summary,
+          recommended_action = excluded.recommended_action,
+          action_href = excluded.action_href,
+          confidence_score = excluded.confidence_score,
+          metadata_json = public.owner_command_events.metadata_json || excluded.metadata_json,
+          updated_at = now()
+      returning id
+      `,
+      [
+        tenantId,
+        `public-lead:${leadId}`,
+        title,
+        summary,
+        classification.severity,
+        status,
+        classification.ownerAttention,
+        !classification.ownerAttention,
+        classification.ownerAttention
+          ? "AI captured the lead and found enough urgency to ask for owner review."
+          : "AI captured the lead and queued it for normal follow-up.",
+        classification.ownerAttention
+          ? "Open Leads & Customers and approve the fastest useful follow-up."
+          : "Review this in the next lead sweep or daily briefing.",
+        actionHref,
+        classification.ownerAttention ? 86 : 78,
+        JSON.stringify(metadata)
+      ]
+    );
+
+    await queryPostgres(
+      `
+      insert into public.operator_timeline_events (
+        tenant_id, brand_id, event_family, event_type, title, body, primary_entity_type, primary_entity_id, metadata_json
+      )
+      values ($1, $2, 'lead', 'lead.receptionist_intake', $3, $4, 'lead', $5, $6::jsonb)
+      `,
+      [tenantId, brandId, title, summary, leadId, JSON.stringify({ ...metadata, ownerEventId: ownerEvent?.rows[0]?.id ?? null })]
+    );
+
+    const preferences = await getPushNotificationPreferences(tenantId);
+    if (
+      classification.ownerAttention &&
+      pushPreferencesAllowEvent({
+        preferences,
+        severity: classification.severity,
+        status,
+        ownerAttention: classification.ownerAttention,
+        moneyCents: 0,
+        riskType: "revenue"
+      })
+    ) {
+      await sendWorkspacePushNotifications({
+        tenantId,
+        eventType: "lead.receptionist_intake",
+        title,
+        body: classification.ownerAttention ? summary : `New lead captured from ${sourceLabel(input)}.`,
+        url: actionHref,
+        tag: `lead-receptionist-${leadId}`,
+        metadata: { ...metadata, ownerEventId: ownerEvent?.rows[0]?.id ?? null }
+      });
+    }
+  } catch (error) {
+    await logAppError({
+      source: "lead_receptionist_event",
+      message: error instanceof Error ? error.message : "Unable to record AI receptionist event.",
+      severity: "warning",
+      tenantId,
+      metadata: { brandId, formId, leadId }
+    });
+  }
 }
 
 export async function createPublicLead(input: PublicLeadInput, requestMeta: { ipAddress?: string; userAgent?: string }) {
@@ -154,6 +330,14 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
       leadType: input.leadType,
       utm: input.utm
     }
+  });
+
+  await recordReceptionistLeadEvent({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    formId: form.id,
+    leadId: lead.id,
+    input
   });
 
   return {
@@ -315,6 +499,14 @@ async function createPublicLeadWithPostgres(
       })
     ]
   );
+
+  await recordReceptionistLeadEvent({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    formId: form.id,
+    leadId: lead.id,
+    input
+  });
 
   return {
     ok: true,
