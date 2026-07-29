@@ -38,7 +38,7 @@ const features = [
   {
     title: "Payments and invoices",
     icon: CircleDollarSign,
-    body: "Create invoices, record payments, track money due, and prepare payment reminders."
+    body: "Create invoices, record payments, track money due, prepare reminders, and offer secure online checkout after the business connects Stripe payouts."
   },
   {
     title: "Authority Engine",
@@ -65,7 +65,7 @@ const features = [
 const status = [
   ["Available now", "Customer tracking, leads, jobs, estimates, material lists, invoices, reports, reminders, grader, AI drafts, app install."],
   ["Needs setup", "Website forms, business profile, team access, payment terms, approval rules, brand memory."],
-  ["Needs connection", "Stripe, email, calendars, ad platforms, publishing, and outside tools."],
+  ["Needs connection", "Online checkout, provider-sent email or SMS, AI voice, premium rendering, and direct outside-platform execution."],
   ["Owner-chosen authority", "Keep work as drafts, require approval, or allow routine actions after provider, consent, suppression, plan, and cost checks."]
 ];
 

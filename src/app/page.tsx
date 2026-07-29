@@ -57,7 +57,7 @@ const promises = [
 ];
 
 const powerLines = [
-  "AI receptionist",
+  "Connected AI receptionist",
   "AI sales follow-up",
   "AI office manager",
   "AI marketing team",

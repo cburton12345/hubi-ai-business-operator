@@ -6,6 +6,12 @@ import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendFerocityNotificationEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
+import {
+  calculatePlatformFeeCents,
+  getManagedPaymentAccount,
+  managedPaymentsEnabled,
+  stripeFormRequest
+} from "@/lib/payments/stripe-connect";
 import { ensureServiceKernelForJob } from "@/lib/service-ops/service-kernel";
 
 const acceptEstimateSchema = z.object({
@@ -311,13 +317,22 @@ async function prepareDepositPaymentLink(input: {
     return { paymentLinkId: existingLink.rows[0].id, paymentUrl: existingLink.rows[0].payment_url ?? "" };
   }
 
+  const managedAccount = managedPaymentsEnabled() ? await getManagedPaymentAccount(input.tenantId) : null;
+  const canUseConnectDirect =
+    Boolean(managedAccount?.providerAccountId) &&
+    managedAccount?.chargesEnabled === true &&
+    managedAccount?.payoutsEnabled === true;
+  const connectedAccountId = canUseConnectDirect ? managedAccount?.providerAccountId ?? null : null;
+  const platformFeeCents = canUseConnectDirect ? calculatePlatformFeeCents(input.amountCents) : 0;
+  const paymentMode = canUseConnectDirect ? "stripe_connect_direct" : "manual_tracking";
+
   const linkResult = await queryPostgres<{ id: string }>(
     `
     insert into public.service_invoice_payment_links (
       tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, currency,
-      payment_mode, net_to_business_cents, metadata_json
+      payment_mode, connected_account_id, platform_fee_cents, net_to_business_cents, metadata_json
     )
-    values ($1,$2,$3,$4,'stripe','draft',$5,'usd','platform_direct',$5,$6::jsonb)
+    values ($1,$2,$3,$4,'stripe','draft',$5,'usd',$6,$7,$8,$9,$10::jsonb)
     returning id
     `,
     [
@@ -326,11 +341,24 @@ async function prepareDepositPaymentLink(input: {
       input.customerId,
       invoiceId,
       input.amountCents,
-      JSON.stringify({ source: "public_estimate_acceptance", estimateId: input.estimateId })
+      paymentMode,
+      connectedAccountId,
+      platformFeeCents,
+      Math.max(input.amountCents - platformFeeCents, 0),
+      JSON.stringify({
+        source: "public_estimate_acceptance",
+        estimateId: input.estimateId,
+        payoutAccountReady: canUseConnectDirect,
+        nextStep: canUseConnectDirect
+          ? "Send the prepared deposit checkout link."
+          : "Connect the business payout account, then prepare the payment request from the invoice."
+      })
     ]
   );
   const paymentLinkId = linkResult?.rows[0]?.id;
-  if (!paymentLinkId || !env.STRIPE_SECRET_KEY) return paymentLinkId ? { paymentLinkId, paymentUrl: "" } : null;
+  if (!paymentLinkId || !env.STRIPE_SECRET_KEY || !canUseConnectDirect || !connectedAccountId) {
+    return paymentLinkId ? { paymentLinkId, paymentUrl: "" } : null;
+  }
 
   const appUrl = env.FEROCITY_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
   const body = new URLSearchParams({
@@ -341,27 +369,51 @@ async function prepareDepositPaymentLink(input: {
     "line_items[0][quantity]": "1",
     success_url: `${appUrl.replace(/\/$/, "")}/portal/payment-success?invoice=${encodeURIComponent(invoiceId)}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl.replace(/\/$/, "")}/estimate/${encodeURIComponent(input.publicToken)}`,
-    "metadata[ferocity_kind]": "estimate_deposit_payment",
+    "metadata[ferocity_kind]": "service_invoice_payment",
     "metadata[tenant_id]": input.tenantId,
     "metadata[invoice_id]": invoiceId,
     "metadata[estimate_id]": input.estimateId,
     "metadata[customer_id]": input.customerId,
     "metadata[payment_link_id]": paymentLinkId,
-    "metadata[amount_cents]": String(input.amountCents)
+    "metadata[amount_cents]": String(input.amountCents),
+    "metadata[currency]": "usd",
+    "metadata[payment_mode]": paymentMode,
+    "metadata[connected_account_id]": connectedAccountId,
+    "metadata[platform_fee_cents]": String(platformFeeCents)
   });
+  if (platformFeeCents > 0) {
+    body.set("payment_intent_data[application_fee_amount]", String(platformFeeCents));
+  }
+  for (const [key, value] of [
+    ["ferocity_kind", "service_invoice_payment"],
+    ["tenant_id", input.tenantId],
+    ["invoice_id", invoiceId],
+    ["estimate_id", input.estimateId],
+    ["customer_id", input.customerId],
+    ["payment_link_id", paymentLinkId],
+    ["amount_cents", String(input.amountCents)],
+    ["currency", "usd"],
+    ["payment_mode", paymentMode],
+    ["connected_account_id", connectedAccountId],
+    ["platform_fee_cents", String(platformFeeCents)]
+  ] as const) {
+    body.set(`payment_intent_data[metadata][${key}]`, value);
+  }
   if (input.customerEmail) body.set("customer_email", input.customerEmail);
 
-  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body
-  });
-  if (!response.ok) return { paymentLinkId, paymentUrl: "" };
-
-  const session = (await response.json()) as { id?: string; url?: string; payment_intent?: string };
+  let session: { id?: string; url?: string; payment_intent?: string };
+  try {
+    session = await stripeFormRequest<{ id?: string; url?: string; payment_intent?: string }>(
+      "checkout/sessions",
+      body,
+      {
+        connectedAccountId,
+        idempotencyKey: `ferocity-estimate-deposit-checkout-${paymentLinkId}`
+      }
+    );
+  } catch {
+    return { paymentLinkId, paymentUrl: "" };
+  }
   await queryPostgres(
     `
     update public.service_invoice_payment_links

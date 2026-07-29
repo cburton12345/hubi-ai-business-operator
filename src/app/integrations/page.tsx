@@ -10,24 +10,49 @@ export const metadata: Metadata = {
   }
 };
 
-const providers = [
-  { name: "Google Business Profile" },
-  { name: "Google Ads" },
-  { name: "Google Search Console" },
-  { name: "Reddit" },
-  { name: "Facebook / Meta" },
-  { name: "Microsoft Ads" },
-  { name: "Yahoo / Native Ads" },
-  { name: "Resend or customer email" },
-  { name: "AI phone receptionist" },
-  { name: "Business phone connection and texting" },
-  { name: "Customer-requested voice, SMS, or video providers" },
-  { name: "Video briefs with connected premium rendering" },
-  { name: "App alerts and email by default" },
-  { name: "Manual text drafts when needed" },
-  { name: "Stripe" },
-  { name: "Marketplace and partner sources" },
-  { name: "Secure bring-your-own credential vault" }
+const connectionGroups = [
+  {
+    status: "Works now",
+    detail: "No outside provider is required for these paths.",
+    providers: [
+      "App alerts and task queues",
+      "Manual text and call drafts",
+      "Private calendar feeds",
+      "Accounting, tax, and campaign exports",
+      "Hosted forms, pages, and website lead capture"
+    ]
+  },
+  {
+    status: "Connect a supported account",
+    detail: "These adapters can execute after the business finishes its provider setup.",
+    providers: [
+      "Stripe online invoice payments and bank payouts",
+      "Twilio business texting",
+      "Retell or Vapi AI voice",
+      "Resend email",
+      "Marketplace and partner lead sources",
+      "Premium video rendering and secure webhooks"
+    ]
+  },
+  {
+    status: "Prepare and export now",
+    detail: "Ferocity can create the work now; direct provider execution stays off until that adapter is activated.",
+    providers: [
+      "Google Business Profile, Ads, and Search Console",
+      "Facebook / Meta, Reddit, Microsoft Ads, TikTok, and Yahoo",
+      "Website and external publishing packages",
+      "Video briefs, scripts, scenes, and voiceover drafts"
+    ]
+  },
+  {
+    status: "Request another provider",
+    detail: "A guarded adapter request starts review without exposing credentials or changing the core workflow.",
+    providers: [
+      "Additional voice, SMS, email, video, advertising, marketplace, or industry providers",
+      "Generic webhook and API-based services",
+      "Secure bring-your-own credentials after adapter approval"
+    ]
+  }
 ];
 
 export default function PublicIntegrationsPage() {
@@ -63,13 +88,20 @@ export default function PublicIntegrationsPage() {
             </Link>
           </div>
         </section>
-        <section className="panel">
-          <h2>Connection paths</h2>
-          <ul className="public-provider-list">
-            {providers.map((provider) => (
-              <li key={provider.name}>{provider.name}</li>
+        <section className="section-actions">
+          <p className="eyebrow">Connection paths</p>
+          <h2>Know what works now, what needs an account, and what uses an export.</h2>
+          <div className="public-grid">
+            {connectionGroups.map((group) => (
+              <article className="panel value-card" key={group.status}>
+                <span className="pill">{group.status}</span>
+                <p className="muted">{group.detail}</p>
+                <ul className="plain-list">
+                  {group.providers.map((provider) => <li key={provider}>{provider}</li>)}
+                </ul>
+              </article>
             ))}
-          </ul>
+          </div>
         </section>
         <section className="public-grid">
           <div className="panel">
@@ -78,7 +110,7 @@ export default function PublicIntegrationsPage() {
           </div>
           <div className="panel">
             <h2>Bring your own provider</h2>
-            <p className="muted">Connect a supported account now, or request a secure connection for another service your business already uses.</p>
+            <p className="muted">Connect a supported account now, or request a reviewed adapter for another service. Adding credentials alone never pretends an adapter exists.</p>
           </div>
           <div className="panel">
             <h2>Optional modules</h2>

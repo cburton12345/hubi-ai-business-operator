@@ -9,6 +9,7 @@ import { verifyStripeWebhookSignature } from "@/lib/payments/stripe-webhook-sign
 type StripeEvent = {
   id: string;
   type: string;
+  account?: string;
   data?: { object?: Record<string, unknown> };
 };
 
@@ -40,6 +41,24 @@ function mapStripeSubscriptionStatus(status: string, eventType: string) {
 async function handleCheckoutCompleted(event: StripeEvent, object: Record<string, unknown>) {
   const meta = metadata(object);
   if (textValue(meta, "ferocity_kind") === "service_invoice_payment") {
+    const paymentStatus = textValue(object, "payment_status");
+    if (event.type === "checkout.session.completed" && paymentStatus !== "paid" && paymentStatus !== "no_payment_required") {
+      const paymentLinkId = textValue(meta, "payment_link_id");
+      const tenantId = textValue(meta, "tenant_id");
+      if (paymentLinkId && tenantId) {
+        await queryPostgres(
+          `
+          update public.service_invoice_payment_links
+          set status = 'sent',
+              metadata_json = metadata_json || jsonb_build_object('stripePaymentStatus', $3::text),
+              updated_at = now()
+          where tenant_id = $1 and id = $2::uuid and status in ('ready', 'sent')
+          `,
+          [tenantId, paymentLinkId, paymentStatus ?? "processing"]
+        );
+      }
+      return;
+    }
     await handleServiceInvoicePayment(event, object, meta);
     return;
   }
@@ -172,6 +191,59 @@ async function handleServiceInvoicePayment(event: StripeEvent, object: Record<st
     return;
   }
 
+  if (paymentMode === "stripe_connect_direct") {
+    if (!paymentLinkId || !connectedAccountId || event.account !== connectedAccountId) {
+      await logAppError({
+        source: "api.integrations.stripe.webhook",
+        message: "Stripe direct-charge event failed its connected-account binding check.",
+        severity: "critical",
+        category: "tenant_isolation",
+        metadata: {
+          eventId: event.id,
+          tenantId,
+          invoiceId,
+          paymentLinkId,
+          metadataAccountId: connectedAccountId,
+          eventAccountId: event.account ?? null
+        }
+      });
+      throw new Error("Stripe direct-charge account binding failed.");
+    }
+
+    const binding = await queryPostgres<{ payment_link_id: string }>(
+      `
+      select l.id as payment_link_id
+      from public.service_invoice_payment_links l
+      join public.payment_provider_accounts a
+        on a.tenant_id = l.tenant_id
+       and a.provider = 'stripe'
+       and a.payment_mode = 'ferocity_managed_connect'
+       and a.provider_account_id = l.connected_account_id
+      where l.id = $1::uuid
+        and l.tenant_id = $2::uuid
+        and l.invoice_id = $3::uuid
+        and l.customer_id = $4::uuid
+        and l.payment_mode = 'stripe_connect_direct'
+        and l.connected_account_id = $5
+        and a.account_status = 'connected'
+        and a.charges_enabled = true
+        and a.payouts_enabled = true
+      limit 1
+      `,
+      [paymentLinkId, tenantId, invoiceId, customerId, connectedAccountId]
+    );
+    if (!binding?.rows[0]) {
+      await logAppError({
+        source: "api.integrations.stripe.webhook",
+        message: "Stripe direct-charge event did not match an active tenant payment link.",
+        severity: "critical",
+        category: "tenant_isolation",
+        metadata: { eventId: event.id, tenantId, invoiceId, paymentLinkId, connectedAccountId }
+      });
+      throw new Error("Stripe direct-charge payment-link binding failed.");
+    }
+  }
+
   await queryPostgres(
     `
     with invoice as (
@@ -301,7 +373,8 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
 async function recordStripeProviderEvent(event: StripeEvent, object: Record<string, unknown>) {
   const meta = metadata(object);
   const tenantId = textValue(meta, "tenant_id") ?? textValue(meta, "ferocity_tenant_id");
-  const connectedAccountId = textValue(object, "account") ?? textValue(object, "destination") ?? textValue(meta, "connected_account_id");
+  const connectedAccountId =
+    event.account ?? textValue(object, "account") ?? textValue(object, "destination") ?? textValue(meta, "connected_account_id");
   const fallbackTenant = "11111111-1111-4111-8111-111111111111";
 
   await queryPostgres(
@@ -450,7 +523,7 @@ export async function POST(request: Request) {
       textValue(object, "id"),
       `stripe:${event.id}`,
       JSON.stringify({ objectId: textValue(object, "id"), objectType: textValue(object, "object") }),
-      JSON.stringify({ source: "stripe_webhook", connectedAccountId: textValue(object, "account") })
+      JSON.stringify({ source: "stripe_webhook", connectedAccountId: event.account ?? textValue(object, "account") })
     ]
   );
   const receiptId = receipt?.rows[0]?.id;
@@ -458,51 +531,74 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, received: true, duplicate: true });
   }
 
-  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
-    await handleCheckoutCompleted(event, object);
+  try {
+    if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+      await handleCheckoutCompleted(event, object);
+    }
+
+    if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      await handleSubscriptionLifecycle(event, object);
+    }
+
+    if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed" || event.type === "payment_intent.payment_failed") {
+      await recordStripePaymentException(event, object, "failed");
+    }
+
+    if (event.type === "charge.refunded") {
+      const amountRefunded = numberValue(object, "amount_refunded") ?? 0;
+      const amount = numberValue(object, "amount") ?? 0;
+      await recordStripePaymentException(event, object, amountRefunded >= amount ? "refunded" : "partially_refunded");
+    }
+
+    if (
+      event.type.startsWith("charge.dispute.") ||
+      event.type.startsWith("payout.") ||
+      event.type.startsWith("transfer.") ||
+      event.type === "account.updated"
+    ) {
+      await recordStripeProviderEvent(event, object);
+    }
+
+    await logAppError({
+      source: "api.integrations.stripe.webhook",
+      message: "Stripe webhook processed.",
+      severity: "info",
+      metadata: { eventId: event.id, type: event.type, connectedAccountId: event.account ?? null }
+    });
+    await queryPostgres(
+      `
+      update public.provider_webhook_events
+      set processing_status = 'processed', processed_at = now(), updated_at = now()
+      where id = $1
+      `,
+      [receiptId]
+    );
+
+    return NextResponse.json({ ok: true, received: true });
+  } catch (error) {
+    const safeMessage = error instanceof Error ? error.message.slice(0, 500) : "Stripe webhook processing failed.";
+    await queryPostgres(
+      `
+      update public.provider_webhook_events
+      set processing_status = 'failed',
+          error_category = 'provider_processing',
+          safe_error_message = $2,
+          updated_at = now()
+      where id = $1
+      `,
+      [receiptId, safeMessage]
+    );
+    await logAppError({
+      source: "api.integrations.stripe.webhook",
+      message: "Stripe webhook processing failed.",
+      severity: "error",
+      retryable: true,
+      metadata: { eventId: event.id, type: event.type, connectedAccountId: event.account ?? null, detail: safeMessage }
+    });
+    return NextResponse.json({ ok: false, status: "processing_failed" }, { status: 500 });
   }
-
-  if (
-    event.type === "customer.subscription.created" ||
-    event.type === "customer.subscription.updated" ||
-    event.type === "customer.subscription.deleted"
-  ) {
-    await handleSubscriptionLifecycle(event, object);
-  }
-
-  if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed" || event.type === "payment_intent.payment_failed") {
-    await recordStripePaymentException(event, object, "failed");
-  }
-
-  if (event.type === "charge.refunded") {
-    const amountRefunded = numberValue(object, "amount_refunded") ?? 0;
-    const amount = numberValue(object, "amount") ?? 0;
-    await recordStripePaymentException(event, object, amountRefunded >= amount ? "refunded" : "partially_refunded");
-  }
-
-  if (
-    event.type.startsWith("charge.dispute.") ||
-    event.type.startsWith("payout.") ||
-    event.type.startsWith("transfer.") ||
-    event.type === "account.updated"
-  ) {
-    await recordStripeProviderEvent(event, object);
-  }
-
-  await logAppError({
-    source: "api.integrations.stripe.webhook",
-    message: "Stripe webhook processed.",
-    severity: "info",
-    metadata: { eventId: event.id, type: event.type }
-  });
-  await queryPostgres(
-    `
-    update public.provider_webhook_events
-    set processing_status = 'processed', processed_at = now(), updated_at = now()
-    where id = $1
-    `,
-    [receiptId]
-  );
-
-  return NextResponse.json({ ok: true, received: true });
 }

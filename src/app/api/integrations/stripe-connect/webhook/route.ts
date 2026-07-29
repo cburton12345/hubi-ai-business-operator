@@ -162,13 +162,14 @@ export async function POST(request: Request) {
       await queryPostgres(
         `
         update public.payment_provider_accounts
-        set account_status = 'closed',
+        set account_status = 'rejected',
             charges_enabled = false,
             payouts_enabled = false,
+            metadata_json = metadata_json || jsonb_build_object('stripeAccountClosed', true, 'lastStripeV2EventType', $3::text),
             updated_at = now()
         where tenant_id = $1 and provider = 'stripe' and provider_account_id = $2
         `,
-        [mapped.tenant_id, accountId]
+        [mapped.tenant_id, accountId, eventType]
       );
     } else {
       const v2Account = await stripeV2JsonRequest<StripeV2ConnectedAccount>(

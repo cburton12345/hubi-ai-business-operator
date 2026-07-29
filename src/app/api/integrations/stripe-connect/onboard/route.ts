@@ -72,7 +72,10 @@ export async function POST() {
             configuration: {
               merchant: {
                 capabilities: {
-                  card_payments: { requested: true }
+                  card_payments: { requested: true },
+                  stripe_balance: {
+                    payouts: { requested: true }
+                  }
                 }
               }
             },

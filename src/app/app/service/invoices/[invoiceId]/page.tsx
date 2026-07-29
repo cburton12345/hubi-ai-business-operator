@@ -79,7 +79,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <section className="panel span-6 form-stack">
           <h2>Collect Payment</h2>
           <p className="muted">
-            Prepare a payment request, then send it only after the payment account and approval rules are ready.
+            Online checkout charges the customer through the business&apos;s connected Stripe account and pays out through the bank saved with
+            Stripe. If that connection is not ready, Ferocity keeps the request in manual tracking and does not collect the money itself.
           </p>
           <form action={prepareInvoicePaymentRequestAction}>
             <input name="invoiceId" type="hidden" value={invoice.id} />
@@ -107,7 +108,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <div>
                   <h3>{link.provider} / {link.amount}</h3>
                   <p className="muted">{link.createdAt}</p>
-                  <p className="muted">{link.paymentUrl || "No live checkout link created yet."}</p>
+                  <p className="muted">
+                    {link.paymentMode === "stripe_connect_direct" ? "Direct to the business Stripe balance" : "Manual tracking until business payouts are connected"}
+                  </p>
+                  {link.paymentUrl ? (
+                    <a className="mini-button" href={link.paymentUrl} rel="noreferrer" target="_blank">Open secure checkout</a>
+                  ) : (
+                    <Link className="mini-button" href="/app/billing">Connect Stripe payouts</Link>
+                  )}
                 </div>
                 <span className="pill">{link.status}</span>
               </li>

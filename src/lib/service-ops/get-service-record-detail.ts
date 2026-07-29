@@ -83,7 +83,15 @@ export type ServiceInvoiceDetail = {
   internalNotes: string;
   paymentNotes: string;
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
-  paymentLinks: { id: string; provider: string; status: string; amount: string; paymentUrl: string; createdAt: string }[];
+  paymentLinks: {
+    id: string;
+    provider: string;
+    status: string;
+    amount: string;
+    paymentUrl: string;
+    paymentMode: string;
+    createdAt: string;
+  }[];
   payments: { id: string; provider: string; status: string; amount: string; receivedAt: string; note: string }[];
   ledgerEntries: { id: string; entryType: string; direction: string; amount: string; description: string; occurredAt: string }[];
 };
@@ -455,10 +463,11 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       status: string;
       amount_cents: number;
       payment_url: string | null;
+      payment_mode: string;
       created_at: Date;
     }>(
       `
-      select id, provider, status, amount_cents, payment_url, created_at
+      select id, provider, status, amount_cents, payment_url, payment_mode, created_at
       from public.service_invoice_payment_links
       where tenant_id = $1 and invoice_id = $2
       order by created_at desc
@@ -531,6 +540,7 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       status: link.status,
       amount: formatMoney(link.amount_cents),
       paymentUrl: link.payment_url ?? "",
+      paymentMode: link.payment_mode,
       createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(link.created_at)
     })),
     payments: (paymentsResult?.rows ?? []).map((payment) => ({

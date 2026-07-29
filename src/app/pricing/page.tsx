@@ -30,12 +30,13 @@ const customPlans = [
 ];
 
 const connectedServices = [
-  ["Advertising", "Connect your account", "Create campaigns and platform-specific creative, then use your existing ad account or export manually."],
-  ["Video ads", "Included + usage-based", "Scripts, hooks, scenes, voiceover drafts, and briefs are included by plan. Premium rendering may use credits."],
-  ["AI receptionist", "Connected or managed", "Answers, qualifies, books, follows up, and transfers important callers with context. Managed plans include minutes with transparent 59¢ overage; bring-your-own provider usage stays on your provider bill."],
-  ["Email and SMS", "Connect your account", "Use a supported provider or BYO account with plan limits and approved usage charges."],
-  ["Web publishing", "Review first", "Prepare content for supported websites, connect an account, or export for manual publishing."],
-  ["Any ad destination", "Bring your own", "Add niche directories, communities, publishers, marketplaces, or any destination Ferocity does not natively list."]
+  ["Online invoice payments", "Connect Stripe", "Customers receive a secure online checkout. Direct charges enter the business Stripe balance, and Stripe pays out to its connected bank account."],
+  ["Advertising", "Create + export now", "Create campaigns and platform-specific creative now. Direct ad-platform execution is enabled only for an activated adapter; manual export remains available."],
+  ["Video ads", "Briefs now; rendering connected", "Scripts, hooks, scenes, voiceover drafts, and briefs work without a renderer. Premium rendering requires an activated provider and may use credits."],
+  ["AI receptionist", "Connect a supported provider", "With Retell or Vapi connected, the AI receptionist can answer, qualify, book, follow up, and transfer with business context. Provider usage remains on the selected provider path."],
+  ["Email and SMS", "Supported adapters", "Resend email and Twilio texting can execute after connection. Manual drafts and copy-to-send fallbacks remain available."],
+  ["Web publishing", "Prepare + review", "Prepare publish-ready content, use hosted Ferocity pages, or export it. Direct external publishing requires an activated adapter."],
+  ["Another provider", "Request an adapter", "Request a reviewed BYO adapter for a niche provider without changing Ferocity’s core business workflows."]
 ];
 
 const fees = [

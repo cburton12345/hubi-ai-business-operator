@@ -94,11 +94,12 @@ export default async function BillingPage() {
         <details className="panel subtle-panel">
           <summary>Connect online invoice payments</summary>
           <p className="muted">
-            This starts Stripe Connect onboarding. When finished, online invoice payments can route to the business account while Ferocity records
-            payment state, platform fees if used, ledger entries, and follow-up.
+            This opens Stripe-hosted onboarding for the business, including its payout bank account. When Stripe confirms charges and payouts are
+            active, customer invoice payments go directly into that business&apos;s Stripe balance while Ferocity records payment state, fees, ledger
+            entries, and follow-up.
           </p>
           <form action="/api/integrations/stripe-connect/onboard" method="post">
-            <button className="mini-button" type="submit">Connect payment payouts</button>
+            <button className="mini-button" type="submit">Connect Stripe and payout bank</button>
           </form>
         </details>
         <details className="panel subtle-panel">
@@ -153,8 +154,8 @@ export default async function BillingPage() {
           <div>
             <h2>Payment Collection Modes</h2>
             <p className="muted">
-              Ferocity can track payments now and prepare Stripe payment links when configured. Stripe Connect managed payments and platform fees are
-              a provider-gated path, not an enabled live payout system yet.
+              Ferocity can track offline payments now. Secure online checkout becomes available after the business completes Stripe onboarding and
+              Stripe confirms both charging and bank payouts are active.
             </p>
           </div>
           <Link className="mini-button" href="/app/cash-collection">Open money board</Link>
@@ -162,8 +163,8 @@ export default async function BillingPage() {
         <div className="grid">
           {[
             ["Manual payment tracking", "available", "Record payments made by cash, check, Zelle, outside Stripe, or other methods. No processing fee applies because Ferocity is only tracking the record."],
-            ["Customer-owned Stripe", "configured by keys", "The business connects Stripe for online payment links. Stripe fees apply. Ferocity tracks invoice requests, payments, ledger entries, and follow-up."],
-            ["Ferocity Managed Payments", "provider-gated", "Stripe Connect path with a Ferocity platform fee plus provider fees. Processor, refund, dispute, chargeback, bank-return, and instant-payout fees must be shown clearly before this is enabled."]
+            ["Business Stripe and bank payouts", "connect in Ferocity", "Stripe-hosted onboarding connects the business and its payout bank. Customer payments are direct charges to the business, and Ferocity tracks invoice requests, payment state, ledger entries, and follow-up."],
+            ["Platform fee", "controlled setting", "If enabled and disclosed, Ferocity can collect an application fee while the remaining payment stays in the business Stripe balance. Stripe processing, refunds, disputes, and payouts remain governed by Stripe and the connected business."]
           ].map(([title, status, detail]) => (
             <section className="panel span-4" key={title}>
               <span className="pill">{status}</span>
@@ -179,12 +180,11 @@ export default async function BillingPage() {
           <div>
             <h2>Managed Services And Money Movement</h2>
             <p className="muted">
-              Ferocity can use shared provider accounts for some managed services, but customer money is different. Do not offer Ferocity-held
-              payments until Stripe Connect onboarding, fee disclosure, payout tracking, refund handling, dispute handling, and bank-return handling
-              are live.
+              Customer invoice money uses direct Stripe charges to the connected business. Ferocity does not silently fall back to holding a
+              tenant&apos;s customer payment when that business has not completed payout onboarding.
             </p>
           </div>
-          <span className="pill high">not a live payout system</span>
+          <span className="pill">direct-to-business design</span>
         </div>
         <div className="grid">
           {[
@@ -194,18 +194,18 @@ export default async function BillingPage() {
               "Ferocity can prepare work using its own AI/search/email infrastructure, then bill for service, usage, or management. Publishing, ad spend, and customer sends still need approval and limits."
             ],
             [
-              "Customer-owned payments",
-              "preferred live path",
-              "The business connects its own Stripe account or records manual payments. Ferocity can prepare payment links, track invoices, update ledgers, and show follow-up."
+              "Connected business payments",
+              "preferred online path",
+              "The business completes Stripe-hosted onboarding and adds its payout bank. Ferocity can then prepare branded payment links, track invoices, update ledgers, and show follow-up."
             ],
             [
-              "Ferocity collects then pays out",
-              "requires Stripe Connect",
-              "This needs connected accounts, destination charges or transfers, application fees, payout status, refund/dispute/chargeback rules, bank-return rules, and reconciliation before launch."
+              "No silent Ferocity-held fallback",
+              "safety rule",
+              "If the business payout account is not ready, Ferocity keeps the request in manual tracking instead of charging the customer on Ferocity’s platform balance."
             ]
           ].map(([title, status, detail]) => (
             <section className="panel span-4" key={title}>
-              <span className={`pill ${status === "requires Stripe Connect" ? "high" : status === "possible with controls" ? "medium" : ""}`}>{status}</span>
+              <span className={`pill ${status === "safety rule" ? "high" : status === "possible with controls" ? "medium" : ""}`}>{status}</span>
               <h3>{title}</h3>
               <p className="muted">{detail}</p>
             </section>

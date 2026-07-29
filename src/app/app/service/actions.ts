@@ -1446,9 +1446,28 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
   const canUseConnectDirect =
     Boolean(managedAccount?.providerAccountId) && managedAccount?.chargesEnabled === true && managedAccount?.payoutsEnabled === true;
   const platformFeeCents = canUseConnectDirect ? calculatePlatformFeeCents(balanceDue) : 0;
-  const paymentMode = canUseConnectDirect ? "stripe_connect_direct" : "platform_direct";
+  const paymentMode = canUseConnectDirect ? "stripe_connect_direct" : "manual_tracking";
   const connectedAccountId = canUseConnectDirect ? managedAccount?.providerAccountId ?? null : null;
   const netToBusinessCents = Math.max(balanceDue - platformFeeCents, 0);
+
+  const existingRequest = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.service_invoice_payment_links
+    where tenant_id = $1
+      and invoice_id = $2
+      and amount_cents = $3
+      and payment_mode = $4
+      and status in ('draft', 'ready', 'sent')
+    order by created_at desc
+    limit 1
+    `,
+    [workspaceId, invoice.id, balanceDue, paymentMode]
+  );
+  if (existingRequest?.rows[0]) {
+    revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
+    return;
+  }
 
   const requestResult = await queryPostgres<{ id: string }>(
     `
@@ -1482,7 +1501,7 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
         : "Stripe checkout can be prepared, but this workspace does not have a live connected payout account yet.",
       canUseConnectDirect
         ? "Review the invoice, fee disclosure, customer email, and approval rules before sending this payment link."
-        : "Connect Stripe managed payments before using Ferocity-held checkout for a customer business."
+        : "Connect the business payout account before preparing an online checkout link."
     ]
   );
   const paymentLinkId = requestResult?.rows[0]?.id;
@@ -1491,7 +1510,7 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
   let paymentUrl = "";
   let requestStatus = "draft";
 
-  if (env.STRIPE_SECRET_KEY) {
+  if (env.STRIPE_SECRET_KEY && canUseConnectDirect && connectedAccountId) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
     const body = new URLSearchParams({
       mode: "payment",
@@ -1513,8 +1532,23 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
       "metadata[platform_fee_cents]": String(platformFeeCents)
     });
 
-    if (canUseConnectDirect && connectedAccountId) {
+    if (platformFeeCents > 0) {
       body.set("payment_intent_data[application_fee_amount]", String(platformFeeCents));
+    }
+
+    for (const [key, value] of [
+      ["ferocity_kind", "service_invoice_payment"],
+      ["tenant_id", workspaceId],
+      ["invoice_id", invoice.id],
+      ["customer_id", invoice.customer_id],
+      ["payment_link_id", paymentLinkId],
+      ["amount_cents", String(balanceDue)],
+      ["currency", "usd"],
+      ["payment_mode", paymentMode],
+      ["connected_account_id", connectedAccountId],
+      ["platform_fee_cents", String(platformFeeCents)]
+    ] as const) {
+      body.set(`payment_intent_data[metadata][${key}]`, value);
     }
 
     if (invoice.customer_email) {
@@ -1526,7 +1560,7 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
         "checkout/sessions",
         body,
         {
-          connectedAccountId: connectedAccountId ?? undefined,
+          connectedAccountId: connectedAccountId,
           idempotencyKey: `ferocity-invoice-checkout-${paymentLinkId}`
         }
       );

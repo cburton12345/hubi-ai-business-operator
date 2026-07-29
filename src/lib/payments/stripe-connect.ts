@@ -16,6 +16,9 @@ export type StripeV2ConnectedAccount = {
     merchant?: {
       capabilities?: {
         card_payments?: { status?: string };
+        stripe_balance?: {
+          payouts?: { status?: string };
+        };
       };
     };
   };
@@ -127,6 +130,7 @@ export async function stripeV2JsonRequest<T>(
 
 export function normalizeStripeV2Account(account: StripeV2ConnectedAccount): StripeConnectedAccount {
   const cardStatus = account.configuration?.merchant?.capabilities?.card_payments?.status;
+  const payoutStatus = account.configuration?.merchant?.capabilities?.stripe_balance?.payouts?.status;
   const requirements = account.requirements?.entries ?? [];
   const currentlyDue = requirements
     .filter((entry) => entry.status === "currently_due")
@@ -135,15 +139,25 @@ export function normalizeStripeV2Account(account: StripeV2ConnectedAccount): Str
     .filter((entry) => entry.status === "past_due")
     .flatMap((entry) => entry.requested_reasons?.map((reason) => reason.code).filter(Boolean) ?? []) as string[];
   const active = cardStatus === "active";
+  const capabilityRestricted =
+    cardStatus === "restricted" ||
+    cardStatus === "unsupported" ||
+    payoutStatus === "restricted" ||
+    payoutStatus === "unsupported";
   return {
     id: account.id,
     charges_enabled: active,
-    payouts_enabled: active,
+    payouts_enabled: payoutStatus === "active",
     details_submitted: requirements.length === 0 || (currentlyDue.length === 0 && pastDue.length === 0),
     requirements: {
       currently_due: currentlyDue,
       past_due: pastDue,
-      disabled_reason: pastDue.length > 0 ? "requirements.past_due" : null
+      disabled_reason:
+        pastDue.length > 0
+          ? "requirements.past_due"
+          : capabilityRestricted
+            ? "capability.restricted"
+            : null
     }
   };
 }

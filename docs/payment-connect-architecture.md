@@ -75,7 +75,7 @@ Managed:
 9. ~~Add application fee calculation from basis points.~~ Complete.
 10. Verify account requirements, checkout completion, refund, dispute, and payout-issue handling during the controlled connected-account pilot. Routes and event subscriptions are in place.
 11. ~~Add UI warnings before enabling managed payments.~~ Complete.
-12. Add terms copy and customer-facing fee disclosure.
+12. Add final legal terms and customer-facing fee disclosure for any Ferocity application fee.
 13. Enable `FEROCITY_MANAGED_PAYMENTS_ENABLED` only after the above passes in test and live smoke checks.
 
 ## Production Verification — July 28, 2026
@@ -83,7 +83,17 @@ Managed:
 - Production deploy `6a691c8fd6f1e9b49a3f67e5` is live at `https://ferocity.live`.
 - The Accounts v2 thin-event destination is enabled for connected-account requirement, identity, merchant-configuration, capability-status, update, and closure events.
 - Stripe's real signed destination ping reached `/api/integrations/stripe-connect/webhook` and was recorded as verified and processed.
-- The snapshot destination is enabled for connected-account Checkout completion/failure/expiry, payment failures, refunds, disputes, and payout failures.
+- July 29 audit correction: the existing snapshot endpoints were platform-scoped, not connected-account-scoped. A dedicated `connect=true` endpoint was created for connected-account Checkout completion/failure/expiry, payment failures, refunds, disputes, account updates, and payout failures, and its secret was staged for the next deploy.
 - Both production webhook routes reject unsigned requests with HTTP 400.
 - Live subscription readiness passed for all five configured prices; a live Checkout Session was created and expired without payment.
 - `FEROCITY_MANAGED_PAYMENTS_ENABLED=false` was verified after the final production deploy and remains off until the controlled connected-account onboarding, payment, refund, and disclosure test is complete.
+
+## July 29 payment hardening
+
+- Invoice and estimate-deposit Checkout now require a connected tenant account with both card charging and bank payouts active.
+- Ferocity no longer silently falls back to collecting tenant customer money on the platform Stripe balance.
+- Checkout Sessions are direct charges scoped with the connected account header.
+- Checkout and PaymentIntent metadata both carry the Ferocity tenant, invoice, customer, payment-link, mode, and fee identifiers.
+- Webhook reconciliation requires the signed event account, metadata account, payment link, invoice, customer, tenant, and active provider-account mapping to agree.
+- Delayed payment methods are not marked paid at initial Checkout completion; Ferocity waits for a paid status or the asynchronous success event.
+- Failed webhook processing is recorded as failed and returns a retryable error instead of becoming stuck in a processing state.
