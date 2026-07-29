@@ -772,6 +772,11 @@ export async function sendCustomerUpdateDraftAction(formData: FormData) {
           body: draft.body,
           queueId: `operations_customer_update:${draft.id}`,
           idempotencyKey: `operations-customer-update:${draft.id}`,
+          authorization: {
+            source: "approved_operations_update",
+            humanApproved: draft.send_status === "approved",
+            policyAllowsAuto: draft.send_status === "queued"
+          },
           tenantId
         })
       : { ok: false, error: "Missing valid email recipient." };
@@ -783,7 +788,12 @@ export async function sendCustomerUpdateDraftAction(formData: FormData) {
           to: draft.recipient_contact,
           body: draft.body,
           queueId: `operations_customer_update:${draft.id}`,
-          idempotencyKey: `operations-customer-update:${draft.id}`
+          idempotencyKey: `operations-customer-update:${draft.id}`,
+          authorization: {
+            source: "approved_operations_update",
+            humanApproved: draft.send_status === "approved",
+            policyAllowsAuto: draft.send_status === "queued"
+          }
         })
       : { ok: false, error: "Missing text message recipient." };
   } else {

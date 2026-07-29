@@ -14,6 +14,7 @@ export type MessagingDashboard = {
     missing: string[];
   }>;
   accounts: Array<{
+    id: string;
     providerKey: string;
     ownershipMode: string;
     accountLabel: string;
@@ -21,6 +22,10 @@ export type MessagingDashboard = {
     credentialsStatus: string;
     liveSendingEnabled: boolean;
     outboundEnabled: boolean;
+    emergencyPaused: boolean;
+    hourlySendCap: number | null;
+    dailySendCap: number | null;
+    perRecipientHourlyCap: number | null;
   }>;
   registrations: Array<{
     id: string;
@@ -88,6 +93,7 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
   const tenantId = await getCurrentWorkspaceId();
   const [providerResult, accountResult, registrationResult, metricResult, failureResult, conversationResult] = await Promise.all([
     queryPostgres<{
+      id: string;
       provider_key: string;
       display_name: string;
       status: string;
@@ -118,6 +124,7 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
       [tenantId]
     ),
     queryPostgres<{
+      id: string;
       provider_key: string;
       ownership_mode: string;
       account_label: string;
@@ -125,10 +132,15 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
       credentials_status: string;
       live_sending_enabled: boolean;
       outbound_enabled: boolean;
+      emergency_paused: boolean;
+      hourly_send_cap: number | null;
+      daily_send_cap: number | null;
+      per_recipient_hourly_cap: number | null;
     }>(
       `
-      select provider_key, ownership_mode, account_label, connection_status, credentials_status,
-             live_sending_enabled, outbound_enabled
+      select id, provider_key, ownership_mode, account_label, connection_status, credentials_status,
+             live_sending_enabled, outbound_enabled, emergency_paused,
+             hourly_send_cap, daily_send_cap, per_recipient_hourly_cap
       from public.tenant_messaging_accounts
       where tenant_id = $1
       order by provider_key, ownership_mode
@@ -242,13 +254,18 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
       };
     }),
     accounts: (accountResult?.rows ?? []).map((row) => ({
+      id: row.id,
       providerKey: row.provider_key,
       ownershipMode: row.ownership_mode,
       accountLabel: row.account_label,
       connectionStatus: row.connection_status,
       credentialsStatus: row.credentials_status,
       liveSendingEnabled: row.live_sending_enabled,
-      outboundEnabled: row.outbound_enabled
+      outboundEnabled: row.outbound_enabled,
+      emergencyPaused: row.emergency_paused,
+      hourlySendCap: row.hourly_send_cap,
+      dailySendCap: row.daily_send_cap,
+      perRecipientHourlyCap: row.per_recipient_hourly_cap
     })),
     registrations: (registrationResult?.rows ?? []).map((row) => ({
       id: row.id,

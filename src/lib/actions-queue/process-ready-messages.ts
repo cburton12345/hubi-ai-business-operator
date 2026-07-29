@@ -22,6 +22,7 @@ type ReadyMessageRow = {
   policy_status: string | null;
   requires_human_approval: boolean | null;
   retry_count: number;
+  queue_status: string;
   communication_method: string | null;
   fallback_mode: CommunicationFallbackMode | null;
   fallback_method: CommunicationMethod | null;
@@ -158,6 +159,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       p.status as policy_status,
       p.requires_human_approval,
       coalesce((q.metadata_json->>'retryCount')::int, 0) as retry_count
+      ,q.status as queue_status
       ,q.metadata_json->>'communicationMethod' as communication_method
       ,q.metadata_json#>>'{communicationPreference,fallbackMode}' as fallback_mode
       ,q.metadata_json#>>'{communicationPreference,fallbackMethods,0}' as fallback_method
@@ -229,6 +231,13 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       providerKey: engineProviderKey(row.action_type, row.provider_key),
       queueId: row.id,
       idempotencyKey,
+      authorization: {
+        source: row.queue_status === "approved" ? "approved_action_queue" : "live_action_policy",
+        humanApproved: row.queue_status === "approved",
+        policyAllowsAuto: row.queue_status === "queued"
+          && row.policy_status === "live"
+          && row.requires_human_approval === false
+      },
       metadata: {
         aiGenerated: true,
         source: "outbound_action_queue",

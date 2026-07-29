@@ -620,6 +620,10 @@ export async function sendApprovedEmailAction(formData: FormData) {
     queueId: row.id,
     idempotencyKey,
     body,
+    authorization: {
+      source: "approved_action_queue",
+      humanApproved: true
+    },
     metadata: {
       source: "outbound_action_queue",
       originalProviderKey: row.provider_key

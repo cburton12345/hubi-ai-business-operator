@@ -29,6 +29,11 @@ export type MessagingSendInput = {
   conversationId?: string;
   idempotencyKey?: string;
   attachments?: MessagingAttachment[];
+  authorization?: {
+    source: string;
+    humanApproved?: boolean;
+    policyAllowsAuto?: boolean;
+  };
   metadata?: Record<string, unknown>;
 };
 

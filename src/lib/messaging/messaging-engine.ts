@@ -20,6 +20,14 @@ function serviceFeatureForChannel(channel: MessagingSendInput["channel"]) {
   return null;
 }
 
+function hasSendAuthorization(input: MessagingSendInput) {
+  return (
+    ["internal", "app_push"].includes(input.channel)
+    || Boolean(input.authorization?.humanApproved)
+    || Boolean(input.authorization?.policyAllowsAuto)
+  );
+}
+
 function configuredRate(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
@@ -43,42 +51,136 @@ export function estimatedMessagingUsage(input: MessagingSendInput) {
   };
 }
 
-async function getMessagingCostDecision(input: MessagingSendInput, providerKey: string) {
+async function getMessagingSendDecision(input: MessagingSendInput, providerKey: string) {
   const featureKey = serviceFeatureForChannel(input.channel);
   if (featureKey) {
     const gate = await getServiceGate(input.tenantId, featureKey);
     if (!gate.enabled) return { allowed: false, reason: gate.reason, category: "service_gate" };
   }
-
   const result = await queryPostgres<{
+    id: string;
+    ownership_mode: string;
+    emergency_paused: boolean;
     monthly_unit_cap: number | null;
     monthly_cost_cap_cents: number | null;
+    hourly_send_cap: number | null;
+    daily_send_cap: number | null;
+    per_recipient_hourly_cap: number | null;
+    recent_failure_cap: number | null;
+    risk_window_minutes: number;
     used_units: string | number;
     used_cost_cents: string | number;
+    hourly_sends: string | number;
+    daily_sends: string | number;
+    recipient_hourly_sends: string | number;
+    recent_failures: string | number;
+    external_emergency_paused: boolean;
   }>(
     `
     select
+      a.id,
+      a.ownership_mode,
+      a.emergency_paused,
       a.monthly_unit_cap,
       a.monthly_cost_cap_cents,
-      coalesce(sum(u.unit_count), 0) as used_units,
-      coalesce(sum(u.provider_cost_cents), 0) as used_cost_cents
+      a.hourly_send_cap,
+      a.daily_send_cap,
+      a.per_recipient_hourly_cap,
+      a.recent_failure_cap,
+      a.risk_window_minutes,
+      (
+        select coalesce(sum(u.unit_count), 0)
+        from public.messaging_usage u
+        where u.tenant_id = a.tenant_id
+          and u.provider_key = a.provider_key
+          and u.created_at >= date_trunc('month', now())
+      ) as used_units,
+      (
+        select coalesce(sum(u.provider_cost_cents), 0)
+        from public.messaging_usage u
+        where u.tenant_id = a.tenant_id
+          and u.provider_key = a.provider_key
+          and u.created_at >= date_trunc('month', now())
+      ) as used_cost_cents,
+      (
+        select count(*)
+        from public.messages m
+        where m.tenant_id = a.tenant_id
+          and m.provider_key = a.provider_key
+          and m.direction = 'outbound'
+          and m.status in ('queued', 'sent', 'delivered')
+          and m.created_at >= now() - interval '1 hour'
+      ) as hourly_sends,
+      (
+        select count(*)
+        from public.messages m
+        where m.tenant_id = a.tenant_id
+          and m.provider_key = a.provider_key
+          and m.direction = 'outbound'
+          and m.status in ('queued', 'sent', 'delivered')
+          and m.created_at >= now() - interval '1 day'
+      ) as daily_sends,
+      (
+        select count(*)
+        from public.messages m
+        where m.tenant_id = a.tenant_id
+          and m.provider_key = a.provider_key
+          and m.direction = 'outbound'
+          and m.status in ('queued', 'sent', 'delivered')
+          and lower(m.to_value) = lower($3)
+          and m.created_at >= now() - interval '1 hour'
+      ) as recipient_hourly_sends,
+      (
+        select count(*)
+        from public.messaging_provider_failures f
+        where f.tenant_id = a.tenant_id
+          and f.provider_key = a.provider_key
+          and f.created_at >= now() - make_interval(mins => a.risk_window_minutes)
+      ) as recent_failures,
+      exists (
+        select 1
+        from public.spend_limits s
+        where s.status = 'active'
+          and s.emergency_paused = true
+          and (
+            (s.tenant_id is null and s.scope_type = 'global')
+            or (
+              s.tenant_id = a.tenant_id
+              and (
+                s.scope_type = 'tenant'
+                or (s.scope_type = 'provider' and s.scope_key = a.provider_key)
+                or (s.scope_type = 'feature' and s.scope_key = $4)
+              )
+            )
+          )
+      ) as external_emergency_paused
     from public.tenant_messaging_accounts a
-    left join public.messaging_usage u
-      on u.tenant_id = a.tenant_id
-      and u.provider_key = a.provider_key
-      and u.created_at >= date_trunc('month', now())
     where a.tenant_id = $1
       and a.provider_key = $2
-    group by a.id
     order by
       case when a.connection_status = 'active' and a.live_sending_enabled and a.outbound_enabled then 0 else 1 end,
       case a.ownership_mode when 'customer_owned' then 0 when 'ferocity_managed' then 1 else 2 end
     limit 1
     `,
-    [input.tenantId, providerKey]
+    [input.tenantId, providerKey, normalizeContact(input.to), featureKey]
   );
   const account = result?.rows[0];
-  if (!account) return { allowed: true, reason: "No messaging account budget is configured." };
+  if (!account) {
+    return {
+      allowed: providerKey === "manual_sms",
+      reason: providerKey === "manual_sms"
+        ? "Manual messaging does not require a provider account."
+        : "No tenant messaging account is configured for this provider.",
+      category: "account_not_configured"
+    };
+  }
+  if (account.emergency_paused || account.external_emergency_paused) {
+    return {
+      allowed: false,
+      reason: "Messaging is emergency-paused for this workspace or provider.",
+      category: "emergency_pause"
+    };
+  }
 
   const estimate = estimatedMessagingUsage(input);
   const usedUnits = Number(account.used_units ?? 0);
@@ -89,7 +191,92 @@ async function getMessagingCostDecision(input: MessagingSendInput, providerKey: 
   if (account.monthly_cost_cap_cents !== null && usedCostCents + estimate.providerCostCents > account.monthly_cost_cap_cents) {
     return { allowed: false, reason: "Monthly messaging provider-cost cap reached.", category: "cost_cap" };
   }
-  return { allowed: true, reason: "Messaging account caps have not been reached." };
+  if (account.hourly_send_cap !== null && Number(account.hourly_sends ?? 0) >= account.hourly_send_cap) {
+    return { allowed: false, reason: "Hourly messaging safety limit reached.", category: "hourly_velocity_cap" };
+  }
+  if (account.daily_send_cap !== null && Number(account.daily_sends ?? 0) >= account.daily_send_cap) {
+    return { allowed: false, reason: "Daily messaging safety limit reached.", category: "daily_velocity_cap" };
+  }
+  if (
+    account.per_recipient_hourly_cap !== null
+    && Number(account.recipient_hourly_sends ?? 0) >= account.per_recipient_hourly_cap
+  ) {
+    return {
+      allowed: false,
+      reason: "This recipient has reached the hourly contact-frequency limit.",
+      category: "recipient_frequency_cap"
+    };
+  }
+  if (account.recent_failure_cap !== null && Number(account.recent_failures ?? 0) >= account.recent_failure_cap) {
+    await queryPostgres(
+      `
+      update public.tenant_messaging_accounts
+      set emergency_paused = true,
+          live_sending_enabled = false,
+          connection_status = 'blocked',
+          metadata_json = metadata_json || $3::jsonb,
+          updated_at = now()
+      where tenant_id = $1 and id = $2
+      `,
+      [
+        input.tenantId,
+        account.id,
+        JSON.stringify({
+          autoPausedBy: "messaging_failure_circuit_breaker",
+          autoPausedAt: new Date().toISOString(),
+          recentFailures: Number(account.recent_failures ?? 0),
+          riskWindowMinutes: account.risk_window_minutes
+        })
+      ]
+    );
+    return {
+      allowed: false,
+      reason: "Messaging was isolated after repeated provider failures. Review the account before clearing the pause.",
+      category: "failure_circuit_breaker"
+    };
+  }
+  return {
+    allowed: true,
+    reason: "Messaging approval, account, emergency, velocity, and cost controls passed."
+  };
+}
+
+async function hasRequiredConsent(input: MessagingSendInput) {
+  if (["internal", "app_push"].includes(input.channel)) return true;
+  const channel = ["manual_sms", "mms"].includes(input.channel) ? "sms" : input.channel;
+  const contact = normalizeContact(input.to);
+  const result = await queryPostgres<{ granted: boolean; revoked: boolean }>(
+    `
+    select
+      (
+        exists (
+          select 1 from public.messaging_consents
+          where tenant_id = $1 and contact_channel = $2
+            and lower(contact_value) = $3 and status = 'granted'
+        )
+        or exists (
+          select 1 from public.contact_consent_records
+          where tenant_id = $1 and channel = $2
+            and lower(contact_value) = $3 and status = 'granted'
+        )
+      ) as granted,
+      (
+        exists (
+          select 1 from public.messaging_consents
+          where tenant_id = $1 and contact_channel = $2
+            and lower(contact_value) = $3 and status = 'revoked'
+        )
+        or exists (
+          select 1 from public.contact_consent_records
+          where tenant_id = $1 and channel = $2
+            and lower(contact_value) = $3 and status in ('revoked', 'blocked')
+        )
+      ) as revoked
+    `,
+    [input.tenantId, channel, contact]
+  );
+  const consent = result?.rows[0];
+  return Boolean(consent?.granted && !consent.revoked);
 }
 
 async function reserveIdempotentSend(input: MessagingSendInput, providerKey: string) {
@@ -178,7 +365,9 @@ async function logEngineFailure(input: MessagingSendInput, providerKey: string, 
     [
       input.tenantId,
       providerKey,
-      result.status === 0 ? "not_configured_or_blocked" : "provider_error",
+      typeof result.metadata?.blockedBy === "string"
+        ? result.metadata.blockedBy
+        : result.status === 0 ? "not_configured_or_blocked" : "provider_error",
       result.error,
       Boolean(result.retryable),
       input.idempotencyKey ?? input.queueId ?? null,
@@ -341,15 +530,14 @@ export async function sendMessage(input: MessagingSendInput): Promise<MessagingS
     return { ok: false, providerKey, status: 0, error: `No messaging provider is available for ${input.channel}.`, retryable: false };
   }
 
-  const costDecision = await getMessagingCostDecision(input, provider.providerKey);
-  if (!costDecision.allowed) {
+  if (!hasSendAuthorization(input)) {
     const result = {
       ok: false,
       providerKey: provider.providerKey,
       status: 0,
-      error: costDecision.reason,
+      error: "This message does not have an approved user action or automation policy.",
       retryable: false,
-      metadata: { blockedBy: costDecision.category }
+      metadata: { blockedBy: "approval_required" }
     } satisfies MessagingSendResult;
     await logEngineFailure(input, provider.providerKey, result);
     await logMessage(input, result);
@@ -362,7 +550,37 @@ export async function sendMessage(input: MessagingSendInput): Promise<MessagingS
       providerKey: provider.providerKey,
       status: 0,
       error: "Recipient is opted out or suppressed.",
-      retryable: false
+      retryable: false,
+      metadata: { blockedBy: "recipient_suppressed" }
+    } satisfies MessagingSendResult;
+    await logEngineFailure(input, provider.providerKey, result);
+    await logMessage(input, result);
+    return result;
+  }
+
+  if (!(await hasRequiredConsent(input))) {
+    const result = {
+      ok: false,
+      providerKey: provider.providerKey,
+      status: 0,
+      error: "Recipient consent is not granted.",
+      retryable: false,
+      metadata: { blockedBy: "consent_required" }
+    } satisfies MessagingSendResult;
+    await logEngineFailure(input, provider.providerKey, result);
+    await logMessage(input, result);
+    return result;
+  }
+
+  const sendDecision = await getMessagingSendDecision(input, provider.providerKey);
+  if (!sendDecision.allowed) {
+    const result = {
+      ok: false,
+      providerKey: provider.providerKey,
+      status: 0,
+      error: sendDecision.reason,
+      retryable: false,
+      metadata: { blockedBy: sendDecision.category }
     } satisfies MessagingSendResult;
     await logEngineFailure(input, provider.providerKey, result);
     await logMessage(input, result);

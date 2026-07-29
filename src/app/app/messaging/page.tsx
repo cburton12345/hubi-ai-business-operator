@@ -2,6 +2,10 @@ import Link from "next/link";
 import { Mail, MessageSquareText, PhoneCall, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getMessagingDashboard } from "@/lib/messaging/get-messaging-dashboard";
+import {
+  clearMessagingEmergencyPauseAction,
+  emergencyPauseMessagingAccountAction
+} from "./actions";
 
 function statusTone(status: string) {
   if (["active", "ready", "available", "configured"].includes(status)) return "";
@@ -110,11 +114,26 @@ export default async function MessagingPage() {
               <div>
                 <h3>{account.accountLabel}</h3>
                 <p className="muted">{account.providerKey} / {account.ownershipMode.replaceAll("_", " ")}</p>
+                {account.ownershipMode !== "manual_assisted" ? (
+                  <p className="muted">
+                    Safety limits: {account.hourlySendCap ?? "custom"} per hour, {account.dailySendCap ?? "custom"} per day,
+                    {" "}{account.perRecipientHourlyCap ?? "custom"} per recipient each hour
+                  </p>
+                ) : null}
               </div>
               <div className="inline-actions">
                 <span className={`pill ${statusTone(account.connectionStatus)}`}>{account.connectionStatus.replaceAll("_", " ")}</span>
                 <span className={`pill ${statusTone(account.credentialsStatus)}`}>{account.credentialsStatus.replaceAll("_", " ")}</span>
                 <span className={`pill ${account.liveSendingEnabled ? "high" : ""}`}>{account.liveSendingEnabled ? "live on" : "live off"}</span>
+                {account.emergencyPaused ? <span className="pill high">emergency paused</span> : null}
+                {account.ownershipMode !== "manual_assisted" ? (
+                  <form action={account.emergencyPaused ? clearMessagingEmergencyPauseAction : emergencyPauseMessagingAccountAction}>
+                    <input name="accountId" type="hidden" value={account.id} />
+                    <button className="mini-button secondary-button" type="submit">
+                      {account.emergencyPaused ? "Clear pause (keep sends off)" : "Emergency pause"}
+                    </button>
+                  </form>
+                ) : null}
               </div>
             </li>
           ))}

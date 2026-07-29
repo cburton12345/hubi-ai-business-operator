@@ -27,6 +27,7 @@ const readyEmail = {
   policy_status: "live",
   requires_human_approval: false,
   retry_count: 0
+  ,queue_status: "queued"
   ,communication_method: "email"
   ,fallback_mode: "ask"
   ,fallback_method: "native_sms"
@@ -60,7 +61,12 @@ describe("processReadyMessagesForTenant", () => {
       channel: "email",
       to: "lead@example.com",
       providerKey: "resend_email",
-      idempotencyKey: "outbound-action:a1"
+      idempotencyKey: "outbound-action:a1",
+      authorization: {
+        source: "live_action_policy",
+        humanApproved: false,
+        policyAllowsAuto: true
+      }
     }));
   });
 

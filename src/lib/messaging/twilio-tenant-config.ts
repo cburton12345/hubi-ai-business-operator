@@ -77,23 +77,55 @@ async function customerOwnedConfiguration(tenantId: string, account: AccountRow)
   } satisfies TwilioSmsConfiguration;
 }
 
-function managedConfiguration(): TwilioSmsConfiguration | null {
+async function managedConfiguration(tenantId: string, account: AccountRow): Promise<TwilioSmsConfiguration | null> {
   if (
     env.ENABLE_TWILIO_SMS_SENDS !== "true"
     || !env.TWILIO_ACCOUNT_SID
     || !env.TWILIO_AUTH_TOKEN
-    || !env.TWILIO_FROM_NUMBER
   ) {
     return null;
   }
+
+  const routeResult = await queryPostgres<{
+    customer_subaccount_sid: string;
+    messaging_service_sid: string | null;
+    phone_number: string | null;
+  }>(
+    `
+    select customer_subaccount_sid, messaging_service_sid, phone_number
+    from public.twilio_isv_customer_routes
+    where tenant_id = $1
+      and status = 'active'
+      and live_sending_enabled = true
+      and customer_subaccount_sid is not null
+      and ($2::text is null or customer_subaccount_sid = $2)
+    order by updated_at desc
+    limit 1
+    `,
+    [tenantId, account.provider_account_ref]
+  );
+  const route = routeResult?.rows[0];
+  if (!route || (!route.phone_number && !route.messaging_service_sid)) return null;
+
+  const managedSecrets = [
+    ...(await resolveTenantProviderSecrets(tenantId, "twilio_managed")),
+    ...(await resolveTenantProviderSecrets(tenantId, "twilio_sms_managed"))
+  ];
+  const subaccountWebhookToken = secretByAliases(
+    managedSecrets,
+    ["subaccount_auth_token", "webhook_auth_token", "auth_token"],
+    "auth_token"
+  );
+  if (!subaccountWebhookToken) return null;
+
   return {
     ownershipMode: "ferocity_managed",
-    accountSid: env.TWILIO_ACCOUNT_SID,
+    accountSid: route.customer_subaccount_sid,
     authUsername: env.TWILIO_ACCOUNT_SID,
     authPassword: env.TWILIO_AUTH_TOKEN,
-    webhookAuthToken: env.TWILIO_AUTH_TOKEN,
-    fromNumber: env.TWILIO_FROM_NUMBER,
-    messagingServiceSid: null
+    webhookAuthToken: subaccountWebhookToken,
+    fromNumber: route.phone_number,
+    messagingServiceSid: route.messaging_service_sid
   };
 }
 
@@ -122,7 +154,7 @@ export async function resolveTwilioSmsConfiguration(tenantId: string, requireLiv
       if (customer) return customer;
     }
     if (account.ownership_mode === "ferocity_managed" && account.credentials_status === "configured") {
-      const managed = managedConfiguration();
+      const managed = await managedConfiguration(tenantId, account);
       if (managed) return managed;
     }
   }
