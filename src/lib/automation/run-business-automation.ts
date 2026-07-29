@@ -8,6 +8,7 @@ import { syncConstructionHealthForTenant } from "@/lib/construction/job-health";
 import { queryPostgres } from "@/lib/db/postgres";
 import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } from "@/lib/revenue-growth/revenue-loop-automation";
 import { syncMaturedUsageChargesForTenant, type MaturedUsageSyncResult } from "@/lib/billing/sync-matured-usage-charges";
+import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-factory";
 
 export type BusinessAutomationRunResult = {
   ok: true;
@@ -18,6 +19,7 @@ export type BusinessAutomationRunResult = {
   linkAuthority: Array<{ tenantId: string } & LinkAuthoritySyncResult>;
   readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
   usageBilling: Array<{ tenantId: string } & MaturedUsageSyncResult>;
+  adapterFactory: Array<{ tenantId: string } & Awaited<ReturnType<typeof processAdapterFactoryQueueForTenant>>>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   elapsedMs: number;
@@ -200,6 +202,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
   const linkAuthority: BusinessAutomationRunResult["linkAuthority"] = [];
   const readyMessages: BusinessAutomationRunResult["readyMessages"] = [];
   const usageBilling: BusinessAutomationRunResult["usageBilling"] = [];
+  const adapterFactory: BusinessAutomationRunResult["adapterFactory"] = [];
   const dailyBriefs: BusinessAutomationRunResult["dailyBriefs"] = [];
 
   for (const tenantId of tenantIds) {
@@ -210,6 +213,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     actionQueueScans.push(await scanActionQueueForTenant(tenantId));
     readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
     usageBilling.push({ tenantId, ...(await syncMaturedUsageChargesForTenant(tenantId)) });
+    adapterFactory.push({ tenantId, ...(await processAdapterFactoryQueueForTenant(tenantId, 1)) });
     dailyBriefs.push(await generateTenantDailyBrief(tenantId));
   }
 
@@ -234,6 +238,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
         linkAuthority,
         readyMessages,
         usageBilling,
+        adapterFactory,
         dailyBriefs,
         aiWorkforce,
         elapsedMs: Date.now() - startedAt,
@@ -251,6 +256,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     linkAuthority,
     readyMessages,
     usageBilling,
+    adapterFactory,
     dailyBriefs,
     aiWorkforce,
     elapsedMs: Date.now() - startedAt

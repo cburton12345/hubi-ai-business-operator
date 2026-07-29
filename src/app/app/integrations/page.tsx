@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, KeyRound, ShieldCheck, Unplug } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { getCurrentActor } from "@/lib/auth/require-permission";
+import { getAdapterBuildsForTenant } from "@/lib/integrations/adapter-factory";
+import { connectorExecutionLabel } from "@/lib/integrations/connector-runtime";
 import { getIntegrationRows } from "@/lib/integrations/get-integrations";
 import { getProviderIntegrationRequests } from "@/lib/integrations/get-provider-requests";
 import {
@@ -9,8 +12,13 @@ import {
   providerLaneTone,
   type ProviderLane
 } from "@/lib/integrations/provider-lane-readiness";
-import { requestProviderIntegrationAction, updateIntegrationReadinessAction } from "./actions";
-import { connectorExecutionLabel } from "@/lib/integrations/connector-runtime";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import {
+  releaseAdapterBuildAction,
+  requestProviderIntegrationAction,
+  reviewAdapterBuildAction,
+  updateIntegrationReadinessAction
+} from "./actions";
 
 function ownerLabel(value: string) {
   return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
@@ -47,10 +55,13 @@ export default async function IntegrationsPage({
 }) {
   const params = await searchParams;
   const notice = setupNotice(params);
-  const [rows, capabilityLanes, providerRequests] = await Promise.all([
+  const actor = await getCurrentActor();
+  const tenantId = await getCurrentWorkspaceId();
+  const [rows, capabilityLanes, providerRequests, adapterBuilds] = await Promise.all([
     getIntegrationRows(),
     getProviderCapabilityReadiness(),
-    getProviderIntegrationRequests()
+    getProviderIntegrationRequests(),
+    getAdapterBuildsForTenant(tenantId)
   ]);
   const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
   const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
@@ -137,8 +148,8 @@ export default async function IntegrationsPage({
                 </select>
               </label>
               <label>
-                Provider website
-                <input name="providerUrl" type="url" placeholder="https://provider.example" />
+                Official OpenAPI JSON
+                <input name="providerUrl" type="url" placeholder="https://provider.example/openapi.json" />
               </label>
             </div>
             <label>
@@ -149,7 +160,10 @@ export default async function IntegrationsPage({
               <input name="currentlyUsing" type="checkbox" value="true" />
               <span>We already use and pay for this provider.</span>
             </label>
-            <button className="button" type="submit">Request a BYO connection</button>
+            <p className="muted">
+              Use a direct official OpenAPI 3 JSON address when available. Do not paste an API key or password. Ferocity creates a locked draft—not live provider access.
+            </p>
+            <button className="button" type="submit">Ask Ferocity to enable it</button>
           </form>
         </details>
         {providerRequests.length ? (
@@ -168,6 +182,88 @@ export default async function IntegrationsPage({
               </li>
             ))}
           </ul>
+        ) : null}
+        {adapterBuilds.length ? (
+          <details className="panel subtle-panel section-actions">
+            <summary>Adapter Factory progress ({adapterBuilds.length})</summary>
+            <p className="muted">
+              Drafts are data-only and cannot run, publish themselves, receive credentials, or turn on provider write actions. Production availability requires engineering validation.
+            </p>
+            <ul className="list">
+              {adapterBuilds.map((build) => {
+                const passedChecks = build.checks.filter((check) => check.passed).length;
+                return (
+                  <li className="list-row" key={build.id}>
+                    <div>
+                      <strong>{build.providerName}</strong>
+                      <p className="muted">
+                        {build.category.replaceAll("_", " ")} / {build.riskLevel} review / {passedChecks} of {build.checks.length} safety checks passed
+                      </p>
+                      {build.lastError ? <p className="muted">{build.lastError}</p> : null}
+                      {build.status === "approved_for_engineering" ? (
+                        <p className="muted">Approved as a draft. Engineering implementation, provider testing, and a recorded release are still required.</p>
+                      ) : null}
+                      {build.status === "released" ? (
+                        <p className="muted">Engineering validation and the guarded release gate are complete.</p>
+                      ) : null}
+                      {build.status === "approved_for_engineering" && actor.platformRole === "super_admin" ? (
+                        <form action={releaseAdapterBuildAction} className="form-stack section-actions">
+                          <input name="buildId" type="hidden" value={build.id} />
+                          <div className="two-col">
+                            <label>
+                              Release version
+                              <input name="releaseVersion" placeholder="2026.07.29" required />
+                            </label>
+                            <label>
+                              Deployed commit
+                              <input name="deploymentCommitSha" placeholder="Git commit SHA" required />
+                            </label>
+                          </div>
+                          <button className="button" type="submit">Record tested release</button>
+                        </form>
+                      ) : null}
+                      {build.checks.length ? (
+                        <details>
+                          <summary>View safety checks</summary>
+                          <ul className="list">
+                            {build.checks.map((check) => (
+                              <li className="list-row" key={check.key}>
+                                <span>{check.detail}</span>
+                                <span className={`pill ${check.passed ? "low" : check.severity === "blocking" ? "high" : "medium"}`}>
+                                  {check.passed ? "Passed" : check.severity === "blocking" ? "Blocked" : "Review"}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                      {build.status === "approval_required" ? (
+                        <form action={reviewAdapterBuildAction} className="form-stack section-actions">
+                          <input name="buildId" type="hidden" value={build.id} />
+                          <label>
+                            Review note
+                            <input name="notes" placeholder="Optional note for engineering" />
+                          </label>
+                          <div className="inline-actions">
+                            <button className="button" name="decision" type="submit" value="approved_for_engineering">
+                              Send to engineering
+                            </button>
+                            <button className="button secondary-button" name="decision" type="submit" value="changes_requested">
+                              Request changes
+                            </button>
+                            <button className="button secondary-button" name="decision" type="submit" value="rejected">
+                              Close request
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
+                    </div>
+                    <span className="pill medium">{build.status.replaceAll("_", " ")}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         ) : null}
       </section>
 

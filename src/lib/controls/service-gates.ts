@@ -75,7 +75,8 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   labor_staffing_requests: "job_tracker",
   labor_worker_intake: "job_tracker",
   labor_match_suggestions: "starter",
-  construction_job_health: "job_tracker"
+  construction_job_health: "job_tracker",
+  adapter_factory: "starter"
 };
 
 function normalizePlanKey(planKey: string | null | undefined): PlanKey {
@@ -156,7 +157,8 @@ const serviceUsageSql: Record<string, string> = {
   labor_staffing_requests: "select count(*)::int as current_usage from public.labor_staffing_requests where tenant_id = $1 and created_at >= date_trunc('month', now())",
   labor_worker_intake: "select count(*)::int as current_usage from public.labor_worker_availability where tenant_id = $1 and source = 'public_form' and created_at >= date_trunc('month', now())",
   labor_match_suggestions: "select count(*)::int as current_usage from public.labor_staffing_matches where tenant_id = $1 and created_at >= date_trunc('month', now())",
-  construction_job_health: "select count(*)::int as current_usage from public.construction_daily_logs where tenant_id = $1 and created_at >= date_trunc('month', now())"
+  construction_job_health: "select count(*)::int as current_usage from public.construction_daily_logs where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  adapter_factory: "select count(*)::int as current_usage from public.provider_adapter_builds where tenant_id = $1 and requested_at >= date_trunc('month', now())"
 };
 
 export async function getServiceUsage(tenantId: string, featureKey: string) {

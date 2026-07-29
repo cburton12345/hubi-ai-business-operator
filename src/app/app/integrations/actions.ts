@@ -7,6 +7,7 @@ import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
+import { markAdapterBuildReleased, queueAdapterFactoryBuild, reviewAdapterBuild } from "@/lib/integrations/adapter-factory";
 
 const integrationToggleSchema = z.object({
   connectionId: z.string().uuid(),
@@ -22,6 +23,18 @@ const providerRequestSchema = z.object({
   currentlyUsing: z.enum(["true", "false"]).default("false")
 });
 
+const adapterReviewSchema = z.object({
+  buildId: z.string().uuid(),
+  decision: z.enum(["approved_for_engineering", "changes_requested", "rejected"]),
+  notes: z.string().trim().max(1000).optional().default("")
+});
+
+const adapterReleaseSchema = z.object({
+  buildId: z.string().uuid(),
+  releaseVersion: z.string().trim().regex(/^[a-zA-Z0-9._-]{1,80}$/),
+  deploymentCommitSha: z.string().trim().regex(/^[a-f0-9]{7,64}$/i)
+});
+
 export async function requestProviderIntegrationAction(formData: FormData) {
   await requirePermission("tenant:manage");
   const parsed = providerRequestSchema.safeParse({
@@ -34,7 +47,12 @@ export async function requestProviderIntegrationAction(formData: FormData) {
   if (!parsed.success) return;
   const tenantId = await getCurrentWorkspaceId();
   const session = await getCurrentAppSession();
-  await queryPostgres(
+  const requestResult = await queryPostgres<{
+    id: string;
+    provider_name: string;
+    provider_url: string | null;
+    capability_category: string;
+  }>(
     `
     insert into public.provider_integration_requests (
       tenant_id, requested_by_user_id, provider_name, provider_url,
@@ -49,6 +67,7 @@ export async function requestProviderIntegrationAction(formData: FormData) {
         status = case when public.provider_integration_requests.status = 'declined' then 'requested' else public.provider_integration_requests.status end,
         metadata_json = public.provider_integration_requests.metadata_json || excluded.metadata_json,
         updated_at = now()
+    returning id, provider_name, provider_url, capability_category
     `,
     [
       tenantId,
@@ -61,6 +80,54 @@ export async function requestProviderIntegrationAction(formData: FormData) {
       JSON.stringify({ source: "integrations_provider_request" })
     ]
   );
+  const request = requestResult?.rows[0];
+  if (request) {
+    await queueAdapterFactoryBuild({
+      tenantId,
+      requestId: request.id,
+      providerName: request.provider_name,
+      capabilityCategory: request.capability_category,
+      documentationUrl: request.provider_url
+    });
+  }
+  revalidatePath("/app/integrations");
+}
+
+export async function reviewAdapterBuildAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = adapterReviewSchema.safeParse({
+    buildId: formData.get("buildId"),
+    decision: formData.get("decision"),
+    notes: formData.get("notes") ?? ""
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  await reviewAdapterBuild({
+    tenantId,
+    buildId: parsed.data.buildId,
+    userId: session?.userId ?? null,
+    decision: parsed.data.decision,
+    notes: parsed.data.notes
+  });
+  revalidatePath("/app/integrations");
+}
+
+export async function releaseAdapterBuildAction(formData: FormData) {
+  await requirePermission("platform:manage");
+  const parsed = adapterReleaseSchema.safeParse({
+    buildId: formData.get("buildId"),
+    releaseVersion: formData.get("releaseVersion"),
+    deploymentCommitSha: formData.get("deploymentCommitSha")
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await markAdapterBuildReleased({
+    tenantId,
+    buildId: parsed.data.buildId,
+    releaseVersion: parsed.data.releaseVersion,
+    deploymentCommitSha: parsed.data.deploymentCommitSha
+  });
   revalidatePath("/app/integrations");
 }
 

@@ -69,6 +69,11 @@ const checks = [
     terms: ["requestProviderIntegrationAction", "provider_integration_requests", "capabilityCategory", "currentlyUsing"]
   },
   {
+    name: "requested providers enter a guarded non-executable adapter factory",
+    file: "src/lib/integrations/adapter-factory.ts",
+    terms: ["queueAdapterFactoryBuild", "processAdapterFactoryQueueForTenant", "validateAdapterDocumentationUrl", "writesDisabledByDefault", "productionAutoDeploy", "markAdapterBuildReleased"]
+  },
+  {
     name: "BYO AI is restricted, tenant-vaulted, and never receives protected orchestration",
     file: "src/lib/ai/byo-ai.ts",
     terms: ["resolveTenantProviderSecrets", "isByoAiEligibleRunType", "owner_command_event_triage", "openai_byok"]
