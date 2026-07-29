@@ -10,6 +10,7 @@ import {
   type ProviderLane
 } from "@/lib/integrations/provider-lane-readiness";
 import { requestProviderIntegrationAction, updateIntegrationReadinessAction } from "./actions";
+import { connectorExecutionLabel } from "@/lib/integrations/connector-runtime";
 
 function ownerLabel(value: string) {
   return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
@@ -103,51 +104,54 @@ export default async function IntegrationsPage({
       <section className="panel section-actions" id="request-provider">
         <div className="list-row flush-row">
           <div>
-            <h2>Bring Your Own Provider</h2>
+            <h2>Need A Different Provider?</h2>
             <p className="muted">
-              Already use a different SMS, phone, video, email, storage, payment, or advertising provider? Ask Ferocity
-              to connect it. Supported providers can be connected now; new providers are reviewed and prioritized by customer demand.
+              Ferocity supports tested connections and practical native fallbacks. Advanced customers can request another provider without adding complexity to normal setup.
             </p>
           </div>
           <span className="pill">BYO provider</span>
         </div>
-        <form action={requestProviderIntegrationAction} className="form-stack">
-          <div className="three-col">
+        <details className="panel subtle-panel section-actions">
+          <summary>Advanced: request another provider</summary>
+          <form action={requestProviderIntegrationAction} className="form-stack section-actions">
+            <div className="three-col">
+              <label>
+                Provider name
+                <input name="providerName" placeholder="Provider or service name" required />
+              </label>
+              <label>
+                Category
+                <select name="capabilityCategory" defaultValue="other">
+                  <option value="ai_text">AI text / reasoning</option>
+                  <option value="sms">SMS</option>
+                  <option value="voice">Phone / voice AI</option>
+                  <option value="video">AI video</option>
+                  <option value="image">AI images</option>
+                  <option value="email">Email</option>
+                  <option value="storage">Storage</option>
+                  <option value="payments">Payments</option>
+                  <option value="accounting">Accounting</option>
+                  <option value="calendar">Calendar</option>
+                  <option value="advertising">Advertising</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>
+                Provider website
+                <input name="providerUrl" type="url" placeholder="https://provider.example" />
+              </label>
+            </div>
             <label>
-              Provider name
-              <input name="providerName" placeholder="Provider or service name" required />
+              How should Ferocity use your provider?
+              <textarea name="useCase" placeholder="Example: use our existing number for the AI receptionist and preserve call recordings in Ferocity." required />
             </label>
-            <label>
-              Category
-              <select name="capabilityCategory" defaultValue="other">
-                <option value="sms">SMS</option>
-                <option value="voice">Phone / voice AI</option>
-                <option value="video">AI video</option>
-                <option value="image">AI images</option>
-                <option value="email">Email</option>
-                <option value="storage">Storage</option>
-                <option value="payments">Payments</option>
-                <option value="accounting">Accounting</option>
-                <option value="calendar">Calendar</option>
-                <option value="advertising">Advertising</option>
-                <option value="other">Other</option>
-              </select>
+            <label className="checkbox-row">
+              <input name="currentlyUsing" type="checkbox" value="true" />
+              <span>We already use and pay for this provider.</span>
             </label>
-            <label>
-              Provider website
-              <input name="providerUrl" type="url" placeholder="https://provider.example" />
-            </label>
-          </div>
-          <label>
-            How should Ferocity use your provider?
-            <textarea name="useCase" placeholder="Example: use our existing number for the AI receptionist and preserve call recordings in Ferocity." required />
-          </label>
-          <label className="checkbox-row">
-            <input name="currentlyUsing" type="checkbox" value="true" />
-            <span>We already use and pay for this provider.</span>
-          </label>
-          <button className="button" type="submit">Request a BYO connection</button>
-        </form>
+            <button className="button" type="submit">Request a BYO connection</button>
+          </form>
+        </details>
         {providerRequests.length ? (
           <ul className="list">
             {providerRequests.map((request) => (
@@ -199,7 +203,7 @@ export default async function IntegrationsPage({
         <div className="grid">
           <section className="span-3">
             <h3>1. Connect</h3>
-            <p className="muted">Owner signs in to Google, Meta, Reddit, Microsoft, reviews, email, calendars, payments, and communication tools.</p>
+              <p className="muted">Owner signs in to supported providers. Other services keep a native/manual fallback until their tested adapter is available.</p>
           </section>
           <section className="span-3">
             <h3>2. Read First</h3>
@@ -327,7 +331,7 @@ function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }
 }
 
 function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number] }) {
-  const canMarkReady = row.missingEnvVars.length === 0;
+  const canMarkReady = row.missingEnvVars.length === 0 && row.executionMode !== "setup_only";
   const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not used by default";
   const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No backup use";
 
@@ -342,6 +346,12 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
       </div>
       <p>{row.notes}</p>
       <ul className="list section-actions">
+        <li className="list-row">
+          <strong>Working path</strong>
+          <span className={`pill ${row.executionMode === "setup_only" ? "medium" : ""}`}>
+            {connectorExecutionLabel(row.executionMode)}
+          </span>
+        </li>
         <li className="list-row">
           <strong>Owner</strong>
           <span className="pill">{ownerLabel(row.ownershipMode)}</span>
@@ -381,9 +391,14 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
         <p className="muted">Missing connection steps: {row.missingEnvVars.length > 0 ? row.missingEnvVars.length : "None"}</p>
         <p className="muted">Can receive updates: {row.callbackPath ? "Yes" : "Not yet"}</p>
         <div className="button-row">
-          {row.oauthStartPath ? (
+          {row.oauthStartPath && row.executionMode !== "setup_only" ? (
             <Link className="mini-button" href={row.oauthStartPath}>
               Connect Account
+            </Link>
+          ) : null}
+          {row.executionMode === "setup_only" ? (
+            <Link className="mini-button secondary-button" href="#request-provider">
+              Request adapter
             </Link>
           ) : null}
           <Link className="mini-button secondary-button" href="/app/credentials">
@@ -403,6 +418,7 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
             Mark ready
           </button>
           <span className="muted">{row.liveActionsEnabled ? "Live actions on" : "Live actions off"}</span>
+          {row.executionMode === "setup_only" ? <span className="muted">Connection can be planned, but not marked ready until its adapter is built.</span> : null}
         </form>
       </div>
     </section>

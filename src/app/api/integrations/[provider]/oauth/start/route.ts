@@ -5,6 +5,7 @@ import { env, missingEnvVars } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getOAuthProviderConfig, getOAuthRequiredEnv } from "@/lib/integrations/oauth-providers";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -19,6 +20,9 @@ export async function GET(request: Request, context: { params: Promise<{ provide
 
   if (!config) {
     return appRedirect(request, { provider, setup: "unsupported" });
+  }
+  if (!connectorCanBeMarkedReady(config.provider)) {
+    return appRedirect(request, { provider: config.provider, setup: "unsupported" });
   }
 
   const requiredEnv = getOAuthRequiredEnv(config);

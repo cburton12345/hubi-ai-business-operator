@@ -69,6 +69,16 @@ const checks = [
     terms: ["requestProviderIntegrationAction", "provider_integration_requests", "capabilityCategory", "currentlyUsing"]
   },
   {
+    name: "BYO AI is restricted, tenant-vaulted, and never receives protected orchestration",
+    file: "src/lib/ai/byo-ai.ts",
+    terms: ["resolveTenantProviderSecrets", "isByoAiEligibleRunType", "owner_command_event_triage", "openai_byok"]
+  },
+  {
+    name: "unfinished connectors cannot masquerade as executable",
+    file: "src/lib/integrations/connector-runtime.ts",
+    terms: ["executable_adapter", "native_fallback", "setup_only", "connectorCanBeMarkedReady"]
+  },
+  {
     name: "industry expertise remains modular and guarded",
     file: "supabase/migrations/121_customer_lifecycle_and_industry_knowledge.sql",
     terms: ["industry_knowledge_modules", "industry_knowledge_items", "tenant_industry_modules", "roofing_core", "guardrails_json"]

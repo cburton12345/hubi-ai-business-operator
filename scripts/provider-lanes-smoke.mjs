@@ -23,6 +23,7 @@ assert(process.env.DATABASE_URL, "DATABASE_URL is required for provider lane smo
 
 const expectedCapabilities = [
   "email",
+  "ai_text",
   "text_alerts",
   "voice_ai",
   "payments",

@@ -2,6 +2,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { missingEnvVars } from "@/lib/env";
 import { getOAuthProviderConfig } from "@/lib/integrations/oauth-providers";
+import { connectorExecutionMode, type ConnectorExecutionMode } from "@/lib/integrations/connector-runtime";
 
 export type IntegrationRow = {
   id: string;
@@ -24,6 +25,7 @@ export type IntegrationRow = {
   oauthStartPath: string | null;
   setupMode: string;
   liveActionRule: string;
+  executionMode: ConnectorExecutionMode;
 };
 
 export const plannedConnections = [
@@ -505,7 +507,8 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       fallbackForActions: routes.filter((route) => route.fallback_provider_key === row.provider).map((route) => route.action_type),
       oauthStartPath: oauthConfig ? `/api/integrations/${row.provider}/oauth/start` : null,
       setupMode: row.metadata_json?.setupMode ?? (oauthConfig ? "oauth" : "manual"),
-      liveActionRule: row.metadata_json?.liveActionRule ?? "Live actions stay disabled until reviewed."
+      liveActionRule: row.metadata_json?.liveActionRule ?? "Live actions stay disabled until reviewed.",
+      executionMode: connectorExecutionMode(row.provider)
     };
   });
 }

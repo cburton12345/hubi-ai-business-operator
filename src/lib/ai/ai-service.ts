@@ -1,5 +1,10 @@
 import { getServiceGate, getWorkspacePlanKey, type PlanKey } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
+import {
+  managedAiConfiguration,
+  resolveAiExecutionConfiguration,
+  type AiExecutionConfiguration
+} from "@/lib/ai/byo-ai";
 
 type AiCategory = "core" | "premium_media";
 type AiRequestType = "json" | "vision_json";
@@ -63,16 +68,11 @@ export type AiVisionJsonRequest<T> = Omit<AiJsonRequest<T>, "user" | "requestTyp
 };
 
 function providerConfig(input?: { requestType?: AiRequestType; aiCategory?: AiCategory }) {
-  const provider = process.env.AI_PROVIDER || "openai";
-  const model =
-    input?.requestType === "vision_json"
-      ? process.env.AI_VISION_MODEL || process.env.AI_MODEL || "gpt-4.1-mini"
-      : process.env.AI_MODEL || "gpt-4.1-mini";
-
+  const managed = managedAiConfiguration(input?.requestType ?? "json");
   return {
-    provider,
-    model,
-    apiKey: process.env.OPENAI_API_KEY
+    provider: managed.providerKey,
+    model: managed.model,
+    apiKey: managed.apiKey
   };
 }
 
@@ -220,6 +220,7 @@ async function recordAiUsageEvent(input: {
   fallbackUsed: boolean;
   latencyMs?: number | null;
   errorCategory?: string | null;
+  ownershipMode?: "ferocity_managed" | "workspace";
   metadata?: Record<string, unknown>;
 }) {
   await queryPostgres(
@@ -262,7 +263,7 @@ async function recordAiUsageEvent(input: {
       input.usage?.completion_tokens ?? 0,
       input.usage?.total_tokens ?? 0,
       input.mediaUnits ?? 0,
-      estimateCostCents(input.usage, input.aiCategory),
+      input.ownershipMode === "workspace" ? 0 : estimateCostCents(input.usage, input.aiCategory),
       input.latencyMs ?? null,
       input.fallbackUsed,
       input.errorCategory ?? null,
@@ -280,6 +281,8 @@ export async function recordAiGenerationRun(input: {
   status: AiStatus;
   fallbackUsed: boolean;
   errorMessage?: string | null;
+  providerKey?: string;
+  modelName?: string;
 }) {
   const config = providerConfig();
   await queryPostgres(
@@ -301,8 +304,8 @@ export async function recordAiGenerationRun(input: {
     [
       input.tenantId,
       input.brandId ?? null,
-      config.provider,
-      config.model,
+      input.providerKey ?? config.provider,
+      input.modelName ?? config.model,
       input.runType,
       input.status,
       JSON.stringify(input.prompt),
@@ -317,9 +320,10 @@ async function handleFallback<T extends Record<string, unknown>>(
   input: AiJsonRequest<T>,
   status: AiStatus,
   reason: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  executionConfig?: AiExecutionConfiguration
 ) {
-  const config = providerConfig({ requestType: input.requestType, aiCategory: input.aiCategory });
+  const config = executionConfig ?? managedAiConfiguration(input.requestType ?? "json");
   await Promise.all([
     recordAiGenerationRun({
       tenantId: input.tenantId,
@@ -329,13 +333,15 @@ async function handleFallback<T extends Record<string, unknown>>(
       response: input.fallback,
       status,
       fallbackUsed: true,
-      errorMessage: reason
+      errorMessage: reason,
+      providerKey: config.providerKey,
+      modelName: config.model
     }),
     recordAiUsageEvent({
       tenantId: input.tenantId,
       brandId: input.brandId,
       userId: input.userId,
-      providerKey: config.provider,
+      providerKey: config.providerKey,
       modelName: config.model,
       featureKey: input.featureKey ?? "ai_generation",
       runType: input.runType,
@@ -343,8 +349,14 @@ async function handleFallback<T extends Record<string, unknown>>(
       aiCategory: input.aiCategory ?? "core",
       status,
       fallbackUsed: true,
+      ownershipMode: config.ownershipMode,
       errorCategory: status === "failed" ? safeErrorCategory(new Error(reason)) : "fallback",
-      metadata: { reason, ...(metadata ?? input.metadata ?? {}) }
+      metadata: {
+        reason,
+        ownershipMode: config.ownershipMode,
+        byoAiUsed: config.providerKey === "openai_byok",
+        ...(metadata ?? input.metadata ?? {})
+      }
     })
   ]);
 
@@ -355,7 +367,6 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
   const featureKey = input.featureKey ?? "ai_generation";
   const requestType = input.requestType ?? "json";
   const aiCategory = input.aiCategory ?? "core";
-  const config = providerConfig({ requestType, aiCategory });
   const gate = await getServiceGate(input.tenantId, featureKey);
 
   if (!gate.enabled) {
@@ -367,11 +378,18 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
     return handleFallback(input, "fallback", `AI generation skipped: ${budget.reason}`, { budget });
   }
 
-  if (config.provider !== "openai" || !config.apiKey) {
+  const config = await resolveAiExecutionConfiguration({
+    tenantId: input.tenantId,
+    runType: input.runType,
+    requestType
+  });
+  if (!config.apiKey) {
     return handleFallback(
       input,
       "fallback",
-      config.provider !== "openai" ? `Provider ${config.provider} is not enabled yet.` : "OPENAI_API_KEY is not configured."
+      "No usable AI provider credential is configured.",
+      undefined,
+      config
     );
   }
 
@@ -386,7 +404,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
           ]
         : input.user;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -424,13 +442,15 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
         prompt: { system: input.system, user: input.user },
         response: parsed,
         status: "completed",
-        fallbackUsed: false
+        fallbackUsed: false,
+        providerKey: config.providerKey,
+        modelName: config.model
       }),
       recordAiUsageEvent({
         tenantId: input.tenantId,
         brandId: input.brandId,
         userId: input.userId,
-        providerKey: config.provider,
+        providerKey: config.providerKey,
         modelName: config.model,
         featureKey,
         runType: input.runType,
@@ -440,7 +460,13 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
         usage: data.usage,
         latencyMs: Date.now() - startedAt,
         fallbackUsed: false,
-        metadata: input.metadata
+        ownershipMode: config.ownershipMode,
+        metadata: {
+          ...input.metadata,
+          ownershipMode: config.ownershipMode,
+          byoAiUsed: config.providerKey === "openai_byok",
+          providerCostBilledBy: config.ownershipMode === "workspace" ? "customer_provider" : "ferocity"
+        }
       })
     ]);
 
@@ -450,7 +476,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
       ...input.metadata,
       errorCategory: safeErrorCategory(error),
       latencyMs: Date.now() - startedAt
-    });
+    }, config);
   }
 }
 

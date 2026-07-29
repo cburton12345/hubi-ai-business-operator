@@ -12,6 +12,7 @@ import { listVoiceAgentProviders } from "@/lib/providers/voice-adapters";
 import {
   archiveTenantProviderCredentialAction,
   saveTenantProviderCredentialAction,
+  verifyAndActivateByoAiAction,
   verifyAndActivateByoProviderAction
 } from "./actions";
 
@@ -22,6 +23,7 @@ export default async function CredentialsPage() {
   const voiceProviders = listVoiceAgentProviders();
   const credentialProviderOptions = [
     { provider: "twilio", displayName: "Customer Twilio SMS" },
+    { provider: "openai_byok", displayName: "Customer OpenAI (Advanced)" },
     ...voiceProviders.map((provider) => ({
       provider: provider.providerKey,
       displayName: `Customer ${provider.displayName} Voice`
@@ -211,6 +213,14 @@ export default async function CredentialsPage() {
               </p>
             </section>
             <section className="span-6">
+              <h3>Customer OpenAI</h3>
+              <p className="muted">
+                Save <strong>api_key</strong>. Optional: save <strong>model</strong>. Ferocity uses this only for selected
+                drafting and extraction jobs; owner decisions, public agents, safeguards, and proprietary orchestration stay on Ferocity&apos;s protected route.
+              </p>
+              <p className="muted">The customer pays OpenAI directly and their provider account may retain task content under its own settings.</p>
+            </section>
+            <section className="span-6">
               <h3>Ferocity-Managed OpenAI Video</h3>
               <p className="muted">
                 Set <strong>VIDEO_PROVIDER=openai</strong>, <strong>VIDEO_API_KEY</strong>, and <strong>VIDEO_MODEL</strong>
@@ -235,6 +245,19 @@ export default async function CredentialsPage() {
           <p className="muted">For a live voice adapter, save credentials, select it in Receptionist Setup, synchronize the assistant, complete an authorized test call, then return here to activate the number.</p>
         </div>
         <div className="grid section-actions">
+          <form action={verifyAndActivateByoAiAction} className="panel span-6 subtle-panel form-stack">
+            <div>
+              <h3>Customer OpenAI account</h3>
+              <p className="muted">
+                Advanced option for selected drafting and extraction work. It never receives Ferocity&apos;s owner-decision engine or complete orchestration layer.
+              </p>
+            </div>
+            <label className="checkbox-row">
+              <input name="disclosureAccepted" type="checkbox" value="true" required />
+              <span>I understand this provider bills our account and may retain task content according to our provider settings.</span>
+            </label>
+            <button className="button" type="submit">Verify customer OpenAI</button>
+          </form>
           {[
             { key: "twilio", label: "Verify and activate Twilio" },
             ...voiceProviders

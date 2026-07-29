@@ -10,6 +10,7 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { resolveTwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
 import { env } from "@/lib/env";
 import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
+import { resolveTenantProviderSecrets, secretByAliases } from "@/lib/credentials/resolve-tenant-provider-secrets";
 
 const saveCredentialSchema = z.object({
   providerKey: z.string().trim().min(2).max(120),
@@ -26,6 +27,10 @@ const archiveCredentialSchema = z.object({
 const activateProviderSchema = z.object({
   providerKey: z.string().trim().min(2).max(120),
   complianceAttestation: z.literal("true")
+});
+
+const activateByoAiSchema = z.object({
+  disclosureAccepted: z.literal("true")
 });
 
 function isVoiceAgentProviderKey(providerKey: string) {
@@ -47,7 +52,8 @@ function providerLaneForKey(providerKey: string) {
     tiktok: { capabilityKey: "tiktok_ads", laneKey: "customer_owned", displayName: "Customer TikTok" },
     reddit: { capabilityKey: "reddit_ads", laneKey: "customer_owned", displayName: "Customer Reddit" },
     microsoft_ads: { capabilityKey: "microsoft_ads", laneKey: "customer_owned", displayName: "Customer Microsoft Ads" },
-    marketplacepro: { capabilityKey: "marketplacepro", laneKey: "customer_owned", displayName: "MarketplacePro account" }
+    marketplacepro: { capabilityKey: "marketplacepro", laneKey: "customer_owned", displayName: "MarketplacePro account" },
+    openai_byok: { capabilityKey: "ai_text", laneKey: "customer_owned", displayName: "Customer OpenAI account" }
   };
 
   const voiceProvider = getVoiceAgentProvider(providerKey);
@@ -232,6 +238,89 @@ export async function saveTenantProviderCredentialAction(formData: FormData) {
   revalidatePath("/app/credentials");
   revalidatePath("/app/integrations");
   revalidatePath("/app/system-health");
+}
+
+export async function verifyAndActivateByoAiAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = activateByoAiSchema.safeParse({
+    disclosureAccepted: formData.get("disclosureAccepted")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const secrets = await resolveTenantProviderSecrets(workspaceId, "openai_byok");
+  const apiKey = secretByAliases(secrets, ["api_key", "openai_api_key"], "api_key");
+  if (!apiKey) return;
+
+  const response = await fetch("https://api.openai.com/v1/models", {
+    headers: { authorization: `Bearer ${apiKey}` },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    await queryPostgres(
+      `
+      update public.provider_accounts
+      set status = 'error', live_actions_enabled = false,
+          metadata_json = metadata_json || $3::jsonb, updated_at = now()
+      where tenant_id = $1 and provider_key = $2
+      `,
+      [
+        workspaceId,
+        "openai_byok",
+        JSON.stringify({ lastVerificationStatus: response.status, lastVerificationAt: new Date().toISOString() })
+      ]
+    );
+    revalidatePath("/app/credentials");
+    return;
+  }
+
+  await queryPostgres(
+    `
+    update public.provider_accounts
+    set display_name = 'Customer OpenAI account',
+        status = 'connected',
+        credentials_status = 'configured',
+        ownership_mode = 'workspace',
+        live_actions_enabled = true,
+        approved_by_user_id = $3,
+        approved_at = now(),
+        metadata_json = metadata_json || $4::jsonb,
+        updated_at = now()
+    where tenant_id = $1 and provider_key = $2
+    `,
+    [
+      workspaceId,
+      "openai_byok",
+      session?.userId ?? null,
+      JSON.stringify({
+        verifiedAt: new Date().toISOString(),
+        restrictedToCommodityWorkloads: true,
+        proprietaryOrchestrationExcluded: true,
+        providerBillingOwnedByCustomer: true
+      })
+    ]
+  );
+  await queryPostgres(
+    `
+    update public.provider_connection_lanes
+    set provider_key = 'openai_byok',
+        display_name = 'Customer OpenAI account',
+        connection_status = 'connected',
+        credentials_status = 'configured',
+        live_actions_enabled = true,
+        source = 'provider_account',
+        plain_language_status = 'Your OpenAI account can handle selected drafting and extraction work. Ferocity keeps proprietary orchestration on its protected AI route.',
+        metadata_json = metadata_json || '{"byoAi":true,"customerBilled":true,"restrictedWorkloads":true}'::jsonb,
+        updated_at = now()
+    where tenant_id = $1 and capability_key = 'ai_text' and lane_key = 'customer_owned'
+    `,
+    [workspaceId]
+  );
+
+  revalidatePath("/app/credentials");
+  revalidatePath("/app/integrations");
+  revalidatePath("/app/ai-usage");
 }
 
 async function verifyTwilio(tenantId: string) {

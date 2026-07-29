@@ -57,6 +57,11 @@ const capabilityLabels: Record<string, { label: string; description: string; sor
     description: "Optional customer SMS plus Ferocity app alerts, queues, and manual text drafts.",
     sort: 20
   },
+  ai_text: {
+    label: "AI models",
+    description: "Protected Ferocity AI by default, with an Advanced customer-owned account for selected low-risk work.",
+    sort: 22
+  },
   voice_ai: {
     label: "AI Office Manager voice",
     description: "Phone/voice provider lane for the AI Office Manager. Live voice requires telephony, consent, provider keys, and approval rules.",
@@ -115,6 +120,7 @@ const capabilityLabels: Record<string, { label: string; description: string; sor
 };
 
 const envVarsByProvider = new Map(plannedConnections.map((connection) => [connection.provider, connection.envVars]));
+envVarsByProvider.set("openai_managed", ["OPENAI_API_KEY"]);
 
 function connectionTone(status: string, liveActionsEnabled: boolean) {
   if (liveActionsEnabled) return "high";

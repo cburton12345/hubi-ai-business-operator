@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
 
 const integrationToggleSchema = z.object({
   connectionId: z.string().uuid(),
@@ -16,7 +17,7 @@ const integrationToggleSchema = z.object({
 const providerRequestSchema = z.object({
   providerName: z.string().trim().min(2).max(120),
   providerUrl: z.string().trim().url().max(500).optional().or(z.literal("")),
-  capabilityCategory: z.enum(["sms", "voice", "video", "image", "email", "storage", "payments", "accounting", "calendar", "advertising", "other"]),
+  capabilityCategory: z.enum(["ai_text", "sms", "voice", "video", "image", "email", "storage", "payments", "accounting", "calendar", "advertising", "other"]),
   useCase: z.string().trim().min(10).max(1500),
   currentlyUsing: z.enum(["true", "false"]).default("false")
 });
@@ -73,6 +74,17 @@ export async function updateIntegrationReadinessAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  const currentConnection = await queryPostgres<{ provider: string }>(
+    "select provider from public.integration_connections where tenant_id = $1 and id = $2 limit 1",
+    [workspaceId, parsed.data.connectionId]
+  );
+  if (
+    parsed.data.status === "connected"
+    && (!currentConnection?.rows[0] || !connectorCanBeMarkedReady(currentConnection.rows[0].provider))
+  ) {
+    revalidatePath("/app/integrations");
+    return;
+  }
   const updated = await queryPostgres<{ provider: string; display_name: string }>(
     `
     update public.integration_connections

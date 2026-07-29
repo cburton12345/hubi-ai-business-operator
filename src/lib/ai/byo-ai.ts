@@ -1,0 +1,90 @@
+import { resolveTenantProviderSecrets, secretByAliases } from "@/lib/credentials/resolve-tenant-provider-secrets";
+import { queryPostgres } from "@/lib/db/postgres";
+
+export type AiExecutionConfiguration = {
+  providerKey: "openai" | "openai_byok";
+  model: string;
+  apiKey: string | null;
+  baseUrl: "https://api.openai.com/v1";
+  ownershipMode: "ferocity_managed" | "workspace";
+};
+
+const byoEligibleRunTypes = new Set([
+  "construction_field_log",
+  "growth_funnel_strategy",
+  "receipt_vision_extraction",
+  "setup_guidance",
+  "weekly_marketing_plan"
+]);
+
+const protectedFerocityRunTypes = new Set([
+  "owner_command_event_triage",
+  "public_website_chat_reply"
+]);
+
+export function isByoAiEligibleRunType(runType: string) {
+  if (protectedFerocityRunTypes.has(runType)) return false;
+  return byoEligibleRunTypes.has(runType);
+}
+
+export function managedAiConfiguration(requestType: "json" | "vision_json"): AiExecutionConfiguration {
+  return {
+    providerKey: "openai",
+    model:
+      requestType === "vision_json"
+        ? process.env.AI_VISION_MODEL || process.env.AI_MODEL || "gpt-4.1-mini"
+        : process.env.AI_MODEL || "gpt-4.1-mini",
+    apiKey: process.env.OPENAI_API_KEY ?? null,
+    baseUrl: "https://api.openai.com/v1",
+    ownershipMode: "ferocity_managed"
+  };
+}
+
+export async function resolveAiExecutionConfiguration(input: {
+  tenantId: string;
+  runType: string;
+  requestType: "json" | "vision_json";
+}) {
+  const managed = managedAiConfiguration(input.requestType);
+  if (!isByoAiEligibleRunType(input.runType)) return managed;
+
+  const accountResult = await queryPostgres<{
+    status: string;
+    credentials_status: string;
+    live_actions_enabled: boolean;
+    ownership_mode: string;
+  }>(
+    `
+    select status, credentials_status, live_actions_enabled, ownership_mode
+    from public.provider_accounts
+    where tenant_id = $1 and provider_key = 'openai_byok'
+    limit 1
+    `,
+    [input.tenantId]
+  );
+  const account = accountResult?.rows[0];
+  if (
+    !account
+    || account.status !== "connected"
+    || account.credentials_status !== "configured"
+    || account.live_actions_enabled !== true
+    || account.ownership_mode !== "workspace"
+  ) {
+    return managed;
+  }
+
+  const secrets = await resolveTenantProviderSecrets(input.tenantId, "openai_byok");
+  const apiKey = secretByAliases(secrets, ["api_key", "openai_api_key"], "api_key");
+  const requestedModel = secretByAliases(secrets, ["model", "model_name"]);
+  const model = requestedModel && /^[a-zA-Z0-9._:-]{2,100}$/.test(requestedModel)
+    ? requestedModel
+    : managed.model;
+
+  return {
+    providerKey: "openai_byok" as const,
+    model,
+    apiKey,
+    baseUrl: "https://api.openai.com/v1" as const,
+    ownershipMode: "workspace" as const
+  };
+}
