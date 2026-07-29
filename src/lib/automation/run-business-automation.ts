@@ -7,6 +7,7 @@ import { getServiceGate } from "@/lib/controls/service-gates";
 import { syncConstructionHealthForTenant } from "@/lib/construction/job-health";
 import { queryPostgres } from "@/lib/db/postgres";
 import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } from "@/lib/revenue-growth/revenue-loop-automation";
+import { syncMaturedUsageChargesForTenant, type MaturedUsageSyncResult } from "@/lib/billing/sync-matured-usage-charges";
 
 export type BusinessAutomationRunResult = {
   ok: true;
@@ -16,6 +17,7 @@ export type BusinessAutomationRunResult = {
   constructionHealth: Array<{ tenantId: string; jobsChecked: number; highRiskJobs: number; fieldLogsToReview: number }>;
   linkAuthority: Array<{ tenantId: string } & LinkAuthoritySyncResult>;
   readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
+  usageBilling: Array<{ tenantId: string } & MaturedUsageSyncResult>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   elapsedMs: number;
@@ -197,6 +199,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
   const constructionHealth: BusinessAutomationRunResult["constructionHealth"] = [];
   const linkAuthority: BusinessAutomationRunResult["linkAuthority"] = [];
   const readyMessages: BusinessAutomationRunResult["readyMessages"] = [];
+  const usageBilling: BusinessAutomationRunResult["usageBilling"] = [];
   const dailyBriefs: BusinessAutomationRunResult["dailyBriefs"] = [];
 
   for (const tenantId of tenantIds) {
@@ -206,6 +209,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     linkAuthority.push({ tenantId, ...(await syncLinkAuthorityForTenant(tenantId)) });
     actionQueueScans.push(await scanActionQueueForTenant(tenantId));
     readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
+    usageBilling.push({ tenantId, ...(await syncMaturedUsageChargesForTenant(tenantId)) });
     dailyBriefs.push(await generateTenantDailyBrief(tenantId));
   }
 
@@ -229,6 +233,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
         constructionHealth,
         linkAuthority,
         readyMessages,
+        usageBilling,
         dailyBriefs,
         aiWorkforce,
         elapsedMs: Date.now() - startedAt,
@@ -245,6 +250,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     constructionHealth,
     linkAuthority,
     readyMessages,
+    usageBilling,
     dailyBriefs,
     aiWorkforce,
     elapsedMs: Date.now() - startedAt

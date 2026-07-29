@@ -14,6 +14,7 @@ import {
   voiceProfileFromStored
 } from "@/lib/phone/voice-agent-profile";
 import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
+import { getVoiceMaxDurationSeconds } from "@/lib/usage/managed-voice";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const voiceProviderSchema = z.string().trim().min(2).max(120);
@@ -226,6 +227,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     categories: ["intake", "qualification", "scheduling", "safety", "follow_up"]
   });
   const systemPrompt = buildVoiceAgentSystemPrompt(businessProfile, industryContext);
+  const maxDurationSeconds = await getVoiceMaxDurationSeconds(tenantId, provider.data);
 
   const result = await adapter.createOrUpdateAssistant(
     {
@@ -248,7 +250,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
         url: `${appUrl}/api/integrations/voice-ai/webhook`
       },
       serverMessages: ["status-update", "end-of-call-report", "transcript"],
-      maxDurationSeconds: 1800,
+      maxDurationSeconds,
       metadata: {
         profileSource: "ferocity_office_manager",
         industryModule: industryContext?.moduleKey ?? null

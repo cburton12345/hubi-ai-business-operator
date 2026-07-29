@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { syncCustomerLifecycleForTenant } from "@/lib/customer-lifecycle/sync-customer-lifecycle";
 import { safelyEvaluateAndStoreCallManagementDecision } from "@/lib/office-manager/call-management";
 import { findVoiceAgentProviderForWebhook, verifyRetellSignature } from "@/lib/providers/voice-adapters";
+import { recordVoiceUsage } from "@/lib/usage/managed-voice";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -426,29 +427,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (status === "completed" && durationSeconds > 0) {
-      const minutes = Math.ceil(durationSeconds / 60);
-      await queryPostgres(
-        `
-        insert into public.usage_meter_events (
-          tenant_id, feature_key, provider_key, provider_resource_id, provider_event_id,
-          source_table, source_id, unit_type, quantity, provider_cost_cents, customer_charge_cents,
-          status, source, idempotency_key, metadata_json
-        )
-        values ($1, 'ai_receptionist', $2, $3, $4, 'receptionist_calls', $5, 'minute', $6, $9, 0, 'included', 'provider_webhook', $7, $8::jsonb)
-        on conflict (tenant_id, idempotency_key) do nothing
-        `,
-        [
-          tenantId,
-          provider,
-          providerCallId,
-          providerEventId,
-          callId,
-          minutes,
-          `${tenantId}:${provider}:${providerEventId}:minute:${callId}`,
-          JSON.stringify({ source: "voice_ai_webhook", pricingNotEnabled: true, durationSeconds }),
-          providerCostCents
-        ]
-      );
+      await recordVoiceUsage({
+        tenantId,
+        providerKey: provider,
+        providerCallId,
+        callId,
+        durationSeconds,
+        providerCostCents
+      });
     }
 
     callDecision = await safelyEvaluateAndStoreCallManagementDecision({

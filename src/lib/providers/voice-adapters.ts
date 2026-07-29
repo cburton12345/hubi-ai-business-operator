@@ -73,7 +73,7 @@ abstract class PlannedVoiceAdapter implements VoiceAgentProvider {
     return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
   }
 
-  async verifyConnection(_context: ProviderContext, _input: { assistantId: string; webhookUrl: string }) {
+  async verifyConnection(_context: ProviderContext, _input: { assistantId: string; webhookUrl: string; inboundWebhookUrl?: string }) {
     return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
   }
 
@@ -226,7 +226,7 @@ export class VapiVoiceAdapter implements VoiceAgentProvider {
 
   async verifyConnection(
     context: ProviderContext,
-    input: { assistantId: string; webhookUrl: string }
+    input: { assistantId: string; webhookUrl: string; inboundWebhookUrl?: string }
   ): Promise<ProviderResult<VoiceProviderConnection>> {
     const credentials = await resolveVapiConfiguration(context.tenantId, false);
     if (!credentials?.phoneNumber || !credentials.phoneNumberId || !credentials.webhookCredentialId) {
@@ -498,7 +498,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
 
   async verifyConnection(
     context: ProviderContext,
-    input: { assistantId: string; webhookUrl: string }
+    input: { assistantId: string; webhookUrl: string; inboundWebhookUrl?: string }
   ): Promise<ProviderResult<VoiceProviderConnection>> {
     const credentials = await resolveRetellConfiguration(context.tenantId, false);
     if (!credentials?.phoneNumber) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
@@ -520,8 +520,9 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       `/update-phone-number/${encodeURIComponent(credentials.phoneNumber)}`,
       "PATCH",
       {
-        inbound_agents: [{ agent_id: input.assistantId, weight: 1 }],
+        inbound_agents: input.inboundWebhookUrl ? null : [{ agent_id: input.assistantId, weight: 1 }],
         outbound_agents: [{ agent_id: input.assistantId, weight: 1 }],
+        ...(input.inboundWebhookUrl ? { inbound_webhook_url: input.inboundWebhookUrl } : {}),
         nickname: "Ferocity AI Receptionist"
       }
     );

@@ -72,7 +72,7 @@ export interface VoiceAgentProvider {
   getConnection(context: ProviderContext, requireLiveActions: boolean): Promise<ProviderResult<VoiceProviderConnection>>;
   verifyConnection(
     context: ProviderContext,
-    input: { assistantId: string; webhookUrl: string }
+    input: { assistantId: string; webhookUrl: string; inboundWebhookUrl?: string }
   ): Promise<ProviderResult<VoiceProviderConnection>>;
   createOrUpdateAssistant(context: ProviderContext, config: Record<string, unknown>): Promise<ProviderResult<{ assistantId: string; status: string }>>;
   startOutboundCall(context: ProviderContext, input: { toNumber: string; fromNumber: string; assistantId: string }): Promise<ProviderResult<{ providerCallId: string; status: string }>>;

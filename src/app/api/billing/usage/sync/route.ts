@@ -145,6 +145,10 @@ export async function POST(request: NextRequest) {
     where tenant_id = $1
       and status = 'approved'
       and amount_cents > 0
+      and (
+        coalesce(metadata_json->>'aggregatedMonthly', 'false') <> 'true'
+        or period_end <= now()
+      )
     order by created_at asc
     limit 50
     `,

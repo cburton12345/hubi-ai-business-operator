@@ -1,5 +1,6 @@
 import type { ProviderContext, ProviderResult, VoiceAgentProvider } from "@/lib/providers/interfaces";
 import type { VoiceAgent, VoiceConversation } from "@/lib/phone/contracts";
+import { evaluateVoiceAccess } from "@/lib/usage/managed-voice";
 
 type FerocityVoiceWorkflows = {
   stopConversation?: (input: { tenantId: string; conversationId: string }) => Promise<boolean>;
@@ -48,6 +49,21 @@ export class ProviderBackedVoiceAgent implements VoiceAgent {
     context: ProviderContext,
     input: { toNumber: string; fromNumber: string; assistantId: string }
   ): Promise<ProviderResult<VoiceConversation>> {
+    if (context.purpose !== "authorized_test") {
+      const access = await evaluateVoiceAccess({
+        tenantId: context.tenantId,
+        providerKey: this.engine.providerKey,
+        purpose: context.purpose
+      });
+      if (!access.allowed) {
+        return {
+          ok: false,
+          errorCategory: access.errorCategory,
+          safeMessage: access.reason,
+          retryable: access.errorCategory === "concurrent_call_limit"
+        };
+      }
+    }
     const result = await this.engine.startOutboundCall(context, input);
     if (!result.ok) return result;
     return {

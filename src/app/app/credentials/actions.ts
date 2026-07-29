@@ -295,7 +295,10 @@ async function verifyVoiceProvider(tenantId: string, providerKey: string) {
     },
     {
       assistantId,
-      webhookUrl: `${appUrl}/api/integrations/voice-ai/webhook`
+      webhookUrl: `${appUrl}/api/integrations/voice-ai/webhook`,
+      inboundWebhookUrl: providerKey === "retell_voice"
+        ? `${appUrl}/api/integrations/voice-ai/inbound`
+        : undefined
     }
   );
   if (!verified.ok) {
