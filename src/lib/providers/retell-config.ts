@@ -1,10 +1,11 @@
 import { resolveTenantProviderSecrets, secretByAliases } from "@/lib/credentials/resolve-tenant-provider-secrets";
 import { queryPostgres } from "@/lib/db/postgres";
+import { env } from "@/lib/env";
 
 export type RetellConfiguration = {
   apiKey: string;
   webhookApiKey: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   voiceId: string;
 };
 
@@ -13,9 +14,10 @@ export async function resolveRetellConfiguration(tenantId: string, requireLiveAc
     status: string;
     credentials_status: string;
     live_actions_enabled: boolean;
+    ownership_mode: string;
   }>(
     `
-    select status, credentials_status, live_actions_enabled
+    select status, credentials_status, live_actions_enabled, ownership_mode
     from public.provider_accounts
     where tenant_id = $1 and provider_key = 'retell_voice'
     limit 1
@@ -36,14 +38,34 @@ export async function resolveRetellConfiguration(tenantId: string, requireLiveAc
   }
 
   const secrets = await resolveTenantProviderSecrets(tenantId, "retell_voice");
-  const apiKey = secretByAliases(secrets, ["api_key", "retell_api_key"]);
-  const webhookApiKey = secretByAliases(
-    secrets,
-    ["webhook_api_key", "retell_webhook_api_key"]
-  );
-  const phoneNumber = secretByAliases(secrets, ["phone_number", "retell_phone_number"]);
+  const managed = account.ownership_mode === "ferocity_managed";
+  const managedNumberResult = managed
+    ? await queryPostgres<{ phone_number: string }>(
+        `
+        select phone_number
+        from public.telephony_numbers
+        where tenant_id = $1
+          and provider_key = 'retell_voice'
+          and number_mode = 'ferocity_managed'
+          and status in ('provisioning', 'active', 'paused')
+        order by case status when 'active' then 0 when 'provisioning' then 1 else 2 end, updated_at desc
+        limit 1
+        `,
+        [tenantId]
+      )
+    : null;
+  const managedPhoneNumber = managedNumberResult?.rows[0]?.phone_number ?? null;
+  const apiKey =
+    secretByAliases(secrets, ["api_key", "retell_api_key"])
+    ?? (managed ? env.RETELL_API_KEY : null);
+  const webhookApiKey =
+    secretByAliases(secrets, ["webhook_api_key", "retell_webhook_api_key"])
+    ?? (managed ? env.RETELL_WEBHOOK_SECRET ?? env.RETELL_API_KEY : null);
+  const phoneNumber =
+    secretByAliases(secrets, ["phone_number", "retell_phone_number"])
+    ?? (managed ? managedPhoneNumber ?? env.VOICE_PHONE_NUMBER ?? null : null);
   const voiceId = secretByAliases(secrets, ["voice_id", "retell_voice_id"]) ?? "retell-Cimo";
-  if (!apiKey || !webhookApiKey || !phoneNumber) return null;
+  if (!apiKey || !webhookApiKey) return null;
   return { apiKey, webhookApiKey, phoneNumber, voiceId } satisfies RetellConfiguration;
 }
 

@@ -3,7 +3,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { syncCustomerLifecycleForTenant } from "@/lib/customer-lifecycle/sync-customer-lifecycle";
 import { safelyEvaluateAndStoreCallManagementDecision } from "@/lib/office-manager/call-management";
-import { findVoiceAgentProviderForWebhook } from "@/lib/providers/voice-adapters";
+import { findVoiceAgentProviderForWebhook, verifyRetellSignature } from "@/lib/providers/voice-adapters";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -80,7 +80,18 @@ export async function POST(request: NextRequest) {
 
   if (adapter) {
     const normalized = await adapter.normalizeWebhook(request.headers, rawBody);
-    if (!normalized?.ok) return unauthorized();
+    if (!normalized?.ok) {
+      const managedRetellKey = env.RETELL_WEBHOOK_SECRET ?? env.RETELL_API_KEY;
+      const isAuthenticatedUnmappedRetellEvent =
+        adapter.providerKey === "retell_voice"
+        && normalized?.errorCategory === "untrusted_tenant"
+        && managedRetellKey !== undefined
+        && verifyRetellSignature(rawBody, managedRetellKey, request.headers.get("x-retell-signature"));
+      if (isAuthenticatedUnmappedRetellEvent) {
+        return new NextResponse(null, { status: 204 });
+      }
+      return unauthorized();
+    }
     const event = normalized.data;
     const metadata = event.metadata ?? {};
     const structuredData =

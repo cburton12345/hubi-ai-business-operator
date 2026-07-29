@@ -478,7 +478,6 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       || (
         Boolean(event && (event.startsWith("call_") || event.startsWith("transfer_") || event === "transcript_updated"))
         && Boolean(text(call.call_id))
-        && Boolean(text(call.agent_id))
       );
   }
 
@@ -487,7 +486,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     requireLiveActions: boolean
   ): Promise<ProviderResult<VoiceProviderConnection>> {
     const credentials = await resolveRetellConfiguration(context.tenantId, requireLiveActions);
-    if (!credentials) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
+    if (!credentials?.phoneNumber) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
     return {
       ok: true,
       data: {
@@ -502,7 +501,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     input: { assistantId: string; webhookUrl: string }
   ): Promise<ProviderResult<VoiceProviderConnection>> {
     const credentials = await resolveRetellConfiguration(context.tenantId, false);
-    if (!credentials) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
+    if (!credentials?.phoneNumber) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
     const agent = await retellRequest(
       credentials.apiKey,
       `/get-agent/${encodeURIComponent(input.assistantId)}`,

@@ -148,6 +148,13 @@ describe("Retell voice adapter", () => {
     expect(verifyRetellSignature(body, "retell-webhook-key", `v=${Date.now() - 360_001},d=${digest}`)).toBe(false);
   });
 
+  it("recognizes a signed workspace webhook test before an agent is mapped", () => {
+    expect(findVoiceAgentProviderForWebhook({
+      event: "call_started",
+      call: { call_id: "retell-workspace-test" }
+    })?.providerKey).toBe("retell_voice");
+  });
+
   it("normalizes an authenticated analyzed call", async () => {
     const body = JSON.stringify({
       event: "call_analyzed",
