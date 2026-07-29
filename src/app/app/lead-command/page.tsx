@@ -154,7 +154,7 @@ export default async function LeadCommandPage() {
               <li className="list-row" key={action.id}>
                 <div>
                   <h3><Link href={action.href}>{action.subject}</Link></h3>
-                  <p className="muted">{action.providerKey} / queued action</p>
+                  <p className="muted">Prepared business action</p>
                 </div>
                 <div className="inline-actions">
                   <span className={`pill ${tone(action.riskLevel)}`}>{action.riskLevel}</span>

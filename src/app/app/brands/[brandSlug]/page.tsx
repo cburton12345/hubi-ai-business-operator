@@ -203,6 +203,8 @@ export default async function BrandProfilePage({
               <input name="serviceAreaName" placeholder="Service area" required />
               <input name="city" placeholder="City" />
               <input name="state" placeholder="State" />
+              <input name="zip" placeholder="ZIP / postal code" />
+              <input name="radiusMiles" type="number" min="1" max="250" defaultValue="25" aria-label="Service radius in miles" />
               <input name="priority" type="number" min="0" max="100" defaultValue="10" />
               <button className="mini-button" type="submit">Add</button>
             </form>

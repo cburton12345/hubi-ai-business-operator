@@ -307,7 +307,10 @@ export default async function GoLivePage() {
               This is the launch honesty check. If something needs a provider, approval, or manual setup, Ferocity should say that before a customer depends on it.
             </p>
           </div>
-          <Link className="mini-button" href="/app/system-health">System health</Link>
+          <div className="button-row">
+            <Link className="mini-button" href="/app/promise-audit">Promise audit</Link>
+            <Link className="mini-button" href="/app/system-health">System health</Link>
+          </div>
         </div>
         <div className="grid">
           {capabilityTruth.map((item) => (

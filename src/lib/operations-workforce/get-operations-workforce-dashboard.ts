@@ -26,7 +26,7 @@ export type OperationsWorkforceDashboard = {
     recurringDue: number;
   };
   workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string }[];
-  assignments: { id: string; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; aiNotes: string }[];
+  assignments: { id: string; serviceVisitId: string | null; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; aiNotes: string }[];
   timeEntries: { id: string; worker: string; assignment: string; clockIn: string; clockOut: string; hours: string; status: string; verified: string }[];
   expenses: { id: string; vendor: string; amount: string; category: string; status: string; worker: string; summary: string }[];
   mileage: { id: string; worker: string; route: string; miles: string; vehicle: string; status: string }[];
@@ -122,6 +122,7 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
     ),
     queryPostgres<{
       id: string;
+      service_visit_id: string | null;
       title: string;
       worker: string | null;
       crew: string | null;
@@ -134,7 +135,7 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       ai_dispatch_notes: string | null;
     }>(
       `
-      select a.id, a.title, w.name as worker, c.name as crew, a.jobsite, a.scheduled_start, a.scheduled_end,
+      select a.id, a.service_visit_id, a.title, w.name as worker, c.name as crew, a.jobsite, a.scheduled_start, a.scheduled_end,
         a.status, a.priority, jsonb_array_length(a.task_list_json) as task_count, a.ai_dispatch_notes
       from public.operations_assignments a
       left join public.operations_workers w on w.id = a.worker_id
@@ -318,6 +319,7 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
     })),
     assignments: (assignmentsResult?.rows ?? []).map((row) => ({
       id: row.id,
+      serviceVisitId: row.service_visit_id,
       title: row.title,
       worker: row.worker ?? "Unassigned",
       crew: row.crew ?? "No crew",

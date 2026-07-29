@@ -4,6 +4,8 @@ const baseUrl = "https://ferocity.live";
 
 const publicRoutes = [
   { path: "/", priority: 1 },
+  { path: "/growth-system", priority: 0.98 },
+  { path: "/free-business-audit", priority: 0.9 },
   { path: "/business-health-score", priority: 0.95 },
   { path: "/features", priority: 0.9 },
   { path: "/demo", priority: 0.85 },

@@ -1,18 +1,24 @@
-import { integrationNotConfiguredResponse } from "@/lib/integrations/integration-route";
+import { NextResponse } from "next/server";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { resolveTwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
+import { handleTwilioMessagingWebhook } from "@/lib/messaging/twilio-webhook";
 
-export async function GET(request: Request) {
-  return integrationNotConfiguredResponse({
+export async function GET() {
+  const tenantId = await getCurrentWorkspaceId();
+  const configuration = await resolveTwilioSmsConfiguration(tenantId, false);
+  return NextResponse.json({
     provider: "twilio",
-    request,
-    requiredEnv: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
-    method: "GET"
+    configured: Boolean(configuration),
+    ownershipMode: configuration?.ownershipMode ?? null,
+    fromNumber: configuration?.fromNumber ?? null,
+    webhookPath: "/api/messaging/webhooks/twilio",
+    liveActionsEnabled: Boolean(await resolveTwilioSmsConfiguration(tenantId, true)),
+    secretsExposed: false
   });
 }
 
 export async function POST(request: Request) {
-  return integrationNotConfiguredResponse({
-    provider: "twilio",
-    request,
-    requiredEnv: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]
-  });
+  // Backward-compatible status callback. New Twilio configurations should use
+  // /api/messaging/webhooks/twilio for both inbound messages and delivery status.
+  return handleTwilioMessagingWebhook(request);
 }

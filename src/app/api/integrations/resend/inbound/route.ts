@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
+import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
 
 type RouteRow = {
   id: string;
@@ -207,18 +208,19 @@ export async function POST(request: Request) {
   const route = routeResult?.rows[0];
 
   if (!route?.brand_id) {
-    await logAppError({
+    const correlationId = await logAppError({
       source: "api.integrations.resend.inbound",
       severity: "warning",
       message: "Inbound email received but no active route matched the recipient.",
+      category: "provider_routing",
+      retryable: false,
       metadata: {
         providerEventType: email.providerEventType,
-        recipients: email.recipients,
-        fromEmail: email.fromEmail,
-        subject: email.subject
+        recipientCount: email.recipients.length,
+        subjectPresent: Boolean(email.subject)
       }
     });
-    return json(202, { ok: true, routed: false, reason: "no_active_route" });
+    return json(202, { ok: true, routed: false, reason: "no_active_route", correlationId });
   }
 
   await queryPostgres(
@@ -352,6 +354,21 @@ export async function POST(request: Request) {
       })
     ]
   );
+
+  await recordInboundResponse({
+    tenantId: route.tenant_id,
+    brandId: route.brand_id,
+    leadId: lead.id,
+    sourceThreadId: thread.id,
+    sourceMessageId: messageResult?.rows[0]?.id ?? null,
+    channel: "email",
+    providerKey: "resend_email",
+    providerMessageId: email.providerMessageId,
+    from: email.fromEmail,
+    to: email.recipients.join(", "),
+    subject: email.subject,
+    body: email.body.slice(0, 10000)
+  });
 
   await queryPostgres(
     `

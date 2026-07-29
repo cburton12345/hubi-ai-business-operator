@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { assignLeadAction, calculateLeadScoreAction, convertLeadToServiceCustomerAction, createLegalRoutingReviewAction, generateLeadIntelligenceAction, qualifyLegalLeadAction, updateLeadWorkflow } from "@/app/app/leads/actions";
+import { assignLeadAction, convertLeadToServiceCustomerAction, createLegalRoutingReviewAction, generateLeadIntelligenceAction, qualifyLegalLeadAction, updateLeadWorkflow } from "@/app/app/leads/actions";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
 import { getLeadDetail } from "@/lib/leads/get-lead-detail";
+import { LeadScoreForm } from "./LeadScoreForm";
+import { ContactCommunicationPreferences } from "@/components/preferences/ContactCommunicationPreferences";
+import { getContactCommunicationPreference } from "@/lib/preferences/contact-communication-preferences";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ leadId: string }> }) {
   const { leadId } = await params;
-  const lead = await getLeadDetail(leadId);
+  const [lead, workspaceId] = await Promise.all([getLeadDetail(leadId), getCurrentWorkspaceId()]);
 
   if (!lead) {
     notFound();
   }
+  const contactPreference = await getContactCommunicationPreference(workspaceId, `lead:${lead.id}`);
 
   return (
     <main className="page-shell">
@@ -40,6 +45,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               <Detail label="Consent" value={lead.consentToContact ? "Yes" : "No"} />
               <Detail label="Lead Score" value={lead.score ? `${lead.score.score} / ${lead.score.grade}` : "Not scored"} />
               <Detail label="Assigned To" value={lead.assignment?.assignedTo ?? "Unassigned"} />
+              <div className="detail-wide">
+                <dt>Communication</dt>
+                <dd>
+                  <ContactCommunicationPreferences
+                    contactKey={`lead:${lead.id}`}
+                    returnPath={`/app/leads/${lead.id}`}
+                    value={contactPreference}
+                  />
+                </dd>
+              </div>
               <div className="detail-wide">
                 <dt>Score Reasons</dt>
                 <dd>{lead.score?.reasons.join(", ") || "No score reasons yet."}</dd>
@@ -91,10 +106,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
               </label>
               <button className="button" type="submit">Save update</button>
             </form>
-            <form action={calculateLeadScoreAction}>
-              <input name="leadId" type="hidden" value={lead.id} />
-              <button className="button secondary-button" type="submit">Calculate score</button>
-            </form>
+            <LeadScoreForm leadId={lead.id} />
             <form action={assignLeadAction} className="form-stack">
               <input name="leadId" type="hidden" value={lead.id} />
               <label>

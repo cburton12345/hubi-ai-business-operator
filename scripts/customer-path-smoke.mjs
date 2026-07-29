@@ -39,9 +39,27 @@ async function postForm(baseUrl, path, values) {
   });
 }
 
+async function expireStripeCheckout(sessionId) {
+  const response = await fetch(
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}/expire`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams()
+    }
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Stripe smoke checkout cleanup failed (${response.status}): ${body.slice(0, 240)}`);
+  }
+}
+
 loadLocalEnv();
 
-const baseUrl = (process.env.FEROCITY_SMOKE_URL ?? "http://127.0.0.1:3037").replace(/\/$/, "");
+const baseUrl = (process.env.FEROCITY_SMOKE_URL ?? process.env.FEROCITY_APP_URL ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 assert(process.env.DATABASE_URL, "DATABASE_URL is required for customer path smoke.");
 
 const id = Date.now().toString(36);
@@ -103,6 +121,8 @@ line("Business Grader", `${graderResponse.status} ${graderLocation}`);
 
 const { Client } = pg;
 const client = new Client({ connectionString: process.env.DATABASE_URL });
+let smokeAccessRow;
+let smokeGraderRow;
 await client.connect();
 
 try {
@@ -140,6 +160,7 @@ try {
     [setupEmail]
   );
   const accessRow = access.rows[0];
+  smokeAccessRow = accessRow;
   assert(accessRow, "access request row was not created");
   assert(accessRow.status === "invited", `access request status expected invited, got ${accessRow.status}`);
   assert(accessRow.account_type === "customer", "auto workspace should be a customer workspace");
@@ -161,6 +182,7 @@ try {
     [graderEmail]
   );
   const graderRow = grader.rows[0];
+  smokeGraderRow = graderRow;
   assert(graderRow, "business grader report row was not created");
   assert(["completed", "failed"].includes(graderRow.status), `unexpected grader status ${graderRow.status}`);
   assert(Number.isFinite(Number(graderRow.score)), "grader score missing");
@@ -196,16 +218,71 @@ const freeCheckout = await postForm(baseUrl, "/api/billing/checkout", {
 });
 assert([302, 303, 307, 308].includes(freeCheckout.status), `free checkout expected redirect, got ${freeCheckout.status}`);
 const freeLocation = freeCheckout.headers.get("location") ?? "";
-assert(freeLocation.includes("/start?") && freeLocation.includes("billing=free_plan"), `free checkout fallback changed: ${freeLocation}`);
-line("Free checkout", `${freeCheckout.status} ${freeLocation}`);
+assert(
+  freeLocation.includes("/pricing") && freeLocation.includes("billing=invalid_plan"),
+  `removed free plan should return to pricing, got: ${freeLocation}`
+);
+line("No free subscription", `${freeCheckout.status} ${freeLocation}`);
 
 const paidCheckout = await postForm(baseUrl, "/api/billing/checkout", {
   plan: "starter",
-  source: "customer_path_smoke"
+  source: "customer_path_smoke",
+  email: setupEmail,
+  name: "Launch Smoke",
+  companyName,
+  consentToContact: "on"
 });
 assert([302, 303, 307, 308].includes(paidCheckout.status), `starter checkout expected redirect, got ${paidCheckout.status}`);
 const paidLocation = paidCheckout.headers.get("location") ?? "";
 assert(paidLocation.startsWith("https://checkout.stripe.com/") || paidLocation.includes("/start?"), `starter checkout redirected to unexpected location: ${paidLocation}`);
 line("Starter checkout", paidLocation.startsWith("https://checkout.stripe.com/") ? "created Stripe checkout session" : paidLocation);
+
+if (paidLocation.startsWith("https://checkout.stripe.com/") && process.env.STRIPE_SECRET_KEY) {
+  const sessionId = new URL(paidLocation).pathname
+    .split("/")
+    .find((part) => part.startsWith("cs_"));
+  if (sessionId) {
+    await expireStripeCheckout(sessionId);
+    line("Checkout cleanup", "expired smoke checkout without payment");
+  }
+}
+
+const cleanupClient = new Client({ connectionString: process.env.DATABASE_URL });
+await cleanupClient.connect();
+try {
+  await cleanupClient.query("begin");
+  await cleanupClient.query(
+    `delete from public.owner_command_events
+     where external_event_id in ($1, $2)`,
+    [
+      smokeAccessRow?.id ? `access-request:${smokeAccessRow.id}` : "",
+      smokeGraderRow?.report_token ? `business-grader:${smokeGraderRow.report_token}` : ""
+    ]
+  );
+  await cleanupClient.query(
+    `delete from public.leads where lower(email) in (lower($1), lower($2))`,
+    [setupEmail, graderEmail]
+  );
+  if (smokeGraderRow?.report_token) {
+    await cleanupClient.query(
+      `delete from public.website_grader_reports where report_token=$1`,
+      [smokeGraderRow.report_token]
+    );
+  }
+  await cleanupClient.query(
+    `delete from public.access_requests where lower(email)=lower($1)`,
+    [setupEmail]
+  );
+  if (smokeAccessRow?.tenant_id) {
+    await cleanupClient.query(`delete from public.tenants where id=$1`, [smokeAccessRow.tenant_id]);
+  }
+  await cleanupClient.query("commit");
+  line("Database cleanup", "removed smoke workspace, lead, grader, invite, and owner-event records");
+} catch (error) {
+  await cleanupClient.query("rollback");
+  throw error;
+} finally {
+  await cleanupClient.end();
+}
 
 console.log("Customer path smoke passed.");

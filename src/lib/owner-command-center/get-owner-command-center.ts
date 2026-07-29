@@ -105,10 +105,10 @@ function buildBriefing(input: {
 }) {
   const pieces = [
     input.critical ? `${input.critical} critical issue${input.critical === 1 ? "" : "s"}` : "no critical issues",
-    input.needsOwner ? `${input.needsOwner} item${input.needsOwner === 1 ? "" : "s"} need owner attention` : "nothing urgent needs owner attention",
+    input.needsOwner ? `${input.needsOwner} item${input.needsOwner === 1 ? "" : "s"} ${input.needsOwner === 1 ? "needs" : "need"} owner attention` : "nothing urgent needs owner attention",
     input.openMoneyCents ? `${dollars(input.openMoneyCents)} in visible money opportunities or risk` : "no money amount is attached yet",
     input.aiHandled ? `AI handled ${input.aiHandled} item${input.aiHandled === 1 ? "" : "s"}` : "AI has not marked anything handled yet",
-    input.activeAlerts ? `${input.activeAlerts} workspace alert${input.activeAlerts === 1 ? "" : "s"} remain active` : "workspace alerts are quiet",
+    input.activeAlerts ? `${input.activeAlerts} workspace alert${input.activeAlerts === 1 ? "" : "s"} ${input.activeAlerts === 1 ? "remains" : "remain"} active` : "workspace alerts are quiet",
     `${dollars(input.openPipelineCents)} open pipeline`
   ];
 

@@ -194,7 +194,7 @@ export default async function AiWalkthroughPage() {
                 </form>
               </li>
             ))}
-            {dashboard.observations.length === 0 ? <li className="list-row"><span className="muted">Walkthrough observations will appear here.</span></li> : null}
+            {dashboard.observations.length === 0 ? <li className="list-row"><span className="muted">Run a walkthrough to create observations here.</span></li> : null}
           </ul>
         </section>
 
@@ -220,7 +220,7 @@ export default async function AiWalkthroughPage() {
                 </form>
               </li>
             ))}
-            {dashboard.estimateItems.length === 0 ? <li className="list-row"><span className="muted">Draft line items will appear after a walkthrough.</span></li> : null}
+            {dashboard.estimateItems.length === 0 ? <li className="list-row"><span className="muted">Run a walkthrough to prepare draft line items.</span></li> : null}
           </ul>
         </section>
       </section>

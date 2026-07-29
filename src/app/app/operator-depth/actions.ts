@@ -1,10 +1,87 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
+const serviceAreaSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(80).optional(),
+  zip: z.string().trim().max(20).optional(),
+  radiusMiles: z.coerce.number().int().min(1).max(250),
+  priority: z.coerce.number().int().min(1).max(100),
+  latitude: z.union([z.coerce.number().min(-90).max(90), z.literal("")]).optional(),
+  longitude: z.union([z.coerce.number().min(-180).max(180), z.literal("")]).optional()
+});
+
+export async function saveServiceAreaTargetAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = serviceAreaSchema.safeParse({
+    name: formData.get("name"),
+    city: String(formData.get("city") ?? ""),
+    state: String(formData.get("state") ?? ""),
+    zip: String(formData.get("zip") ?? ""),
+    radiusMiles: formData.get("radiusMiles"),
+    priority: formData.get("priority"),
+    latitude: String(formData.get("latitude") ?? ""),
+    longitude: String(formData.get("longitude") ?? "")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.service_area_targets (
+      tenant_id, name, city, state, zip, latitude, longitude,
+      radius_miles, priority, status, notes, metadata_json
+    )
+    values (
+      $1, $2, nullif($3, ''), nullif($4, ''), nullif($5, ''),
+      nullif($6, '')::numeric, nullif($7, '')::numeric,
+      $8, $9, 'active',
+      'Keyless service area used for ZIP/city matching, lead fit, and route clustering.',
+      '{"source":"manual_keyless_service_area"}'::jsonb
+    )
+    on conflict (
+      tenant_id,
+      coalesce(brand_id, '00000000-0000-0000-0000-000000000000'::uuid),
+      name,
+      coalesce(city, ''),
+      coalesce(state, '')
+    )
+    do update set
+      zip = excluded.zip,
+      latitude = excluded.latitude,
+      longitude = excluded.longitude,
+      radius_miles = excluded.radius_miles,
+      priority = excluded.priority,
+      status = 'active',
+      notes = excluded.notes,
+      metadata_json = public.service_area_targets.metadata_json || excluded.metadata_json,
+      updated_at = now()
+    `,
+    [
+      workspaceId,
+      parsed.data.name,
+      parsed.data.city ?? "",
+      parsed.data.state ?? "",
+      parsed.data.zip ?? "",
+      parsed.data.latitude === "" || parsed.data.latitude === undefined ? "" : String(parsed.data.latitude),
+      parsed.data.longitude === "" || parsed.data.longitude === undefined ? "" : String(parsed.data.longitude),
+      parsed.data.radiusMiles,
+      parsed.data.priority
+    ]
+  );
+  revalidatePath("/app/operator-depth");
+  revalidatePath("/app/service/routes");
+  revalidatePath("/app/system-health");
+}
+
 export async function refreshOperatorDepthAction() {
+  await requirePermission("tenant:manage");
   const workspaceId = await getCurrentWorkspaceId();
 
   await queryPostgres(

@@ -135,7 +135,7 @@ export default async function LaborBenchPage() {
           <div>
             <h2><ShieldCheck size={18} /> How Ferocity Handles Staffing</h2>
             <p className="muted">
-              This is a matching and approval system, not automatic hiring. Pricing can be plan-based, manual service, or placement-fee based later.
+              This is a matching and approval system, not automatic hiring. Pricing can be plan-based, manual service, or placement-fee based when enabled.
             </p>
           </div>
           <Link className="mini-button" href="/app/operations-workforce">Operations</Link>
@@ -210,7 +210,6 @@ export default async function LaborBenchPage() {
                   <h3>No worker requests yet</h3>
                   <p className="muted">Start with one clear need: trade, area, timing, pay range, and who approves contact.</p>
                 </div>
-                <Link className="mini-button" href="#need-workers">Request workers</Link>
               </li>
             ) : null}
           </ul>

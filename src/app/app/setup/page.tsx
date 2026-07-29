@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bot, CheckCircle2, Circle, PlugZap, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { ServiceChoiceGrid } from "@/components/setup/ServiceChoiceGrid";
 import { getOperatorSetupDashboard } from "@/lib/setup/get-operator-setup";
 import { updateSetupStepStatusAction, updateVerticalStatusAction } from "./actions";
 
@@ -24,18 +25,19 @@ export default async function OperatorSetupPage() {
     <QueuePageShell
       eyebrow="Setup"
       title="Choose What Ferocity Should Run"
-      description="Turn on what helps now, leave off what does not, and add connections later when they are useful."
+      description="Turn on what helps now, leave off what does not, and add connections when they are useful."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
             <h2>Only Use What Helps</h2>
             <p className="muted">
-              Ferocity should explain the benefit first, then let the owner choose: use it, pause it, skip it, or set it up later.
+              Ferocity should explain the benefit first, then let the owner choose: use it, pause it, skip it, or connect it.
               No one should have to understand technical setup to get value.
             </p>
           </div>
           <div className="inline-actions">
+            <span className="pill">Current plan: {dashboard.currentPlanName}</span>
             <Link className="button" href="/app/build-system">
               <Bot size={16} /> Let Ferocity guide me
             </Link>
@@ -47,6 +49,20 @@ export default async function OperatorSetupPage() {
             </span>
           </div>
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Service menu</p>
+            <h2>Turn on only what this business wants.</h2>
+            <p className="muted">
+              Active services are in use. Available services are included but not turned on. Upgrade services stay visible so the owner knows what else Ferocity can handle.
+            </p>
+          </div>
+          <Link className="mini-button secondary-button" href="/pricing">Compare plans</Link>
+        </div>
+        <ServiceChoiceGrid verticals={dashboard.verticals} />
       </section>
 
       <div className="grid section-actions">
@@ -172,7 +188,7 @@ export default async function OperatorSetupPage() {
         <h2>
           <ShieldCheck size={18} /> Paid Tiers
         </h2>
-        <p className="muted">Simple plans for later packaging. Smaller businesses can start with the basics; larger companies can add scheduling, reviews, source tracking, and more connections.</p>
+        <p className="muted">Simple plan packaging. Smaller businesses can start with the basics; larger companies can add scheduling, reviews, source tracking, and more connections.</p>
         <div className="grid">
           {plans.map((plan) => (
             <section className="span-4" key={plan.planKey}>

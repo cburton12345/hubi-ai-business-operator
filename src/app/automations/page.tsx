@@ -60,13 +60,9 @@ export default function AutomationsPage() {
           </Link>
           <div>
             <Link href="/demo">Demo</Link>
-            <Link href="/demo/tour">Tour</Link>
             <Link href="/features">Features</Link>
-            <Link href="/start">Start</Link>
             <Link href="/pricing">Plans</Link>
-            <Link href="/about">About</Link>
-            <Link href="/integrations">Integrations</Link>
-            <Link href="/install">Install App</Link>
+            <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
@@ -87,9 +83,6 @@ export default function AutomationsPage() {
             </Link>
             <Link className="button secondary-button" href="/pricing">
               View plans
-            </Link>
-            <Link className="button secondary-button" href="/install">
-              Install app
             </Link>
             <Link className="button secondary-button" href="/demo/tour">
               Take the tour
@@ -121,7 +114,7 @@ export default function AutomationsPage() {
               <h2>Automation without losing control</h2>
               <p className="muted">
                 Ferocity prepares the draft, shows the next action, and logs what changed. Customer messages, public publishing,
-                connected-account sync, payments, and ad spend stay behind the right permissions, consent rules, and plan controls.
+                connected tools, payments, and ad spend stay behind the right permissions, consent rules, and plan controls.
               </p>
             </div>
             <ShieldCheck size={22} />
@@ -142,7 +135,7 @@ export default function AutomationsPage() {
               <h2>Email, App Alerts, And Connected Tools</h2>
               <p className="muted">
                 Ferocity is built to work with trusted tools for email, app alerts, calendars, payments, websites, and publishing. Businesses can
-                use managed connection paths or bring their own accounts as their plan and usage grow.
+                connect their own accounts or choose managed setup where available.
               </p>
             </div>
             <MailCheck size={22} />

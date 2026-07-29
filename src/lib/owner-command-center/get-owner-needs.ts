@@ -43,7 +43,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   const tenantId = await getCurrentWorkspaceId();
   const needs: OwnerNeed[] = [];
 
-  const [ops, ownerEvents, reports, integrationGaps] = await Promise.all([
+  const [ops, ownerEvents, reports, integrationGaps, activeSmsRoute] = await Promise.all([
     queryPostgres<{
       ops_review: string;
       field_proof: string;
@@ -104,6 +104,18 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
         )
       `,
       [tenantId]
+    ),
+    queryPostgres<{ active_sms_route: string }>(
+      `
+      select count(*)::text as active_sms_route
+      from public.tenant_messaging_accounts
+      where tenant_id = $1
+        and connection_status = 'active'
+        and credentials_status = 'configured'
+        and live_sending_enabled = true
+        and outbound_enabled = true
+      `,
+      [tenantId]
     )
   ]);
 
@@ -111,6 +123,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   const ownerRow = ownerEvents?.rows[0];
   const reportRow = reports?.rows[0];
   const gaps = n(integrationGaps?.rows[0]?.provider_gaps);
+  const hasActiveSmsRoute = n(activeSmsRoute?.rows[0]?.active_sms_route) > 0;
 
   pushIf(needs, n(ownerRow?.critical) > 0, {
     id: "critical-owner-events",
@@ -225,7 +238,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   pushIf(needs, n(reportRow?.new_reports) > 0, {
     id: "new-business-grader-reports",
     title: "New Business Grader reports came in",
-    detail: `${n(reportRow?.new_reports)} recent report(s) can become outreach, onboarding, or a follow-up sequence.`,
+    detail: `${n(reportRow?.new_reports)} recent report${n(reportRow?.new_reports) === 1 ? "" : "s"} can become outreach, onboarding, or a follow-up sequence.`,
     category: "Lead Gen",
     priority: "medium",
     actionLabel: "Review leads",
@@ -236,7 +249,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   pushIf(needs, gaps > 0, {
     id: "provider-gaps",
     title: "Connections are keeping actions manual",
-    detail: `${gaps} provider connection(s) are missing or need attention. Ferocity can plan work, but live sending, billing, publishing, or imports stay limited until these are fixed.`,
+    detail: `${gaps} provider connection${gaps === 1 ? "" : "s"} ${gaps === 1 ? "is missing or needs" : "are missing or need"} attention. Ferocity can plan work, but live sending, billing, publishing, or imports stay limited until ${gaps === 1 ? "it is" : "they are"} fixed.`,
     category: "Connection",
     priority: "high",
     actionLabel: "Connect",
@@ -246,7 +259,9 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
 
   const envNeeds = [
     envNeed("email-env", "Email sending needs keys", missingEnvVars(["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"]), "/app/credentials"),
-    envNeed("optional-sms-env", "Optional SMS is not connected", missingEnvVars(["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]), "/app/credentials", "low"),
+    hasActiveSmsRoute
+      ? null
+      : envNeed("optional-sms-env", "Optional SMS is not connected", missingEnvVars(["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]), "/app/credentials", "low"),
     envNeed("stripe-env", "Checkout and paid reports need Stripe keys", missingEnvVars(["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]), "/app/billing"),
     envNeed("owner-intake-env", "Connected platform intake needs a token", missingEnvVars(["OWNER_COMMAND_CENTER_TOKEN"]), "/app/lifeops-connections"),
     envNeed("workforce-intake-env", "Worker app intake needs a token", missingEnvVars(["WORKFORCE_INTAKE_TOKEN"]), "/app/operations-workforce")

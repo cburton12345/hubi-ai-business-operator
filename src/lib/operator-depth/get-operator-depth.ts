@@ -87,13 +87,16 @@ export async function getOperatorDepthDashboard(): Promise<OperatorDepthDashboar
       name: string;
       city: string | null;
       state: string | null;
+      zip: string | null;
+      latitude: number | null;
+      longitude: number | null;
       radius_miles: number;
       priority: number;
       status: string;
       notes: string | null;
     }>(
       `
-      select id, name, city, state, radius_miles, priority, status, notes
+      select id, name, city, state, zip, latitude, longitude, radius_miles, priority, status, notes
       from public.service_area_targets
       where tenant_id = $1 and status <> 'archived'
       order by priority desc, name
@@ -283,7 +286,19 @@ export async function getOperatorDepthDashboard(): Promise<OperatorDepthDashboar
       endpointEvents: numberFrom(metrics?.endpoint_events)
     },
     serviceAreas: (serviceAreaResult?.rows ?? []).map((item) =>
-      row(item.id, item.name, item.notes, item.status, `${item.city ?? "Any city"}, ${item.state ?? "any state"} / ${item.radius_miles} miles / priority ${item.priority}`)
+      row(
+        item.id,
+        item.name,
+        item.notes,
+        item.status,
+        [
+          item.zip ? `ZIP ${item.zip}` : null,
+          [item.city, item.state].filter(Boolean).join(", ") || null,
+          `${item.radius_miles} miles`,
+          item.latitude !== null && item.longitude !== null ? "coordinates ready" : "ZIP/city matching",
+          `priority ${item.priority}`
+        ].filter(Boolean).join(" / ")
+      )
     ),
     crewBench: (crewResult?.rows ?? []).map((item) =>
       row(item.id, item.display_name, item.company_name, item.relationship_status, `${item.provider_type} / ${item.availability_status} / ${item.city ?? "No city"} ${item.state ?? ""}`)

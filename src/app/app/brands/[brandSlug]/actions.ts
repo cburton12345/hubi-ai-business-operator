@@ -31,6 +31,8 @@ const locationSchema = operationSchema.extend({
   serviceAreaName: z.string().min(1).max(160),
   city: z.string().max(120).optional(),
   state: z.string().max(80).optional(),
+  zip: z.string().max(20).optional(),
+  radiusMiles: z.coerce.number().int().min(1).max(250).default(25),
   priority: z.coerce.number().int().min(0).max(100).default(10)
 });
 
@@ -307,6 +309,8 @@ export async function addBrandLocationAction(formData: FormData) {
     serviceAreaName: formData.get("serviceAreaName"),
     city: formData.get("city") ?? "",
     state: formData.get("state") ?? "",
+    zip: formData.get("zip") ?? "",
+    radiusMiles: formData.get("radiusMiles") ?? 25,
     priority: formData.get("priority") ?? 10
   });
   if (!parsed.success) return;
@@ -320,7 +324,47 @@ export async function addBrandLocationAction(formData: FormData) {
     `,
     [brand.tenant_id, brand.id, parsed.data.serviceAreaName, emptyToNull(parsed.data.city), emptyToNull(parsed.data.state), parsed.data.priority]
   );
+  await queryPostgres(
+    `
+    insert into public.service_area_targets (
+      tenant_id, brand_id, name, city, state, zip, radius_miles,
+      priority, status, notes, metadata_json
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7,
+      greatest(1, $8), 'active',
+      'Created from the brand service-area editor for keyless ZIP/city matching and route clustering.',
+      '{"source":"brand_service_area_editor"}'::jsonb
+    )
+    on conflict (
+      tenant_id,
+      coalesce(brand_id, '00000000-0000-0000-0000-000000000000'::uuid),
+      name,
+      coalesce(city, ''),
+      coalesce(state, '')
+    )
+    do update set
+      zip = excluded.zip,
+      radius_miles = excluded.radius_miles,
+      priority = excluded.priority,
+      status = 'active',
+      metadata_json = public.service_area_targets.metadata_json || excluded.metadata_json,
+      updated_at = now()
+    `,
+    [
+      brand.tenant_id,
+      brand.id,
+      parsed.data.serviceAreaName,
+      emptyToNull(parsed.data.city),
+      emptyToNull(parsed.data.state),
+      emptyToNull(parsed.data.zip),
+      parsed.data.radiusMiles,
+      parsed.data.priority
+    ]
+  );
   revalidatePath(`/app/brands/${brand.slug}`);
+  revalidatePath("/app/operator-depth");
+  revalidatePath("/app/service/routes");
 }
 
 export async function addBrandOfferAction(formData: FormData) {

@@ -192,7 +192,7 @@ export default async function OperationsWorkforcePage() {
         <div className="list-row flush-row">
           <div>
             <h2>Schedule Board</h2>
-            <p className="muted">Daily, weekly, crew, and job views are represented now. Drag-and-drop can sit on this same assignment model later without a second scheduler.</p>
+            <p className="muted">Daily, weekly, crew, and job views use the same assignment model, so scheduling stays consistent across the app.</p>
           </div>
           <span className="pill medium">dispatch ready</span>
         </div>
@@ -328,7 +328,7 @@ export default async function OperationsWorkforcePage() {
           </div>
           <select name="autopostMode" defaultValue="review_first">
             <option value="review_first">Review before posting</option>
-            <option value="auto_create_draft">Auto-create draft expense later</option>
+            <option value="auto_create_draft">Auto-create draft expense when rules allow</option>
             <option value="paused">Paused</option>
           </select>
           <button className="mini-button" type="submit">Add recurring rule</button>

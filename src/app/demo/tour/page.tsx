@@ -26,8 +26,8 @@ const tour = [
   {
     step: "4",
     title: "Ferocity shows the next move",
-    body: "The system suggests a reply, creates an internal note, and flags whether the lead needs a callback.",
-    result: "Reply draft / Customer message held for review",
+    body: "Ferocity suggests a reply, saves a team note, and flags whether the lead needs a callback.",
+    result: "Reply draft / Message ready for review",
     icon: BellRing
   },
   {
@@ -82,7 +82,7 @@ export default function TourPage() {
           <h1>Follow the full growth and operations loop.</h1>
           <p className="muted">
             The workflow usually starts with setup and growth channels, then moves into lead capture, reply, follow-up, estimate,
-            payment, review, marketing proof, and revenue tracking. Some businesses may start at a later step, but the loop stays the same.
+            payment, review, marketing proof, and revenue tracking. Some businesses may start at a different step, but the loop stays the same.
           </p>
           <div className="button-row">
             <Link className="button" href="/demo/acme-roofing">
@@ -122,7 +122,7 @@ export default function TourPage() {
               <h2>What this means for an owner</h2>
               <p className="muted">
                 Ferocity is not just a place to store contacts. It shows what needs attention, drafts the next action, and keeps customer-facing
-                actions behind approval until the business has the right connected accounts and controls.
+                actions behind approval until the business is ready.
               </p>
             </div>
             <Link className="mini-button" href="/features">

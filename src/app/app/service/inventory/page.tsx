@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { createInventoryItemAction } from "@/app/app/service/actions";
+import { adjustInventoryQuantityAction, createInventoryItemAction, createInventoryLocationAction } from "@/app/app/service/actions";
 import { getServiceInventory } from "@/lib/service-ops/get-service-inventory";
 
 export default async function ServiceInventoryPage() {
@@ -15,6 +15,7 @@ export default async function ServiceInventoryPage() {
       <div className="section-actions button-row">
         <Link className="button secondary-button" href="/app/service">Service command center</Link>
         <Link className="button secondary-button" href="/app/service/routes">Route planning</Link>
+        <Link className="button secondary-button" href="/app/estimator">Purchasing & takeoffs</Link>
       </div>
 
       <div className="grid section-actions">
@@ -67,11 +68,53 @@ export default async function ServiceInventoryPage() {
                   <p className="muted">{item.category} / {item.quantity} / reorder {item.threshold}</p>
                   <p className="muted">{item.location} / {item.assignedJob}</p>
                   {item.notes ? <p>{item.notes}</p> : null}
+                  <form action={adjustInventoryQuantityAction} className="compact-form section-actions">
+                    <input name="itemId" type="hidden" value={item.id} />
+                    <input name="quantityDelta" inputMode="decimal" placeholder="+ received / - used" required />
+                    <input name="reason" placeholder="Why stock changed" required />
+                    <button className="mini-button" type="submit">Record movement</button>
+                  </form>
                 </div>
                 <span className="pill">{item.status}</span>
               </li>
             ))}
             {inventory.items.length === 0 ? <li className="list-row"><span className="muted">No inventory or equipment items yet.</span></li> : null}
+          </ul>
+        </section>
+        <section className="panel span-5">
+          <h2>Stock locations</h2>
+          <form action={createInventoryLocationAction} className="form-stack">
+            <input name="name" placeholder="Main warehouse or Truck 2" required />
+            <select name="locationType" defaultValue="warehouse">
+              <option value="warehouse">Warehouse</option>
+              <option value="vehicle">Vehicle</option>
+              <option value="office">Office</option>
+              <option value="job_site">Job site</option>
+              <option value="virtual">Virtual</option>
+            </select>
+            <input name="address" placeholder="Optional address" />
+            <button className="mini-button" type="submit">Add location</button>
+          </form>
+          <ul className="list section-actions">
+            {inventory.locations.map((location) => (
+              <li className="list-row" key={location.id}>
+                <div><strong>{location.name}</strong><p className="muted">{location.type}{location.address ? ` / ${location.address}` : ""}</p></div>
+                <span className="pill">{location.itemCount} items</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="panel span-7">
+          <h2>Stock movement ledger</h2>
+          <p className="muted">Every receipt, use, transfer, return, reservation, and correction should land here instead of silently replacing a quantity.</p>
+          <ul className="list">
+            {inventory.movements.map((movement) => (
+              <li className="list-row" key={movement.id}>
+                <div><strong>{movement.itemName}</strong><p className="muted">{movement.reason || movement.type} / {movement.createdAt}</p></div>
+                <span className="pill">{Number(movement.delta) > 0 ? "+" : ""}{movement.delta}</span>
+              </li>
+            ))}
+            {inventory.movements.length === 0 ? <li className="list-row"><span className="muted">No stock movements recorded yet.</span></li> : null}
           </ul>
         </section>
       </div>

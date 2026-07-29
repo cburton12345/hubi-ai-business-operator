@@ -52,7 +52,7 @@ export default async function TechnicianWorkflowPage() {
         {workflow.jobs.length === 0 ? (
           <section className="panel">
             <h2>No active technician jobs</h2>
-            <p className="muted">Scheduled and in-progress jobs for today and tomorrow will appear here.</p>
+            <p className="muted">Scheduled and in-progress jobs for today and tomorrow show here once assigned.</p>
           </section>
         ) : null}
       </div>

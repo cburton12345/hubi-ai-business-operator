@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function safeRedirect(request: NextRequest, path: string, status = 303) {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || request.headers.get("host") || request.nextUrl.host;
-  const protocol = forwardedProto || request.nextUrl.protocol.replace(":", "") || "https";
-  const origin = `${protocol}://${host}`;
-
+  const configured = process.env.FEROCITY_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+  const origin =
+    configured && /^https?:\/\//i.test(configured)
+      ? new URL(configured).origin
+      : request.nextUrl.origin;
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    path = "/";
+  }
   return NextResponse.redirect(new URL(path, origin), status);
 }

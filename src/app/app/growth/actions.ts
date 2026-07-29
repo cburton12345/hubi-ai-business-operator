@@ -178,7 +178,7 @@ export async function scanGrowthLoopAction() {
       count: Number(row?.approved_without_queue ?? 0),
       title: "Approved content is not queued",
       summary: "Approved growth assets should move into a publishing queue so consistency does not depend on memory.",
-      recommendation: "Queue approved drafts for manual publishing or future provider-connected scheduling.",
+      recommendation: "Queue approved drafts for manual publishing or provider-connected scheduling.",
       actionHref: "/app/growth"
     },
     {

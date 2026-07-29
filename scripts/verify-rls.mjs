@@ -126,7 +126,50 @@ try {
     throw new Error("Expected unrelated auth user to be blocked by tenant RLS.");
   }
 
-  console.log("RLS verification passed");
+  const tenantTablesWithoutRls = await client.query(
+    `
+    select c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relrowsecurity = false
+    order by c.relname
+    `
+  );
+  if (tenantTablesWithoutRls.rowCount) {
+    throw new Error(
+      `Tenant tables without RLS: ${tenantTablesWithoutRls.rows.map((row) => row.relname).join(", ")}`
+    );
+  }
+
+  const sensitiveClientGrants = await client.query(
+    `
+    select distinct g.table_name, g.grantee, g.privilege_type
+    from information_schema.role_table_grants g
+    where g.table_schema = 'public'
+      and g.grantee in ('anon', 'authenticated')
+      and g.privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER')
+      and g.table_name in (
+        'app_sessions',
+        'user_password_credentials',
+        'tenant_provider_credentials',
+        'provider_webhook_events',
+        'public_request_rate_limits'
+      )
+    order by g.table_name, g.grantee, g.privilege_type
+    `
+  );
+  if (sensitiveClientGrants.rowCount) {
+    throw new Error(
+      `Sensitive tables have direct client mutation grants: ${sensitiveClientGrants.rows
+        .map((row) => `${row.table_name}:${row.grantee}:${row.privilege_type}`)
+        .join(", ")}`
+    );
+  }
+
+  console.log("RLS verification passed, including tenant-table coverage and sensitive-table grant checks");
 } catch (error) {
   try {
     await client.query("rollback");

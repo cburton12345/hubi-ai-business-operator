@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 
@@ -56,6 +58,27 @@ function safeUrl(input: string) {
     return url;
   } catch {
     return null;
+  }
+}
+
+function isPrivateIp(address: string) {
+  const normalized = address.toLowerCase().replace(/^::ffff:/, "");
+  if (PRIVATE_IPV4_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
+  if (normalized === "::" || normalized === "::1") return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(normalized)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(normalized)) return true;
+  return false;
+}
+
+async function assertPublicDestination(url: URL) {
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(hostname)) {
+    if (isPrivateIp(hostname)) throw new Error("Private network destinations are blocked.");
+    return;
+  }
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (addresses.length === 0 || addresses.some(({ address }) => isPrivateIp(address))) {
+    throw new Error("Private network destinations are blocked.");
   }
 }
 
@@ -273,15 +296,28 @@ async function fetchPublicHtml(url: URL) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent": "FerocityWebsiteImport/1.0 (+https://ferocity.live)"
-      }
-    });
+    let currentUrl = url;
+    let response: Response | null = null;
+    for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+      await assertPublicDestination(currentUrl);
+      response = await fetch(currentUrl.toString(), {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          accept: "text/html,application/xhtml+xml",
+          "user-agent": "FerocityWebsiteImport/1.0 (+https://ferocity.live)"
+        }
+      });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location || redirectCount === 5) throw new Error("Website redirected too many times.");
+      const redirected = safeUrl(new URL(location, currentUrl).toString());
+      if (!redirected) throw new Error("Website redirected to a blocked destination.");
+      currentUrl = redirected;
+    }
+
+    if (!response) throw new Error("Website did not return a response.");
 
     const contentType = response.headers.get("content-type") ?? "";
     if (!response.ok) {
@@ -291,8 +327,23 @@ async function fetchPublicHtml(url: URL) {
       throw new Error("Website did not return HTML.");
     }
 
-    const html = (await response.text()).slice(0, 300000);
-    return { html, finalUrl: response.url || url.toString(), contentType };
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > 1_000_000) {
+      throw new Error("Website response is too large to import safely.");
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Website returned an empty response.");
+    const decoder = new TextDecoder();
+    let html = "";
+    while (html.length < 300000) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      html += decoder.decode(chunk.value, { stream: true });
+    }
+    await reader.cancel();
+    html = html.slice(0, 300000);
+    return { html, finalUrl: currentUrl.toString(), contentType };
   } finally {
     clearTimeout(timeout);
   }

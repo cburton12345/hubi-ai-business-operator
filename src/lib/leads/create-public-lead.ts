@@ -5,6 +5,7 @@ import type { PublicLeadInput } from "@/lib/leads/schemas";
 import { logAppError } from "@/lib/observability/log-error";
 import { getPushNotificationPreferences, pushPreferencesAllowEvent, type PushSeverity } from "@/lib/push/preferences";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
+import { evaluateQualification } from "@/lib/revenue-growth/qualification";
 
 type FormRecord = {
   id: string;
@@ -15,6 +16,13 @@ type FormRecord = {
 
 type LeadRecord = {
   id: string;
+};
+
+type QualificationQuestionRow = {
+  form_id: string;
+  id: string;
+  required: boolean;
+  scoring_json: unknown;
 };
 
 function textDetail(details: Record<string, unknown>, key: string) {
@@ -90,6 +98,135 @@ function leadContactLabel(input: PublicLeadInput) {
 
 function sourceLabel(input: PublicLeadInput) {
   return [input.source ?? "website", input.sourceDetail].filter(Boolean).join(" / ");
+}
+
+async function applyRevenueQualification({
+  tenantId,
+  brandId,
+  leadId,
+  publicFormKey,
+  details
+}: {
+  tenantId: string;
+  brandId: string;
+  leadId: string;
+  publicFormKey: string;
+  details: Record<string, unknown>;
+}) {
+  const answerValue = details.qualificationAnswers;
+  const answers = answerValue && typeof answerValue === "object" && !Array.isArray(answerValue)
+    ? answerValue as Record<string, unknown>
+    : {};
+  const questionsResult = await queryPostgres<QualificationQuestionRow>(
+    `
+    select f.id as form_id, q.id, q.required, q.scoring_json
+    from public.revenue_qualification_forms f
+    join public.revenue_qualification_questions q
+      on q.tenant_id = f.tenant_id and q.form_id = f.id
+    where f.tenant_id = $1
+      and f.status = 'active'
+      and f.metadata_json->>'publicFormKey' = $2
+    order by q.question_order
+    `,
+    [tenantId, publicFormKey]
+  );
+  const questions = questionsResult?.rows ?? [];
+  if (!questions.length) return null;
+
+  const {
+    answers: normalizedAnswers,
+    missingRequired,
+    leadScore,
+    qualificationStatus
+  } = evaluateQualification(
+    questions.map((question) => ({
+      id: question.id,
+      required: question.required,
+      scoringJson: question.scoring_json
+    })),
+    answers
+  );
+  const formId = questions[0].form_id;
+
+  await queryPostgres(
+    `
+    update public.leads
+    set qualification_status = $3,
+        lead_score = $4,
+        priority = case when $3 = 'qualified' and $4 >= 80 then 'high' else priority end,
+        metadata_json = metadata_json || $5::jsonb,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    `,
+    [
+      tenantId,
+      leadId,
+      qualificationStatus,
+      leadScore,
+      JSON.stringify({
+        revenueQualification: {
+          formId,
+          answers: normalizedAnswers,
+          score: leadScore,
+          missingRequired,
+          evaluatedAt: new Date().toISOString()
+        }
+      })
+    ]
+  );
+
+  await queryPostgres(
+    `
+    insert into public.lead_events (
+      tenant_id, brand_id, lead_id, type, body, metadata_json
+    )
+    values ($1, $2, $3, 'qualification', $4, $5::jsonb)
+    `,
+    [
+      tenantId,
+      brandId,
+      leadId,
+      `Revenue qualification evaluated this lead as ${qualificationStatus.replaceAll("_", " ")} with a score of ${leadScore}.`,
+      JSON.stringify({ formId, qualificationStatus, leadScore, missingRequired, answers: normalizedAnswers })
+    ]
+  );
+
+  return { formId, qualificationStatus, leadScore, missingRequired };
+}
+
+async function applyReferralAttribution(input: {
+  tenantId: string;
+  brandId: string;
+  leadId: string;
+  details: Record<string, unknown>;
+}) {
+  const token = typeof input.details.referralToken === "string" ? input.details.referralToken.trim() : "";
+  if (!/^[a-f0-9]{24,64}$/i.test(token)) return;
+  const referral = await queryPostgres<{ id: string; customer_id: string }>(
+    `
+    update public.customer_referral_links
+    set attributed_leads = attributed_leads + 1, updated_at = now()
+    where tenant_id = $1 and brand_id = $2 and referral_token = $3 and status = 'active'
+    returning id, customer_id
+    `,
+    [input.tenantId, input.brandId, token]
+  );
+  const row = referral?.rows[0];
+  if (!row) return;
+  await queryPostgres(
+    `
+    insert into public.growth_attribution_events (
+      tenant_id, brand_id, event_type, entity_type, entity_id, metadata_json
+    )
+    values ($1,$2,'lead_created','lead',$3,$4::jsonb)
+    `,
+    [
+      input.tenantId,
+      input.brandId,
+      input.leadId,
+      JSON.stringify({ channel: "customer_referral", referralLinkId: row.id, referringCustomerId: row.customer_id })
+    ]
+  );
 }
 
 async function recordReceptionistLeadEvent({
@@ -295,6 +432,19 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     leadType: input.leadType,
     details: input.details
   });
+  await applyRevenueQualification({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
+    publicFormKey: input.formPublicKey,
+    details: input.details
+  });
+  await applyReferralAttribution({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
+    details: input.details
+  });
 
   const payload = {
     tenant_id: form.tenant_id,
@@ -437,6 +587,19 @@ async function createPublicLeadWithPostgres(
     brandId: form.brand_id,
     leadId: lead.id,
     leadType: input.leadType,
+    details: input.details
+  });
+  await applyRevenueQualification({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
+    publicFormKey: input.formPublicKey,
+    details: input.details
+  });
+  await applyReferralAttribution({
+    tenantId: form.tenant_id,
+    brandId: form.brand_id,
+    leadId: lead.id,
     details: input.details
   });
 

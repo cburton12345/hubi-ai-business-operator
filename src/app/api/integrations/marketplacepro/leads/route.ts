@@ -42,7 +42,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     provider: "marketplacepro",
-    status: "stub_ready",
+    status: "lead_receiver_ready",
     message: "POST signed MarketplacePro lead payloads here to import mapped vendor leads into Ferocity."
   });
 }

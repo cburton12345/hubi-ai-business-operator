@@ -24,7 +24,7 @@ export default async function AutomationPage() {
 
   return (
     <QueuePageShell
-      eyebrow="Future Automation"
+      eyebrow="Automation"
       title="Marketing Automation Rules"
       description="Generate recurring draft work and reporting summaries for each workspace brand. Publishing, sending, budgets, and external platforms stay manual."
     >

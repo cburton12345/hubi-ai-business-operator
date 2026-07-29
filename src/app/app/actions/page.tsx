@@ -2,6 +2,7 @@ import { CheckCircle2, GitBranch, RefreshCw, ShieldAlert } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getActionQueueDashboard } from "@/lib/actions-queue/get-action-queue";
 import { scanActionQueueAction, sendApprovedEmailAction, updateOutboundActionStatusAction } from "./actions";
+import { CommunicationMethodControl } from "./CommunicationMethodControl";
 
 function dateLabel(value: string | null) {
   if (!value) return "Not scheduled";
@@ -17,14 +18,56 @@ function usageLabel(used: number, included: number | null) {
   return `${used.toLocaleString()} of ${included.toLocaleString()} included`;
 }
 
+function actionLabel(value: string) {
+  const labels: Record<string, string> = {
+    sms_send: "Text message",
+    email_send: "Email",
+    voice_call: "AI phone call",
+    phone_call: "Phone call",
+    manual_message: "Prepared message",
+    publish_content: "Publish content",
+    calendar_sync: "Calendar update",
+    review_request: "Review request",
+    billing_sync: "Billing update"
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+function targetLabel(value: string | null) {
+  if (!value) return "General business task";
+  const labels: Record<string, string> = {
+    communication_message: "Customer conversation",
+    review_request_workflow: "Review follow-up",
+    follow_up_workflow: "Customer follow-up",
+    revenue_appointment_reminder: "Appointment reminder",
+    service_invoice: "Customer invoice",
+    lead: "Lead"
+  };
+  if (labels[value]) return labels[value];
+  return value.replaceAll("_", " ");
+}
+
+function statusLabel(value: string) {
+  const labels: Record<string, string> = {
+    needs_review: "Needs review",
+    approved: "Approved",
+    queued: "Ready",
+    sent_manually: "Completed manually",
+    blocked: "Blocked",
+    failed: "Needs attention",
+    canceled: "Canceled"
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
 export default async function ActionsPage() {
   const dashboard = await getActionQueueDashboard();
 
   return (
     <QueuePageShell
       eyebrow="Action Queue"
-      title="Review Before Anything Goes Live"
-      description="One safety queue for texts, emails, publishing, review requests, calendar sync, and billing actions. Live sends stay off until provider rules are ready."
+      title="Control What Ferocity Can Do"
+      description="Review customer messages and business actions in one place, or let approved routine work move automatically. Ferocity still checks connections, customer permissions, spending limits, and your authority rules."
     >
       <div className="button-row section-actions">
         <form action={scanActionQueueAction}>
@@ -46,7 +89,7 @@ export default async function ActionsPage() {
 
       <div className="grid">
         <section className="panel span-8">
-          <h2>Actions To Review</h2>
+          <h2>Queued Actions</h2>
           <ul className="list">
             {dashboard.actions.map((action) => (
               <li className="list-row" key={action.id}>
@@ -56,26 +99,26 @@ export default async function ActionsPage() {
                     <div>
                       <h3>{action.subject}</h3>
                       <p className="muted">
-                        {action.actionType} / {action.providerKey} / {action.targetType ?? "no target"} / {dateLabel(action.scheduledFor)}
+                        {actionLabel(action.actionType)} / {targetLabel(action.targetType)} / {dateLabel(action.scheduledFor)}
                       </p>
                       <p className="muted">{action.recipientLabel ?? "No recipient"}</p>
                       {action.bodyPreview ? <p>{action.bodyPreview}</p> : null}
                       {action.lastError ? <p className="danger-text">{action.lastError}</p> : null}
                     </div>
                     <div className="inline-actions">
-                      <span className={`pill ${action.riskLevel}`}>{action.riskLevel}</span>
-                      <span className="pill">{action.status}</span>
+                      <span className={`pill ${action.riskLevel}`}>{action.riskLevel} risk</span>
+                      <span className="pill">{statusLabel(action.status)}</span>
                     </div>
                   </div>
                   <div className="two-col">
                     <select name="status" defaultValue={action.status}>
-                      <option value="needs_review">needs_review</option>
-                      <option value="approved">approved</option>
-                      <option value="queued">queued</option>
-                      <option value="sent_manually">sent_manually</option>
-                      <option value="blocked">blocked</option>
-                      <option value="failed">failed</option>
-                      <option value="canceled">canceled</option>
+                      <option value="needs_review">Needs review</option>
+                      <option value="approved">Approve</option>
+                      <option value="queued">Ready to run</option>
+                      <option value="sent_manually">Completed manually</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="failed">Needs attention</option>
+                      <option value="canceled">Canceled</option>
                     </select>
                     <button className="mini-button" type="submit">
                       Save
@@ -83,11 +126,22 @@ export default async function ActionsPage() {
                   </div>
                   <input name="note" placeholder="Short review note" />
                 </form>
+                {["sms_send", "email_send", "voice_call", "phone_call", "manual_message"].includes(action.actionType) ? (
+                  <CommunicationMethodControl
+                    actionId={action.id}
+                    body={action.bodyPreview ?? ""}
+                    currentMethod={action.resolvedMethod}
+                    email={action.email}
+                    phone={action.phone}
+                    resolvedScope={action.resolvedScope}
+                    subject={action.subject}
+                  />
+                ) : null}
                 {action.actionType === "email_send" && (action.status === "approved" || action.status === "queued") ? (
                   <form action={sendApprovedEmailAction} className="section-actions">
                     <input name="actionId" type="hidden" value={action.id} />
                     <button className="button" type="submit">
-                      Send approved email with Resend
+                      Send approved email
                     </button>
                   </form>
                 ) : null}
@@ -108,26 +162,23 @@ export default async function ActionsPage() {
           <h2>
             <ShieldAlert size={18} /> Live Action Policies
           </h2>
-          <p className="muted">Plain rules that decide what can ever become live.</p>
+          <p className="muted">Plain rules decide what stays draft-only, what needs approval, and what Ferocity may run automatically.</p>
           <ul className="list">
             {dashboard.policies.map((policy) => (
               <li className="list-row" key={policy.id}>
                 <div>
                   <h3>{policy.label}</h3>
-                  <p className="muted">
-                    {policy.providerKey} / {policy.minimumPlanKey} / {policy.status}
-                  </p>
                   <p>{policy.rule}</p>
                 </div>
-                <span className={`pill ${policy.riskLevel}`}>{policy.riskLevel}</span>
+                <span className={`pill ${policy.riskLevel}`}>{policy.riskLevel} risk</span>
               </li>
             ))}
           </ul>
         </section>
 
-        <section className="panel span-6">
-          <h2>Provider Accounts</h2>
-          <p className="muted">Provider records show what could be used after credentials, policies, consent, and live-action settings are ready. Customer-owned accounts can replace shared/default routes later.</p>
+        <details className="panel span-6 admin-detail-panel">
+          <summary>Provider Accounts ({dashboard.providers.length})</summary>
+          <p className="muted">Provider records show what can be used after credentials, policies, consent, and live-action settings are ready. Customer-owned accounts can replace shared/default routes by workspace.</p>
           <ul className="list">
             {dashboard.providers.map((provider) => (
               <li className="list-row" key={provider.providerKey}>
@@ -148,12 +199,10 @@ export default async function ActionsPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </details>
 
-        <section className="panel span-6">
-          <h2>
-            <GitBranch size={18} /> Provider Routes
-          </h2>
+        <details className="panel span-6 admin-detail-panel">
+          <summary><GitBranch size={18} /> Provider Routes ({dashboard.routingRules.length})</summary>
           <p className="muted">Routes decide which provider Ferocity should use for each kind of action.</p>
           <ul className="list">
             {dashboard.routingRules.map((route) => (
@@ -171,16 +220,14 @@ export default async function ActionsPage() {
             ))}
             {dashboard.routingRules.length === 0 ? (
               <li className="list-row">
-                <span className="muted">No routes configured yet. Run migrations to enable managed and bring-your-own routing.</span>
+                <span className="muted">No message routes are configured yet. Finish connection setup before turning on managed or bring-your-own delivery.</span>
               </li>
             ) : null}
           </ul>
-        </section>
+        </details>
 
-        <section className="panel span-6">
-          <h2>
-            <CheckCircle2 size={18} /> Consent Records
-          </h2>
+        <details className="panel span-6 admin-detail-panel">
+          <summary><CheckCircle2 size={18} /> Consent Records ({dashboard.consents.length})</summary>
           <p className="muted">Text, email, and phone actions need consent and suppression checks.</p>
           <ul className="list">
             {dashboard.consents.map((consent) => (
@@ -200,7 +247,7 @@ export default async function ActionsPage() {
               </li>
             ) : null}
           </ul>
-        </section>
+        </details>
       </div>
     </QueuePageShell>
   );

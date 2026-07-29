@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -6,6 +7,22 @@ import pg from "pg";
 const { Client } = pg;
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const migrationsDir = path.join(rootDir, "supabase", "migrations");
+
+function loadLocalEnv() {
+  const envPath = path.join(rootDir, ".env.local");
+  if (!fs.existsSync(envPath)) return;
+  for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key]) continue;
+    process.env[key] = rawValue.trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "");
+  }
+}
+
+loadLocalEnv();
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is required to run migrations.");

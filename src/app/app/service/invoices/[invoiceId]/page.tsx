@@ -79,7 +79,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <section className="panel span-6 form-stack">
           <h2>Collect Payment</h2>
           <p className="muted">
-            Prepare a payment request, then send only after Stripe ownership, webhook verification, and approval rules are ready.
+            Prepare a payment request, then send it only after the payment account and approval rules are ready.
           </p>
           <form action={prepareInvoicePaymentRequestAction}>
             <input name="invoiceId" type="hidden" value={invoice.id} />

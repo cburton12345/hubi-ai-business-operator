@@ -1,4 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentAppSession } from "@/lib/auth/session";
+import type { CommunicationMethod } from "@/lib/preferences/communication-preferences";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type ActionQueueMetric = {
@@ -20,6 +22,11 @@ export type OutboundActionRow = {
   lastError: string | null;
   bodyPreview: string | null;
   createdAt: string;
+  resolvedMethod: CommunicationMethod;
+  resolvedScope: string;
+  workflowKey: string;
+  phone: string | null;
+  email: string | null;
 };
 
 export type ProviderAccountRow = {
@@ -81,7 +88,7 @@ function num(value: string | number | null | undefined) {
 }
 
 export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
-  const workspaceId = await getCurrentWorkspaceId();
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
   const [metricsResult, actionResult, providerResult, routingResult, policyResult, consentResult] = await Promise.all([
     queryPostgres<{
       needs_review: string;
@@ -122,29 +129,109 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       last_error: string | null;
       body_preview: string | null;
       created_at: string;
+      resolved_method: CommunicationMethod | null;
+      resolved_scope: string | null;
+      workflow_key: string;
+      phone: string | null;
+      email: string | null;
     }>(
       `
       select
-        id,
-        action_type,
-        provider_key,
-        status,
-        risk_level,
-        subject,
-        recipient_label,
-        scheduled_for,
-        target_type,
-        last_error,
-        left(coalesce(payload_json->>'body', ''), 220) as body_preview,
-        created_at
-      from public.outbound_action_queue
-      where tenant_id = $1
+        q.id,
+        q.action_type,
+        q.provider_key,
+        q.status,
+        q.risk_level,
+        q.subject,
+        q.recipient_label,
+        q.scheduled_for,
+        q.target_type,
+        q.last_error,
+        left(coalesce(q.payload_json->>'body', ''), 220) as body_preview,
+        q.created_at,
+        pref.value_json->>'method' as resolved_method,
+        pref.scope_type as resolved_scope,
+        coalesce(
+          nullif(q.metadata_json->>'workflowKey', ''),
+          nullif(q.metadata_json->>'queueType', ''),
+          q.action_type
+        ) as workflow_key,
+        coalesce(
+          l.phone,
+          invoice_customer.phone,
+          case when coalesce(q.recipient_label, '') not like '%@%' then q.recipient_label end
+        ) as phone,
+        coalesce(
+          l.email,
+          invoice_customer.email,
+          case when coalesce(q.recipient_label, '') like '%@%' then q.recipient_label end
+        ) as email
+      from public.outbound_action_queue q
+      left join public.leads l
+        on l.tenant_id = q.tenant_id
+        and l.id = q.target_id
+        and q.target_type = 'lead'
+      left join public.service_invoices invoice
+        on invoice.tenant_id = q.tenant_id
+        and invoice.id = q.target_id
+        and q.target_type = 'service_invoice'
+      left join public.customers invoice_customer
+        on invoice_customer.tenant_id = invoice.tenant_id
+        and invoice_customer.id = invoice.customer_id
+      left join lateral (
+        select
+          case when p.preference_key = 'contact_profile'
+            then jsonb_build_object('method', p.value_json->>'preferredMethod')
+            else p.value_json
+          end as value_json,
+          p.scope_type
+        from public.scoped_saved_preferences p
+        where p.tenant_id = q.tenant_id
+          and p.preference_domain = 'communication'
+          and p.preference_key in ('delivery_method', 'contact_profile')
+          and p.status = 'active'
+          and (
+            (
+              p.scope_type = 'contact'
+              and p.scope_key in (
+                lower(coalesce(q.recipient_label, '')),
+                case
+                  when q.target_type = 'lead' and l.id is not null then 'lead:' || l.id::text
+                  when invoice_customer.id is not null then 'customer:' || invoice_customer.id::text
+                  else lower(coalesce(q.recipient_label, ''))
+                end
+              )
+            )
+            or (
+              p.scope_type = 'workflow'
+              and p.scope_key = lower(coalesce(
+                nullif(q.metadata_json->>'workflowKey', ''),
+                nullif(q.metadata_json->>'queueType', ''),
+                q.action_type
+              ))
+            )
+            or (p.scope_type = 'user' and p.scope_key = lower(coalesce($2::text, '')))
+            or (p.scope_type = 'organization' and p.scope_key = 'default')
+          )
+        order by case p.scope_type
+          when 'contact' then 400
+          when 'workflow' then 300
+          when 'user' then 200
+          when 'organization' then 100
+          else 0
+        end desc,
+        case p.preference_key when 'delivery_method' then 2 else 1 end desc,
+        p.updated_at desc
+        limit 1
+      ) pref on true
+      where q.tenant_id = $1
+        and q.status in ('draft', 'needs_review', 'approved', 'queued', 'failed', 'blocked')
       order by
-        case status when 'needs_review' then 1 when 'approved' then 2 when 'queued' then 3 when 'failed' then 4 else 5 end,
-        coalesce(scheduled_for, created_at) asc
+        case q.status when 'needs_review' then 1 when 'approved' then 2 when 'queued' then 3 when 'failed' then 4 else 5 end,
+        coalesce(q.scheduled_for, q.created_at) asc
       limit 80
       `,
-      [workspaceId]
+      [workspaceId, session?.userId ?? ""]
     ),
     queryPostgres<{
       provider_key: string;
@@ -228,10 +315,10 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
 
   return {
     metrics: [
-      { label: "Needs review", value: num(metrics?.needs_review), detail: "Before any live action" },
-      { label: "Approved", value: num(metrics?.approved), detail: "Ready for manual/provider queue" },
-      { label: "Blocked", value: num(metrics?.blocked), detail: "Stopped by policy" },
-      { label: "Live providers", value: num(metrics?.live_providers), detail: "Should stay low until ready" },
+      { label: "Needs review", value: num(metrics?.needs_review), detail: "Owner chose approval" },
+      { label: "Approved", value: num(metrics?.approved), detail: "Ready to run" },
+      { label: "Blocked", value: num(metrics?.blocked), detail: "Stopped by a safety rule" },
+      { label: "Connected services", value: num(metrics?.live_providers), detail: "Allowed to act live" },
       { label: "Consent granted", value: num(metrics?.consent_granted), detail: "customer contact records" },
       { label: "Missing consent", value: num(metrics?.missing_consent), detail: "Needs review first" }
     ],
@@ -247,7 +334,25 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       targetType: row.target_type,
       lastError: row.last_error,
       bodyPreview: row.body_preview,
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      resolvedMethod: row.resolved_method
+        ?? (row.action_type === "email_send"
+          ? "email"
+          : row.action_type === "voice_call"
+            ? "ai_voice_call"
+            : row.action_type === "phone_call"
+              ? "human_call"
+              : row.provider_key === "google_voice_manual"
+                ? "google_voice"
+                : row.provider_key === "manual_sms"
+                  ? "native_sms"
+                  : row.action_type === "sms_send"
+                    ? "automatic_sms"
+                    : "copy_message"),
+      resolvedScope: row.resolved_scope ?? "this action",
+      workflowKey: row.workflow_key,
+      phone: row.phone,
+      email: row.email
     })),
     providers: (providerResult?.rows ?? []).map((row) => ({
       providerKey: row.provider_key,

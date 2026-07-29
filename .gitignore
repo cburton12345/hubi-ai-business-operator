@@ -7,9 +7,14 @@ node_modules/
 dist/
 build/
 coverage/
+output/
 *.log
 tsconfig.tsbuildinfo
 .render-generated-admin-token
+
+# Local-only private account notes. Never commit passwords, tokens, or recovery codes.
+.private/
+*.secret.md
 
 # Local Netlify folder
 .netlify

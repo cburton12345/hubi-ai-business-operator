@@ -5,6 +5,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
 import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
+import { consumePublicRateLimit } from "@/lib/security/rate-limit";
 import { gradeWebsiteUrl, type OperationsAssessmentInput } from "@/lib/website-grader/grader";
 
 const operationAnswerSchema = z.enum(["strong", "some", "missing", "not_sure"]);
@@ -58,6 +59,16 @@ function token() {
 }
 
 export async function POST(request: NextRequest) {
+  const publicLimit = await consumePublicRateLimit({
+    request,
+    scope: "business-health-grader",
+    limit: 5,
+    windowSeconds: 60 * 60
+  });
+  if (!publicLimit.allowed) {
+    return redirectTo(request, "/business-health-score?error=rate_limit");
+  }
+
   const formData = await request.formData();
   const websiteUrl = optionalUrl(String(formData.get("websiteUrl") ?? ""));
   const googleBusinessProfileUrl = optionalUrl(String(formData.get("googleBusinessProfileUrl") ?? ""));

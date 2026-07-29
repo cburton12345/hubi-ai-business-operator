@@ -22,6 +22,7 @@ type HealthStats = {
   brands: string;
   forms: string;
   form_errors: string;
+  app_errors: string;
   unassigned_leads: string;
   stale_followups: string;
   followups: string;
@@ -64,6 +65,7 @@ async function getSystemHealthData() {
         (select count(*) from public.brands where tenant_id = $1 and status <> 'archived')::text as brands,
         (select count(*) from public.forms where tenant_id = $1 and active = true)::text as forms,
         (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and source = 'api.public.leads' and created_at >= now() - interval '7 days')::text as form_errors,
+        (select count(*) from public.app_error_events where (tenant_id = $1 or tenant_id is null) and severity in ('error', 'critical') and resolved_at is null and created_at >= now() - interval '7 days')::text as app_errors,
         (select count(*) from public.leads where tenant_id = $1 and status in ('new','qualified') and assigned_to_user_id is null)::text as unassigned_leads,
         (select count(*) from public.follow_up_workflows where tenant_id = $1 and status in ('open','scheduled','missed') and due_at < now())::text as stale_followups,
         (select count(*) from public.follow_up_workflows where tenant_id = $1 and status in ('open','scheduled','missed'))::text as followups,
@@ -188,8 +190,18 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
       title: "Form errors",
       body: count(stats?.form_errors) === 0 ? "No public lead form errors in the last 7 days." : `${stats?.form_errors} form error event(s) in the last 7 days.`,
       status: count(stats?.form_errors) === 0 ? "ok" : "broken",
-      href: "/app/alerts",
-      button: "Alerts"
+      href: "/app/errors",
+      button: "Error list"
+    },
+    {
+      title: "Application errors",
+      body:
+        count(stats?.app_errors) === 0
+          ? "No unresolved error-level app events in the last 7 days. Owner alerts and operational warnings are counted separately."
+          : `${stats?.app_errors} unresolved error-level app event(s) in the last 7 days. These are technical errors, not owner-alert records.`,
+      status: count(stats?.app_errors) === 0 ? "ok" : "broken",
+      href: "/app/errors",
+      button: "Error list"
     },
     {
       title: "Unassigned leads",

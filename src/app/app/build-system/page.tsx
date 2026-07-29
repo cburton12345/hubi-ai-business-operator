@@ -5,7 +5,7 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getSetupGuidance } from "@/lib/setup/setup-guidance";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
-import { revertSetupRunAction } from "./actions";
+import { applyAutomaticWebsiteSetupAction, revertSetupRunAction } from "./actions";
 import { SetupBuilder } from "./SetupBuilder";
 
 type SetupLog = {
@@ -162,7 +162,7 @@ export default async function BuildSystemPage() {
             <p className="muted">{guidance.summary}</p>
             <p className="muted">{guidance.websiteAuditNote}</p>
           </div>
-          <span className="pill">{guidance.aiUsed ? "OpenAI assisted" : "local fallback"}</span>
+          <span className="pill">{guidance.aiUsed ? "Ferocity AI assisted" : "Standard setup"}</span>
         </div>
         {guidance.missing.length ? (
           <div className="inline-actions section-actions">
@@ -197,6 +197,40 @@ export default async function BuildSystemPage() {
         initialCommand="Tell me the fastest way Ferocity can help this business. Keep it simple and show the next best steps."
         submitLabel="Show my simple setup path"
       />
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <Wand2 size={18} /> Auto-Build From The Website
+            </h2>
+            <p className="muted">
+              Paste the business website. Ferocity reads the public site, pulls out services, service areas, contact details, and trust signals,
+              then creates the first safe setup plan. Messages, ads, payment requests, and public publishing still wait for approval.
+            </p>
+          </div>
+          <span className="pill">automatic setup</span>
+        </div>
+        <form action={applyAutomaticWebsiteSetupAction} className="stacked-form">
+          <div className="grid">
+            <label className="span-6">
+              Business website
+              <input name="websiteUrl" type="url" placeholder="https://example.com" required />
+            </label>
+            <label className="span-6">
+              Main goal, optional
+              <input
+                name="businessGoal"
+                placeholder="More booked jobs, faster follow-up, reviews, SEO, and owner alerts"
+              />
+            </label>
+          </div>
+          <div className="inline-actions">
+            <button className="button" type="submit">Build my system from the website</button>
+            <Link className="mini-button" href="/app/marketing-os">Open website imports</Link>
+          </div>
+        </form>
+      </section>
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -250,7 +284,7 @@ export default async function BuildSystemPage() {
             ["1", "Pick the outcome", "More leads, faster follow-up, jobs, invoices, reviews, SEO, workers, reminders, or all of it."],
             ["2", "Add only the basics", "Business name, services, service area, best contact, and the first lead path."],
             ["3", "Start with what works now", "Use reminders, forms, notes, drafts, and owner alerts right away."],
-            ["4", "Leave the rest for later", "If something does not matter today, skip it. Ferocity can bring it back when it helps."],
+            ["4", "Leave the rest paused", "If something does not matter today, skip it. Ferocity can bring it back when it helps."],
             ["5", "Review important actions", "Approve customer messages, public posts, payment requests, and other sensitive work before they happen."],
             ["6", "Turn on more over time", "Add email, payments, ads, reviews, website publishing, and other connections when the business is ready."]
           ].map(([number, title, body]) => (
@@ -270,7 +304,7 @@ export default async function BuildSystemPage() {
           {[
             ["Included", "Usable now inside Ferocity."],
             ["Limited", "Usable, but usage is capped."],
-            ["Skip for now", "Not needed today. Ferocity can bring it back later."],
+            ["Skip for now", "Not needed today. Ferocity can bring it back when it helps."],
             ["Paused", "Set up, but not running."],
             ["Needs business info", "Ferocity needs a little more detail before this works well."],
             ["Needs connection", "This works better after an email, payment, calendar, website, ad, or review account is connected."],
@@ -509,7 +543,7 @@ function buildReadinessItems(readiness: ReadinessStats | null, integrations: Int
     },
     {
       title: "MarketplacePro",
-      body: isConnected(integration(integrations, "marketplacepro")) ? "MarketplacePro is connected." : "MarketplacePro is optional and can be connected later.",
+      body: isConnected(integration(integrations, "marketplacepro")) ? "MarketplacePro is connected." : "MarketplacePro is optional and can be connected when the business wants marketplace leads.",
       ready: isConnected(integration(integrations, "marketplacepro"))
     }
   ];

@@ -55,7 +55,8 @@ export async function sendEmailWithResend(input: ResendEmailInput): Promise<Rese
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.EMAIL_API_KEY}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Idempotency-Key": input.queueId.slice(0, 256)
     },
     body: JSON.stringify({
       from: env.EMAIL_FROM_ADDRESS,

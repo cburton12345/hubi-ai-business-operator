@@ -16,17 +16,17 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
 
   return (
     <QueuePageShell
-      eyebrow="SaaS Platform"
-      title="Access Control"
-      description="Organization membership, platform roles, and workspace permissions for internal and future customer accounts."
+      eyebrow="Team"
+      title="Team Access"
+      description="Manage who can use this business and what they are allowed to do."
     >
       <form action={createWorkspaceUserAction} className="panel form-stack section-actions">
-        <h2>Create Workspace User</h2>
-        <p className="muted">Create an account for the currently selected organization. Messages are not sent automatically.</p>
+        <h2>Add a Team Member</h2>
+        <p className="muted">Create an account for the business you are currently viewing.</p>
         <div className="filter-bar">
           <label>
             Name
-            <input name="name" placeholder="Jane Operator" required />
+            <input name="name" placeholder="Jane Smith" required />
           </label>
           <label>
             Email
@@ -46,13 +46,13 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
             </select>
           </label>
           <button className="button" type="submit">
-            Create user
+            Add team member
           </button>
         </div>
       </form>
       <form action={createWorkspaceInviteAction} className="panel form-stack section-actions">
         <h2>Create Invite Link</h2>
-        <p className="muted">Generate an invite link for a customer or teammate. The app does not email it automatically.</p>
+        <p className="muted">Generate a secure invite for a customer or teammate. Copy the confirmation link if you want to share it yourself.</p>
         {inviteUrl ? (
           <label>
             New invite link
@@ -97,12 +97,17 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
             render: (row) => (
               <>
                 <strong>{row.tenantName}</strong>
-                <span className="muted">{row.tenantSlug}</span>
               </>
             )
           },
-          { key: "platformRole", label: "Platform", render: (row) => <span className="pill">{row.platformRole}</span> },
-          { key: "tenantRole", label: "Workspace Role", render: (row) => <span className="pill">{row.tenantRole}</span> },
+          {
+            key: "platformRole",
+            label: "Account",
+            render: (row) => (
+              <span className="pill">{row.platformRole === "super_admin" ? "Platform owner" : "Business user"}</span>
+            )
+          },
+          { key: "tenantRole", label: "Business Role", render: (row) => <span className="pill">{row.tenantRole}</span> },
           { key: "status", label: "Status", render: (row) => <span className="pill">{row.status}</span> },
           { key: "description", label: "Permission Scope", render: (row) => row.roleDescription }
         ]}

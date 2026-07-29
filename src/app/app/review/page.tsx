@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getReviewDraftRows } from "@/lib/marketing/get-phase2-dashboard";
+import { getReviewFirstExportQueue } from "@/lib/marketing-os/review-first-export-queue";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { updateDraftReviewAction } from "@/app/app/marketing/actions";
+import { approveExportQueueItemAction, runExportQueueItemAction } from "./actions";
 
 export default async function MarketingReviewPage() {
+  const workspaceId = await getCurrentWorkspaceId();
   const drafts = await getReviewDraftRows();
+  const exportQueue = await getReviewFirstExportQueue(workspaceId);
 
   return (
     <QueuePageShell
@@ -20,6 +25,55 @@ export default async function MarketingReviewPage() {
           Create export packages
         </Link>
       </div>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Ready To Export Or Post</h2>
+            <p className="muted">
+              This is where Ferocity moves from draft work to action. Manual exports can be marked ready now. Direct posting stays off until the connected account is ready.
+            </p>
+          </div>
+          <span className="pill">{exportQueue.length} item{exportQueue.length === 1 ? "" : "s"}</span>
+        </div>
+        <ul className="list">
+          {exportQueue.map((item) => (
+            <li className="list-row" key={item.id}>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+                <p className="muted">
+                  {item.brandName ?? "Workspace"} / {item.exportType.replaceAll("_", " ")} / {item.providerKey || "manual"} / {item.targetLabel || "no target"}
+                </p>
+                {item.blockedReason ? <p className="muted">Blocked: {item.blockedReason}</p> : null}
+              </div>
+              <div className="inline-actions">
+                <span className={`pill ${item.riskLevel}`}>{item.riskLevel}</span>
+                <span className="pill">{item.status}</span>
+                {["draft", "needs_review", "blocked"].includes(item.status) ? (
+                  <form action={approveExportQueueItemAction} className="inline-actions">
+                    <input name="itemId" type="hidden" value={item.id} />
+                    <button className="mini-button" type="submit">Approve</button>
+                  </form>
+                ) : null}
+                {item.status === "approved" ? (
+                  <form action={runExportQueueItemAction} className="inline-actions">
+                    <input name="itemId" type="hidden" value={item.id} />
+                    <button className="mini-button" type="submit">Run/export</button>
+                  </form>
+                ) : null}
+              </div>
+            </li>
+          ))}
+          {exportQueue.length === 0 ? (
+            <li className="list-row">
+              <span className="muted">No export or posting items yet. Use Marketing OS to build an ad package, video brief, SEO page, email, or post.</span>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+
+      <h2 className="section-title">Generated Drafts</h2>
       <ul className="review-list">
         {drafts.map((draft) => (
           <li className="panel" key={draft.id}>

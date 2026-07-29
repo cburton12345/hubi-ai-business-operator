@@ -98,10 +98,10 @@ const employees = [
     icon: MessagesSquare
   },
   {
-    name: "AI Receptionist",
-    job: "Acts as the first line of defense for new leads and only interrupts the owner when timing or risk matters.",
-    handles: ["Lead intake", "Urgent alerts", "Reply drafts", "Appointment context"],
-    href: "/app/lead-command",
+    name: "AI Office Manager",
+    job: "Handles routine office work across reception, customer service, scheduling, follow-up, collections, and owner requests.",
+    handles: ["Reception", "Customer service", "Scheduling", "Follow-up"],
+    href: "/app/office-manager",
     icon: Phone
   },
   {
@@ -149,7 +149,7 @@ const employees = [
 ];
 
 const quickActions = [
-  ["Tell Me What Needs Done", "AI reads owner events, money, leads, jobs, invoices, workforce, and automation blockers.", "/app/attention-command"],
+  ["Show What Needs Attention", "AI reads owner events, money, leads, jobs, invoices, workforce, and automation blockers.", "/app/attention-command"],
   ["Track Jobs And Bids", "AI routes bids, jobs, materials, worker payments, customer balances, and profit visibility.", "/app/job-tracker"],
   ["Plan Today", "AI turns jobs, callbacks, worker schedules, estimates, invoices, and owner priorities into a daily work list.", "/app/operations-workforce"],
   ["Plan Crew Day", "AI points to worker itineraries, open assignments, and employee-facing field actions.", "/app/crew-itinerary"],
@@ -163,7 +163,7 @@ const quickActions = [
   ["Improve Website", "AI imports website context and prepares homepage, service, proof, and conversion improvements.", "/app/website"],
   ["Improve SEO", "AI prepares useful service/city pages, internal linking, refreshes, and content ideas.", "/app/seo"],
   ["Reactivate Leads", "AI finds old leads and prepares reply drafts, tasks, and call scripts for approval.", "/app/operator"],
-  ["Run Receptionist", "AI captures website leads, logs source and consent, drafts next steps, and pushes only urgent owner alerts.", "/app/lead-command"],
+  ["Run Office Manager", "AI routes reception, customer service, scheduling, follow-up, collections, and owner requests into one office queue.", "/app/office-manager"],
   ["Generate Content", "AI drafts posts, pages, emails, messages, and ads from real business context.", "/app/drafts"],
   ["Set Up My Business", "AI creates a reviewed setup plan for profile, services, areas, forms, automations, reviews, and SEO.", "/app/build-system"]
 ];
@@ -212,7 +212,12 @@ function cadenceLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
-export default async function AiWorkforcePage() {
+export default async function AiWorkforcePage({
+  searchParams
+}: {
+  searchParams?: Promise<{ command?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
   const [history, agentDashboard] = await Promise.all([getAiWorkforceHistory(), getAgentWorkflowDashboard()]);
   const monitorReady = Boolean(env.AI_WORKFORCE_CRON_TOKEN);
 
@@ -230,7 +235,7 @@ export default async function AiWorkforcePage() {
             </h2>
             <p className="muted">
               Owners should not need to choose the perfect module. Ask &quot;why are leads down,&quot; &quot;who has not paid,&quot;
-              &quot;what should crews do today,&quot; &quot;respond to these reviews,&quot; or &quot;publish a holiday post.&quot; Ferocity routes the request to the right helper.
+              &quot;what should crews do today,&quot; &quot;prepare review replies,&quot; or &quot;draft a holiday post.&quot; Ferocity routes the request to the right helper.
             </p>
           </div>
           <div className="button-row">
@@ -258,23 +263,23 @@ export default async function AiWorkforcePage() {
         <div className="list-row flush-row">
           <div>
             <h2>
-              <Phone size={18} /> AI Receptionist Shield
+              <Phone size={18} /> AI Office Manager
             </h2>
             <p className="muted">
-              Ferocity can receive website leads, record source and consent, add them to the owner command feed, and keep normal intake out of your way. It interrupts you for urgent leads, risk, approvals, and money opportunities.
+              Ferocity can receive customer requests, log source and consent, prepare replies or tasks, and route routine office work. It interrupts the owner for urgent leads, customer risk, approvals, and money opportunities.
             </p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/lead-command">Open Leads</Link>
+            <Link className="button" href="/app/office-manager">Open Office Manager</Link>
             <Link className="button secondary-button" href="/app/notifications">Push Alerts</Link>
           </div>
         </div>
         <div className="setup-step-grid">
           {[
-            ["Capture", "Website forms and connected sources become tracked leads with source, consent, and context."],
-            ["Triage", "Normal leads are logged for the daily briefing; urgent leads are marked for owner attention."],
-            ["Nudge", "Push alerts are reserved for high-priority lead, money, risk, approval, or failure moments."],
-            ["Prove", "Every receptionist action appears in Owner Command and the Automation Timeline."]
+            ["Capture", "Calls, forms, customer questions, owner commands, and connected sources become tracked work with context."],
+            ["Triage", "Normal work goes into the daily briefing; urgent lead, money, customer, or schedule issues rise up."],
+            ["Act", "Ferocity prepares replies, tasks, reminders, appointments, handoffs, and follow-up for review or approved automation."],
+            ["Prove", "Every office-manager action appears in Owner Command and the Automation Timeline."]
           ].map(([title, body], index) => (
             <div className="setup-step-card" key={title}>
               <span className="step-dot">{index + 1}</span>
@@ -317,7 +322,37 @@ export default async function AiWorkforcePage() {
         </div>
       </section>
 
-      <AiCommandPanel />
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Managed Mode</p>
+            <h2>Built so the owner does not have to babysit the software.</h2>
+            <p className="muted">
+              Managed Ferocity uses the same AI helpers, setup plans, action queue, approvals, billing gates, and automation timeline.
+              The difference is the operating model: Ferocity prepares and monitors more of the work, then escalates only what needs a person.
+            </p>
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/app/automation-command">Automation Rules</Link>
+            <Link className="button secondary-button" href="/app/owner-command-center">Owner Command</Link>
+          </div>
+        </div>
+        <div className="value-ladder">
+          {[
+            ["AI handles first", "Setup gaps, lead follow-up, stale estimates, invoice reminders, review timing, SEO/content drafts, campaign briefs, daily work lists, and blocked actions."],
+            ["Owner sees", "Money, risk, high-value leads, failed connections, angry customers, legal/safety concerns, low-confidence AI work, and approvals."],
+            ["Managed review", "A managed operator can review AI output, tune workflows, prepare campaigns, and keep customer work moving without creating duplicate records."],
+            ["Still controlled", "Live sends, publishing, ad spend, payment requests, provider sync, and money movement stay behind clear permissions and logs."]
+          ].map(([title, body]) => (
+            <div key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <AiCommandPanel initialCommand={params.command || undefined} submitLabel="Apply reviewed work" />
 
       <section className="section-actions">
         <div className="list-row flush-row">
@@ -442,7 +477,7 @@ export default async function AiWorkforcePage() {
             ))}
             {agentDashboard.outputs.length === 0 ? (
               <li className="list-row">
-                <span className="muted">Agent outputs will appear here after a run.</span>
+                <span className="muted">Run an AI employee to create outputs here.</span>
               </li>
             ) : null}
           </ul>
@@ -537,7 +572,7 @@ export default async function AiWorkforcePage() {
         <div className="list-row flush-row">
           <div>
             <h2>AI Employees</h2>
-            <p className="muted">Each role is a simple front door into existing Ferocity modules. Future employees can be added without changing the core platform.</p>
+            <p className="muted">Each role is a simple front door into existing Ferocity modules. New employees can be added without changing the core platform.</p>
           </div>
           <span className="pill">{employees.length} roles</span>
         </div>

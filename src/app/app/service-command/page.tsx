@@ -71,7 +71,7 @@ const fieldServiceBackbone = [
   ["Portal", "Customer portal links, shared work history, proof uploads, and customer-facing status", "/app/customer-touchpoints", "working"],
   ["Proof", "Job photos, before/after proof, testimonials, consent, and photo-report readiness", "/app/proof", "working"],
   ["Reputation", "Review requests, proof capture, testimonials, before/after content, and consent", "/app/review", "working"],
-  ["Accounting", "Job cost view, worker payments, reimbursements, ledger records, and QuickBooks/export readiness", "/app/operations-workforce#payroll", "provider gated"],
+  ["Accounting", "Job cost view, worker payments, reimbursements, ledgers, and portable CSV exports", "/app/purchasing", "works without provider keys"],
   ["AI help", "Needs Attention, Owner Events, action queue, automation timeline, and AI Workforce", "/app/attention-command", "better"]
 ];
 
@@ -104,20 +104,13 @@ export default async function ServiceCommandPage() {
             <Link className="button secondary-button" href="/app/ai-walkthrough">
               AI Walkthrough
             </Link>
-            <Link className="button secondary-button" href="/app/job-tracker">
-              Jobs & Money
-            </Link>
           </div>
         </div>
         <div className="button-row">
           <Link className="button secondary-button" href="/app/service/routes">Routes</Link>
           <Link className="button secondary-button" href="/app/service/tech">Tech View</Link>
           <Link className="button secondary-button" href="/app/service/inventory">Inventory</Link>
-          <Link className="button secondary-button" href="/app/job-tracker">Jobs & Money</Link>
           <Link className="button secondary-button" href="/app/cash-collection">Cash</Link>
-          <Link className="button secondary-button" href="/app/operations-workforce">Workforce</Link>
-          <Link className="button secondary-button" href="/app/proof">Proof</Link>
-          <Link className="button secondary-button" href="/app/customer-touchpoints">Portal Links</Link>
         </div>
       </section>
 

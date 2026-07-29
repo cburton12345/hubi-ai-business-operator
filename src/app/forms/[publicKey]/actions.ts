@@ -7,6 +7,11 @@ import { evaluateLeadSubmission } from "@/lib/leads/spam-guard";
 
 export async function submitPublicLeadForm(formData: FormData) {
   const publicKey = String(formData.get("formPublicKey") ?? "");
+  const qualificationAnswers = Object.fromEntries(
+    [...formData.entries()]
+      .filter(([key]) => key.startsWith("qualification_"))
+      .map(([key, value]) => [key.slice("qualification_".length), String(value).trim()])
+  );
   const parsed = publicLeadSchema.safeParse({
     formPublicKey: publicKey,
     source: "public_form",
@@ -48,7 +53,10 @@ export async function submitPublicLeadForm(formData: FormData) {
       treatmentReceived: formData.get("treatmentReceived") === "on",
       legalDisclaimerAcknowledged: formData.get("legalDisclaimerAcknowledged") === "on",
       pageUrl: String(formData.get("pageUrl") ?? "") || undefined,
-      referrer: String(formData.get("referrer") ?? "") || undefined
+      referrer: String(formData.get("referrer") ?? "") || undefined,
+      qualificationFormId: String(formData.get("qualificationFormId") ?? "") || undefined,
+      qualificationAnswers,
+      referralToken: String(formData.get("referralToken") ?? "") || undefined
     }
   });
 

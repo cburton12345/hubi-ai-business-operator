@@ -16,7 +16,7 @@ const initialState: ActionState = { ok: false };
 function applyModeLabel(mode: string) {
   if (mode === "log_only") return "Will record for review";
   if (mode === "manual_review") return "Will prepare, then ask before anything goes live";
-  if (mode === "future_provider") return "Needs a connected account first";
+  if (mode === "provider_required") return "Needs a connected account first";
   return mode.replaceAll("_", " ");
 }
 
@@ -46,6 +46,7 @@ function featureLabel(featureKey: string) {
     sms_send: "manual text drafts",
     email_send: "approved email",
     ai_generation: "AI generation",
+    ai_office_manager: "AI Office Manager",
     follow_up_recovery: "follow-up recovery",
     seo_autopilot: "SEO autopilot",
     hosted_growth_pages: "hosted growth pages",

@@ -9,6 +9,7 @@ import {
   prepareInvoiceTextQueueAction,
   prepareLeadTextQueueAction
 } from "./actions";
+import { CommunicationMethodControl } from "@/app/app/actions/CommunicationMethodControl";
 
 export default async function TextQueuePage() {
   const dashboard = await getManualTextQueue();
@@ -64,9 +65,6 @@ export default async function TextQueuePage() {
               </div>
               <div className="inline-actions">
                 <span className="pill">{row.status}</span>
-                <a className={`mini-button ${row.recipient ? "" : "disabled-link"}`} href={row.smsHref} aria-disabled={!row.recipient}>
-                  Open text
-                </a>
                 <form action={markManualTextSentAction}>
                   <input name="id" type="hidden" value={row.id} />
                   <button className="mini-button secondary-button" type="submit">Mark sent</button>
@@ -88,6 +86,15 @@ export default async function TextQueuePage() {
                   <button className="mini-button secondary-button" type="submit">Cancel</button>
                 </form>
               </div>
+              <CommunicationMethodControl
+                actionId={row.id}
+                body={row.body}
+                currentMethod={row.resolvedMethod}
+                email={row.email}
+                phone={row.recipient || null}
+                resolvedScope={row.resolvedScope}
+                subject={row.subject}
+              />
             </li>
           ))}
           {dashboard.rows.length === 0 ? (

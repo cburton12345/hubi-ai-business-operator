@@ -4,7 +4,7 @@ export type SetupPlanChange = {
   summary: string;
   targetHref: string;
   riskLevel: "low" | "medium" | "high";
-  applyMode: "log_only" | "manual_review" | "future_provider";
+  applyMode: "log_only" | "manual_review" | "provider_required";
 };
 
 export type SetupPlanVerticalTarget = {
@@ -85,6 +85,21 @@ export function buildSetupPlan(request: string): SetupPlan {
   const wantsWorkflow = hasAny(lower, ["workflow", "automation", "invoice", "estimate", "job"]);
   const wantsWebsite = hasAny(lower, ["website", "site", "wordpress", "webflow", "cms", "form", "embed"]);
   const wantsPayments = hasAny(lower, ["payment", "pay", "stripe", "ledger", "bookkeeping", "collect"]);
+  const wantsOfficeManager = hasAny(lower, [
+    "office manager",
+    "reception",
+    "receptionist",
+    "answer calls",
+    "answer phones",
+    "phone call",
+    "customer service",
+    "schedule calls",
+    "appointments",
+    "book appointments",
+    "front desk",
+    "daily office",
+    "owner request"
+  ]);
 
   const businessType = isRoofing ? "Roofing / storm service" : isRental ? "Rental business" : isSoftware ? "Software / SaaS" : "Growth-focused business";
   const templateKey = isRoofing ? "roofing_storm" : isRental ? "rental_operator" : isSoftware ? "software_growth" : "business_operator";
@@ -98,13 +113,14 @@ export function buildSetupPlan(request: string): SetupPlan {
   ];
   const serviceTargets: SetupPlanServiceTarget[] = [
     { featureKey: "ai_generation", mode: "review_required", status: "limited", usageLimit: 250, overagePolicy: "block" },
-    { featureKey: "follow_up_recovery", mode: "review_required", status: "limited", usageLimit: 500, overagePolicy: "allow_with_review" }
+    { featureKey: "follow_up_recovery", mode: "review_required", status: "limited", usageLimit: 500, overagePolicy: "allow_with_review" },
+    { featureKey: "ai_office_manager", mode: "review_required", status: "limited", usageLimit: 500, overagePolicy: "allow_with_review" }
   ];
   const assetTargets: SetupPlanAssetTarget[] = [
     {
       assetType: "brand_profile",
       title: `${businessType} profile`,
-      summary: "Create or update an editable business profile so later assets attach to the right brand.",
+      summary: "Create or update an editable business profile so new assets attach to the right brand.",
       status: "draft"
     },
     {
@@ -173,7 +189,7 @@ export function buildSetupPlan(request: string): SetupPlan {
       {
         assetType: "service_area",
         title: "Primary service area",
-        summary: "Add an editable service area placeholder so city pages have a starting point.",
+        summary: "Add an editable service area so city pages have a starting point.",
         status: "draft"
       },
       {
@@ -227,6 +243,36 @@ export function buildSetupPlan(request: string): SetupPlan {
     });
   }
 
+  if (wantsOfficeManager || wantsFollowUp || wantsWorkflow) {
+    assetTargets.push(
+      {
+        assetType: "communication_template",
+        title: "Office intake response",
+        summary: "Prepare a plain customer-service response for new calls, form requests, questions, and handoffs.",
+        status: "review_required"
+      },
+      {
+        assetType: "follow_up_workflow",
+        title: "Office manager queue",
+        summary: "Create a draft office workflow for lead intake, customer questions, appointments, owner reminders, collections, and handoffs.",
+        status: "planned"
+      }
+    );
+    verticalTargets.push({ verticalKey: "run_office", status: "active", priority: "high", stepKeys: ["office_queue", "appointments", "owner_handoffs"] });
+    serviceTargets.push(
+      { featureKey: "ai_office_manager", mode: "review_required", status: "limited", usageLimit: 500, overagePolicy: "allow_with_review" },
+      { featureKey: "calendar_sync", mode: "review_required", status: "limited", usageLimit: 250, overagePolicy: "block" }
+    );
+    changes.push({
+      area: "Office",
+      title: "Set up the AI Office Manager",
+      summary: "Prepare reception, customer-service, scheduling, owner-request, follow-up, and collection rules so routine office work can be handled from one queue.",
+      targetHref: "/app/office-manager",
+      riskLevel: "medium",
+      applyMode: "manual_review"
+    });
+  }
+
   if (wantsReviews || isRoofing) {
     assetTargets.push(
       {
@@ -268,7 +314,7 @@ export function buildSetupPlan(request: string): SetupPlan {
       summary: "Track campaign sources and prepare provider connections. Budget changes and publishing stay disabled until accounts, limits, and approvals are ready.",
       targetHref: "/app/integrations",
       riskLevel: "high",
-      applyMode: "future_provider"
+      applyMode: "provider_required"
     });
   }
 
@@ -356,6 +402,7 @@ export function buildSetupPlan(request: string): SetupPlan {
       wantsReviews,
       wantsWorkflow,
       wantsCompany,
+      wantsOfficeManager,
       isRoofing,
       isRental,
       isSoftware
@@ -427,6 +474,7 @@ function buildFollowUpQuestions(input: {
   wantsReviews: boolean;
   wantsWorkflow: boolean;
   wantsCompany: boolean;
+  wantsOfficeManager: boolean;
   isRoofing: boolean;
   isRental: boolean;
   isSoftware: boolean;
@@ -442,6 +490,9 @@ function buildFollowUpQuestions(input: {
   }
   if (input.wantsFollowUp || input.wantsWorkflow) {
     questions.push("How soon should Ferocity flag a lead, estimate, invoice, or callback as needing follow-up?");
+  }
+  if (input.wantsOfficeManager) {
+    questions.push("Which office requests can Ferocity prepare without interrupting the owner, and which ones always need approval?");
   }
   if (input.wantsReviews) {
     questions.push("When is the right moment to ask for a review after a job or delivery?");

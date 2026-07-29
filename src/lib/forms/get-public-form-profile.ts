@@ -13,6 +13,16 @@ export type PublicFormProfile = {
   riskProfile: RiskProfile;
   ctaGoals: string;
   toneOfVoice: string;
+  qualificationFormId: string | null;
+  qualificationQuestions: PublicQualificationQuestion[];
+};
+
+export type PublicQualificationQuestion = {
+  id: string;
+  label: string;
+  questionType: "text" | "single_choice" | "multi_choice" | "number" | "currency" | "date" | "phone" | "email" | "boolean";
+  required: boolean;
+  options: string[];
 };
 
 type FormProfileRow = {
@@ -39,7 +49,50 @@ function mapProfile(row: FormProfileRow): PublicFormProfile {
     primaryGoal: row.primary_goal ?? "Capture qualified requests.",
     riskProfile: row.risk_profile,
     ctaGoals: row.cta_goals ?? "Request information",
-    toneOfVoice: row.tone_of_voice ?? "Direct, useful, and conversion-focused."
+    toneOfVoice: row.tone_of_voice ?? "Direct, useful, and conversion-focused.",
+    qualificationFormId: null,
+    qualificationQuestions: []
+  };
+}
+
+async function addQualificationQuestions(profile: PublicFormProfile): Promise<PublicFormProfile> {
+  const result = await queryPostgres<{
+    form_id: string;
+    id: string;
+    label: string;
+    question_type: PublicQualificationQuestion["questionType"];
+    required: boolean;
+    conditional_json: unknown;
+    metadata_json: unknown;
+  }>(
+    `
+    select q.form_id, q.id, q.label, q.question_type, q.required, q.conditional_json, q.metadata_json
+    from public.revenue_qualification_forms f
+    join public.revenue_qualification_questions q
+      on q.tenant_id = f.tenant_id and q.form_id = f.id
+    where f.status = 'active'
+      and f.metadata_json->>'publicFormKey' = $1
+    order by q.question_order, q.created_at
+    `,
+    [profile.publicKey]
+  );
+  const rows = result?.rows ?? [];
+  if (!rows.length) return profile;
+  return {
+    ...profile,
+    qualificationFormId: rows[0].form_id,
+    qualificationQuestions: rows.map((row) => {
+      const metadata = row.metadata_json && typeof row.metadata_json === "object" ? row.metadata_json as Record<string, unknown> : {};
+      const conditional = row.conditional_json && typeof row.conditional_json === "object" ? row.conditional_json as Record<string, unknown> : {};
+      const rawOptions = metadata.options ?? conditional.options;
+      return {
+        id: row.id,
+        label: row.label,
+        questionType: row.question_type,
+        required: row.required,
+        options: Array.isArray(rawOptions) ? rawOptions.map(String) : []
+      };
+    })
   };
 }
 
@@ -75,7 +128,7 @@ export async function getPublicFormProfile(publicKey: string) {
         : brand?.brand_marketing_settings;
 
       if (brand) {
-        return mapProfile({
+        return addQualificationQuestions(mapProfile({
           public_key: data.public_key,
           form_name: data.form_name,
           brand_name: brand.name,
@@ -86,7 +139,7 @@ export async function getPublicFormProfile(publicKey: string) {
           risk_profile: brand.risk_profile,
           cta_goals: settings?.cta_goals ?? null,
           tone_of_voice: settings?.tone_of_voice ?? null
-        });
+        }));
       }
     }
   }
@@ -114,5 +167,5 @@ export async function getPublicFormProfile(publicKey: string) {
   );
 
   const row = result?.rows[0];
-  return row ? mapProfile(row) : null;
+  return row ? addQualificationQuestions(mapProfile(row)) : null;
 }

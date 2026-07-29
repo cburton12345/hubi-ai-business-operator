@@ -12,11 +12,12 @@ export default async function OperatorAlertsPage() {
     <QueuePageShell
       eyebrow="Operator Alerts"
       title="Workspace Monitoring"
-      description="Review lead, approval, form, system, and AI alerts for the selected organization. Alerts are manual review only."
+      description="Review owner-facing alerts that Ferocity generated from scans. Technical app errors live in Application Errors so the counts do not get mixed together."
     >
       <form action={refreshOperatorAlertsAction} className="section-actions">
         <button className="button" type="submit">Refresh alerts</button>
         <span className="pill">{activeCount} active</span>
+        <Link className="mini-button" href="/app/errors">Application errors</Link>
       </form>
       <QueueTable<OperatorAlertRow>
         rows={rows}
@@ -52,7 +53,11 @@ export default async function OperatorAlertsPage() {
           }
         ]}
       />
-      {rows.length === 0 ? <p className="muted section-actions">No alerts yet. Refresh alerts to scan the workspace.</p> : null}
+      {rows.length === 0 ? (
+        <p className="muted section-actions">
+          No owner alerts yet. Refresh alerts to scan the workspace. If System Health shows app errors, open Application Errors instead.
+        </p>
+      ) : null}
     </QueuePageShell>
   );
 }

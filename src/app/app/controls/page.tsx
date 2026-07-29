@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Gauge, PauseCircle, ShieldCheck, ToggleLeft } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceControls } from "@/lib/controls/get-service-controls";
-import { updateServiceControlAction } from "./actions";
+import { applyAutopilotPresetAction, updateServiceControlAction } from "./actions";
 
 function usageText(limit: number | null, used: number, remaining: number | null) {
   if (limit === null) return `${used.toLocaleString()} used / no set limit`;
@@ -13,7 +13,7 @@ function modeLabel(mode: string) {
   if (mode === "off") return "off";
   if (mode === "draft_only") return "draft only";
   if (mode === "review_required") return "needs review";
-  return "enabled";
+  return "automatic";
 }
 
 export default async function ControlsPage() {
@@ -35,21 +35,36 @@ export default async function ControlsPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Plain Rules</h2>
+            <p className="eyebrow">Simple authority</p>
+            <h2>Do not make me approve routine work.</h2>
             <p className="muted">
-              Off blocks the service. Draft only lets Ferocity prepare work. Needs review queues the action. Enabled still respects keys, provider setup, consent, and live-action policies.
+              Use the recommended setting once. Ferocity handles routine internal work and interrupts you only
+              for consequential decisions. The detailed service controls below remain available when needed.
             </p>
           </div>
+          <form action={applyAutopilotPresetAction}>
+            <input type="hidden" name="preset" value="trusted_autopilot" />
+            <button className="button" type="submit">Let Ferocity handle routine work</button>
+          </form>
+        </div>
+        <p className="muted">
+          Protected: financial authority, meaningful spend, safety/legal/contractual decisions, high-risk scope,
+          low confidence, and channels you have not separately authorized.
+        </p>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Advanced service controls</h2>
+            <p className="muted">Use these only when you want a different rule for one specific service.</p>
+          </div>
           <div className="inline-actions">
-            <Link className="mini-button" href="/app/build-system">Have AI Set This Up</Link>
+            <Link className="mini-button" href="/app/autopilot">Simple Autopilot</Link>
             <Link className="mini-button" href="/app/billing">Billing</Link>
             <Link className="mini-button" href="/app/integrations">Integrations</Link>
           </div>
         </div>
-      </section>
-
-      <section className="panel section-actions">
-        <h2>Services</h2>
         <ul className="list">
           {dashboard.controls.map((control) => (
             <li className="list-row service-control-row" key={control.featureKey}>
@@ -81,7 +96,7 @@ export default async function ControlsPage() {
                       <option value="off">off</option>
                       <option value="draft_only">draft only</option>
                       <option value="review_required">needs review</option>
-                      <option value="enabled">enabled</option>
+                      <option value="enabled">automatic</option>
                     </select>
                   </label>
                   <label>

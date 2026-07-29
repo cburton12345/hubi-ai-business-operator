@@ -9,7 +9,7 @@ export default async function ServiceRoutesPage() {
     <QueuePageShell
       eyebrow="Service Operations"
       title="Route Planning"
-      description="Dispatcher view for scheduled and in-progress jobs over the next two weeks. This prepares routing structure without connecting a map or calendar API yet."
+      description="Keyless dispatcher view for the next two weeks. Ferocity labels work by ZIP/city and preserves promised appointment order while advanced road optimization remains optional."
     >
       <div className="section-actions button-row">
         <Link className="button secondary-button" href="/app/service">Service command center</Link>
@@ -28,9 +28,13 @@ export default async function ServiceRoutesPage() {
                     <p>{job.customerName}</p>
                     <p className="muted">{job.schedule} / {job.assignedTo} / {job.serviceArea}</p>
                     <p className="muted">{job.serviceAddress}</p>
+                    <p className="muted">Route cluster: {job.routeCluster || "location needed"}</p>
                     {job.dispatcherNotes ? <p>{job.dispatcherNotes}</p> : null}
                   </div>
-                  <span className="pill">{job.status}</span>
+                  <div className="button-row">
+                    <span className="pill">{job.status}</span>
+                    {job.directionsUrl ? <Link className="mini-button secondary-button" href={job.directionsUrl} target="_blank" rel="noreferrer">Directions</Link> : null}
+                  </div>
                 </li>
               ))}
             </ul>

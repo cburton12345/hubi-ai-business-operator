@@ -14,7 +14,7 @@ export default async function PortalPaymentSuccessPage({
           <p className="eyebrow">Payment Received</p>
           <h1>Thank you. The payment was submitted.</h1>
           <p className="muted">
-            Ferocity will update the invoice after Stripe confirms the payment through the verified webhook.
+            Ferocity will update the invoice as soon as the payment provider confirms it.
           </p>
           {params.invoice ? <p className="muted">Invoice: {params.invoice}</p> : null}
           <Link className="button" href="/">

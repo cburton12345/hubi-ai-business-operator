@@ -4,22 +4,24 @@ import { getReviewDraftRows } from "@/lib/marketing/get-phase2-dashboard";
 import { getContentExportRows, type ContentExportRow } from "@/lib/exports/get-content-exports";
 import { getWorkspaceDataExportRows, type WorkspaceDataExportRow } from "@/lib/exports/workspace-data-exports";
 import { getReviewFirstExportQueueRows, type ReviewFirstExportQueueRow } from "@/lib/exports/get-review-first-export-queue";
-import { createExportFromDraftAction, createWorkspaceDataExportAction } from "./actions";
+import { getImportBatches } from "@/lib/imports/get-import-batches";
+import { applyCustomerImportAction, createExportFromDraftAction, createWorkspaceDataExportAction, previewCustomerImportAction, rollbackCustomerImportAction } from "./actions";
 import Link from "next/link";
 
 export default async function ExportsPage() {
-  const [drafts, exports, workspaceExports, reviewFirstExports] = await Promise.all([
+  const [drafts, exports, workspaceExports, reviewFirstExports, importBatches] = await Promise.all([
     getReviewDraftRows(),
     getContentExportRows(),
     getWorkspaceDataExportRows(),
-    getReviewFirstExportQueueRows()
+    getReviewFirstExportQueueRows(),
+    getImportBatches()
   ]);
 
   return (
     <QueuePageShell
       eyebrow="Data Safety"
       title="Backups & Export Packages"
-      description="Create workspace snapshots, review marketing export packages, and keep customer data portable. Google Sheets and Drive sync should connect here later after OAuth is ready."
+      description="Create workspace snapshots, review marketing export packages, and keep customer data portable. Google Sheets and Drive sync connect here after OAuth is ready."
     >
       <section className="grid cards-grid">
         {[
@@ -57,6 +59,36 @@ export default async function ExportsPage() {
         <form action={createWorkspaceDataExportAction}>
           <button className="mini-button" type="submit">Create backup package</button>
         </form>
+      </section>
+
+      <section className="panel section-actions">
+        <h2>Import customers from another system</h2>
+        <p className="muted">Paste exported CSV from ServiceTitan, Jobber, Housecall Pro, HighLevel, or a spreadsheet. Ferocity validates first; nothing is imported until you approve the dry run.</p>
+        <form action={previewCustomerImportAction} className="form-stack">
+          <label>Source system<input name="sourceSystem" placeholder="Jobber" required /></label>
+          <label>Customer CSV<textarea name="csv" rows={8} placeholder={"name,email,phone,address,city,state,zip\nJane Customer,jane@example.com,555-0100,12 Main St,Austin,TX,78701"} required /></label>
+          <button className="button" type="submit">Validate dry run</button>
+        </form>
+        <ul className="list section-actions">
+          {importBatches.map((batch) => (
+            <li className="list-row" key={batch.id}>
+              <div>
+                <strong>{batch.source} / {batch.entityType}</strong>
+                <p className="muted">{batch.total} rows / {batch.valid} valid / {batch.invalid} invalid / {batch.applied} applied / {batch.createdAt}</p>
+              </div>
+              <div className="inline-actions">
+                <span className="pill">{batch.status.replaceAll("_", " ")}</span>
+                {batch.status === "ready" ? (
+                  <form action={applyCustomerImportAction}><input name="batchId" type="hidden" value={batch.id} /><button className="mini-button" type="submit">Apply import</button></form>
+                ) : null}
+                {["completed", "partial"].includes(batch.status) && batch.applied > 0 ? (
+                  <form action={rollbackCustomerImportAction}><input name="batchId" type="hidden" value={batch.id} /><button className="mini-button danger-button" type="submit">Rollback unused records</button></form>
+                ) : null}
+              </div>
+            </li>
+          ))}
+          {importBatches.length === 0 ? <li className="list-row"><span className="muted">No import batches yet.</span></li> : null}
+        </ul>
       </section>
 
       <QueueTable<WorkspaceDataExportRow>

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       provider: "marketplacepro",
-      status: "settings_stub_ready",
+      status: "settings_lookup_ready",
       message: "Pass marketplaceAccountId or vendorId to check whether a MarketplacePro vendor is mapped to Ferocity."
     });
   }

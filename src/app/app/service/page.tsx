@@ -8,8 +8,14 @@ function dateLabel(value: string | null) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-export default async function ServiceOpsPage() {
+export default async function ServiceOpsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ action?: string; customerId?: string; backTo?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
   const dashboard = await getServiceOpsDashboard();
+  const focusEstimate = params.action === "create-estimate";
 
   return (
     <QueuePageShell
@@ -128,6 +134,10 @@ export default async function ServiceOpsPage() {
           action={createEstimateAction}
           buttonLabel="Create estimate"
           customers={dashboard.customers}
+          defaultCustomerId={params.customerId}
+          focus={focusEstimate}
+          id="create-estimate"
+          backTo={params.backTo}
           title="Create estimate"
           titlePlaceholder="Roof repair estimate"
         />
@@ -215,9 +225,9 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function CustomerSelect({ customers }: { customers: { id: string; name: string }[] }) {
+function CustomerSelect({ customers, defaultCustomerId }: { customers: { id: string; name: string }[]; defaultCustomerId?: string }) {
   return (
-    <select name="customerId" required>
+    <select name="customerId" required defaultValue={defaultCustomerId ?? ""}>
       <option value="">Select customer</option>
       {customers.map((customer) => (
         <option key={customer.id} value={customer.id}>{customer.name}</option>
@@ -228,28 +238,38 @@ function CustomerSelect({ customers }: { customers: { id: string; name: string }
 
 function CreateMoneyPanel({
   action,
+  backTo,
   buttonLabel,
   customers,
+  defaultCustomerId,
+  focus = false,
+  id,
   title,
   titlePlaceholder
 }: {
   action: (formData: FormData) => Promise<void>;
+  backTo?: string;
   buttonLabel: string;
   customers: { id: string; name: string }[];
+  defaultCustomerId?: string;
+  focus?: boolean;
+  id?: string;
   title: string;
   titlePlaceholder: string;
 }) {
   return (
-    <section className="panel span-6 form-stack">
+    <section className={`panel span-6 form-stack ${focus ? "focused-panel" : ""}`} id={id}>
       <h2>{title}</h2>
+      {focus ? <p className="muted">You opened the quote shortcut. Create the estimate here, then continue with jobs, invoices, or the original lead.</p> : null}
       <form action={action} className="form-stack">
-        <CustomerSelect customers={customers} />
-        <input name="title" placeholder={titlePlaceholder} required />
+        <CustomerSelect customers={customers} defaultCustomerId={defaultCustomerId} />
+        <input name="title" placeholder={titlePlaceholder} required autoFocus={focus} />
         <input name="lineItem" placeholder="Line item" required />
         <input name="amount" inputMode="decimal" placeholder="Amount" />
         <textarea name="notes" rows={3} placeholder="Internal notes" />
         <button className="button" type="submit">{buttonLabel}</button>
       </form>
+      {backTo?.startsWith("/app/") ? <Link className="mini-button" href={backTo}>Back to source</Link> : null}
     </section>
   );
 }

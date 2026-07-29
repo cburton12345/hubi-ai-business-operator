@@ -69,7 +69,8 @@ export async function getCurrentWorkspaceId() {
 }
 
 export async function getWorkspaceOptions() {
-  const session = await getCurrentAppSession();
+  const [session, adminSession] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
+  if (!session && !adminSession) return [];
   const result = await queryPostgres<{
     id: string;
     name: string;
@@ -77,7 +78,7 @@ export async function getWorkspaceOptions() {
     account_type: string;
     role: string;
   }>(
-    session?.platformRole === "super_admin" || !session
+    session?.platformRole === "super_admin" || adminSession
       ? `
         select id, name, slug, account_type, 'owner'::text as role
         from public.tenants
@@ -93,7 +94,7 @@ export async function getWorkspaceOptions() {
         order by t.name
         limit 100
         `,
-    session?.platformRole === "super_admin" || !session ? [] : [session.userId]
+    session?.platformRole === "super_admin" || adminSession ? [] : [session!.userId]
   );
 
   return (result?.rows ?? []).map((row) => ({

@@ -157,7 +157,7 @@ export async function getAttentionCommandDashboard(): Promise<AttentionCommandDa
     snapshot.metrics.openLeads > 0
       ? {
           title: "Work open leads",
-          detail: `${snapshot.metrics.openLeads} open lead${snapshot.metrics.openLeads === 1 ? "" : "s"} need response, routing, or follow-up.`,
+          detail: `${snapshot.metrics.openLeads} open lead${snapshot.metrics.openLeads === 1 ? "" : "s"} ${snapshot.metrics.openLeads === 1 ? "needs" : "need"} response, routing, or follow-up.`,
           href: "/app/lead-command",
           urgency: "medium" as const
         }
@@ -306,10 +306,10 @@ export async function getAttentionCommandDashboard(): Promise<AttentionCommandDa
     ownerCenter.briefing,
     `Direction: ${direction.title}.`,
     nudges.length ? `${nudges.length} nudge${nudges.length === 1 ? "" : "s"} are active.` : "No nudges are needed right now.",
-    reminders.metrics.dueNow ? `${reminders.metrics.dueNow} reminder${reminders.metrics.dueNow === 1 ? "" : "s"} are due now.` : "No reminders are due now.",
+    reminders.metrics.dueNow ? `${reminders.metrics.dueNow} reminder${reminders.metrics.dueNow === 1 ? "" : "s"} ${reminders.metrics.dueNow === 1 ? "is" : "are"} due now.` : "No reminders are due now.",
     blockedActions ? `${blockedActions} automation item${blockedActions === 1 ? "" : "s"} blocked.` : "No automation blocks found.",
-    safetyBlocked ? `${safetyBlocked} safety block${safetyBlocked === 1 ? "" : "s"} need attention.` : "Safety board is not blocking live readiness.",
-    reports.providerGaps.length ? `${reports.providerGaps.length} provider gap${reports.providerGaps.length === 1 ? "" : "s"} keep some work manual.` : "Provider gaps are clear."
+    safetyBlocked ? `${safetyBlocked} safety block${safetyBlocked === 1 ? "" : "s"} ${safetyBlocked === 1 ? "needs" : "need"} attention.` : "Safety board is not blocking live readiness.",
+    reports.providerGaps.length ? `${reports.providerGaps.length} provider gap${reports.providerGaps.length === 1 ? "" : "s"} ${reports.providerGaps.length === 1 ? "keeps" : "keep"} some work manual.` : "Provider gaps are clear."
   ].join(" ");
 
   return {

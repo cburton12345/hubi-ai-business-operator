@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { liveActionPolicyForMode } from "@/lib/controls/autonomy-policy";
 import { queryPostgres } from "@/lib/db/postgres";
 
 const modeSchema = z.enum(["off", "draft_only", "review_required", "enabled"]);
@@ -15,15 +16,9 @@ const actionMap: Record<string, string[]> = {
   calendar_sync: ["calendar_sync"],
   publishing_queue: ["publish_content", "gbp_publish"],
   hosted_growth_pages: ["publish_content"],
-  follow_up_recovery: ["sms_send", "email_send"]
+  // Follow-up discovery may run automatically, while each communication
+  // channel keeps its own independent consent and live-send policy.
 };
-
-function policyStatusForMode(mode: z.infer<typeof modeSchema>) {
-  if (mode === "off") return "disabled";
-  if (mode === "draft_only") return "review_only";
-  if (mode === "review_required") return "approval_required";
-  return "approval_required";
-}
 
 async function applyServiceControl(input: {
   workspaceId: string;
@@ -59,6 +54,7 @@ async function applyServiceControl(input: {
 
   const actionKeys = actionMap[input.featureKey] ?? [];
   for (const actionKey of actionKeys) {
+    const policy = liveActionPolicyForMode(actionKey, input.mode);
     await queryPostgres(
       `
       update public.live_action_policies
@@ -71,12 +67,12 @@ async function applyServiceControl(input: {
       [
         input.workspaceId,
         actionKey,
-        policyStatusForMode(input.mode),
-        input.mode !== "enabled",
+        policy.status,
+        policy.requiresHumanApproval,
         JSON.stringify({
           controlledByFeature: input.featureKey,
           approvalMode: input.mode,
-          note: input.mode === "enabled" ? "Provider actions still require provider readiness before live sending or publishing." : "Service control updated.",
+          note: policy.reason,
           ...input.metadata
         })
       ]
@@ -152,7 +148,7 @@ export async function applyAutopilotPresetAction(formData: FormData) {
   const actor = await requirePermission("tenant:manage");
   const parsed = z
     .object({
-      preset: z.enum(["owner_shield", "growth_engine", "manual_first"])
+      preset: z.enum(["trusted_autopilot", "owner_shield", "growth_engine", "manual_first"])
     })
     .safeParse({
       preset: formData.get("preset")
@@ -162,6 +158,26 @@ export async function applyAutopilotPresetAction(formData: FormData) {
 
   const workspaceId = actor.workspace.id;
   const presets: Record<typeof parsed.data.preset, { label: string; controls: Array<{ featureKey: string; mode: z.infer<typeof modeSchema>; usageLimit: number | null; overagePolicy: z.infer<typeof overageSchema> }> }> = {
+    trusted_autopilot: {
+      label: "Trusted Autopilot",
+      controls: [
+        { featureKey: "ai_generation", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "website_import", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "seo_autopilot", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "ai_search_visibility", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "content_studio", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "media_library", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "authority_engine", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "construction_job_health", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "growth_attribution", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "follow_up_recovery", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "email_send", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "sms_send", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "review_requests", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "publishing_queue", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "payment_collection", mode: "review_required", usageLimit: null, overagePolicy: "block" }
+      ]
+    },
     owner_shield: {
       label: "Owner Shield",
       controls: [
@@ -213,6 +229,27 @@ export async function applyAutopilotPresetAction(formData: FormData) {
     });
   }
 
+  const workflowMode =
+    parsed.data.preset === "trusted_autopilot"
+      ? "auto_allowed"
+      : parsed.data.preset === "manual_first"
+        ? "draft_only"
+        : "approval_required";
+  await queryPostgres(
+    `
+    update public.ai_agent_workflows
+    set run_mode = $2,
+        output_policy_json = output_policy_json || jsonb_build_object(
+          'mode', $2::text,
+          'customerSendsControlledSeparately', true,
+          'publicPublishingControlledSeparately', true
+        ),
+        updated_at = now()
+    where tenant_id = $1 and status <> 'archived'
+    `,
+    [workspaceId, workflowMode]
+  );
+
   await queryPostgres(
     `
     insert into public.operator_timeline_events (
@@ -228,9 +265,10 @@ export async function applyAutopilotPresetAction(formData: FormData) {
     [
       workspaceId,
       `${preset.label} mode selected`,
-      `${preset.label} updated ${preset.controls.length} service controls without creating duplicate workflows.`,
+      `${preset.label} updated ${preset.controls.length} service controls and set existing AI workflows to ${workflowMode}.`,
       JSON.stringify({
         preset: parsed.data.preset,
+        workflowMode,
         controls: preset.controls.map((control) => ({ featureKey: control.featureKey, mode: control.mode }))
       })
     ]

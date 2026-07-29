@@ -2,11 +2,13 @@
 
 ## Environment Variable Policy
 
-- `DATABASE_URL`: server-only database connection string. Store in Render runtime secrets and local secret storage only.
+- `DATABASE_URL`: server-only database connection string. Store in Netlify runtime secrets and local secret storage only.
 - `ADMIN_ACCESS_TOKEN`: temporary admin access token. Use a long unique value and rotate before each external customer beta batch.
 - `NEXT_PUBLIC_SUPABASE_URL`: browser-safe Supabase project URL.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: browser-safe anon key. Do not use it for privileged server operations.
-- `SUPABASE_SERVICE_ROLE_KEY`: server-only privileged key. Store in Render runtime secrets only.
+- `SUPABASE_SERVICE_ROLE_KEY`: server-only privileged key. Store in Netlify runtime secrets only.
+- `CREDENTIAL_ENCRYPTION_KEY`: a dedicated, high-entropy server-only key for AES-256-GCM encryption of customer-owned provider credentials.
+- `SECURITY_HMAC_KEY`: a separate high-entropy server-only key for one-way pseudonymous abuse-control identifiers. Do not reuse the credential-encryption key.
 - `OPENAI_API_KEY`: optional server-only key for real AI provider calls.
 - `STRIPE_SECRET_KEY`: server-only Stripe key for checkout and the billing portal.
 - `STRIPE_WEBHOOK_SECRET`: server-only Stripe webhook signing secret.
@@ -24,8 +26,9 @@
 ## Before Customer Beta
 
 - Rotate any shared database passwords that were exposed outside the deployment platform.
-- Confirm `ADMIN_ACCESS_TOKEN` is long, unique, and stored only in Render.
-- Confirm `DATABASE_URL` is stored only in Render or local secret storage.
+- Confirm `ADMIN_ACCESS_TOKEN` is long, unique, and stored only in Netlify.
+- Confirm `DATABASE_URL` is stored only in Netlify or local secret storage.
+- Confirm `CREDENTIAL_ENCRYPTION_KEY` and `SECURITY_HMAC_KEY` are different random values of at least 32 bytes.
 - Confirm `OPENAI_API_KEY` is configured only if real AI provider calls are desired.
 - Confirm Netlify environment variables match the production env checklist.
 - Confirm Supabase migrations have been applied before depending on new database constraints.
@@ -45,7 +48,7 @@
 ## Migration Rollback / Forward Fix
 
 1. Stop the Render service if a migration causes startup failure.
-2. Inspect the failing migration name from Render logs.
+2. Inspect the failing migration name from Netlify logs.
 3. Apply a targeted forward-fix migration instead of editing already-applied migration files.
 4. Redeploy after the fix migration is committed.
 

@@ -1,6 +1,7 @@
 import { missingEnvVars } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getWorkspacePlanKey, planMeetsMinimum, planName } from "@/lib/controls/service-gates";
 
 export type SetupStepRow = {
   id: string;
@@ -22,6 +23,8 @@ export type SetupVerticalRow = {
   status: string;
   priority: string;
   minimumPlanKey: string;
+  planAllowed: boolean;
+  planRule: string;
   steps: SetupStepRow[];
 };
 
@@ -46,6 +49,8 @@ export type PlanFeatureRow = {
 };
 
 export type OperatorSetupDashboard = {
+  currentPlanKey: string;
+  currentPlanName: string;
   verticals: SetupVerticalRow[];
   providers: ProviderSetupRow[];
   planFeatures: PlanFeatureRow[];
@@ -53,6 +58,7 @@ export type OperatorSetupDashboard = {
 
 export async function getOperatorSetupDashboard(): Promise<OperatorSetupDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
+  const currentPlanKey = await getWorkspacePlanKey(workspaceId);
 
   const [verticalResult, stepResult, providerResult, planResult] = await Promise.all([
     queryPostgres<{
@@ -137,6 +143,8 @@ export async function getOperatorSetupDashboard(): Promise<OperatorSetupDashboar
   const steps = stepResult?.rows ?? [];
 
   return {
+    currentPlanKey,
+    currentPlanName: planName(currentPlanKey),
     verticals: (verticalResult?.rows ?? []).map((vertical) => ({
       key: vertical.vertical_key,
       name: vertical.name,
@@ -144,6 +152,10 @@ export async function getOperatorSetupDashboard(): Promise<OperatorSetupDashboar
       status: vertical.workspace_status ?? "not_started",
       priority: vertical.priority ?? "normal",
       minimumPlanKey: vertical.minimum_plan_key,
+      planAllowed: planMeetsMinimum(currentPlanKey, vertical.minimum_plan_key),
+      planRule: planMeetsMinimum(currentPlanKey, vertical.minimum_plan_key)
+        ? `Included on ${planName(currentPlanKey)}.`
+        : `Upgrade to ${planName(vertical.minimum_plan_key)} or higher.`,
       steps: steps
         .filter((step) => step.vertical_key === vertical.vertical_key)
         .map((step) => ({

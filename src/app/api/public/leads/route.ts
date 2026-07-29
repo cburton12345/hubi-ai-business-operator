@@ -3,8 +3,19 @@ import { createPublicLead } from "@/lib/leads/create-public-lead";
 import { publicLeadSchema } from "@/lib/leads/schemas";
 import { evaluateLeadSubmission } from "@/lib/leads/spam-guard";
 import { logAppError } from "@/lib/observability/log-error";
+import { consumePublicRateLimit } from "@/lib/security/rate-limit";
 
 export async function POST(request: NextRequest) {
+  const publicLimit = await consumePublicRateLimit({
+    request,
+    scope: "public-lead-intake",
+    limit: 30,
+    windowSeconds: 60 * 60
+  });
+  if (!publicLimit.allowed) {
+    return NextResponse.json({ error: "Too many submissions. Please try again later." }, { status: 429 });
+  }
+
   let body: unknown;
 
   try {

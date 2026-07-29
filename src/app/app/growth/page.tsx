@@ -78,7 +78,7 @@ export default async function GrowthOperatorPage() {
                   <p>{playbook.summary}</p>
                 </div>
                 <PlaybookList title="Start with" items={playbook.startWith} />
-                <PlaybookList title="Use later" items={playbook.useLater} />
+                <PlaybookList title="Use when useful" items={playbook.useLater} />
                 <PlaybookList title="Do not rush" items={playbook.avoidAtFirst} />
                 <PlaybookList title="Track proof" items={playbook.proofToTrack} />
               </section>
@@ -421,7 +421,7 @@ export default async function GrowthOperatorPage() {
               <li className="list-row">
                 <div>
                   <h3>No attribution sources yet</h3>
-                  <p className="muted">Future form/source tracking and manual source mapping will populate this without demo data.</p>
+                  <p className="muted">Form/source tracking and manual source mapping populate this without demo data.</p>
                 </div>
               </li>
             ) : null}
@@ -456,7 +456,7 @@ export default async function GrowthOperatorPage() {
 
         <section className="panel span-6">
           <h2>Review Flow</h2>
-          <p className="muted">Review requests, negative-review interception, and future GBP review readiness.</p>
+          <p className="muted">Review requests, negative-review interception, and GBP review readiness.</p>
           <ul className="list">
             {dashboard.reviewWorkflows.map((workflow) => (
               <li className="list-row" key={workflow.id}>
@@ -502,7 +502,7 @@ export default async function GrowthOperatorPage() {
               <li className="list-row">
                 <div>
                   <h3>No growth timeline events yet</h3>
-                  <p className="muted">Quality reviews, scans, publishing state changes, and follow-up actions will appear here.</p>
+                  <p className="muted">Run a quality review, scan, publishing state change, or follow-up action to populate this timeline.</p>
                 </div>
               </li>
             ) : null}

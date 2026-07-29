@@ -33,6 +33,10 @@ export type ServiceControl = {
 
 const featureOrder = [
   "ai_generation",
+  "construction_job_health",
+  "authority_engine",
+  "authority_link_intelligence",
+  "ai_search_visibility",
   "seo_autopilot",
   "hosted_growth_pages",
   "publishing_queue",

@@ -73,6 +73,17 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     query: {},
     liveActionRule: "Read and draft first. Page publishing, replies, ads, and spend require approval."
   },
+  tiktok: {
+    provider: "tiktok",
+    label: "TikTok",
+    authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    clientIdEnv: "TIKTOK_CLIENT_KEY",
+    clientSecretEnv: "TIKTOK_CLIENT_SECRET",
+    redirectUriEnv: "TIKTOK_OAUTH_REDIRECT_URI",
+    scopes: ["user.info.basic"],
+    query: {},
+    liveActionRule: "Creative drafts, scripts, and reporting first. Posting, creator actions, campaign creation, and spend require approval."
+  },
   reddit: {
     provider: "reddit",
     label: "Reddit",

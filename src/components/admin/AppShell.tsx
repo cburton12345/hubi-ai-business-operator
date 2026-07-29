@@ -1,23 +1,52 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspace, getWorkspaceOptions } from "@/lib/workspace/current-workspace";
+import packageJson from "../../../package.json";
 
 const commandShortcuts = [
   ["Show me what matters today", "/app/attention-command"],
-  ["Create a quote", "/app/service"],
-  ["Follow up with leads", "/app/lead-command"],
+  ["Create an estimate", "/app/job-tracker#new-estimate"],
+  ["Check job health", "/app/job-tracker/health"],
   ["Collect unpaid invoices", "/app/cash-collection"],
-  ["Plan today's workers", "/app/crew-itinerary"]
 ];
 
+const primaryNavigation = [
+  { label: "Today", href: "/app", paths: ["/app", "/app/attention-command"] },
+  { label: "Customers", href: "/app/lead-command", paths: ["/app/lead-command", "/app/leads", "/app/messaging"] },
+  { label: "Schedule", href: "/app/schedule", paths: ["/app/schedule"] },
+  {
+    label: "Work",
+    href: "/app/job-tracker",
+    paths: ["/app/job-tracker", "/app/service", "/app/estimator", "/app/operations-workforce", "/app/purchasing"]
+  },
+  { label: "Money", href: "/app/cash-collection", paths: ["/app/cash-collection", "/app/billing"] },
+  {
+    label: "Growth",
+    href: "/app/growth",
+    paths: ["/app/growth", "/app/marketing", "/app/seo", "/app/review", "/app/authority", "/app/revenue-growth"]
+  },
+  { label: "Insights", href: "/app/reports", paths: ["/app/reports"] }
+] as const;
+
+function matchesNavigationPath(currentPath: string, paths: readonly string[]) {
+  return paths.some((path) => currentPath === path || (path !== "/app" && currentPath.startsWith(`${path}/`)));
+}
+
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  const [session, workspace, workspaces] = await Promise.all([
+  const [session, workspace, workspaces, requestHeaders] = await Promise.all([
     getCurrentAppSession(),
     getCurrentWorkspace(),
-    getWorkspaceOptions()
+    getWorkspaceOptions(),
+    headers()
   ]);
+  const releaseId = (process.env.DEPLOY_ID || process.env.COMMIT_REF || "local").slice(0, 8);
+  const currentPath = requestHeaders.get("x-ferocity-app-path")?.split("?")[0] ?? "/app";
+  const showCompactCommand = currentPath !== "/app";
+  const isPlatformAdmin = !session || session.platformRole === "super_admin";
 
   return (
     <main className="page-shell">
@@ -27,72 +56,58 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             Ferocity
           </Link>
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
-            <Link href="/app">Command Center</Link>
-            <Link href="/app/welcome">Start Here</Link>
-            <Link href="/app/attention-command">Needs Attention</Link>
-            <Link href="/app/ai-workforce">AI Workforce</Link>
-            <Link href="/app/lead-command">Leads & Customers</Link>
-            <Link href="/app/service-command">Jobs</Link>
-            <Link href="/app/operations-workforce">Team</Link>
-            <Link href="/app/cash-collection">Money</Link>
-            <Link href="/app/growth-calendar">Growth</Link>
-            <Link href="/app/reports">Insights</Link>
-            <Link href="/app/settings">Settings</Link>
+            {primaryNavigation.map((item) => {
+              const active = matchesNavigationPath(currentPath, item.paths);
+              return (
+                <Link href={item.href} key={item.href} aria-current={active ? "page" : undefined}>
+                  {item.label}
+                </Link>
+              );
+            })}
             <details className="nav-menu">
-              <summary>More</summary>
+              <summary>All Tools</summary>
               <div className="nav-menu-panel">
                 <section>
                   <p>Start & AI</p>
                   <Link href="/app/welcome">Start Here</Link>
-                  <Link href="/app/ai-workforce">AI Workforce</Link>
+                  <Link href="/app/ai-workforce">Ask Ferocity</Link>
+                  <Link href="/app/office-manager">AI Office Manager</Link>
+                  <Link href="/app/managed-operator">Managed Operator</Link>
                   <Link href="/app/build-system">Guided Setup</Link>
+                  <Link href="/app/gap-scan">Business Gap Scan</Link>
                   <Link href="/app/autopilot">Autopilot</Link>
                   <Link href="/app/business-brain">Business Info</Link>
                   <Link href="/app/ai-monitoring">Daily Brief</Link>
-                  <Link href="/app/notifications">Notifications</Link>
-                  <Link href="/app/role-views">Choose A View</Link>
-                  <Link href="/app/owner-command-center">Owner Events</Link>
-                  <Link href="/app/personal-ops">Private Owner Tasks</Link>
-                  <Link href="/app/automation-timeline">Automation Timeline</Link>
-                  <Link href="/app/automation-command">Automation Rules</Link>
-                  <Link href="/app/ai-walkthrough">AI Walkthrough</Link>
-                  <Link href="/app/onboarding">Onboarding</Link>
-                  <Link href="/app/sample-tour">Sample Tour</Link>
+                  <Link href="/app/feature-readiness">What Works Now</Link>
                   <Link href="/install">Install App</Link>
                 </section>
                 <section>
                   <p>Customers & Work</p>
-                  <Link href="/app/attention-command">Needs Attention</Link>
                   <Link href="/app/lead-command">Leads & Customers</Link>
-                  <Link href="/app/leads">Leads</Link>
-                  <Link href="/app/service-command">Jobs</Link>
-                  <Link href="/app/employee">Employee View</Link>
-                  <Link href="/app/service">Add / Edit Work</Link>
-                  <Link href="/app/crew-itinerary">Crew Day</Link>
-                  <Link href="/app/calendar">Calendar</Link>
-                  <Link href="/app/tasks">Tasks</Link>
-                  <Link href="/app/operations-workforce">Team & Schedule</Link>
-                  <Link href="/app/labor-bench">Labor Bench</Link>
                   <Link href="/app/job-tracker">Jobs & Money</Link>
-                  <Link href="/app/cash-collection">Cash Collection</Link>
-                  <Link href="/app/operations-workforce#time-clock">Punch In / Out</Link>
-                  <Link href="/app/operations-workforce#schedule">Schedule Work</Link>
-                  <Link href="/app/operations-workforce#field-work">Field Costs / Proof</Link>
-                  <Link href="/app/operations-workforce#payroll">Payroll Review</Link>
-                  <Link href="/app/text-queue">Manual Text Drafts</Link>
+                  <Link href="/app/job-tracker/health">Construction Job Health</Link>
+                  <Link href="/app/estimator">AI Estimator</Link>
+                  <Link href="/app/pricebook">Pricebook & Memberships</Link>
+                  <Link href="/app/purchasing">Purchasing & Accounting</Link>
+                  <Link href="/employee">Employee App</Link>
+                  <Link href="/app/schedule">Schedule & Dispatch</Link>
+                  <Link href="/app/calendar">Marketing / AI Calendar</Link>
+                  <Link href="/app/team">Hiring & Team Readiness</Link>
+                  <Link href="/app/labor-bench">Labor Bench</Link>
+                  <Link href="/app/messaging">Messaging Engine</Link>
                 </section>
                 <section>
-                  <p>Growth & Customers</p>
+                  <p>Growth</p>
                   <Link href="/app/customer-touchpoints">Website / Public Links</Link>
-                  <Link href="/app/growth-calendar">Growth Calendar</Link>
+                  <Link href="/app/growth-funnels">Growth Funnels</Link>
+                  <Link href="/app/revenue-growth">Revenue Growth</Link>
+                  <Link href="/app/authority">Authority Engine</Link>
+                  <Link href="/app/authority/links">Backlinks & Link Authority</Link>
                   <Link href="/app/publishing-hub">Publishing Queue</Link>
                   <Link href="/app/marketing-os">Marketing</Link>
                   <Link href="/app/website-grader">Assessments</Link>
-                  <Link href="/app/website">Website Connector</Link>
                   <Link href="/app/proof">Customer Proof</Link>
-                  <Link href="/app/marketing">Marketing AI</Link>
                   <Link href="/app/seo">SEO</Link>
-                  <Link href="/app/sites">Growth Sites</Link>
                   <Link href="/app/review">Reviews</Link>
                   <Link href="/app/forms">Forms</Link>
                 </section>
@@ -103,8 +118,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/automation-timeline">Automation Timeline</Link>
                   <Link href="/app/workflows">Workflows</Link>
                   <Link href="/app/alerts">Alerts</Link>
-                  <Link href="/app/runbooks">Runbooks</Link>
-                  <Link href="/app/operator-depth">Advanced Diagnostics</Link>
                   <Link href="/app/actions">Action Queue</Link>
                   <Link href="/app/reports">Reports</Link>
                   <Link href="/app/recommendations">Recommendations</Link>
@@ -112,51 +125,54 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 <section>
                   <p>Settings</p>
                   <Link href="/app/setup">Setup</Link>
-                  <Link href="/app/business-brain">Business Info</Link>
                   <Link href="/app/brands">Brands</Link>
-                  <Link href="/app/workspaces">Workspaces</Link>
+                  {workspaces.length > 1 ? <Link href="/app/workspaces">Businesses</Link> : null}
                   <Link href="/app/integrations">Integrations</Link>
                   <Link href="/app/controls">Controls</Link>
+                  <Link href="/app/ai-control">AI Cost Controls</Link>
                   <Link href="/app/billing">Billing</Link>
-                  <Link href="/app/access">Access</Link>
-                  <Link href="/app/access-requests">Public Requests</Link>
-                  <Link href="/app/credentials">Credentials</Link>
-                  <Link href="/app/webhooks">Webhooks</Link>
+                  <Link href="/app/access">Team Access</Link>
+                  <Link href="/app/credentials">Connected Account Keys</Link>
                   <Link href="/app/exports">Backups / Exports</Link>
                 </section>
-                <section>
-                  <p>Advanced</p>
-                  <Link href="/app/feature-map">Feature Map</Link>
-                  <Link href="/app/safety-readiness">Safety & Readiness</Link>
-                  <Link href="/app/system-health">System Health</Link>
-                  <Link href="/app/go-live">Go Live</Link>
-                  <Link href="/app/qa">Operational QA</Link>
-                  <Link href="/app/safety">Safety</Link>
-                  <Link href="/app/lifeops-connections">Connected Systems</Link>
-                  <Link href="/app/beta">Beta</Link>
-                </section>
+                {isPlatformAdmin ? (
+                  <section>
+                    <p>Advanced</p>
+                    <Link href="/app/safety-readiness">Safety & Readiness</Link>
+                    <Link href="/app/system-health">System Health</Link>
+                    <Link href="/app/go-live">Go Live</Link>
+                    <Link href="/app/qa">Operational QA</Link>
+                    <Link href="/app/operator-depth">Advanced Diagnostics</Link>
+                    <Link href="/app/webhooks">Webhooks</Link>
+                    <Link href="/app/lifeops-connections">Connected Systems</Link>
+                  </section>
+                ) : null}
               </div>
             </details>
           </nav>
-          <form action={switchWorkspaceAction} className="workspace-switcher">
-            <input name="next" type="hidden" value="/app" />
-            <select name="workspaceId" defaultValue={workspace.id}>
-              {workspaces.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-            <button className="mini-button" type="submit">
-              Switch
-            </button>
-          </form>
-          <Link className="button app-builder-button" href="/app/ai-workforce">
-            AI Workforce
-          </Link>
+          {workspaces.length > 1 ? (
+            <form action={switchWorkspaceAction} className="workspace-switcher">
+              <input name="next" type="hidden" value="/app" />
+              <select name="workspaceId" defaultValue={workspace.id} aria-label="Current business">
+                {workspaces.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+              <button className="mini-button" type="submit">
+                Switch
+              </button>
+            </form>
+          ) : null}
           <div className="session-chip">
             <strong>{workspace.name}</strong>
-            <span className="muted">{session ? `${session.email} / ${workspace.role}` : `Admin token / ${workspace.role}`}</span>
+            <span className="muted">{session ? `Signed in as ${session.email}` : "Platform recovery session"}</span>
+            {isPlatformAdmin ? (
+              <span className="muted" title="Use this when reporting a display or deployment mismatch.">
+                Ferocity v{packageJson.version} / {releaseId}
+              </span>
+            ) : null}
           </div>
           <form action={logoutUser}>
             <button className="mini-button" type="submit">
@@ -164,17 +180,27 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </form>
         </header>
-        <section className="operator-command-strip panel" aria-label="Ferocity command shortcuts">
-          <Link className="operator-command-input" href="/app/ai-workforce">
-            <span>Ferocity checks the business and suggests the next move.</span>
-            <strong>Open AI Workforce</strong>
-          </Link>
-          <div className="operator-command-chips">
-            {commandShortcuts.map(([label, href]) => (
-              <Link href={href} key={label}>{label}</Link>
-            ))}
-          </div>
-        </section>
+        {showCompactCommand ? (
+          <section className="operator-command-strip panel" aria-label="Ferocity command shortcuts">
+            <form className="operator-command-input" action={executeAiWorkforceCommandSimpleAction}>
+              <label className="sr-only" htmlFor="ferocity-command">Tell Ferocity what to do</label>
+              <input
+                id="ferocity-command"
+                name="command"
+                placeholder="Tell Ferocity what to do: log hours, add a receipt, make a video ad, follow up, plan tomorrow..."
+                minLength={8}
+                maxLength={2000}
+                required
+              />
+              <button className="mini-button" type="submit">Ask Ferocity</button>
+            </form>
+            <div className="operator-command-chips">
+              {commandShortcuts.map(([label, href]) => (
+                <Link href={href} key={label}>{label}</Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
         {children}
       </section>
     </main>

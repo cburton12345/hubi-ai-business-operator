@@ -2,7 +2,14 @@ import Link from "next/link";
 import { ArrowRight, KeyRound, ShieldCheck, Unplug } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getIntegrationRows } from "@/lib/integrations/get-integrations";
-import { updateIntegrationReadinessAction } from "./actions";
+import { getProviderIntegrationRequests } from "@/lib/integrations/get-provider-requests";
+import {
+  getProviderCapabilityReadiness,
+  providerLaneStatusLabel,
+  providerLaneTone,
+  type ProviderLane
+} from "@/lib/integrations/provider-lane-readiness";
+import { requestProviderIntegrationAction, updateIntegrationReadinessAction } from "./actions";
 
 function ownerLabel(value: string) {
   return value === "ferocity_managed" ? "Ferocity managed" : "Customer owned";
@@ -39,7 +46,11 @@ export default async function IntegrationsPage({
 }) {
   const params = await searchParams;
   const notice = setupNotice(params);
-  const rows = await getIntegrationRows();
+  const [rows, capabilityLanes, providerRequests] = await Promise.all([
+    getIntegrationRows(),
+    getProviderCapabilityReadiness(),
+    getProviderIntegrationRequests()
+  ]);
   const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
   const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
   const connected = rows.filter((row) => row.status === "connected" || row.accountStatus === "connected").length;
@@ -49,14 +60,14 @@ export default async function IntegrationsPage({
   return (
     <QueuePageShell
       eyebrow="Connect Tools"
-      title="Connect The Outside Tools"
-      description="Connect the tools the business already uses: email, payments, calendars, websites, ads, reviews, and other systems."
+      title="Optional Outside Connections"
+      description="Ferocity works without every outside account. Connect only the tools a business already uses or specifically wants synchronized."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
             <h2>Connection Readiness</h2>
-            <p className="muted">Connect tools in steps. Ferocity can still help before every account is connected.</p>
+            <p className="muted">These are optional capability upgrades, not a launch checklist. Ferocity&apos;s native operations remain available without them.</p>
           </div>
           <div className="inline-actions">
             <Link className="button" href="/app/build-system">
@@ -64,6 +75,12 @@ export default async function IntegrationsPage({
             </Link>
             <Link className="button secondary-button" href="/app/marketing-os">
               Marketing
+            </Link>
+            <Link className="button secondary-button" href="/docs/provider-account-setup">
+              Provider Setup Packet
+            </Link>
+            <Link className="button secondary-button" href="/docs/ad-credit-promotion-tracker">
+              Ad Credit Checklist
             </Link>
           </div>
         </div>
@@ -73,7 +90,7 @@ export default async function IntegrationsPage({
             <strong>{connected}</strong>
           </section>
           <section className="panel span-4 metric">
-            <span className="muted">Need connection</span>
+            <span className="muted">Optional connections</span>
             <strong>{missingKeys}</strong>
           </section>
           <section className="panel span-4 metric">
@@ -81,6 +98,73 @@ export default async function IntegrationsPage({
             <strong>{liveActions}</strong>
           </section>
         </div>
+      </section>
+
+      <section className="panel section-actions" id="request-provider">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Bring Your Own Provider</h2>
+            <p className="muted">
+              Already use a different SMS, phone, video, email, storage, payment, or advertising provider? Ask Ferocity
+              to connect it. Supported providers can be connected now; new providers are reviewed and prioritized by customer demand.
+            </p>
+          </div>
+          <span className="pill">BYO provider</span>
+        </div>
+        <form action={requestProviderIntegrationAction} className="form-stack">
+          <div className="three-col">
+            <label>
+              Provider name
+              <input name="providerName" placeholder="Provider or service name" required />
+            </label>
+            <label>
+              Category
+              <select name="capabilityCategory" defaultValue="other">
+                <option value="sms">SMS</option>
+                <option value="voice">Phone / voice AI</option>
+                <option value="video">AI video</option>
+                <option value="image">AI images</option>
+                <option value="email">Email</option>
+                <option value="storage">Storage</option>
+                <option value="payments">Payments</option>
+                <option value="accounting">Accounting</option>
+                <option value="calendar">Calendar</option>
+                <option value="advertising">Advertising</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              Provider website
+              <input name="providerUrl" type="url" placeholder="https://provider.example" />
+            </label>
+          </div>
+          <label>
+            How should Ferocity use your provider?
+            <textarea name="useCase" placeholder="Example: use our existing number for the AI receptionist and preserve call recordings in Ferocity." required />
+          </label>
+          <label className="checkbox-row">
+            <input name="currentlyUsing" type="checkbox" value="true" />
+            <span>We already use and pay for this provider.</span>
+          </label>
+          <button className="button" type="submit">Request a BYO connection</button>
+        </form>
+        {providerRequests.length ? (
+          <ul className="list">
+            {providerRequests.map((request) => (
+              <li className="list-row" key={request.id}>
+                <div>
+                  <strong>{request.providerName}</strong>
+                  <p className="muted">
+                    {request.category.replaceAll("_", " ")}
+                    {request.currentlyUsing ? " / already in use" : ""}
+                    {request.requestCount > 1 ? ` / requested ${request.requestCount} times` : ""}
+                  </p>
+                </div>
+                <span className="pill medium">{request.status.replaceAll("_", " ")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       {notice ? (
@@ -93,7 +177,7 @@ export default async function IntegrationsPage({
               <p className="muted">{notice.body}</p>
             </div>
             <Link className="button secondary-button" href="/app/credentials">
-              Finish Later
+              Open credential setup
             </Link>
           </div>
         </section>
@@ -132,6 +216,50 @@ export default async function IntegrationsPage({
         </div>
       </section>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Best Connection Path</h2>
+            <p className="muted">
+              Most owners should click Connect Account, sign in on the provider page, approve access, and return to Ferocity.
+              Manual keys are for advanced accounts or providers that do not support a clean sign-in flow yet.
+            </p>
+          </div>
+          <Link className="button secondary-button" href="/app/credentials">
+            Advanced keys
+          </Link>
+        </div>
+      </section>
+
+      <section className="panel span-12 section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Connected Accounts</h2>
+            <p className="muted">
+              Each capability shows two lanes: the business&apos;s own connected account and Ferocity&apos;s managed option. These are tracked separately so
+              one being connected never pretends the other one is ready.
+            </p>
+          </div>
+          <span className="pill">{capabilityLanes.length} capabilities</span>
+        </div>
+        <div className="grid">
+          {capabilityLanes.map((capability) => (
+            <section className="span-6" key={capability.capabilityKey}>
+              <div className="list-row flush-row">
+                <div>
+                  <h3>{capability.label}</h3>
+                  <p className="muted">{capability.description}</p>
+                </div>
+              </div>
+              <div className="two-col">
+                <ProviderLaneCard lane={capability.customerOwned} title="Customer account" />
+                <ProviderLaneCard lane={capability.ferocityManaged} title="Ferocity managed" />
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+
       <section className="panel span-12 section-actions">
         <div className="list-row flush-row">
           <div>
@@ -166,6 +294,35 @@ export default async function IntegrationsPage({
         </div>
       </section>
     </QueuePageShell>
+  );
+}
+
+function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }) {
+  return (
+    <div className="status-card">
+      <div className="list-row flush-row">
+        <div>
+          <strong>{title}</strong>
+          <p className="muted">{lane.displayName}</p>
+        </div>
+        <span className={`pill ${providerLaneTone(lane)}`}>{providerLaneStatusLabel(lane)}</span>
+      </div>
+      <p className="muted">{lane.plainLanguageStatus}</p>
+      <ul className="list section-actions">
+        <li className="list-row">
+          <strong>Provider</strong>
+          <span className="muted">{lane.providerKey}</span>
+        </li>
+        <li className="list-row">
+          <strong>Credentials</strong>
+          <span className="pill">{plainConnectionStatus(lane.credentialsStatus)}</span>
+        </li>
+        <li className="list-row">
+          <strong>Live actions</strong>
+          <span className={`pill ${lane.liveActionsEnabled ? "high" : ""}`}>{lane.liveActionsEnabled ? "on" : "off"}</span>
+        </li>
+      </ul>
+    </div>
   );
 }
 

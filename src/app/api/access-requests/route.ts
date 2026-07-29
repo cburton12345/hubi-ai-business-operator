@@ -21,6 +21,10 @@ const accessRequestSchema = z.object({
   mainGoal: z.string().trim().max(120).optional(),
   leadSources: z.array(z.string().trim().max(80)).optional(),
   autopilotAreas: z.array(z.string().trim().max(80)).optional(),
+  funnelBottlenecks: z.array(z.string().trim().max(80)).optional(),
+  monthlyLeadVolume: z.string().trim().max(80).optional(),
+  urgency: z.string().trim().max(80).optional(),
+  preferredCallWindow: z.string().trim().max(180).optional(),
   autonomyMode: z.string().trim().max(80).optional(),
   message: z.string().trim().max(2500).optional(),
   sourceDetail: z.string().trim().max(240).optional(),
@@ -93,11 +97,14 @@ function normalizeLeadSources(values: string[] | undefined) {
 function normalizeAutopilotAreas(values: string[] | undefined) {
   const allowed = new Set([
     "owner_briefing",
+    "daily_briefing",
     "lead_follow_up",
     "estimate_chasing",
+    "estimate_follow_up",
     "invoice_collection",
     "jobs_tasks",
     "reviews_proof",
+    "reviews_trust",
     "seo_marketing",
     "website_tracking"
   ]);
@@ -512,9 +519,10 @@ async function createStarterWorkspace(input: {
   const workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 5).toLowerCase()}`;
   const brandSlug = slugify(workspaceName) || "main-brand";
   const planKey =
-    input.requestedPlan && ["free", "job_tracker", "starter", "growth", "operator"].includes(input.requestedPlan)
+    input.requestedPlan && ["free", "job_tracker", "starter", "growth", "operator", "managed_operator"].includes(input.requestedPlan)
       ? input.requestedPlan
       : "free";
+  const manualBillingPlan = planKey === "managed_operator";
   const token = randomSessionToken();
 
   const workspaceResult = await queryPostgres<{ id: string; slug: string }>(
@@ -523,7 +531,13 @@ async function createStarterWorkspace(input: {
     values ($1, $2, 'customer', $4, $5, $3, 'not_started')
     returning id, slug
     `,
-    [workspaceName, workspaceSlug, planKey, planKey === "free" ? "active" : "trial", planKey === "free" ? "free" : "trialing"]
+    [
+      workspaceName,
+      workspaceSlug,
+      planKey,
+      planKey === "free" || manualBillingPlan ? "active" : "trial",
+      manualBillingPlan ? "manual" : planKey === "free" ? "free" : "trialing"
+    ]
   );
   const workspace = workspaceResult?.rows[0];
   if (!workspace) return null;
@@ -640,10 +654,11 @@ async function createStarterWorkspace(input: {
       JSON.stringify({
         autoCreatedFromAccessRequest: input.requestId,
         stripeConnected: false,
-        liveBilling: false
+        liveBilling: false,
+        manualTermsRequired: manualBillingPlan
       }),
-      planKey === "free" ? "active" : "trialing",
-      planKey === "free" ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      manualBillingPlan ? "manual" : planKey === "free" ? "active" : "trialing",
+      planKey === "free" || manualBillingPlan ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
     ]
   );
 
@@ -732,6 +747,10 @@ export async function POST(request: NextRequest) {
     mainGoal: String(formData.get("mainGoal") ?? ""),
     leadSources: formData.getAll("leadSources").map(String),
     autopilotAreas: formData.getAll("autopilotAreas").map(String),
+    funnelBottlenecks: formData.getAll("funnelBottlenecks").map(String),
+    monthlyLeadVolume: String(formData.get("monthlyLeadVolume") ?? ""),
+    urgency: String(formData.get("urgency") ?? ""),
+    preferredCallWindow: String(formData.get("preferredCallWindow") ?? ""),
     autonomyMode: String(formData.get("autonomyMode") ?? ""),
     message: String(formData.get("message") ?? ""),
     sourceDetail: String(formData.get("sourceDetail") ?? ""),
@@ -807,6 +826,10 @@ export async function POST(request: NextRequest) {
         submittedAt: new Date().toISOString(),
         leadSources: normalizeLeadSources(parsed.data.leadSources),
         autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+        funnelBottlenecks: parsed.data.funnelBottlenecks ?? [],
+        monthlyLeadVolume: emptyToNull(parsed.data.monthlyLeadVolume),
+        urgency: emptyToNull(parsed.data.urgency),
+        preferredCallWindow: emptyToNull(parsed.data.preferredCallWindow),
         autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
         websiteConnectionPlan: emptyToNull(parsed.data.websiteConnectionPlan),
         launchMode: parsed.data.createWorkspace === "on" ? "auto_workspace_requested" : "request_access_no_auto_workspace",
@@ -846,6 +869,10 @@ export async function POST(request: NextRequest) {
       mainGoal: parsed.data.mainGoal,
       leadSources: normalizeLeadSources(parsed.data.leadSources),
       autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
+      funnelBottlenecks: parsed.data.funnelBottlenecks ?? [],
+      monthlyLeadVolume: parsed.data.monthlyLeadVolume,
+      urgency: parsed.data.urgency,
+      preferredCallWindow: parsed.data.preferredCallWindow,
       autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
       websiteConnectionPlan: parsed.data.websiteConnectionPlan,
       createWorkspace: parsed.data.createWorkspace === "on"

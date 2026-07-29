@@ -1,5 +1,7 @@
 import { manualSmsHref } from "@/lib/communication/manual-sms";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
+import type { CommunicationMethod } from "@/lib/preferences/communication-preferences";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type ManualTextQueueRow = {
@@ -12,6 +14,9 @@ export type ManualTextQueueRow = {
   status: string;
   scheduledFor: string;
   smsHref: string;
+  email: string | null;
+  resolvedMethod: CommunicationMethod;
+  resolvedScope: string;
 };
 
 export type ManualTextQueueDashboard = {
@@ -30,7 +35,7 @@ function dateLabel(value: string | null) {
 }
 
 export async function getManualTextQueue(): Promise<ManualTextQueueDashboard> {
-  const tenantId = await getCurrentWorkspaceId();
+  const [tenantId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
   const [metrics, rows] = await Promise.all([
     queryPostgres<{
       ready_texts: string;
@@ -65,28 +70,79 @@ export async function getManualTextQueue(): Promise<ManualTextQueueDashboard> {
       attempt_number: string | null;
       status: string;
       scheduled_for: string | null;
+      email: string | null;
+      resolved_method: CommunicationMethod | null;
+      resolved_scope: string | null;
     }>(
       `
       select
-        id,
-        subject,
-        target_type,
-        recipient_label,
-        payload_json->>'body' as body,
-        metadata_json->>'attemptNumber' as attempt_number,
-        status,
-        scheduled_for
-      from public.outbound_action_queue
-      where tenant_id = $1
-        and action_type = 'sms_send'
-        and provider_key = 'manual_sms'
-        and status in ('needs_review','approved','queued')
+        q.id,
+        q.subject,
+        q.target_type,
+        q.recipient_label,
+        q.payload_json->>'body' as body,
+        q.metadata_json->>'attemptNumber' as attempt_number,
+        q.status,
+        q.scheduled_for,
+        coalesce(l.email, invoice_customer.email) as email,
+        pref.value_json->>'method' as resolved_method,
+        pref.scope_type as resolved_scope
+      from public.outbound_action_queue q
+      left join public.leads l
+        on l.tenant_id = q.tenant_id and l.id = q.target_id and q.target_type = 'lead'
+      left join public.service_invoices invoice
+        on invoice.tenant_id = q.tenant_id and invoice.id = q.target_id and q.target_type = 'service_invoice'
+      left join public.customers invoice_customer
+        on invoice_customer.tenant_id = invoice.tenant_id and invoice_customer.id = invoice.customer_id
+      left join lateral (
+        select
+          case when p.preference_key = 'contact_profile'
+            then jsonb_build_object('method', p.value_json->>'preferredMethod')
+            else p.value_json
+          end as value_json,
+          p.scope_type
+        from public.scoped_saved_preferences p
+        where p.tenant_id = q.tenant_id
+          and p.preference_domain = 'communication'
+          and p.preference_key in ('delivery_method', 'contact_profile')
+          and p.status = 'active'
+          and (
+            (
+              p.scope_type = 'contact'
+              and p.scope_key in (
+                lower(coalesce(q.recipient_label, '')),
+                case
+                  when q.target_type = 'lead' and l.id is not null then 'lead:' || l.id::text
+                  when invoice_customer.id is not null then 'customer:' || invoice_customer.id::text
+                  else lower(coalesce(q.recipient_label, ''))
+                end
+              )
+            )
+            or (p.scope_type = 'workflow' and p.scope_key = lower(coalesce(nullif(q.metadata_json->>'queueType', ''), q.action_type)))
+            or (p.scope_type = 'user' and p.scope_key = lower(coalesce($2::text, '')))
+            or (p.scope_type = 'organization' and p.scope_key = 'default')
+          )
+        order by case p.scope_type
+          when 'contact' then 400
+          when 'workflow' then 300
+          when 'user' then 200
+          when 'organization' then 100
+          else 0
+        end desc,
+        case p.preference_key when 'delivery_method' then 2 else 1 end desc,
+        p.updated_at desc
+        limit 1
+      ) pref on true
+      where q.tenant_id = $1
+        and q.action_type = 'sms_send'
+        and q.provider_key = 'manual_sms'
+        and q.status in ('needs_review','approved','queued')
       order by
-        case target_type when 'service_invoice' then 1 when 'lead' then 2 else 3 end,
-        coalesce(scheduled_for, created_at) asc
+        case q.target_type when 'service_invoice' then 1 when 'lead' then 2 else 3 end,
+        coalesce(q.scheduled_for, q.created_at) asc
       limit 80
       `,
-      [tenantId]
+      [tenantId, session?.userId ?? ""]
     )
   ]);
 
@@ -112,7 +168,10 @@ export async function getManualTextQueue(): Promise<ManualTextQueueDashboard> {
         attempt: Number(row.attempt_number ?? 1),
         status: row.status,
         scheduledFor: dateLabel(row.scheduled_for),
-        smsHref: manualSmsHref(recipient, body)
+        smsHref: manualSmsHref(recipient, body),
+        email: row.email,
+        resolvedMethod: row.resolved_method ?? "native_sms",
+        resolvedScope: row.resolved_scope ?? "this action"
       };
     })
   };

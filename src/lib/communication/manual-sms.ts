@@ -7,6 +7,5 @@ function normalizePhone(phone?: string | null) {
 
 export function manualSmsHref(phone: string | null | undefined, body: string) {
   const normalized = normalizePhone(phone);
-  const separator = normalized ? "?" : "?";
-  return `sms:${normalized}${separator}&body=${encodeURIComponent(body)}`;
+  return `sms:${normalized}?body=${encodeURIComponent(body)}`;
 }

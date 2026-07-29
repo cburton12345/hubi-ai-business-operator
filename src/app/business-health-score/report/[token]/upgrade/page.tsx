@@ -86,7 +86,7 @@ export default async function AiGrowthReportUpgradePage({
   }
 
   const fullReportItems = [
-    "What is leaking money now",
+    "Where income is being missed",
     "What Ferocity can set up first",
     "Local SEO and service-area plan",
     "Review and reputation plan",
@@ -113,8 +113,8 @@ export default async function AiGrowthReportUpgradePage({
           <p className="eyebrow">Business Autopilot Blueprint</p>
           <h1>Turn this score into the first Ferocity setup plan.</h1>
           <p className="muted">
-            {report.company_name || "This business"} scored {report.score}/100. The Blueprint shows what is leaking money,
-            what Ferocity can help fix, and which lead, review, SEO, follow-up, job, and money workflows should be set up first.
+            {report.company_name || "This business"} scored {report.score}/100. The Blueprint shows where income is being missed,
+            what Ferocity can help handle, and which lead, review, SEO, follow-up, job, and money workflows should be set up first.
           </p>
           {notice ? <p className="success-panel">{notice}</p> : null}
         </section>

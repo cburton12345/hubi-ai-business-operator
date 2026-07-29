@@ -134,11 +134,11 @@ function fallbackGuidance(stats: WorkspaceStats | null, integrations: Integratio
 
   const emailReady = integrations.some((item) => ["email_provider", "resend_shared"].includes(item.provider) && (item.status === "connected" || item.credentials_status === "configured"));
   if (!emailReady) {
-    missing.push("Verified email is not connected yet.");
+    missing.push("Verified email needs connection.");
     nextActions.push({
       title: "Use app alerts first, then connect email",
       why: "Ferocity can use app alerts and dashboard queues immediately. Verified email adds daily briefs, setup messages, and approved follow-up.",
-      doNext: "Open Integrations and connect Resend/email. Keep SMS optional unless the business explicitly wants it later.",
+      doNext: "Open Integrations and connect Resend/email. Keep SMS optional unless the business explicitly wants it.",
       href: "/app/integrations",
       priority: "normal"
     });

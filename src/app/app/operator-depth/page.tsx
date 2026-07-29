@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOperatorDepthDashboard, type OperatorDepthRow } from "@/lib/operator-depth/get-operator-depth";
-import { refreshOperatorDepthAction } from "./actions";
+import { refreshOperatorDepthAction, saveServiceAreaTargetAction } from "./actions";
 
 export default async function OperatorDepthPage() {
   const dashboard = await getOperatorDepthDashboard();
@@ -39,6 +39,33 @@ export default async function OperatorDepthPage() {
       </section>
 
       <section className="panel section-actions">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Keyless Location Intelligence</span>
+            <h2>Add a ZIP, city, or radius service area</h2>
+          </div>
+          <span className="pill">No mapping account required</span>
+        </div>
+        <p className="muted">
+          Ferocity matches exact ZIP first, then city/state, then coordinate radius when coordinates are available.
+          Coordinates are optional; they can be added from a trusted address source later without changing the service-area record.
+        </p>
+        <form action={saveServiceAreaTargetAction} className="stacked-form">
+          <div className="form-grid two">
+            <label>Area name<input name="name" placeholder="Eau Claire core area" required /></label>
+            <label>ZIP or postal code<input name="zip" inputMode="numeric" placeholder="54701" /></label>
+            <label>City<input name="city" placeholder="Eau Claire" /></label>
+            <label>State<input name="state" placeholder="WI" /></label>
+            <label>Radius in miles<input name="radiusMiles" type="number" min="1" max="250" defaultValue="25" required /></label>
+            <label>Priority<input name="priority" type="number" min="1" max="100" defaultValue="50" required /></label>
+            <label>Latitude (optional)<input name="latitude" type="number" min="-90" max="90" step="0.000001" /></label>
+            <label>Longitude (optional)<input name="longitude" type="number" min="-180" max="180" step="0.000001" /></label>
+          </div>
+          <button className="button" type="submit">Save service area</button>
+        </form>
+      </section>
+
+      <section className="panel section-actions">
         <h2>What This Adds</h2>
         <div className="grid">
           <Principle title="Better local growth" detail="Cities, service areas, proof, and sources become trackable instead of loose marketing ideas." />
@@ -48,7 +75,7 @@ export default async function OperatorDepthPage() {
       </section>
 
       <div className="grid section-actions">
-        <ListPanel title="Service Area Intelligence" empty="No service area targets yet. Refresh after brand locations are set." rows={dashboard.serviceAreas} />
+        <ListPanel title="Service Area Intelligence" empty="No service area targets yet. Add a ZIP/city area above or refresh after brand locations are set." rows={dashboard.serviceAreas} />
         <ListPanel title="Provider And Crew Bench" empty="No saved providers or crew relationships yet." rows={dashboard.crewBench} />
         <ListPanel title="Lead Source Scores" empty="No source scores yet. Scores appear after real leads have source data." rows={dashboard.sourceScores} />
         <ListPanel title="Connector Run History" empty="No connector run history yet. Refresh to log provider readiness checks." rows={dashboard.connectorRuns} />

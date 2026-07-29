@@ -1,4 +1,5 @@
-import { loginAdmin, loginUser } from "@/app/login/actions";
+import { loginUser } from "@/app/login/actions";
+import { ActionStatusButton } from "@/components/forms/ActionStatusButton";
 
 export default async function LoginPage({
   searchParams
@@ -38,26 +39,12 @@ export default async function LoginPage({
           </label>
           {params.error === "credentials" ? <p className="form-error">Invalid email or password.</p> : null}
           {params.reset === "complete" ? <p className="muted">Password updated. Sign in with the new password.</p> : null}
-          <button className="button" type="submit">
-            Continue
-          </button>
+          <ActionStatusButton pendingLabel="Signing in...">Continue</ActionStatusButton>
           <a className="mini-button" href="/reset-password">
             Forgot password?
           </a>
         </form>
 
-        <form action={loginAdmin} className="panel form-stack auth-panel">
-          <h2>Emergency admin access</h2>
-          <input name="next" type="hidden" value={nextPath} />
-          <label>
-            Access token
-            <input name="token" type="password" autoComplete="current-password" required />
-          </label>
-          {params.error === "1" ? <p className="form-error">Invalid access token.</p> : null}
-          <button className="button" type="submit">
-            Continue with token
-          </button>
-        </form>
       </section>
     </main>
   );

@@ -18,7 +18,7 @@ export function ResetPasswordUpdateForm() {
     let active = true;
     async function checkSession() {
       if (!supabase) {
-        setMessage("Password reset is not connected yet. Ask an admin to reset this account.");
+        setMessage("Password reset needs Supabase auth configuration. Ask an admin to reset this account.");
         return;
       }
       const { data, error } = await supabase.auth.getSession();

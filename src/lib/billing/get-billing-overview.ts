@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { evaluateManagedAdSpend, getManagedAdBudgetControls, type ManagedAdBudgetControl } from "@/lib/marketing-os/managed-ad-spend";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type BillingPlanRow = {
@@ -9,6 +10,35 @@ export type BillingPlanRow = {
   monthlyPriceCents: number;
   includedBrands: number;
   includedAiRuns: number;
+};
+
+export type RebillingPolicyRow = {
+  planKey: string | null;
+  feeKey: string;
+  feeFamily: string;
+  feeLabel: string;
+  appliesWhen: string;
+  feeType: string;
+  percentageBps: number;
+  flatFeeCents: number;
+  monthlyCapCents: number | null;
+  included: boolean;
+  required: boolean;
+  status: string;
+  disclosure: string;
+};
+
+export type UsageChargeRow = {
+  id: string;
+  chargeKey: string;
+  feeFamily: string;
+  description: string;
+  amountCents: number;
+  currency: string;
+  status: string;
+  stripeInvoiceItemId: string | null;
+  lastError: string | null;
+  createdAt: string;
 };
 
 export type BillingOverview = {
@@ -43,6 +73,23 @@ export type BillingOverview = {
     remaining: number | null;
     label: string;
   }[];
+  rebillingPolicies: RebillingPolicyRow[];
+  usageCharges: {
+    pendingReviewCents: number;
+    approvedCents: number;
+    queuedCents: number;
+    recent: UsageChargeRow[];
+  };
+  storage: {
+    usedBytes: number;
+    maxBytes: number;
+    remainingBytes: number;
+    percentUsed: number;
+  };
+  managedAdBudgets: Array<ManagedAdBudgetControl & {
+    readinessStatus: string;
+    readinessReason: string;
+  }>;
   readiness: {
     label: string;
     status: "ready" | "needs_setup" | "blocked";
@@ -52,7 +99,7 @@ export type BillingOverview = {
 
 export async function getBillingOverview(): Promise<BillingOverview> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [subscription, plans, usageResult, gatesResult, stripeResult] = await Promise.all([
+  const [subscription, plans, usageResult, gatesResult, stripeResult, connectResult, rebillingResult, usageChargesResult, usageChargeSummaryResult, storageResult, managedAdBudgets] = await Promise.all([
     queryPostgres<{ plan_key: string; status: string; seats: number; current_period_end: Date | null; external_customer_ref: string | null }>(
       "select plan_key, status, seats, current_period_end, external_customer_ref from public.billing_subscriptions where tenant_id = $1 limit 1",
       [workspaceId]
@@ -122,7 +169,123 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       limit 1
       `,
       [workspaceId]
-    )
+    ),
+    queryPostgres<{
+      account_status: string;
+      charges_enabled: boolean;
+      payouts_enabled: boolean;
+      provider_account_id: string | null;
+    }>(
+      `
+      select account_status, charges_enabled, payouts_enabled, provider_account_id
+      from public.payment_provider_accounts
+      where tenant_id = $1
+        and provider = 'stripe'
+        and payment_mode = 'ferocity_managed_connect'
+        and provider_account_id is not null
+      order by updated_at desc
+      limit 1
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      plan_key: string | null;
+      fee_key: string;
+      fee_family: string;
+      fee_label: string;
+      applies_when: string;
+      fee_type: string;
+      percentage_bps: number;
+      flat_fee_cents: number;
+      monthly_cap_cents: number | null;
+      included: boolean;
+      required: boolean;
+      status: string;
+      disclosure: string;
+    }>(
+      `
+      select
+        plan_key,
+        fee_key,
+        fee_family,
+        fee_label,
+        applies_when,
+        fee_type,
+        percentage_bps,
+        flat_fee_cents,
+        monthly_cap_cents,
+        included,
+        required,
+        status,
+        disclosure
+      from public.rebilling_markup_policies
+      where tenant_id is null or tenant_id = $1
+      order by
+        case fee_family
+          when 'tracked_growth' then 1
+          when 'managed_payments' then 2
+          when 'managed_marketing' then 3
+          else 4
+        end,
+        plan_key nulls first,
+        fee_key
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      charge_key: string;
+      fee_family: string;
+      description: string;
+      amount_cents: number;
+      currency: string;
+      status: string;
+      stripe_invoice_item_id: string | null;
+      last_error: string | null;
+      created_at: Date;
+    }>(
+      `
+      select id, charge_key, fee_family, description, amount_cents, currency, status, stripe_invoice_item_id, last_error, created_at
+      from public.billing_usage_charges
+      where tenant_id = $1
+      order by created_at desc
+      limit 10
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      pending_review_cents: string | null;
+      approved_cents: string | null;
+      queued_cents: string | null;
+    }>(
+      `
+      select
+        coalesce(sum(amount_cents) filter (where status = 'pending_review'), 0)::text as pending_review_cents,
+        coalesce(sum(amount_cents) filter (where status = 'approved'), 0)::text as approved_cents,
+        coalesce(sum(amount_cents) filter (where status = 'queued_for_invoice'), 0)::text as queued_cents
+      from public.billing_usage_charges
+      where tenant_id = $1
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{ used_bytes: string; max_bytes: string }>(
+      `
+      select
+        coalesce((
+          select sum(byte_count)
+          from public.storage_usage_events
+          where tenant_id = $1 and status in ('reserved','active')
+        ), 0)::text as used_bytes,
+        coalesce((
+          select max_bytes
+          from public.storage_quota_policies
+          where tenant_id = $1 and status = 'active'
+          limit 1
+        ), 0)::text as max_bytes
+      `,
+      [workspaceId]
+    ),
+    getManagedAdBudgetControls(workspaceId)
   ]);
   const sub = subscription?.rows[0];
   const usageRow = usageResult?.rows[0];
@@ -151,8 +314,15 @@ export async function getBillingOverview(): Promise<BillingOverview> {
     return 0;
   };
   const stripe = stripeResult?.rows[0];
+  const connect = connectResult?.rows[0];
+  const usageChargeSummary = usageChargeSummaryResult?.rows[0];
+  const storage = storageResult?.rows[0];
+  const usedBytes = Number(storage?.used_bytes ?? 0);
+  const maxBytes = Number(storage?.max_bytes ?? 0);
   const managedPaymentsEnabled = env.FEROCITY_MANAGED_PAYMENTS_ENABLED === "true";
   const managedPaymentsFeeBps = Number(env.FEROCITY_MANAGED_PAYMENT_FEE_BPS ?? 150);
+  const usageBillingEnabled = env.FEROCITY_USAGE_BILLING_ENABLED === "true";
+  const connectReady = managedPaymentsEnabled && connect?.account_status === "connected" && connect.charges_enabled && connect.payouts_enabled;
 
   return {
     subscription: sub
@@ -185,6 +355,52 @@ export async function getBillingOverview(): Promise<BillingOverview> {
         label: gate.metadata_json?.description ?? gate.feature_key.replaceAll("_", " ")
       };
     }),
+    rebillingPolicies: (rebillingResult?.rows ?? []).map((policy) => ({
+      planKey: policy.plan_key,
+      feeKey: policy.fee_key,
+      feeFamily: policy.fee_family,
+      feeLabel: policy.fee_label,
+      appliesWhen: policy.applies_when,
+      feeType: policy.fee_type,
+      percentageBps: Number(policy.percentage_bps ?? 0),
+      flatFeeCents: Number(policy.flat_fee_cents ?? 0),
+      monthlyCapCents: policy.monthly_cap_cents === null ? null : Number(policy.monthly_cap_cents),
+      included: policy.included,
+      required: policy.required,
+      status: policy.status,
+      disclosure: policy.disclosure
+    })),
+    usageCharges: {
+      pendingReviewCents: Number(usageChargeSummary?.pending_review_cents ?? 0),
+      approvedCents: Number(usageChargeSummary?.approved_cents ?? 0),
+      queuedCents: Number(usageChargeSummary?.queued_cents ?? 0),
+      recent: (usageChargesResult?.rows ?? []).map((charge) => ({
+        id: charge.id,
+        chargeKey: charge.charge_key,
+        feeFamily: charge.fee_family,
+        description: charge.description,
+        amountCents: Number(charge.amount_cents ?? 0),
+        currency: charge.currency,
+        status: charge.status,
+        stripeInvoiceItemId: charge.stripe_invoice_item_id,
+        lastError: charge.last_error,
+        createdAt: charge.created_at?.toISOString() ?? ""
+      }))
+    },
+    storage: {
+      usedBytes,
+      maxBytes,
+      remainingBytes: Math.max(0, maxBytes - usedBytes),
+      percentUsed: maxBytes > 0 ? Math.min(100, Math.round((usedBytes / maxBytes) * 100)) : 0
+    },
+    managedAdBudgets: managedAdBudgets.map((budget) => {
+      const decision = evaluateManagedAdSpend(budget, Math.min(Math.max(budget.dailyCapCents, 0), Math.max(budget.availableCents, 0)));
+      return {
+        ...budget,
+        readinessStatus: decision.status,
+        readinessReason: decision.reason
+      };
+    }),
     readiness: [
       {
         label: "Stripe connection",
@@ -193,11 +409,29 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       },
       {
         label: "Stripe Connect managed payments",
-        status: managedPaymentsEnabled && env.STRIPE_CONNECT_CLIENT_ID ? "ready" : "needs_setup",
+        status: connectReady ? "ready" : "needs_setup",
         detail:
-          managedPaymentsEnabled && env.STRIPE_CONNECT_CLIENT_ID
+          connectReady
             ? `Managed payments are enabled with a ${Number.isFinite(managedPaymentsFeeBps) ? managedPaymentsFeeBps / 100 : 1.5}% platform-fee target. Confirm Connect onboarding and fee pass-through before live use.`
-            : "Managed payments are not live. Use customer-owned Stripe or manual payment tracking until Stripe Connect onboarding, fee policy, payout, dispute, and webhook handling are finished."
+            : connect?.provider_account_id
+              ? `Stripe Connect account is ${connect.account_status}. Finish onboarding before Ferocity routes customer payments to this business.`
+              : "Managed payments are not live. Use manual tracking until Stripe Connect onboarding, fee policy, payout, dispute, and webhook handling are finished."
+      },
+      {
+        label: "Usage and markup billing",
+        status: usageBillingEnabled ? (sub?.external_customer_ref ? "ready" : "needs_setup") : "needs_setup",
+        detail: usageBillingEnabled
+          ? sub?.external_customer_ref
+            ? "Approved usage and markup charges can be attached to the next Stripe subscription invoice."
+            : "Usage billing is enabled, but this workspace needs a Stripe customer first."
+          : "Usage billing is staged but disabled. Set FEROCITY_USAGE_BILLING_ENABLED=true only after fee disclosure and charge review are ready."
+      },
+      {
+        label: "Managed ad spend controls",
+        status: managedAdBudgets.some((budget) => budget.liveSpendEnabled && budget.approvedByCustomer && budget.dailyCapCents > 0 && budget.monthlyCapCents > 0) ? "ready" : "needs_setup",
+        detail: managedAdBudgets.length
+          ? "Managed ad lanes are tracked separately from customer-owned ad accounts. Ferocity-managed spend still requires prepaid budget, customer approval, and hard caps."
+          : "Apply the managed ad spend controls migration before offering Ferocity-managed ad buying."
       },
       {
         label: "Subscription record",

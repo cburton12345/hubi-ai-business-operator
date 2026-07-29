@@ -33,11 +33,11 @@ export default async function StartThanksPage({
           <p className="eyebrow">Request received</p>
           <h1>
             {workspaceCreated
-              ? "Your Ferocity workspace is ready to claim."
+              ? "Your Ferocity business account is ready to claim."
               : workspaceReused
                 ? "Your existing Ferocity invite was refreshed."
                 : existingAccount
-                  ? "That email already has a Ferocity workspace."
+                  ? "That email already has a Ferocity account."
                   : "Good. Your Ferocity setup request is in."}
           </h1>
           <p className="muted">
@@ -47,7 +47,7 @@ export default async function StartThanksPage({
           <div className="button-row">
             {inviteUrl ? (
               <Link className="button" href={inviteUrl}>
-                Claim workspace
+                Claim account
               </Link>
             ) : existingAccount ? (
               <Link className="button" href="/login">
@@ -70,11 +70,11 @@ export default async function StartThanksPage({
               <h2>Next step</h2>
               <p className="muted">
                 {workspaceCreated
-                  ? `Use the invite link to create your owner account${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. The workspace starts locked down and setup-first.`
+                  ? `Use the invite link to create your owner login${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. The account starts private and setup-first.`
                   : workspaceReused
-                    ? `Use the refreshed invite link to claim the existing workspace${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate tenant.`
+                    ? `Use the refreshed invite link to claim the existing account${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate business account.`
                     : existingAccount
-                      ? `Sign in with that email${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate workspace.`
+                      ? `Sign in with that email${params.workspaceSlug ? ` for ${params.workspaceSlug}` : ""}. Ferocity did not create a duplicate business account.`
                   : workspacePending
                     ? "The request was saved for review. Ferocity will create an invite from Access Requests."
                     : "Ferocity will review the request, choose a sensible starting point, and create an invite or guided setup path."}

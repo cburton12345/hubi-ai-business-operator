@@ -72,10 +72,16 @@ export default async function AutopilotPage() {
 
   const nextMoves = [
     {
-      title: "Tell Ferocity what to run",
+      title: "Tell Ferocity what to handle",
       detail: "Use plain English to say what AI can watch, draft, recommend, or handle with approval.",
       href: "/app/build-system",
       button: "Build setup"
+    },
+    {
+      title: "Find the deeper gaps",
+      detail: "See what blocks hands-free operation: missing business data, weak lead capture, posting lanes, payments, controls, or provider connections.",
+      href: "/app/gap-scan",
+      button: "Scan gaps"
     },
     {
       title: "Connect the business",
@@ -154,24 +160,55 @@ export default async function AutopilotPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">Choose how hands-off you want to be</p>
-            <h2>Take back the day without losing control.</h2>
+            <p className="eyebrow">Recommended authority</p>
+            <h2>Let Ferocity handle routine work.</h2>
             <p className="muted">
-              Pick a mode now and adjust the details later. These modes update existing Ferocity controls, approval rules, and limits. They do not create a second system.
+              One choice turns on routine monitoring, organization, drafting, scoring, job-health checks,
+              follow-up discovery, SEO work, authority work, and internal records. You can change it anytime.
             </p>
           </div>
           <Link className="mini-button" href="/app/controls">Fine-tune controls</Link>
         </div>
-        <div className="grid">
-          {modeCards.map((mode) => (
-            <form action={applyAutopilotPresetAction} className="panel span-4" key={mode.preset}>
-              <input type="hidden" name="preset" value={mode.preset} />
-              <h3>{mode.title}</h3>
-              <p className="muted">{mode.detail}</p>
-              <button className="mini-button" type="submit">{mode.button}</button>
-            </form>
-          ))}
+        <div className="feature-split section-actions">
+          <div className="subtle-panel">
+            <h3>Ferocity handles without interrupting you</h3>
+            <ul>
+              <li>Watch the business and organize routine internal work.</li>
+              <li>Prepare content, recommendations, follow-up lists, summaries, and reports.</li>
+              <li>Run SEO, authority, visibility, attribution, and Job Health checks.</li>
+              <li>Auto-file ordinary low-risk field records and log everything it does.</li>
+            </ul>
+          </div>
+          <div className="subtle-panel">
+            <h3>Ferocity still brings you consequential decisions</h3>
+            <ul>
+              <li>Money movement, billing authority, meaningful provider spend, or refunds.</li>
+              <li>Safety, legal, contractual, high-risk scope, or low-confidence decisions.</li>
+              <li>Customer sends and public publishing until you separately allow those channels.</li>
+              <li>Anything blocked by consent, suppression, provider readiness, or cost caps.</li>
+            </ul>
+          </div>
         </div>
+        <form action={applyAutopilotPresetAction} className="list-row flush-row section-actions">
+          <input type="hidden" name="preset" value="trusted_autopilot" />
+          <p className="muted">This grants routine operating authority. It does not grant unlimited spending or financial authority.</p>
+          <button className="button" type="submit">
+            <Bot size={16} /> Let Ferocity handle routine work
+          </button>
+        </form>
+        <details className="subtle-panel section-actions">
+          <summary>Choose a more cautious or specialized mode</summary>
+          <div className="grid section-actions">
+            {modeCards.map((mode) => (
+              <form action={applyAutopilotPresetAction} className="panel span-4" key={mode.preset}>
+                <input type="hidden" name="preset" value={mode.preset} />
+                <h3>{mode.title}</h3>
+                <p className="muted">{mode.detail}</p>
+                <button className="mini-button" type="submit">{mode.button}</button>
+              </form>
+            ))}
+          </div>
+        </details>
       </section>
 
       <section className="grid section-actions">
@@ -222,7 +259,9 @@ export default async function AutopilotPage() {
       <section className="panel section-actions">
         <h2><ShieldCheck size={18} /> Autopilot Does Not Mean Losing Control</h2>
         <p className="muted">
-          Ferocity can run more of the business only where the owner allows it. The default path is draft, review, approve, log, and measure. Direct tools stay available for admins who want full control.
+          The owner decides where review is useful. Routine, reversible internal work can run automatically.
+          Customer communications, public publishing, payments, meaningful spend, and consequential safety,
+          legal, or scope decisions retain their own explicit controls.
         </p>
         <div className="button-row">
           <Link className="button" href="/app/ai-monitoring">

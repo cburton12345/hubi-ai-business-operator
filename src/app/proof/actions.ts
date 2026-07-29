@@ -8,6 +8,7 @@ import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPortalProofContext, getProofRequestContext, proofTitle } from "@/lib/ugc/proof";
+import { finishStorageUpload, reserveStorageUpload } from "@/lib/usage/storage-quota";
 
 const proofBucket = "ugc-proof-assets";
 const maxUploadBytes = 25 * 1024 * 1024;
@@ -217,6 +218,31 @@ export async function submitProofAction(formData: FormData) {
 
     const extension = safeFileName(file.name).split(".").pop();
     const storagePath = `${context.tenantId}/${submissionId}/${index + 1}-${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
+    const storageEventId = await reserveStorageUpload({
+      tenantId: context.tenantId,
+      bucket: proofBucket,
+      storageKey: storagePath,
+      sourceType: "customer_proof",
+      sourceId: submissionId,
+      byteCount: file.size,
+      idempotencyKey: `proof:${storagePath}`,
+      metadata: { fileName: file.name, mimeType }
+    });
+    if (!storageEventId) {
+      await queryPostgres(
+        `
+        insert into public.activity_logs (tenant_id, brand_id, actor_type, action, target_type, target_id, metadata_json)
+        values ($1, $2, 'system', 'ugc_asset_upload_rejected', 'ugc_submission', $3, $4::jsonb)
+        `,
+        [
+          context.tenantId,
+          context.brandId,
+          submissionId,
+          JSON.stringify({ fileName: file.name, mimeType, size: file.size, reason: "workspace_storage_quota" })
+        ]
+      );
+      continue;
+    }
     const bytes = await file.arrayBuffer();
     const upload = await supabase.storage.from(proofBucket).upload(storagePath, bytes, {
       contentType: mimeType,
@@ -224,6 +250,7 @@ export async function submitProofAction(formData: FormData) {
     });
 
     if (upload.error) {
+      await finishStorageUpload(storageEventId, "failed", { providerError: upload.error.message });
       await queryPostgres(
         `
         insert into public.activity_logs (tenant_id, brand_id, actor_type, action, target_type, target_id, metadata_json)
@@ -233,13 +260,14 @@ export async function submitProofAction(formData: FormData) {
       );
       continue;
     }
+    await finishStorageUpload(storageEventId, "active");
 
     await queryPostgres(
       `
       insert into public.ugc_assets (
-        tenant_id, brand_id, submission_id, customer_id, job_id, asset_type, storage_bucket, storage_path, original_filename, mime_type, caption
+        tenant_id, brand_id, submission_id, customer_id, job_id, asset_type, storage_bucket, storage_path, original_filename, mime_type, caption, metadata_json
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
       `,
       [
         context.tenantId,
@@ -252,7 +280,8 @@ export async function submitProofAction(formData: FormData) {
         storagePath,
         file.name,
         mimeType,
-        title
+        title,
+        JSON.stringify({ fileSizeBytes: file.size, storageUsageEventId: storageEventId })
       ]
     );
   }

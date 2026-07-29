@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ensureDefaultAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { processWebsiteImport } from "@/lib/marketing-os/website-import-processor";
 import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
 import { buildSetupPlan, type SetupPlan } from "@/lib/setup/setup-planner";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -18,6 +19,11 @@ type SetupActionState = {
 
 const requestSchema = z.object({
   request: z.string().trim().min(8).max(2000)
+});
+
+const autoWebsiteSetupSchema = z.object({
+  websiteUrl: z.string().trim().url().max(500),
+  businessGoal: z.string().trim().max(600).optional()
 });
 
 const RESTORABLE_TABLES = new Set([
@@ -231,6 +237,109 @@ export async function applySetupPlanAction(_state: SetupActionState, formData: F
   revalidatePath("/app/controls");
   revalidatePath("/app/reports");
   return { ok: true, plan };
+}
+
+export async function applyAutomaticWebsiteSetupAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const workspaceId = await getCurrentWorkspaceId();
+  const parsed = autoWebsiteSetupSchema.safeParse({
+    websiteUrl: formData.get("websiteUrl"),
+    businessGoal: formData.get("businessGoal")?.toString() || undefined
+  });
+  if (!parsed.success) return;
+
+  const brandResult = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.brands
+    where tenant_id = $1 and status <> 'archived'
+    order by created_at asc
+    limit 1
+    `,
+    [workspaceId]
+  );
+  const brandId = brandResult?.rows[0]?.id ?? null;
+
+  const importResult = await queryPostgres<{ id: string }>(
+    `
+    insert into public.marketing_os_website_imports (
+      tenant_id, brand_id, website_url, status, extraction_json, requested_by_user_id, metadata_json
+    )
+    values ($1, $2, $3, 'queued', $4::jsonb, $5, $6::jsonb)
+    returning id
+    `,
+    [
+      workspaceId,
+      brandId,
+      parsed.data.websiteUrl,
+      JSON.stringify({
+        pendingFields: ["company_name", "services", "service_areas", "contact_information", "calls_to_action", "trust_proof"]
+      }),
+      actor.userId === "admin-token" ? null : actor.userId,
+      JSON.stringify({
+        source: "automatic_website_setup",
+        reviewBeforeUse: true,
+        noPublishing: true,
+        noAdSpend: true,
+        noCustomerMessages: true
+      })
+    ]
+  );
+
+  const importId = importResult?.rows[0]?.id ?? null;
+  const importResultPayload = importId
+    ? await processWebsiteImport(workspaceId, importId)
+    : { ok: false as const, message: "Website import could not be created." };
+
+  const extracted = importResultPayload.ok ? importResultPayload.extracted : null;
+  const services = extracted?.serviceHints?.slice(0, 6).join(", ");
+  const areas = extracted?.serviceAreaHints?.slice(0, 6).join(", ");
+  const contact = [extracted?.phones?.[0], extracted?.emails?.[0]].filter(Boolean).join(" / ");
+  const goal = parsed.data.businessGoal || "Get more leads, follow up faster, request reviews, track revenue, and build useful marketing that is tied to real business proof.";
+  const setupRequest = [
+    `Automatically set up this business from its website: ${parsed.data.websiteUrl}.`,
+    extracted?.title ? `Business/site title: ${extracted.title}.` : null,
+    services ? `Detected services: ${services}.` : null,
+    areas ? `Detected service areas: ${areas}.` : null,
+    contact ? `Detected contact info: ${contact}.` : null,
+    `Goal: ${goal}`,
+    "Create the website connector, lead source tracking, lead form, follow-up workflows, review workflow, SEO/service page drafts, proof capture path, owner alerts, AI agent workflows, and safe approval controls.",
+    "Keep public publishing, customer sends, ad spend, and payment requests in review until connected and approved."
+  ].filter(Boolean).join(" ");
+
+  const setupForm = new FormData();
+  setupForm.set("request", setupRequest);
+  const result = await applySetupPlanAction({ ok: false }, setupForm);
+
+  await queryPostgres(
+    `
+    insert into public.operator_timeline_events (tenant_id, event_family, event_type, title, body, metadata_json)
+    values ($1, 'system', 'automatic_website_setup', $2, $3, $4::jsonb)
+    `,
+    [
+      workspaceId,
+      "Automatic website setup ran",
+      importResultPayload.ok
+        ? "Ferocity scanned the website, extracted business facts for review, and applied a safe setup plan."
+        : "Ferocity applied a setup plan, but the website scan needs attention.",
+      JSON.stringify({
+        websiteUrl: parsed.data.websiteUrl,
+        importId,
+        importOk: importResultPayload.ok,
+        importMessage: importResultPayload.message,
+        setupApplied: result.ok,
+        setupTemplate: result.plan?.templateKey ?? null,
+        liveCustomerSends: false,
+        livePublishing: false,
+        adSpend: false
+      })
+    ]
+  );
+
+  revalidatePath("/app/build-system");
+  revalidatePath("/app/marketing-os");
+  revalidatePath("/app/business-brain");
+  revalidatePath("/app");
 }
 
 export async function revertSetupRunAction(formData: FormData) {

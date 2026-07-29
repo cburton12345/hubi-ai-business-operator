@@ -11,7 +11,7 @@ export default async function DraftsPage() {
     <QueuePageShell
       eyebrow="AI Drafts"
       title="Draft Queue"
-      description="AI-generated content drafts waiting for review, approval, rejection, or later publishing."
+      description="AI-generated content drafts waiting for review, approval, rejection, or scheduled publishing."
     >
       <form action={processQueuedAiTasksAction} className="button-row section-actions">
         <button className="button" type="submit">

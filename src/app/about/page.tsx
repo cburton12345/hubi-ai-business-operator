@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "About Ferocity",
   description:
-    "Ferocity is an AI workforce and owner command center for businesses that need more customers, faster follow-up, cleaner operations, payments, reviews, team work, and owner alerts.",
+    "Ferocity helps service businesses respond faster, follow up, organize work, get paid, request reviews, and see what needs attention.",
   alternates: {
     canonical: "/about"
   }
@@ -20,47 +20,44 @@ export default function AboutPage() {
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
             <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/automations">Automations</Link>
             <Link href="/pricing">Plans</Link>
-            <Link href="/integrations">Integrations</Link>
-            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
         <section className="public-hero">
           <p className="eyebrow">About Ferocity</p>
-          <h1>An AI workforce for owners who want their life back.</h1>
+          <h1>Built for owners who are tired of being the whole back office.</h1>
           <p className="muted">
-            Ferocity helps owners and teams keep marketing, leads, follow-up, estimates, jobs or orders, reviews, payments, and revenue in one practical workspace.
-            The goal is to support people, reduce repetitive admin work, and help the business move faster without making the owner babysit every task.
-            Contractors are included, but Ferocity is not boxed into contractor software. It can support law firms, clinics, shops,
-            agencies, sales teams, e-commerce, local operators, multi-location companies, and owners with one business or several ventures.
-            Rental-specific operations can connect through dedicated rental tools instead of forcing Ferocity to become a rental manager.
+            Ferocity was built around a simple problem: good businesses lose money because leads are missed, follow-up gets delayed,
+            invoices age, reviews are forgotten, and too much sits in one person’s head. Ferocity gives the team one place to see what
+            needs attention and lets AI prepare the next action while important customer-facing work stays under control.
           </p>
         </section>
         <section className="public-grid">
           <div className="panel">
+            <h2>Who it serves first</h2>
+            <p className="muted">
+              Ferocity is focused first on owners and teams that need leads, jobs, payments, reviews, reminders, and marketing in one system.
+            </p>
+          </div>
+          <div className="panel">
             <h2>What it does</h2>
             <p className="muted">
-              Ferocity tracks lead sources, connects website and marketing activity, shows stale opportunities, creates follow-up tasks, drafts marketing work, and keeps customer-facing actions under approval.
+              Ferocity tracks lead sources, connects website and marketing activity, shows stale opportunities, prepares follow-up, organizes jobs or orders, helps track payments, and drafts review or marketing work.
             </p>
           </div>
           <div className="panel">
-            <h2>Automations</h2>
-            <p className="muted">
-              Lead replies, callback reminders, stale lead recovery, estimate follow-up, invoice follow-up, review requests, SEO drafts, and operator alerts go through review before customer-facing action.
-            </p>
-          </div>
-          <div className="panel">
-            <h2>What it does not do</h2>
+            <h2>Owner control</h2>
             <p className="muted">
               Ferocity does not send messages, publish content, change ads, or start billing without the right connected account, review rules, and customer consent.
             </p>
           </div>
           <div className="panel">
-            <h2>Contact</h2>
-            <p className="muted">Primary contact: ferocityflow@outlook.com</p>
+            <h2>Support</h2>
+            <p className="muted">
+              Customers can reach Ferocity at support@ferocity.live. Setup and onboarding requests also flow through the free grader and start pages.
+            </p>
           </div>
         </section>
       </section>

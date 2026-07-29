@@ -7,12 +7,22 @@ export type MarketingOsBrandOption = {
   website: string | null;
 };
 
+export type MarketingOsAdvertisingDestination = {
+  id: string;
+  platformKey: string;
+  displayName: string;
+  websiteUrl: string;
+  destinationType: string;
+  connectionMode: string;
+};
+
 export type MarketingOsRow = {
   id: string;
   title: string;
   detail: string | null;
   status: string;
   meta: string;
+  href?: string;
 };
 
 export type MarketingOsBlueprint = {
@@ -34,8 +44,21 @@ export type MarketingOsDashboard = {
     mediaAssets: number;
     graphicJobs: number;
     videoJobs: number;
+    recommendations: number;
+    memoryItems: number;
+    adExperiments: number;
+    creativeVariants: number;
+    platformPlaybooks: number;
+    advertisingDestinations: number;
   };
   profiles: MarketingOsRow[];
+  recommendations: MarketingOsRow[];
+  memoryItems: MarketingOsRow[];
+  adExperiments: MarketingOsRow[];
+  creativeVariants: MarketingOsRow[];
+  platformPlaybooks: MarketingOsRow[];
+  advertisingDestinations: MarketingOsAdvertisingDestination[];
+  advertisingDestinationRows: MarketingOsRow[];
   websiteImports: MarketingOsRow[];
   campaigns: MarketingOsRow[];
   outputs: MarketingOsRow[];
@@ -48,8 +71,8 @@ function num(value: string | undefined) {
   return Number(value ?? 0);
 }
 
-function row(id: string, title: string, detail: string | null, status: string, meta: string): MarketingOsRow {
-  return { id, title, detail, status, meta };
+function row(id: string, title: string, detail: string | null, status: string, meta: string, href?: string): MarketingOsRow {
+  return { id, title, detail, status, meta, href };
 }
 
 export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
@@ -64,7 +87,13 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
     outputResult,
     mediaResult,
     graphicResult,
-    videoResult
+    videoResult,
+    recommendationResult,
+    memoryResult,
+    adExperimentResult,
+    creativeVariantResult,
+    platformPlaybookResult,
+    advertisingDestinationResult
   ] = await Promise.all([
     queryPostgres<{ id: string; name: string; domain: string | null }>(
       `
@@ -98,6 +127,12 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       media_assets: string;
       graphic_jobs: string;
       video_jobs: string;
+      recommendations: string;
+      memory_items: string;
+      ad_experiments: string;
+      creative_variants: string;
+      platform_playbooks: string;
+      advertising_destinations: string;
     }>(
       `
       select
@@ -107,7 +142,13 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
         (select count(*) from public.content_studio_outputs where tenant_id = $1 and status <> 'archived')::text as content_outputs,
         (select count(*) from public.marketing_media_assets where tenant_id = $1 and status <> 'archived')::text as media_assets,
         (select count(*) from public.marketing_graphic_jobs where tenant_id = $1 and status <> 'archived')::text as graphic_jobs,
-        (select count(*) from public.marketing_video_jobs where tenant_id = $1 and status <> 'archived')::text as video_jobs
+        (select count(*) from public.marketing_video_jobs where tenant_id = $1 and status <> 'archived')::text as video_jobs,
+        (select count(*) from public.marketing_campaign_recommendations where tenant_id = $1 and status <> 'dismissed')::text as recommendations,
+        (select count(*) from public.marketing_memory_items where tenant_id = $1 and status <> 'archived')::text as memory_items,
+        (select count(*) from public.marketing_ad_experiments where tenant_id = $1 and status <> 'archived')::text as ad_experiments,
+        (select count(*) from public.marketing_creative_variants where tenant_id = $1 and status <> 'archived')::text as creative_variants,
+        (select count(*) from public.marketing_platform_playbooks where status <> 'archived')::text as platform_playbooks,
+        (select count(*) from public.marketing_advertising_destinations where tenant_id = $1 and status <> 'archived')::text as advertising_destinations
       `,
       [workspaceId]
     ),
@@ -219,13 +260,122 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       goal: string | null;
       status: string;
       cta_text: string | null;
+      metadata_json: { platform?: string; durationSeconds?: number; variantPrompts?: unknown[]; creditRequiredForRendering?: boolean } | null;
     }>(
       `
-      select id, provider_key, service_label, goal, status, cta_text
+      select id, provider_key, service_label, goal, status, cta_text, metadata_json
       from public.marketing_video_jobs
       where tenant_id = $1
       order by created_at desc
       limit 8
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      title: string;
+      trigger_reason: string;
+      primary_goal: string;
+      status: string;
+      difficulty: string;
+      priority_score: number;
+      recommended_channels: string[];
+    }>(
+      `
+      select id, title, trigger_reason, primary_goal, status, difficulty, priority_score, recommended_channels
+      from public.marketing_campaign_recommendations
+      where tenant_id = $1 and status <> 'dismissed'
+      order by priority_score desc, created_at desc
+      limit 8
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      memory_type: string;
+      title: string;
+      summary: string | null;
+      status: string;
+      score: number;
+    }>(
+      `
+      select id, memory_type, title, summary, status, score
+      from public.marketing_memory_items
+      where tenant_id = $1 and status <> 'archived'
+      order by score desc, observed_at desc
+      limit 8
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      experiment_name: string;
+      objective: string;
+      platforms: string[];
+      budget_mode: string;
+      budget_cents: number;
+      status: string;
+      creative_count: number;
+    }>(
+      `
+      select id, experiment_name, objective, platforms, budget_mode, budget_cents, status, creative_count
+      from public.marketing_ad_experiments
+      where tenant_id = $1 and status <> 'archived'
+      order by created_at desc
+      limit 8
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      platform: string;
+      format: string;
+      hook: string;
+      angle: string;
+      audience: string | null;
+      status: string;
+      predicted_score: number;
+    }>(
+      `
+      select id, platform, format, hook, angle, audience, status, predicted_score
+      from public.marketing_creative_variants
+      where tenant_id = $1 and status <> 'archived'
+      order by predicted_score desc, created_at desc
+      limit 10
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      platform_key: string;
+      display_name: string;
+      strategy_summary: string;
+      status: string;
+      creative_rules_json: unknown[];
+      next_review_on: Date | null;
+    }>(
+      `
+      select id, platform_key, display_name, strategy_summary, status, creative_rules_json, next_review_on
+      from public.marketing_platform_playbooks
+      where status <> 'archived'
+      order by display_name asc
+      `
+    ),
+    queryPostgres<{
+      id: string;
+      platform_key: string;
+      display_name: string;
+      website_url: string;
+      destination_type: string;
+      connection_mode: string;
+      status: string;
+      notes: string;
+    }>(
+      `
+      select id, platform_key, display_name, website_url, destination_type, connection_mode, status, notes
+      from public.marketing_advertising_destinations
+      where tenant_id = $1 and status <> 'archived'
+      order by display_name asc
       `,
       [workspaceId]
     )
@@ -249,7 +399,13 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       contentOutputs: num(metrics?.content_outputs),
       mediaAssets: num(metrics?.media_assets),
       graphicJobs: num(metrics?.graphic_jobs),
-      videoJobs: num(metrics?.video_jobs)
+      videoJobs: num(metrics?.video_jobs),
+      recommendations: num(metrics?.recommendations),
+      memoryItems: num(metrics?.memory_items),
+      adExperiments: num(metrics?.ad_experiments),
+      creativeVariants: num(metrics?.creative_variants),
+      platformPlaybooks: num(metrics?.platform_playbooks),
+      advertisingDestinations: num(metrics?.advertising_destinations)
     },
     profiles: (profileResult?.rows ?? []).map((profile) =>
       row(
@@ -258,6 +414,68 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
         profile.brand_voice,
         profile.status,
         `${profile.website_url ?? "No website"} / ${profile.services_json.length} services / ${profile.service_areas_json.length} areas`
+      )
+    ),
+    recommendations: (recommendationResult?.rows ?? []).map((item) =>
+      row(
+        item.id,
+        item.title,
+        item.trigger_reason,
+        item.status,
+        `${item.primary_goal} / ${item.difficulty} difficulty / priority ${item.priority_score} / ${item.recommended_channels.join(", ") || "channels not selected"}`
+      )
+    ),
+    memoryItems: (memoryResult?.rows ?? []).map((item) =>
+      row(
+        item.id,
+        item.title,
+        item.summary,
+        item.status,
+        `${item.memory_type.replaceAll("_", " ")} / score ${item.score}`
+      )
+    ),
+    adExperiments: (adExperimentResult?.rows ?? []).map((experiment) =>
+      row(
+        experiment.id,
+        experiment.experiment_name,
+        experiment.objective.replaceAll("_", " "),
+        experiment.status,
+        `${experiment.platforms.join(", ") || "manual"} / ${experiment.creative_count} variant(s) / ${experiment.budget_mode.replaceAll("_", " ")} / $${(experiment.budget_cents / 100).toLocaleString()}`
+      )
+    ),
+    creativeVariants: (creativeVariantResult?.rows ?? []).map((variant) =>
+      row(
+        variant.id,
+        variant.hook,
+        `${variant.angle}${variant.audience ? ` / ${variant.audience}` : ""}`,
+        variant.status,
+        `${variant.platform} / ${variant.format.replaceAll("_", " ")} / score ${variant.predicted_score}`
+      )
+    ),
+    platformPlaybooks: (platformPlaybookResult?.rows ?? []).map((playbook) =>
+      row(
+        playbook.id,
+        playbook.display_name,
+        playbook.strategy_summary,
+        playbook.status,
+        `${playbook.platform_key} / ${playbook.creative_rules_json.length} rule(s) / review ${playbook.next_review_on ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(playbook.next_review_on)) : "not scheduled"}`
+      )
+    ),
+    advertisingDestinations: (advertisingDestinationResult?.rows ?? []).map((destination) => ({
+      id: destination.id,
+      platformKey: destination.platform_key,
+      displayName: destination.display_name,
+      websiteUrl: destination.website_url,
+      destinationType: destination.destination_type,
+      connectionMode: destination.connection_mode
+    })),
+    advertisingDestinationRows: (advertisingDestinationResult?.rows ?? []).map((destination) =>
+      row(
+        destination.id,
+        destination.display_name,
+        destination.notes || destination.website_url,
+        destination.status,
+        `${destination.destination_type.replaceAll("_", " ")} / ${destination.connection_mode.replaceAll("_", " ")} / ${destination.website_url}`
       )
     ),
     websiteImports: (importResult?.rows ?? []).map((item) =>
@@ -276,7 +494,14 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       row(job.id, job.job_type.replaceAll("_", " "), job.service_label, job.status, job.target_formats.join(", ") || "formats not selected")
     ),
     videoJobs: (videoResult?.rows ?? []).map((job) =>
-      row(job.id, job.goal ?? "Video job", job.cta_text, job.status, `${job.provider_key} / ${job.service_label ?? "general"}`)
+      row(
+        job.id,
+        job.goal ?? "Video job",
+        job.cta_text,
+        job.status,
+        `${job.metadata_json?.platform ?? job.provider_key} / ${job.metadata_json?.durationSeconds ?? "?"} sec / ${job.metadata_json?.creditRequiredForRendering ? "credits for render" : "brief only"} / ${job.service_label ?? "general"}`,
+        `/app/marketing-os/video/${job.id}`
+      )
     )
   };
 }

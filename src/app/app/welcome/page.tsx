@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Bot, CheckCircle2, CircleDollarSign, LockKeyhole, SlidersHorizontal, WandSparkles, Workflow } from "lucide-react";
 import { getCurrentWorkspace, getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
+import { getOperatorSetupDashboard } from "@/lib/setup/get-operator-setup";
+import { ServiceChoiceGrid } from "@/components/setup/ServiceChoiceGrid";
 
 type WelcomeStats = {
   brands: string;
@@ -32,7 +34,7 @@ async function getWelcomeStats() {
 }
 
 export default async function WelcomePage() {
-  const [workspace, stats] = await Promise.all([getCurrentWorkspace(), getWelcomeStats()]);
+  const [workspace, stats, setup] = await Promise.all([getCurrentWorkspace(), getWelcomeStats(), getOperatorSetupDashboard()]);
 
   return (
     <section className="page-section">
@@ -41,8 +43,8 @@ export default async function WelcomePage() {
           <p className="eyebrow">Welcome</p>
           <h1>Start {workspace.name} the simple way.</h1>
           <p className="muted">
-            Use AI guided mode when you want Ferocity to lead. Use manual mode when you just need to add a customer, job, invoice, field cost,
-            reminder, worker, or payment record yourself.
+            Pick what you want off your plate first. Ferocity can guide setup and prepare work, while manual tools stay available
+            for customers, jobs, invoices, field costs, reminders, workers, and payments.
           </p>
         </div>
         <div className="inline-actions">
@@ -68,22 +70,39 @@ export default async function WelcomePage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">What do you need first?</p>
-            <h2>Start with the business problem, not the menu.</h2>
+            <p className="eyebrow">Choose services</p>
+            <h2>Choose the parts of the business Ferocity should help handle.</h2>
             <p className="muted">
-              Ferocity has a lot inside it. These shortcuts keep the first move simple.
+              Start with one service, a few services, or the full operating system. Included tools can stay available without forcing setup today.
             </p>
           </div>
-          <Link className="mini-button" href="/app/feature-map">See every tool</Link>
+          <div className="inline-actions">
+            <span className="pill">Current plan: {setup.currentPlanName}</span>
+            <Link className="mini-button" href="/app/setup">Direct controls</Link>
+            <Link className="mini-button secondary-button" href="/app/feature-map">See every tool</Link>
+          </div>
+        </div>
+        <ServiceChoiceGrid verticals={setup.verticals} />
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Common starting points</p>
+            <h2>Start with the business problem, not the menu.</h2>
+            <p className="muted">
+              If the owner does not know which service to choose, these paths point to the most common wins.
+            </p>
+          </div>
         </div>
         <div className="path-grid">
           {[
-            ["I need more leads", "Plan website, SEO, reviews, proof, campaigns, and lead source tracking.", "/app/growth-calendar"],
-            ["I need to follow up", "Work new leads, stale leads, callbacks, estimates, and customer replies.", "/app/lead-command"],
-            ["I need to track jobs and bids", "Track bids, jobs, materials, worker payments, money owed, and job profit.", "/app/job-tracker"],
-            ["I need to collect money", "See unpaid invoices, payment follow-up, manual payments, and ledger visibility.", "/app/cash-collection"],
-            ["I need to plan workers", "Build the crew day, assign work, check time, mileage, and field proof.", "/app/crew-itinerary"],
-            ["I need Ferocity to guide me", "Tell Ferocity the outcome and preview the setup or work plan first.", "/app/ai-workforce"]
+            ["I want more booked income", "Find missed follow-up, qualify leads, track sources, and turn attention into collected revenue.", "/app/revenue-growth"],
+            ["I want leads followed up", "Work new leads, stale leads, callbacks, estimates, and customer replies.", "/app/lead-command"],
+            ["I want simple job tracking", "Track bids, jobs, materials, worker payments, money owed, and job profit.", "/app/job-tracker"],
+            ["I want money collected faster", "See unpaid invoices, payment follow-up, manual payments, and ledger visibility.", "/app/cash-collection"],
+            ["I want worker days planned", "Build the crew day, assign work, check time, mileage, and field proof.", "/app/crew-itinerary"],
+            ["I want Ferocity to lead", "Tell Ferocity the outcome and preview the setup or work plan first.", "/app/ai-workforce"]
           ].map(([title, detail, href]) => (
             <Link className="path-card" href={href} key={title}>
               <CheckCircle2 size={18} />

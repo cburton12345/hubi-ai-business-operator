@@ -115,7 +115,7 @@ export async function createAiWalkthroughAction(formData: FormData) {
         parsed.data.mediaTitle ?? "Walkthrough media reference",
         parsed.data.mediaDescription ?? null,
         parsed.data.siteLocation ?? null,
-        JSON.stringify({ uploadStatus: "reference_only", futureUpload: true })
+        JSON.stringify({ uploadStatus: "reference_only", mediaCaptureMode: "reference_link" })
       ]
     );
   }

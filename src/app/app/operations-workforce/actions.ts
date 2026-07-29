@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
-import { sendEmailWithResend } from "@/lib/email/resend";
-import { extractReceiptFields } from "@/lib/operations-workforce/receipt-extraction";
-import { sendSmsWithTwilio } from "@/lib/sms/twilio";
+import { sendMessage } from "@/lib/messaging/messaging-engine";
+import { extractReceiptFieldsWithVision } from "@/lib/operations-workforce/receipt-extraction";
+import { isUploadFile, uploadReceiptPhoto } from "@/lib/operations-workforce/receipt-upload";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function text(formData: FormData, key: string) {
@@ -62,6 +62,8 @@ const expenseSchema = z.object({
   tax: z.string().optional(),
   category: z.string().max(120).optional(),
   assignTo: z.enum(["job", "customer", "department", "overhead"]),
+  receiptUrl: z.string().url().optional(),
+  extractReceipt: z.literal("on").optional(),
   reimbursementStatus: z.enum(["not_reimbursable", "submitted", "approved", "paid", "rejected"]),
   reimbursementDueDate: z.string().optional(),
   aiSummary: z.string().max(1000).optional()
@@ -303,42 +305,114 @@ export async function createExpenseAction(formData: FormData) {
     tax: text(formData, "tax"),
     category: text(formData, "category"),
     assignTo: text(formData, "assignTo") ?? "job",
+    receiptUrl: text(formData, "receiptUrl"),
+    extractReceipt: text(formData, "extractReceipt"),
     reimbursementStatus: text(formData, "reimbursementStatus") ?? "submitted",
     reimbursementDueDate: text(formData, "reimbursementDueDate"),
     aiSummary: text(formData, "aiSummary")
   });
   if (!parsed.success) return;
   const tenantId = await getCurrentWorkspaceId();
-  await queryPostgres(
+  const receiptPhoto = isUploadFile(formData.get("receiptPhoto")) ? formData.get("receiptPhoto") as File : null;
+  const uploaded = await uploadReceiptPhoto(tenantId, receiptPhoto);
+  const extractionRequested = parsed.data.extractReceipt === "on";
+  const extracted = extractionRequested
+    ? await extractReceiptFieldsWithVision({
+        tenantId,
+        vendor: parsed.data.vendor,
+        text: [parsed.data.vendor, parsed.data.category, parsed.data.amount, parsed.data.tax ? `tax ${parsed.data.tax}` : null, parsed.data.aiSummary, uploaded.fileName].filter(Boolean).join("\n"),
+        fileName: uploaded.fileName,
+        imageUrl: uploaded.signedUrl ?? parsed.data.receiptUrl ?? null,
+        mimeType: uploaded.mimeType ?? (parsed.data.receiptUrl ? "image/unknown" : null)
+      })
+    : null;
+  const vendor = parsed.data.vendor ?? extracted?.vendor ?? null;
+  const amountCents = cents(parsed.data.amount) || extracted?.totalCents || 0;
+  const taxCents = cents(parsed.data.tax) || extracted?.taxCents || 0;
+  const category = parsed.data.category ?? extracted?.category ?? "materials";
+  const receiptUrl = uploaded.storageUri ?? parsed.data.receiptUrl ?? null;
+  const expense = await queryPostgres<{ id: string }>(
     `
     insert into public.operations_expenses (
       tenant_id, worker_id, assignment_id, vendor, expense_date, amount_cents, tax_cents,
-      category, assign_to, ai_summary, reimbursement_status, reimbursement_due_date,
+      category, assign_to, receipt_url, ai_summary, reimbursement_status, reimbursement_due_date,
       reimbursement_notes, metadata_json
     )
-    values ($1,$2,$3,$4,current_date,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+    values ($1,$2,$3,$4,current_date,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+    returning id
     `,
     [
       tenantId,
       parsed.data.workerId ?? null,
       parsed.data.assignmentId ?? null,
-      parsed.data.vendor ?? null,
-      cents(parsed.data.amount),
-      cents(parsed.data.tax),
-      parsed.data.category ?? "materials",
+      vendor,
+      amountCents,
+      taxCents,
+      category,
       parsed.data.assignTo,
-      parsed.data.aiSummary ?? "Receipt details recorded for review.",
+      receiptUrl,
+      parsed.data.aiSummary ?? (extractionRequested ? "Receipt submitted. Ferocity drafted the expense details for office review." : "Receipt details recorded for review."),
       parsed.data.reimbursementStatus,
       parsed.data.reimbursementDueDate || null,
       parsed.data.aiSummary ?? null,
       JSON.stringify({
         receiptUploadReady: true,
-        providerExtraction: "available_when_connected",
-        ownerReminder: parsed.data.reimbursementStatus === "submitted"
+        providerExtraction: extractionRequested ? "requested" : "available_when_requested",
+        ownerReminder: parsed.data.reimbursementStatus === "submitted",
+        receiptUploadStatus: uploaded.uploadStatus,
+        receiptPhotoName: uploaded.fileName,
+        receiptPhotoMimeType: uploaded.mimeType,
+        receiptUploadError: uploaded.uploadError,
+        extractedFields: extracted,
+        reviewRequired: true
       })
     ]
   );
+  const expenseId = expense?.rows[0]?.id;
+  if (expenseId && (receiptUrl || extracted || uploaded.fileName)) {
+    const media = await queryPostgres<{ id: string }>(
+      `
+      insert into public.operations_field_media (
+        tenant_id, worker_id, assignment_id, media_type, title, file_url, ai_summary,
+        customer_visible, consent_status, status, metadata_json
+      )
+      values ($1,$2,$3,'receipt',$4,$5,$6,false,'internal_only','needs_review',$7::jsonb)
+      returning id
+      `,
+      [
+        tenantId,
+        parsed.data.workerId ?? null,
+        parsed.data.assignmentId ?? null,
+        vendor ?? uploaded.fileName ?? "Receipt",
+        receiptUrl,
+        parsed.data.aiSummary ?? "Receipt submitted from employee view.",
+        JSON.stringify({ source: "employee_view", expenseId, uploadStatus: uploaded.uploadStatus })
+      ]
+    );
+    const mediaId = media?.rows[0]?.id;
+    if (mediaId && extracted) {
+      await queryPostgres(
+        `
+        insert into public.operations_receipt_extractions (
+          tenant_id, field_media_id, expense_id, vendor, extracted_total_cents, confidence, extracted_text, extracted_fields_json
+        )
+        values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+        `,
+        [
+          tenantId,
+          mediaId,
+          expenseId,
+          extracted.vendor,
+          extracted.totalCents,
+          extracted.confidence,
+          extracted.extractedText,
+          JSON.stringify(extracted.fields)
+        ]
+      );
+    }
+  }
   revalidatePath("/app/operations-workforce");
+  revalidatePath("/app/employee");
 }
 
 export async function createRecurringExpenseAction(formData: FormData) {
@@ -546,9 +620,12 @@ export async function createFieldMediaAction(formData: FormData) {
   );
   const fieldMediaId = insert?.rows[0]?.id;
   if (fieldMediaId && parsed.data.mediaType === "receipt") {
-    const extracted = extractReceiptFields({
+    const extracted = await extractReceiptFieldsWithVision({
+      tenantId,
       vendor: parsed.data.title,
-      text: parsed.data.aiSummary ?? parsed.data.title
+      text: parsed.data.aiSummary ?? parsed.data.title,
+      imageUrl: parsed.data.fileUrl ?? null,
+      mimeType: parsed.data.fileUrl ? "image/unknown" : null
     });
     await queryPostgres(
       `
@@ -688,17 +765,26 @@ export async function sendCustomerUpdateDraftAction(formData: FormData) {
   if (draft.channel === "email") {
     const email = z.string().email().safeParse(draft.recipient_contact ?? "");
     sendResult = email.success
-      ? await sendEmailWithResend({
+      ? await sendMessage({
+          channel: "email",
           to: email.data,
           subject: draft.subject ?? "Update from your service team",
-          text: draft.body,
+          body: draft.body,
           queueId: `operations_customer_update:${draft.id}`,
+          idempotencyKey: `operations-customer-update:${draft.id}`,
           tenantId
         })
       : { ok: false, error: "Missing valid email recipient." };
   } else if (draft.channel === "sms") {
     sendResult = draft.recipient_contact
-      ? await sendSmsWithTwilio({ to: draft.recipient_contact, body: draft.body })
+      ? await sendMessage({
+          tenantId,
+          channel: "sms",
+          to: draft.recipient_contact,
+          body: draft.body,
+          queueId: `operations_customer_update:${draft.id}`,
+          idempotencyKey: `operations-customer-update:${draft.id}`
+        })
       : { ok: false, error: "Missing text message recipient." };
   } else {
     sendResult = { ok: true, providerMessageId: `manual:${draft.channel}:${draft.id}` };

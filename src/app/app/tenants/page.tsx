@@ -7,7 +7,7 @@ export default async function TenantsPage() {
   const rows = await getTenantSelectorRows();
 
   return (
-    <QueuePageShell eyebrow="SaaS Platform" title="Organization Selector" description="Separate workspaces for internal brands and future customer accounts.">
+    <QueuePageShell eyebrow="SaaS Platform" title="Organization Selector" description="Separate workspaces for internal brands and customer accounts.">
       <div className="button-row section-actions">
         <Link className="button" href="/app/onboarding">
           Create organization workspace

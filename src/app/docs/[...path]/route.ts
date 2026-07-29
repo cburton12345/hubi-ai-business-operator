@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path: pathParts } = await params;
-  const fileName = pathParts.join("/");
+  const requestedName = pathParts.join("/");
+  const fileName = requestedName.endsWith(".md") ? requestedName : `${requestedName}.md`;
 
-  if (!fileName.endsWith(".md") || fileName.includes("..")) {
+  if (fileName.includes("..")) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
 

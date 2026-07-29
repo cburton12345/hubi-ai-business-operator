@@ -40,7 +40,7 @@ export default async function LifeOpsConnectionsPage() {
             </h2>
             <p className="muted">
               Other systems send important events to the Owner Events intake. Ferocity records the event, ranks owner attention, and routes it to
-              Owner Events or Private Owner Tasks. This does not give Ferocity destructive control over those products, and you can disconnect or archive a system later.
+              Owner Events or Private Owner Tasks. This does not give Ferocity destructive control over those products, and you can disconnect or archive a system anytime.
             </p>
           </div>
           <span className={`pill ${dashboard.tokenConfigured ? "" : "high"}`}>{dashboard.tokenConfigured ? "token ready" : "token missing"}</span>
@@ -75,7 +75,7 @@ export default async function LifeOpsConnectionsPage() {
           <div>
             <h2>Register Another System</h2>
             <p className="muted">
-              Add a future brand, app, website, marketplace, or personal system here. It can start sending owner events with the same endpoint and token.
+              Add another brand, app, website, marketplace, or personal system here. It can start sending owner events with the same endpoint and token.
             </p>
           </div>
           <span className="pill">no code needed</span>

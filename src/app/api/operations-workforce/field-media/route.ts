@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
-import { extractReceiptFields } from "@/lib/operations-workforce/receipt-extraction";
+import { extractReceiptFieldsWithVision } from "@/lib/operations-workforce/receipt-extraction";
 
 const payloadSchema = z.object({
   tenantId: z.string().uuid(),
@@ -62,7 +62,13 @@ export async function POST(request: Request) {
   const mediaId = media?.rows[0]?.id ?? null;
   let receiptExtractionId: string | null = null;
   if (mediaId && parsed.data.mediaType === "receipt") {
-    const extracted = extractReceiptFields({ vendor: parsed.data.title, text: parsed.data.aiSummary ?? parsed.data.title });
+    const extracted = await extractReceiptFieldsWithVision({
+      tenantId: parsed.data.tenantId,
+      vendor: parsed.data.title,
+      text: parsed.data.aiSummary ?? parsed.data.title,
+      imageUrl: parsed.data.fileUrl ?? null,
+      mimeType: parsed.data.fileUrl ? "image/unknown" : null
+    });
     const receipt = await queryPostgres<{ id: string }>(
       `
       insert into public.operations_receipt_extractions (

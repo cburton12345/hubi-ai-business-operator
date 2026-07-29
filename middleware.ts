@@ -3,9 +3,15 @@ import { NextResponse, type NextRequest } from "next/server";
 const adminCookieName = "ferocity_admin_session";
 const appSessionCookieName = "ferocity_app_session";
 
-export function middleware(request: NextRequest) {
+async function adminCookieValue(token: string) {
+  const bytes = new TextEncoder().encode(`ferocity-admin-session:${token}`);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function middleware(request: NextRequest) {
   const token = process.env.ADMIN_ACCESS_TOKEN;
-  const isProduction = process.env.NODE_ENV === "production";
+  const appPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
 
   if (request.nextUrl.pathname === "/app/tenants" || request.nextUrl.pathname.startsWith("/app/tenant/")) {
     const workspaceUrl = new URL(request.url);
@@ -20,32 +26,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const queryToken = request.nextUrl.searchParams.get("adminToken");
-
-  if (token && queryToken && queryToken === token) {
-    const cleanUrl = new URL(request.url);
-    cleanUrl.searchParams.delete("adminToken");
-
-    const response = NextResponse.redirect(cleanUrl);
-    response.cookies.set(adminCookieName, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProduction,
-      path: "/",
-      maxAge: 60 * 60 * 12
-    });
-    return response;
-  }
-
+  const adminCookie = request.cookies.get(adminCookieName)?.value;
+  const validAdminCookie = Boolean(token && adminCookie && adminCookie === (await adminCookieValue(token)));
   if (
     request.cookies.get(appSessionCookieName)?.value ||
-    (token && request.cookies.get(adminCookieName)?.value === token)
+    validAdminCookie
   ) {
-    return NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-ferocity-app-path", appPath);
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", request.nextUrl.pathname);
+  loginUrl.searchParams.set("next", appPath);
   return NextResponse.redirect(loginUrl);
 }
 

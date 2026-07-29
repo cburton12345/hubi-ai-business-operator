@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOperationalQaRuns } from "@/lib/qa/get-operational-qa";
-import { runOperationalQaAction } from "./actions";
+import { OperationalQaRunForm } from "./OperationalQaRunForm";
 
 export default async function OperationalQaPage() {
   const runs = await getOperationalQaRuns();
@@ -13,9 +13,7 @@ export default async function OperationalQaPage() {
       description="Run a database-backed readiness check for the selected organization before beta launch."
     >
       <div className="button-row section-actions">
-        <form action={runOperationalQaAction}>
-          <button className="button" type="submit">Run operational QA</button>
-        </form>
+        <OperationalQaRunForm />
         <Link className="button secondary-button" href="/api/health/supabase">
           Check Supabase health
         </Link>
@@ -49,7 +47,12 @@ export default async function OperationalQaPage() {
             </ul>
           </li>
         ))}
-        {runs.length === 0 ? <li className="panel"><p className="muted">No QA runs yet.</p></li> : null}
+        {runs.length === 0 ? (
+          <li className="panel">
+            <h3>No QA runs yet</h3>
+            <p className="muted">Run Operational QA to save the first readiness record. If it fails, the error will appear above the history.</p>
+          </li>
+        ) : null}
       </ul>
     </QueuePageShell>
   );

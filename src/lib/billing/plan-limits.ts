@@ -46,6 +46,10 @@ function limitForPlan(planKey: string | null) {
     return { monthlyLeadLimit: 1000, formsLimit: 10 };
   }
 
+  if (planKey === "managed_operator") {
+    return { monthlyLeadLimit: null, formsLimit: null };
+  }
+
   return { monthlyLeadLimit: null, formsLimit: null };
 }
 

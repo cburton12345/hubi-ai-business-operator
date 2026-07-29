@@ -819,7 +819,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
         row.tenant_id,
         row.brand_id,
         `${row.brand_name}: SEO/GEO growth engine prepared`,
-        "Ferocity prepared AI-search checks, a 30-day content plan, authority tasks, publishing connection stubs, and draft SEO assets. Live publishing remains off.",
+        "Ferocity prepared AI-search checks, a 30-day content plan, authority tasks, publishing connection checks, and draft SEO assets. Live publishing remains off.",
         JSON.stringify({ seededBy: "seo_geo_growth_engine", livePublishingEnabled: false })
       ]
     );
@@ -1054,14 +1054,14 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
         row.tenant_id,
         row.brand_id,
         `${row.brand_name}: SEO autopilot refresh`,
-        "Review topic clusters, add real Search Console data later, and approve draft-only content before publishing.",
-        `The brand has ${row.seo_keywords.length} keyword seeds and ${row.landing_pages.length} page targets. Ferocity can safely prepare drafts now and use live ranking data later.`,
+        "Review topic clusters, connect Search Console data when available, and approve draft-only content before publishing.",
+        `The brand has ${row.seo_keywords.length} keyword seeds and ${row.landing_pages.length} page targets. Ferocity can safely prepare drafts now and use live ranking data when connected.`,
         "Review the generated SEO drafts, pick one page to improve first, and leave live publishing disabled until CMS/Search Console keys are connected.",
         JSON.stringify({
           generator: "seo_autopilot_foundation",
           keywordSeeds: keywordSeeds(row),
           draftOnly: true,
-          futureKeys: ["Search Console", "Analytics", "CMS publishing"]
+          providerKeysNeeded: ["Search Console", "Analytics", "CMS publishing"]
         })
       ]
     );

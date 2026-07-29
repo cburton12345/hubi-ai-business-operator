@@ -5,6 +5,8 @@ import { updateChecklistAction, updateWorkspaceSettingsAction } from "./actions"
 export default async function WorkspaceSettingsPage() {
   const settings = await getWorkspaceSettings();
   const checklistText = settings.onboardingChecklist.map((item) => `${item.done ? "[x]" : "[ ]"} ${item.label}`).join("\n");
+  const usageEntries = Object.entries(settings.usage ?? {});
+  const billingStatus = settings.billingStatus === "not_connected" ? "Not connected" : settings.billingStatus.replaceAll("_", " ");
 
   return (
     <QueuePageShell
@@ -49,7 +51,18 @@ export default async function WorkspaceSettingsPage() {
 
         <section className="panel span-6">
           <h2>Usage Summary</h2>
-          <pre>{JSON.stringify(settings.usage, null, 2)}</pre>
+          {usageEntries.length ? (
+            <ul className="list">
+              {usageEntries.map(([key, value]) => (
+                <li className="list-row" key={key}>
+                  <strong>{key.replaceAll("_", " ")}</strong>
+                  <span className="pill">{String(value)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No usage recorded yet.</p>
+          )}
         </section>
 
         <section className="panel span-6">
@@ -61,7 +74,7 @@ export default async function WorkspaceSettingsPage() {
             </li>
             <li className="list-row">
               <strong>Billing</strong>
-              <span className="pill">{settings.billingStatus}</span>
+              <span className="pill">{billingStatus}</span>
             </li>
             <li className="list-row">
               <strong>Payment system</strong>

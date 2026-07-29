@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { queryPostgres } from "@/lib/db/postgres";
 import { leadPriorities, leadStatuses, qualificationStatuses } from "@/lib/leads/constants";
+import { safeLogAppError } from "@/lib/observability/log-error";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const statusUpdateSchema = z.object({
@@ -240,7 +241,7 @@ export async function generateLeadIntelligenceAction(formData: FormData) {
 export async function calculateLeadScoreAction(formData: FormData) {
   await requirePermission("lead:manage");
   const leadId = formData.get("leadId")?.toString();
-  if (!leadId) return;
+  if (!leadId) return { ok: false, message: "Lead score could not run because the lead ID was missing.", reasons: [] };
 
   const workspaceId = await getCurrentWorkspaceId();
   const leadResult = await queryPostgres<{
@@ -264,7 +265,7 @@ export async function calculateLeadScoreAction(formData: FormData) {
     [workspaceId, leadId]
   );
   const lead = leadResult?.rows[0];
-  if (!lead) return;
+  if (!lead) return { ok: false, message: "Lead score could not run because this lead was not found in the current workspace.", reasons: [] };
   const legalResult =
     lead.lead_type === "case_intake"
       ? await queryPostgres<{
@@ -322,6 +323,37 @@ export async function calculateLeadScoreAction(formData: FormData) {
 
   revalidatePath("/app/leads");
   revalidatePath(`/app/leads/${leadId}`);
+  return {
+    ok: true,
+    message: `Lead scored ${scored.score}/100 (${scored.grade}).`,
+    reasons: scored.reasons
+  };
+}
+
+export async function calculateLeadScoreWithStateAction(
+  _state: { ok: boolean; message?: string; reasons?: string[] },
+  formData: FormData
+) {
+  try {
+    return await calculateLeadScoreAction(formData);
+  } catch (error) {
+    const correlationId = await safeLogAppError({
+      source: "server_action.leads.calculate_score",
+      severity: "error",
+      message: "Lead scoring action failed.",
+      category: "server_action",
+      retryable: true,
+      metadata: {
+        leadId: formData.get("leadId")?.toString() ?? null,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      }
+    });
+    return {
+      ok: false,
+      message: `Lead scoring failed. Reference ${correlationId}.`,
+      reasons: []
+    };
+  }
 }
 
 export async function qualifyLegalLeadAction(formData: FormData) {

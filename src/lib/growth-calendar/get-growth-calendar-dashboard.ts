@@ -69,7 +69,7 @@ export async function getGrowthCalendarDashboard(): Promise<GrowthCalendarDashbo
         }
       : {
           title: "Ask for customer proof",
-          detail: "Turn finished jobs into photos, testimonials, review prompts, and future local content.",
+          detail: "Turn finished jobs into photos, testimonials, review prompts, and local content.",
           href: "/app/proof",
           urgency: "medium"
         },

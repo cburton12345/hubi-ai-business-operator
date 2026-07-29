@@ -26,6 +26,7 @@ export default async function PublicLeadFormPage({
     campaign?: string;
     page_url?: string;
     referrer?: string;
+    referral?: string;
   }>;
 }) {
   const { publicKey } = await params;
@@ -47,7 +48,7 @@ export default async function PublicLeadFormPage({
           <p className="muted">
             {profile
               ? `${profile.brandName} - ${profile.primaryGoal}`
-              : "This reusable form routes the submission to the correct workspace and brand."}
+              : "This reusable form routes the submission to the right business team."}
           </p>
         </div>
 
@@ -61,6 +62,8 @@ export default async function PublicLeadFormPage({
           <input name="utmContent" type="hidden" value={query.utm_content ?? ""} />
           <input name="pageUrl" type="hidden" value={pageUrl} />
           <input name="referrer" type="hidden" value={referrer} />
+          <input name="referralToken" type="hidden" value={query.referral ?? ""} />
+          {profile?.qualificationFormId ? <input name="qualificationFormId" type="hidden" value={profile.qualificationFormId} /> : null}
           <label className="honeypot" aria-hidden="true">
             Website
             <input name="website" tabIndex={-1} autoComplete="off" />
@@ -100,6 +103,36 @@ export default async function PublicLeadFormPage({
             Location / state
             <input name="location" />
           </label>
+          {profile?.qualificationQuestions.map((question) => (
+            <label key={question.id}>
+              {question.label}
+              {question.questionType === "boolean" ? (
+                <select name={`qualification_${question.id}`} required={question.required} defaultValue="">
+                  <option value="">Choose one</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              ) : question.options.length ? (
+                <select name={`qualification_${question.id}`} required={question.required} defaultValue="">
+                  <option value="">Choose one</option>
+                  {question.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              ) : (
+                <input
+                  name={`qualification_${question.id}`}
+                  required={question.required}
+                  type={
+                    question.questionType === "number" || question.questionType === "currency"
+                      ? "number"
+                      : question.questionType === "date" || question.questionType === "email" || question.questionType === "phone"
+                        ? question.questionType === "phone" ? "tel" : question.questionType
+                        : "text"
+                  }
+                  step={question.questionType === "currency" ? "0.01" : undefined}
+                />
+              )}
+            </label>
+          ))}
           {profile?.businessModel === "rental" ? (
             <>
               <label>

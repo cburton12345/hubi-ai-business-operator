@@ -135,27 +135,44 @@ async function checkOpenAi() {
 function checkStaticGroups() {
   const groups = [
     ["Core app", ["DATABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "ADMIN_ACCESS_TOKEN", "FEROCITY_APP_URL"]],
+    ["Security tokenization", ["SECURITY_HMAC_KEY"]],
     ["Credential vault", ["CREDENTIAL_ENCRYPTION_KEY"]],
     ["Owner command intake", ["OWNER_COMMAND_CENTER_TOKEN"]],
     ["AI monitor jobs", ["AI_WORKFORCE_CRON_TOKEN"]],
     ["Workforce intake", ["WORKFORCE_INTAKE_TOKEN"]],
     ["MarketplacePro bridge", ["MARKETPLACEPRO_WEBHOOK_SECRET"]],
     ["Push notifications", ["NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY", "WEB_PUSH_VAPID_PRIVATE_KEY", "WEB_PUSH_VAPID_SUBJECT"]],
-    ["Google/GBP placeholders", ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"]],
-    ["Meta placeholders", ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI"]],
-    ["Reddit placeholders", ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"]],
-    ["Microsoft placeholders", ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"]],
-    ["Yahoo placeholders", ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"]],
+    ["Google/GBP connection", ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"]],
+    ["Meta connection", ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI"]],
+    ["TikTok connection", ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"]],
+    ["Reddit connection", ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"]],
+    ["Microsoft connection", ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"]],
+    ["Yahoo connection", ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"]],
+    ["Premium video rendering", [
+      "VIDEO_PROVIDER",
+      "VIDEO_API_KEY",
+      "VIDEO_MODEL",
+      "VIDEO_RENDERING_ENABLED",
+      "VIDEO_MONTHLY_BUDGET_CENTS",
+      "VIDEO_WORKSPACE_MONTHLY_BUDGET_CENTS",
+      "VIDEO_PROVIDER_COST_CENTS_PER_SECOND",
+      "VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND"
+    ]],
+    ["AI Office Manager voice", ["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET", "VOICE_PHONE_NUMBER", "VOICE_MONTHLY_BUDGET_CENTS"]],
     ["Optional Twilio SMS", ["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]]
   ];
 
   const results = [];
   for (const [label, keys] of groups) {
     const gaps = missing(keys);
-    const optional = ["Google/GBP placeholders", "Meta placeholders", "Reddit placeholders", "Microsoft placeholders", "Yahoo placeholders", "Optional Twilio SMS"].includes(label);
+    const optional = ["Google/GBP connection", "Meta connection", "TikTok connection", "Reddit connection", "Microsoft connection", "Yahoo connection", "Premium video rendering", "AI Office Manager voice", "Optional Twilio SMS"].includes(label);
     const status = gaps.length === 0 ? "ready" : optional ? "warning" : "blocked";
     const detail = label === "Optional Twilio SMS" && gaps.length
       ? `not required for launch; using app alerts, email, dashboard queues, and manual text drafts`
+      : label === "AI Office Manager voice" && gaps.length
+        ? `not required for launch; office-manager setup works now, live calls need ${gaps.join(", ")}`
+      : label === "Premium video rendering" && gaps.length
+        ? `not required for launch; video briefs work now, live renders need ${gaps.join(", ")}`
       : gaps.length ? `missing ${gaps.join(", ")}` : "configured";
     row(label, status, detail);
     results.push({ label, ok: gaps.length === 0, gaps });
@@ -175,7 +192,7 @@ const liveResults = [
 ];
 
 const requiredStatic = staticResults.filter((item) =>
-  ["Core app", "Credential vault", "Owner command intake", "AI monitor jobs", "Workforce intake", "MarketplacePro bridge", "Push notifications"].includes(item.label)
+  ["Core app", "Security tokenization", "Credential vault", "Owner command intake", "AI monitor jobs", "Workforce intake", "MarketplacePro bridge", "Push notifications"].includes(item.label)
 );
 const blockers = [
   ...requiredStatic.filter((item) => !item.ok).map((item) => item.label),

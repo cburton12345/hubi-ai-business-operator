@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Ferocity Integrations",
   description:
-    "Connect Ferocity with Google, Meta, Reddit, Microsoft, Resend, Stripe, calendars, ads, reviews, marketplace sources, app alerts, email, and optional customer communication tools.",
+    "Connect Ferocity with voice, SMS, video, email, payments, calendars, ads, reviews, marketplace sources, app alerts, and bring-your-own providers.",
   alternates: {
     canonical: "/integrations"
   }
@@ -19,10 +19,15 @@ const providers = [
   { name: "Microsoft Ads" },
   { name: "Yahoo / Native Ads" },
   { name: "Resend or customer email" },
+  { name: "AI phone receptionist" },
+  { name: "Business phone connection and texting" },
+  { name: "Customer-requested voice, SMS, or video providers" },
+  { name: "Video briefs with connected premium rendering" },
   { name: "App alerts and email by default" },
-  { name: "Optional SMS later" },
+  { name: "Manual text drafts when needed" },
   { name: "Stripe" },
-  { name: "Marketplace and partner sources" }
+  { name: "Marketplace and partner sources" },
+  { name: "Secure bring-your-own credential vault" }
 ];
 
 export default function PublicIntegrationsPage() {
@@ -32,11 +37,9 @@ export default function PublicIntegrationsPage() {
         <nav className="public-nav">
           <Link className="brand-mark" href="/">Ferocity</Link>
           <div>
-            <Link href="/about">About</Link>
             <Link href="/demo">Demo</Link>
-            <Link href="/business-health-score">Free Grader</Link>
+            <Link href="/features">Features</Link>
             <Link href="/pricing">Plans</Link>
-            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
@@ -45,8 +48,8 @@ export default function PublicIntegrationsPage() {
           <p className="eyebrow">Integrations</p>
           <h1>Connect Ferocity to the tools your business already uses.</h1>
           <p className="muted">
-            Keep trusted systems for payments, email, app alerts, calendars, ads, marketplace leads, and public profiles. Ferocity organizes
-            the work around them.
+            Keep trusted systems for payments, email, SMS, voice, video, calendars, ads, marketplace leads, and public profiles.
+            Ferocity organizes the work around them instead of forcing every business into one provider.
           </p>
           <div className="button-row">
             <Link className="button" href="/start?source=integrations">
@@ -61,7 +64,7 @@ export default function PublicIntegrationsPage() {
           </div>
         </section>
         <section className="panel">
-          <h2>Connection Paths</h2>
+          <h2>Connection paths</h2>
           <ul className="public-provider-list">
             {providers.map((provider) => (
               <li key={provider.name}>{provider.name}</li>
@@ -74,8 +77,8 @@ export default function PublicIntegrationsPage() {
             <p className="muted">Customer messages, publishing, ad changes, and payment actions require the right connected account and review controls.</p>
           </div>
           <div className="panel">
-            <h2>Plain workflow</h2>
-            <p className="muted">Connect an account, choose what Ferocity handles, review the work, and keep control over customer-facing actions.</p>
+            <h2>Bring your own provider</h2>
+            <p className="muted">Connect a supported account now, or request a secure connection for another service your business already uses.</p>
           </div>
           <div className="panel">
             <h2>Optional modules</h2>
@@ -97,7 +100,7 @@ export default function PublicIntegrationsPage() {
               ["Forms", "Website and hosted forms capture source, referrer, and UTM data."],
               ["Marketplace", "Marketplace and partner requests map into the same lead flow."],
               ["Manual sources", "Calls, referrals, and walk-ins can be entered without losing attribution."],
-              ["Reporting", "Sources roll up into lead, job, revenue, and review reporting."]
+              ["Reporting", "Sources roll up into lead, job, revenue, and review reports."]
             ].map(([title, body]) => (
               <div key={title}>
                 <strong>{title}</strong>

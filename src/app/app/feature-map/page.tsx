@@ -85,6 +85,7 @@ const featureGroups = [
       ["Notifications", "Device push setup for owner decisions, hot leads, blocked automation, safety, and money follow-up.", "/app/notifications", "visible now"],
       ["Install App", "Install Ferocity on phone, tablet, or desktop for faster owner and field access.", "/install", "visible now"],
       ["AI Workforce", "AI employees, one-click starting points, agent runs, output queue, and the command box for business work.", "/app/ai-workforce", "visible"],
+      ["Call Inbox", "Receptionist calls, missed calls, summaries, transcripts, recordings, follow-up, usage, and billing status.", "/app/calls", "visible now"],
       ["Automation Rules", "AI agents, recurring rules, queued actions, consent, live policies, provider readiness, and limits.", "/app/automation-command", "visible now"],
       ["Guided Setup", "Plain-English setup planner, preview changes, apply reviewed plans, change log.", "/app/build-system", "visible"],
       ["Private Owner Tasks", "Personal owner tasks and LifeOps-style items tied to the owner layer.", "/app/personal-ops", "advanced"],
@@ -116,7 +117,7 @@ const featureGroups = [
       ["Public Lead Forms", "Reusable form keys and public lead capture forms.", "/app/forms", "also_more"],
       ["Action Queue", "One safety queue for messages, publishing, reviews, calendar, and billing actions.", "/app/actions", "also_more"],
       ["Automation Rules", "Plain view of what AI prepared, what needs review, what is blocked, and what can safely run.", "/app/automation-command", "visible now"],
-      ["Draft Queue", "AI-generated drafts waiting for review or later use.", "/app/drafts", "advanced"],
+      ["Draft Queue", "AI-generated drafts waiting for review, scheduling, or publishing.", "/app/drafts", "advanced"],
       ["Approvals", "Sensitive/high-impact items requiring human review.", "/app/approvals", "advanced"],
       ["Calendar", "Generated drafts, scheduled work, approved items, and upcoming AI tasks.", "/app/calendar", "advanced"],
       ["Tasks", "AI task queue scoped by workspace and brand.", "/app/tasks", "advanced"]

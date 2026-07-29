@@ -485,7 +485,7 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     publishingQueue.length > 0
       ? {
           title: "Keep publishing consistent",
-          detail: "Move approved work through the queue manually or with connected providers later.",
+          detail: "Move approved work through the queue manually or with connected providers.",
           href: "/app/growth",
           urgency: "medium" as const
         }

@@ -56,7 +56,6 @@ export default async function WebsiteGraderPage({
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
             <Link href="/pricing">Plans</Link>
-            <Link href="/install">Install App</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
           </div>
@@ -64,7 +63,7 @@ export default async function WebsiteGraderPage({
 
         <section className="public-hero">
           <p className="eyebrow">Ferocity Business Grader</p>
-          <h1>See what the business should improve first.</h1>
+          <h1>Find the first places Ferocity can make the business easier to run and easier to grow.</h1>
           <p className="muted">
             Run a free audit that scores the business, highlights useful improvements, and shows the first actions Ferocity would recommend.
             No credit card required.
@@ -81,9 +80,9 @@ export default async function WebsiteGraderPage({
               <p className="eyebrow">Free Business Grader</p>
               <h2>Analyze my business</h2>
               <p className="muted">
-                Use normal business details. Ferocity turns them into a Business Health Score, improvement areas, and a setup path.
-                Contractors are included, but the same grader works for firms, clinics, shops, sales teams, agencies, e-commerce,
-                multi-location companies, and owners with one business or several ventures. Rental operators can connect deeper property workflows through dedicated rental tools.
+                Use normal business details. Ferocity turns them into a Business Health Score, improvement areas,
+                and a practical setup path. It works for contractors, local companies, professional practices,
+                sales teams, agencies, e-commerce, rentals, and owners with one business or several.
               </p>
             </div>
             {params.error ? <p className="form-error">Please enter a valid email and valid URLs if you include them.</p> : null}
@@ -187,8 +186,9 @@ export default async function WebsiteGraderPage({
                 "Strengths and weaknesses in plain English",
                 "Revenue opportunities to review",
                 "Top 5 ROI-ranked actions with impact, difficulty, ROI, and time estimate",
-                "A clear path into Autopilot Setup",
-                "Business Autopilot Blueprint path: included with paid plans or credited toward the first month"
+                "Which Ferocity plan or workflow would fix each gap",
+                "A clear path into AI-guided setup",
+                "Business Autopilot Blueprint path for paid plans"
               ].map((item) => (
                 <div className="list-row flush-row" key={item}>
                   <span>{item}</span>
@@ -200,14 +200,14 @@ export default async function WebsiteGraderPage({
               <Gauge size={20} />
               <div>
                 <strong>Immediate value</strong>
-                <p className="muted">Users get a useful score and top recommendations before buying anything.</p>
+                <p className="muted">Get a useful score and top recommendations before buying anything.</p>
               </div>
             </div>
             <div className="notice-card">
               <Sparkles size={20} />
               <div>
                 <strong>AI-ready</strong>
-                <p className="muted">Rules keep the score consistent. AI can explain the gaps and personalize the plan.</p>
+                <p className="muted">AI can explain the gaps and personalize the plan.</p>
               </div>
             </div>
             <div className="notice-card">

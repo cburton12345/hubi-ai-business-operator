@@ -12,10 +12,41 @@ export type ServiceEstimateDetail = {
   paymentTerms: string;
   depositRequired: string;
   acceptanceNotes: string;
+  customerDisplayMode: string;
+  customerIntro: string;
+  customerScopeSummary: string;
+  customerExclusions: string;
+  customerNextSteps: string;
+  showLineItemPrices: boolean;
+  showQuantities: boolean;
+  showMaterialDetails: boolean;
+  showLaborDetails: boolean;
+  showOverheadDetails: boolean;
+  showProfitDetails: boolean;
+  estimatedCrewSize: string;
+  estimatedTearoutHours: string;
+  estimatedInstallHours: string;
+  estimatedDurationHours: string;
+  laborRate: string;
+  laborNotes: string;
+  marketPriceRange: string;
+  marketPriceSource: string;
+  marketPriceNotes: string;
   customerSummary: string;
   internalNotes: string;
   followUpDraft: string;
+  shareLink: {
+    id: string;
+    publicToken: string;
+    url: string;
+    status: string;
+    emailTo: string;
+    sentAt: string;
+    acceptedAt: string;
+    expiresAt: string;
+  } | null;
   linkedJobs: { id: string; title: string; status: string; schedule: string }[];
+  pricebookItems: { id: string; name: string; category: string; price: string }[];
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
 };
 
@@ -36,6 +67,7 @@ export type ServiceJobDetail = {
   linkedInvoices: { id: string; title: string; status: string; total: string; balanceDue: string }[];
   proofRequests: { id: string; publicToken: string; requestType: string; status: string; createdAt: string; url: string }[];
   proofSubmissions: { id: string; title: string; status: string; assetCount: number; createdAt: string }[];
+  authorityBundle: { id: string; status: string; title: string; draftCount: number; queueCount: number } | null;
 };
 
 export type ServiceInvoiceDetail = {
@@ -65,7 +97,7 @@ function formatDateTime(start: Date | null, end: Date | null) {
 
 export async function getServiceEstimateDetail(estimateId: string): Promise<ServiceEstimateDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [estimateResult, itemsResult, jobsResult] = await Promise.all([
+  const [estimateResult, itemsResult, jobsResult, shareLinkResult, pricebookResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -79,11 +111,40 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       payment_terms: string | null;
       deposit_required_cents: number | null;
       acceptance_notes: string | null;
+      customer_display_mode: string | null;
+      customer_intro: string | null;
+      customer_scope_summary: string | null;
+      customer_exclusions: string | null;
+      customer_next_steps: string | null;
+      show_line_item_prices: boolean | null;
+      show_quantities: boolean | null;
+      show_material_details: boolean | null;
+      show_labor_details: boolean | null;
+      show_overhead_details: boolean | null;
+      show_profit_details: boolean | null;
+      estimated_crew_size: string | null;
+      estimated_tearout_hours: string | null;
+      estimated_install_hours: string | null;
+      estimated_duration_hours: string | null;
+      labor_rate_cents: number | null;
+      labor_notes: string | null;
+      market_price_low_cents: number | null;
+      market_price_high_cents: number | null;
+      market_price_source: string | null;
+      market_price_notes: string | null;
     }>(
       `
       select e.id, e.customer_id, c.name as customer_name, e.title, e.status, e.total_cents,
         e.customer_summary, e.internal_notes, e.manual_follow_up_draft,
-        e.payment_terms, e.deposit_required_cents, e.acceptance_notes
+        e.payment_terms, e.deposit_required_cents, e.acceptance_notes,
+        e.customer_display_mode, e.customer_intro, e.customer_scope_summary,
+        e.customer_exclusions, e.customer_next_steps,
+        e.show_line_item_prices, e.show_quantities, e.show_material_details,
+        e.show_labor_details, e.show_overhead_details, e.show_profit_details,
+        e.estimated_crew_size::text, e.estimated_tearout_hours::text,
+        e.estimated_install_hours::text, e.estimated_duration_hours::text,
+        e.labor_rate_cents, e.labor_notes, e.market_price_low_cents,
+        e.market_price_high_cents, e.market_price_source, e.market_price_notes
       from public.service_estimates e
       join public.customers c on c.id = e.customer_id
       where e.tenant_id = $1 and e.id = $2
@@ -109,6 +170,35 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       limit 5
       `,
       [workspaceId, estimateId]
+    ),
+    queryPostgres<{
+      id: string;
+      public_token: string;
+      status: string;
+      email_to: string | null;
+      sent_at: Date | null;
+      accepted_at: Date | null;
+      expires_at: Date | null;
+    }>(
+      `
+      select id, public_token, status, email_to, sent_at, accepted_at, expires_at
+      from public.estimate_share_links
+      where tenant_id = $1 and estimate_id = $2
+      order by created_at desc
+      limit 1
+      `,
+      [workspaceId, estimateId]
+    ),
+    queryPostgres<{ id: string; name: string; category_name: string | null; price_cents: number }>(
+      `
+      select i.id, i.name, c.name as category_name, i.price_cents
+      from public.pricebook_items i
+      left join public.pricebook_categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
+      where i.tenant_id = $1 and i.active = true
+      order by c.position nulls last, c.name nulls last, i.name
+      limit 300
+      `,
+      [workspaceId]
     )
   ]);
   const estimate = estimateResult?.rows[0];
@@ -124,14 +214,55 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
     paymentTerms: estimate.payment_terms ?? "",
     depositRequired: formatMoney(estimate.deposit_required_cents ?? 0),
     acceptanceNotes: estimate.acceptance_notes ?? "",
+    customerDisplayMode: estimate.customer_display_mode ?? "grouped",
+    customerIntro: estimate.customer_intro ?? "",
+    customerScopeSummary: estimate.customer_scope_summary ?? estimate.customer_summary ?? "",
+    customerExclusions: estimate.customer_exclusions ?? "",
+    customerNextSteps: estimate.customer_next_steps ?? "",
+    showLineItemPrices: estimate.show_line_item_prices ?? true,
+    showQuantities: estimate.show_quantities ?? true,
+    showMaterialDetails: estimate.show_material_details ?? false,
+    showLaborDetails: estimate.show_labor_details ?? false,
+    showOverheadDetails: estimate.show_overhead_details ?? false,
+    showProfitDetails: estimate.show_profit_details ?? false,
+    estimatedCrewSize: estimate.estimated_crew_size ?? "",
+    estimatedTearoutHours: estimate.estimated_tearout_hours ?? "",
+    estimatedInstallHours: estimate.estimated_install_hours ?? "",
+    estimatedDurationHours: estimate.estimated_duration_hours ?? "",
+    laborRate: centsToDollars(estimate.labor_rate_cents ?? 0),
+    laborNotes: estimate.labor_notes ?? "",
+    marketPriceRange:
+      estimate.market_price_low_cents || estimate.market_price_high_cents
+        ? `${formatMoney(estimate.market_price_low_cents ?? 0)} - ${formatMoney(estimate.market_price_high_cents ?? 0)}`
+        : "",
+    marketPriceSource: estimate.market_price_source ?? "",
+    marketPriceNotes: estimate.market_price_notes ?? "",
     customerSummary: estimate.customer_summary ?? "",
     internalNotes: estimate.internal_notes ?? "",
     followUpDraft: estimate.manual_follow_up_draft ?? "",
+    shareLink: shareLinkResult?.rows[0]
+      ? {
+          id: shareLinkResult.rows[0].id,
+          publicToken: shareLinkResult.rows[0].public_token,
+          url: `/estimate/${shareLinkResult.rows[0].public_token}`,
+          status: shareLinkResult.rows[0].status,
+          emailTo: shareLinkResult.rows[0].email_to ?? "",
+          sentAt: shareLinkResult.rows[0].sent_at ? formatDateTime(shareLinkResult.rows[0].sent_at, null) : "",
+          acceptedAt: shareLinkResult.rows[0].accepted_at ? formatDateTime(shareLinkResult.rows[0].accepted_at, null) : "",
+          expiresAt: shareLinkResult.rows[0].expires_at ? formatDateTime(shareLinkResult.rows[0].expires_at, null) : ""
+        }
+      : null,
     linkedJobs: (jobsResult?.rows ?? []).map((job) => ({
       id: job.id,
       title: job.title,
       status: job.status,
       schedule: formatDateTime(job.scheduled_start, job.scheduled_end)
+    })),
+    pricebookItems: (pricebookResult?.rows ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category_name ?? "Uncategorized",
+      price: formatMoney(item.price_cents)
     })),
     lineItems: (itemsResult?.rows ?? []).map((item) => ({
       id: item.id,
@@ -147,7 +278,7 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
 
 export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [result, requestsResult, submissionsResult, invoicesResult] = await Promise.all([
+  const [result, requestsResult, submissionsResult, invoicesResult, authorityResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -222,6 +353,16 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       limit 5
       `,
       [workspaceId, jobId]
+    ),
+    queryPostgres<{ id: string; title: string; status: string; draft_count: number; queue_count: number }>(
+      `
+      select id, title, status, draft_count, queue_count
+      from public.authority_content_bundles
+      where tenant_id = $1 and job_id = $2 and bundle_type = 'completed_job'
+      order by created_at desc
+      limit 1
+      `,
+      [workspaceId, jobId]
     )
   ]);
   const job = result?.rows[0];
@@ -262,7 +403,16 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       status: submission.status,
       assetCount: Number(submission.asset_count ?? 0),
       createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(submission.created_at)
-    }))
+    })),
+    authorityBundle: authorityResult?.rows[0]
+      ? {
+          id: authorityResult.rows[0].id,
+          title: authorityResult.rows[0].title,
+          status: authorityResult.rows[0].status,
+          draftCount: Number(authorityResult.rows[0].draft_count ?? 0),
+          queueCount: Number(authorityResult.rows[0].queue_count ?? 0)
+        }
+      : null
   };
 }
 

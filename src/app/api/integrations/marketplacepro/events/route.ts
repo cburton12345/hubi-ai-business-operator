@@ -31,7 +31,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     provider: "marketplacepro",
-    status: "adapter_stub_ready",
+    status: "event_adapter_ready",
     message: "POST signed MarketplacePro launch-table events here. Supported tables: posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, support_requests."
   });
 }

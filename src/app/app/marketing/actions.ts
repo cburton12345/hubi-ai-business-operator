@@ -23,6 +23,25 @@ const draftUpdateSchema = z.object({
   notes: z.string().optional()
 });
 
+const managedServiceSchema = z.object({
+  serviceKey: z.enum(["managed_local_seo", "managed_ads", "managed_creative", "managed_video_ads", "managed_review_growth", "managed_content", "managed_email_followup"]),
+  monthlyBudgetCents: z.number().int().min(0).max(100000000),
+  notes: z.string().max(1000).optional()
+});
+
+const managedServiceMeta: Record<
+  z.infer<typeof managedServiceSchema>["serviceKey"],
+  { name: string; family: "seo" | "ads" | "creative" | "video" | "reviews" | "content" | "email"; feeBps: number }
+> = {
+  managed_local_seo: { name: "Managed Local SEO", family: "seo", feeBps: 1500 },
+  managed_ads: { name: "Managed Ads", family: "ads", feeBps: 1500 },
+  managed_creative: { name: "Managed Ad Creative", family: "creative", feeBps: 1000 },
+  managed_video_ads: { name: "Managed Video Ads", family: "video", feeBps: 1500 },
+  managed_review_growth: { name: "Managed Review Growth", family: "reviews", feeBps: 1000 },
+  managed_content: { name: "Managed Content", family: "content", feeBps: 1000 },
+  managed_email_followup: { name: "Managed Email Follow-Up", family: "email", feeBps: 1000 }
+};
+
 export async function generateWeeklyMarketingPlansAction() {
   await requirePermission("ai:queue");
 
@@ -34,6 +53,86 @@ export async function generateWeeklyMarketingPlansAction() {
   revalidatePath("/app/drafts");
   revalidatePath("/app/recommendations");
   revalidatePath("/app/approvals");
+}
+
+export async function requestManagedMarketingServiceAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = managedServiceSchema.safeParse({
+    serviceKey: formData.get("serviceKey"),
+    monthlyBudgetCents: Number(formData.get("monthlyBudgetCents") ?? 0),
+    notes: formData.get("notes")?.toString() || undefined
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const meta = managedServiceMeta[parsed.data.serviceKey];
+
+  const result = await queryPostgres<{ id: string }>(
+    `
+    insert into public.managed_service_programs (
+      tenant_id, service_key, service_name, service_family, status, provider_ownership,
+      monthly_budget_cents, management_fee_bps, approval_mode, live_spend_enabled,
+      live_publishing_enabled, notes, metadata_json, created_by_user_id, updated_at
+    )
+    values (
+      $1, $2, $3, $4, 'requested', 'ferocity_managed',
+      $5, $6, 'approval_required', false, false, $7,
+      jsonb_build_object(
+        'plainStatus', 'Ferocity can plan and prepare this service. Live spend, publishing, and customer sends stay off until approved.',
+        'requestedBy', $8::text
+      ),
+      nullif($9::text, '')::uuid,
+      now()
+    )
+    on conflict (tenant_id, service_key) do update
+    set status = case when public.managed_service_programs.status = 'cancelled' then 'requested' else public.managed_service_programs.status end,
+        monthly_budget_cents = excluded.monthly_budget_cents,
+        management_fee_bps = excluded.management_fee_bps,
+        notes = excluded.notes,
+        metadata_json = public.managed_service_programs.metadata_json || excluded.metadata_json,
+        updated_at = now()
+    returning id
+    `,
+    [
+      workspaceId,
+      parsed.data.serviceKey,
+      meta.name,
+      meta.family,
+      parsed.data.monthlyBudgetCents,
+      meta.feeBps,
+      parsed.data.notes ?? "",
+      actor.email,
+      actor.userId === "admin-token" ? "" : actor.userId
+    ]
+  );
+
+  const programId = result?.rows[0]?.id;
+  if (programId) {
+    await queryPostgres(
+      `
+      insert into public.managed_service_events (
+        tenant_id, managed_service_program_id, event_type, event_status, amount_cents, metadata_json
+      )
+      values ($1, $2, 'managed_service_requested', 'needs_approval', $3, $4::jsonb)
+      `,
+      [
+        workspaceId,
+        programId,
+        parsed.data.monthlyBudgetCents,
+        JSON.stringify({
+          serviceKey: parsed.data.serviceKey,
+          serviceName: meta.name,
+          approvalRequired: true,
+          liveSpendEnabled: false,
+          livePublishingEnabled: false
+        })
+      ]
+    );
+  }
+
+  revalidatePath("/app/marketing");
+  revalidatePath("/app/integrations");
+  revalidatePath("/app/billing");
 }
 
 export async function updateCalendarItemAction(formData: FormData) {

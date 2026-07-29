@@ -15,6 +15,50 @@ type CommandPlan = {
 
 const commandPlans: CommandPlan[] = [
   {
+    title: "Make an ad video",
+    ownerWords: "Make me a video ad from this job and add it to Facebook, Instagram, Google, and TikTok.",
+    employees: ["AI Marketing Manager", "AI Ad Manager", "AI Content Manager"],
+    prepares: ["Create Ad Autopilot package", "Draft video script and scene plan", "Create platform-specific variants", "Queue review/export before posting"],
+    routes: [
+      { label: "Marketing OS", href: "/app/marketing-os" },
+      { label: "Review Queue", href: "/app/review" },
+      { label: "Publishing Queue", href: "/app/publishing-hub" }
+    ]
+  },
+  {
+    title: "Add a receipt",
+    ownerWords: "Add this receipt, pull the details, and put it on the right job for taxes and P&L.",
+    employees: ["AI Office Manager", "AI Finance Helper", "AI Field Coordinator"],
+    prepares: ["Create money task when details are missing", "Route receipt photo/OCR to Jobs & Money", "Track reimbursement and tax category", "Connect cost to job profit"],
+    routes: [
+      { label: "Jobs & Money", href: "/app/job-tracker" },
+      { label: "Field Costs / Proof", href: "/app/operations-workforce#field-work" },
+      { label: "Reports", href: "/app/reports" }
+    ]
+  },
+  {
+    title: "Log time or hours",
+    ownerWords: "Log my hours for today and put them on the right job.",
+    employees: ["AI Office Manager", "AI Payroll Helper", "AI Workforce Helper"],
+    prepares: ["Create time review task when worker/job/time is missing", "Route to time clock and payroll review", "Keep hours tied to jobs and profit", "Surface missing approvals"],
+    routes: [
+      { label: "Team Time Clock", href: "/app/operations-workforce#time-clock" },
+      { label: "Employee View", href: "/app/employee" },
+      { label: "Payroll Review", href: "/app/operations-workforce#payroll" }
+    ]
+  },
+  {
+    title: "Create reminder",
+    ownerWords: "Remind me tomorrow to call the customer and check the job goals.",
+    employees: ["AI Chief of Staff", "AI Reminder Helper", "AI Office Manager"],
+    prepares: ["Create owner reminder", "Route to push notification settings", "Show due item in Needs Attention", "Keep private owner tasks separate"],
+    routes: [
+      { label: "Notifications", href: "/app/notifications" },
+      { label: "Needs Attention", href: "/app/attention-command" },
+      { label: "Private Owner Tasks", href: "/app/personal-ops" }
+    ]
+  },
+  {
     title: "Audit what is missing",
     ownerWords: "Audit my business setup and tell me what I need next.",
     employees: ["AI Business Setup Manager", "AI Growth Manager", "AI Automation Manager", "AI Website Manager"],
@@ -150,24 +194,27 @@ const commandPlans: CommandPlan[] = [
 
 function pickPlan(input: string) {
   const lower = input.toLowerCase();
-  if (lower.includes("audit") || lower.includes("missing") || lower.includes("what do i need") || lower.includes("what next") || lower.includes("check everything")) return commandPlans[0];
-  if (lower.includes("bid") || lower.includes("quote") || lower.includes("material") || lower.includes("profit") || lower.includes("job cost") || lower.includes("track jobs")) return commandPlans[7];
-  if (lower.includes("owe") || lower.includes("collect") || lower.includes("unpaid") || lower.includes("invoice") || lower.includes("bill") || lower.includes("reminder text")) return commandPlans[8];
-  if (lower.includes("worker") || lower.includes("crew") || lower.includes("itinerary") || lower.includes("schedule") || lower.includes("dispatch")) return commandPlans[9];
-  if (lower.includes("remind") || lower.includes("goal") || lower.includes("tomorrow") || lower.includes("personal task")) return commandPlans[10];
-  if (lower.includes("receipt") || lower.includes("field cost") || lower.includes("mileage") || lower.includes("proof") || lower.includes("photo") || lower.includes("payroll")) return commandPlans[11];
-  if (lower.includes("review") || lower.includes("testimonial")) return commandPlans[2];
-  if (lower.includes("storm") || lower.includes("campaign") || lower.includes("hail") || lower.includes("ad")) return commandPlans[3];
-  if (lower.includes("website") || lower.includes("homepage") || lower.includes("page")) return commandPlans[4];
-  if (lower.includes("old lead") || lower.includes("follow up") || lower.includes("last month") || lower.includes("reactivate")) return commandPlans[5];
-  if (lower.includes("setup") || lower.includes("set up") || lower.includes("business")) return commandPlans[6];
-  return commandPlans[1];
+  if (lower.includes("video") || lower.includes("reel") || lower.includes("commercial") || lower.includes("tiktok") || lower.includes("youtube") || lower.includes("auto post") || lower.includes("post it")) return commandPlans[0];
+  if (lower.includes("receipt") || lower.includes("expense") || lower.includes("reimburse") || lower.includes("tax") || lower.includes("deduct")) return commandPlans[1];
+  if (lower.includes("log my hours") || lower.includes("hours") || lower.includes("clock") || lower.includes("time card") || lower.includes("timesheet") || lower.includes("punch")) return commandPlans[2];
+  if (lower.includes("remind") || lower.includes("goal") || lower.includes("tomorrow") || lower.includes("personal task")) return commandPlans[3];
+  if (lower.includes("audit") || lower.includes("missing") || lower.includes("what do i need") || lower.includes("what next") || lower.includes("check everything")) return commandPlans[4];
+  if (lower.includes("bid") || lower.includes("quote") || lower.includes("material") || lower.includes("profit") || lower.includes("job cost") || lower.includes("track jobs")) return commandPlans[11];
+  if (lower.includes("owe") || lower.includes("collect") || lower.includes("unpaid") || lower.includes("invoice") || lower.includes("bill") || lower.includes("reminder text")) return commandPlans[12];
+  if (lower.includes("worker") || lower.includes("crew") || lower.includes("itinerary") || lower.includes("schedule") || lower.includes("dispatch")) return commandPlans[13];
+  if (lower.includes("field cost") || lower.includes("mileage") || lower.includes("proof") || lower.includes("photo") || lower.includes("payroll")) return commandPlans[15];
+  if (lower.includes("review") || lower.includes("testimonial")) return commandPlans[6];
+  if (lower.includes("storm") || lower.includes("campaign") || lower.includes("hail") || lower.includes("ad")) return commandPlans[7];
+  if (lower.includes("website") || lower.includes("homepage") || lower.includes("page")) return commandPlans[8];
+  if (lower.includes("old lead") || lower.includes("follow up") || lower.includes("last month") || lower.includes("reactivate")) return commandPlans[9];
+  if (lower.includes("setup") || lower.includes("set up") || lower.includes("business")) return commandPlans[10];
+  return commandPlans[5];
 }
 
 export function AiCommandPanel({
   title = "Tell Ferocity What You Want Done",
-  description = "This preview does not send, publish, spend, or change records. It shows the safe plan and routes you to existing Ferocity systems.",
-  initialCommand = "Get me more roofing leads.",
+  description = "Type like you would text an assistant. Ferocity routes the request to existing business systems, creates safe records, and tells you what still needs approval or details.",
+  initialCommand = "Make me a video ad from this job and add it to Facebook, Instagram, Google, and TikTok.",
   submitLabel = "Prepare work in Ferocity"
 }: {
   title?: string;
@@ -207,7 +254,7 @@ export function AiCommandPanel({
           <button className="button" type="submit" disabled={executePending}>
             {executePending ? "Preparing..." : submitLabel}
           </button>
-          <p className="muted">Creates reviewed setup/campaign/SEO/action records where appropriate. It does not send, publish, spend, or sync live.</p>
+          <p className="muted">Creates reviewed setup, reminder, receipt, job, marketing, SEO, or action records where appropriate. Live posting, spending, and sending still obey provider and approval controls.</p>
         </div>
       </form>
       {executeState.message ? (
@@ -217,7 +264,11 @@ export function AiCommandPanel({
               <h3>{executeState.message}</h3>
               <p className="muted">Review the prepared work before anything goes live.</p>
             </div>
-            <span className={`pill ${executeState.ok ? "" : "high"}`}>{executeState.ok ? "prepared" : "needs attention"}</span>
+            <div className="button-row">
+              <span className={`pill ${executeState.ok ? "" : "high"}`}>{executeState.intent === "read_only" ? "read only" : executeState.ok ? "prepared" : "needs attention"}</span>
+              {executeState.href ? <Link className="mini-button" href={executeState.href}>Open view</Link> : null}
+              {executeState.runId ? <Link className="mini-button" href={`/app/ai-workforce/results/${executeState.runId}`}>Open result</Link> : null}
+            </div>
           </div>
           {executeState.prepared?.length ? (
             <ul className="list">

@@ -7,8 +7,21 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { scanActionQueueForTenant } from "@/lib/actions-queue/scan-action-queue";
 import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
-import { sendEmailWithResend } from "@/lib/email/resend";
+import { sendMessage } from "@/lib/messaging/messaging-engine";
+import {
+  automaticCommunicationRequiresConsent,
+  communicationApprovalLevels,
+  communicationExecutionModes,
+  communicationFallbackModes,
+  communicationLanguageModes,
+  communicationMethods,
+  communicationProviderPreferences,
+  communicationRoute,
+  type CommunicationMethod
+} from "@/lib/preferences/communication-preferences";
+import { recordPreferenceAuditEvent, saveScopedPreference, type SavedPreferenceScopeType } from "@/lib/preferences/saved-preferences";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getContactCommunicationPreference } from "@/lib/preferences/contact-communication-preferences";
 
 const queueStatusSchema = z.object({
   actionId: z.string().min(1),
@@ -24,6 +37,310 @@ const serviceForActionType: Record<string, string> = {
   review_request: "review_requests",
   billing_sync: "growth_attribution"
 };
+
+export type CommunicationMethodActionState = {
+  ok: boolean;
+  message: string;
+  method?: CommunicationMethod;
+};
+
+const communicationMethodSchema = z.object({
+  actionId: z.string().uuid(),
+  method: z.enum(communicationMethods),
+  saveScope: z.enum(["one_time", "workflow", "contact", "user", "organization"]),
+  executionMode: z.enum(communicationExecutionModes).optional(),
+  providerPreference: z.enum(communicationProviderPreferences).optional(),
+  approvalLevel: z.enum(communicationApprovalLevels).optional(),
+  languageMode: z.enum(communicationLanguageModes).optional(),
+  fallbackMode: z.enum(communicationFallbackModes).optional(),
+  fallbackMethod: z.enum(communicationMethods).optional()
+});
+
+export async function updateCommunicationMethodAction(
+  _previous: CommunicationMethodActionState,
+  formData: FormData
+): Promise<CommunicationMethodActionState> {
+  await requirePermission("ai:queue");
+  const parsed = communicationMethodSchema.safeParse({
+    actionId: formData.get("actionId"),
+    method: formData.get("method"),
+    saveScope: formData.get("saveScope"),
+    executionMode: formData.get("executionMode") || undefined,
+    providerPreference: formData.get("providerPreference") || undefined,
+    approvalLevel: formData.get("approvalLevel") || undefined,
+    languageMode: formData.get("languageMode") || undefined,
+    fallbackMode: formData.get("fallbackMode") || undefined,
+    fallbackMethod: formData.get("fallbackMethod") || undefined
+  });
+  if (!parsed.success) return { ok: false, message: "Choose a valid communication method and save option." };
+
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  if (!session) return { ok: false, message: "Sign in again before changing this preference." };
+  if (parsed.data.saveScope === "organization") await requirePermission("tenant:manage");
+
+  const result = await queryPostgres<{
+    id: string;
+    action_type: string;
+    provider_key: string;
+    status: string;
+    recipient_label: string | null;
+    workflow_key: string;
+    phone: string | null;
+    email: string | null;
+    contact_key: string | null;
+    is_marketing: boolean;
+  }>(
+    `
+    select
+      q.id,
+      q.action_type,
+      q.provider_key,
+      q.status,
+      q.recipient_label,
+      lower(coalesce(
+        nullif(q.metadata_json->>'workflowKey', ''),
+        nullif(q.metadata_json->>'queueType', ''),
+        q.action_type
+      )) as workflow_key,
+      coalesce(
+        l.phone,
+        invoice_customer.phone,
+        case when coalesce(q.recipient_label, '') not like '%@%' then q.recipient_label end
+      ) as phone,
+      coalesce(
+        l.email,
+        invoice_customer.email,
+        case when coalesce(q.recipient_label, '') like '%@%' then q.recipient_label end
+      ) as email,
+      case
+        when q.target_type = 'lead' and l.id is not null then 'lead:' || l.id::text
+        when invoice_customer.id is not null then 'customer:' || invoice_customer.id::text
+        else lower(nullif(q.recipient_label, ''))
+      end as contact_key,
+      coalesce((q.metadata_json->>'marketing')::boolean, false) as is_marketing
+    from public.outbound_action_queue q
+    left join public.leads l
+      on l.tenant_id = q.tenant_id
+      and l.id = q.target_id
+      and q.target_type = 'lead'
+    left join public.service_invoices invoice
+      on invoice.tenant_id = q.tenant_id
+      and invoice.id = q.target_id
+      and q.target_type = 'service_invoice'
+    left join public.customers invoice_customer
+      on invoice_customer.tenant_id = invoice.tenant_id
+      and invoice_customer.id = invoice.customer_id
+    where q.tenant_id = $1 and q.id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.actionId]
+  );
+  const row = result?.rows[0];
+  if (!row) return { ok: false, message: "That queued action is no longer available." };
+
+  const method = parsed.data.method;
+  const preference = {
+    method,
+    executionMode: parsed.data.executionMode,
+    providerPreference: parsed.data.providerPreference,
+    approvalLevel: parsed.data.approvalLevel,
+    languageMode: parsed.data.languageMode,
+    fallbackMode: parsed.data.fallbackMode,
+    fallbackMethods: parsed.data.fallbackMethod ? [parsed.data.fallbackMethod] : undefined
+  };
+  const route = communicationRoute(method);
+  if (row.contact_key) {
+    const contactPreference = await getContactCommunicationPreference(workspaceId, row.contact_key);
+    if (method === "ai_voice_call" && contactPreference.noAiCalls) {
+      await recordPreferenceAuditEvent({
+        tenantId: workspaceId, domain: "communication", key: "delivery_method",
+        eventType: "blocked_by_policy", value: preference, userId: session.userId,
+        context: { actionId: row.id, reason: "contact_disallows_ai_calls" }
+      });
+      return { ok: false, message: "This contact does not allow AI calls. Choose a human call or another method." };
+    }
+    if (method === "automatic_sms" && row.is_marketing && contactPreference.noMarketingTexts) {
+      await recordPreferenceAuditEvent({
+        tenantId: workspaceId, domain: "communication", key: "delivery_method",
+        eventType: "blocked_by_policy", value: preference, userId: session.userId,
+        context: { actionId: row.id, reason: "contact_disallows_marketing_texts" }
+      });
+      return { ok: false, message: "This contact does not allow marketing texts. Choose a permitted method." };
+    }
+  }
+  const needsPhone = ["automatic_sms", "native_sms", "google_voice", "ai_voice_call", "human_call"].includes(method);
+  if (needsPhone && !row.phone) return { ok: false, message: "Add a phone number before choosing this method." };
+  if (method === "email" && !row.email) return { ok: false, message: "Add an email address before choosing email." };
+
+  let providerKey = route.providerKey;
+  if (!providerKey && route.actionType === "voice_call") {
+    const voiceRoute = await queryPostgres<{ primary_provider_key: string }>(
+      `
+      select primary_provider_key
+      from public.voice_provider_routes
+      where tenant_id = $1 and route_family = 'voice_orchestrator'
+      limit 1
+      `,
+      [workspaceId]
+    );
+    providerKey = voiceRoute?.rows[0]?.primary_provider_key ?? null;
+  } else if (!providerKey) {
+    const providerRoute = await queryPostgres<{ default_provider_key: string }>(
+      `
+      select default_provider_key
+      from public.provider_routing_rules
+      where tenant_id = $1 and action_type = $2 and status = 'active'
+      order by updated_at desc
+      limit 1
+      `,
+      [workspaceId, route.actionType]
+    );
+    providerKey = providerRoute?.rows[0]?.default_provider_key ?? null;
+  }
+  if (!providerKey) {
+    return {
+      ok: false,
+      message: `Connect or choose a provider for ${route.actionType.replaceAll("_", " ")} before using this method.`
+    };
+  }
+
+  const recipient = method === "email"
+    ? row.email
+    : needsPhone
+      ? row.phone
+      : row.recipient_label;
+  const complianceChannel = method === "email"
+    ? "email"
+    : ["ai_voice_call", "human_call"].includes(method)
+      ? "phone"
+      : ["automatic_sms", "native_sms", "google_voice"].includes(method)
+        ? "sms"
+        : null;
+  if (complianceChannel && recipient) {
+    const compliance = await queryPostgres<{ consent_granted: boolean; suppressed: boolean }>(
+      `
+      select
+        (
+          exists (
+            select 1 from public.contact_consent_records
+            where tenant_id = $1 and channel = $2
+              and lower(contact_value) = lower($3) and status = 'granted'
+          )
+          or exists (
+            select 1 from public.messaging_consents
+            where tenant_id = $1 and contact_channel = $2
+              and lower(contact_value) = lower($3) and status = 'granted'
+          )
+        ) as consent_granted,
+        (
+          exists (
+            select 1 from public.contact_suppression_list
+            where tenant_id = $1 and channel = $2
+              and lower(contact_value) = lower($3) and active = true
+          )
+          or exists (
+            select 1 from public.messaging_opt_outs
+            where tenant_id = $1 and contact_channel = $2
+              and lower(contact_value) = lower($3) and active = true
+          )
+        ) as suppressed
+      `,
+      [workspaceId, complianceChannel, recipient]
+    );
+    const rule = compliance?.rows[0];
+    if (rule?.suppressed) {
+      await recordPreferenceAuditEvent({
+        tenantId: workspaceId, domain: "communication", key: "delivery_method",
+        eventType: "blocked_by_policy", value: preference, userId: session.userId,
+        context: { actionId: row.id, reason: "suppressed", channel: complianceChannel }
+      });
+      return { ok: false, message: `${complianceChannel.toUpperCase()} is blocked because this contact opted out or is suppressed.` };
+    }
+    if (automaticCommunicationRequiresConsent(method) && !rule?.consent_granted) {
+      await recordPreferenceAuditEvent({
+        tenantId: workspaceId, domain: "communication", key: "delivery_method",
+        eventType: "blocked_by_policy", value: preference, userId: session.userId,
+        context: { actionId: row.id, reason: "missing_consent", channel: complianceChannel }
+      });
+      return { ok: false, message: `${complianceChannel.toUpperCase()} consent is required before this automated method can be selected.` };
+    }
+  }
+
+  if (parsed.data.saveScope !== "one_time") {
+    const scopeMap: Record<Exclude<typeof parsed.data.saveScope, "one_time">, { type: SavedPreferenceScopeType; key: string | null }> = {
+      workflow: { type: "workflow", key: row.workflow_key },
+      contact: { type: "contact", key: row.contact_key },
+      user: { type: "user", key: session.userId },
+      organization: { type: "organization", key: "default" }
+    };
+    const scope = scopeMap[parsed.data.saveScope];
+    if (!scope.key) return { ok: false, message: "This action does not have a contact to save a preference for." };
+    await saveScopedPreference({
+      tenantId: workspaceId,
+      domain: "communication",
+      key: "delivery_method",
+      scope: { type: scope.type, key: scope.key },
+      value: preference,
+      userId: session.userId,
+      metadata: {
+        changedInline: true,
+        sourceActionId: row.id,
+        workflowKey: row.workflow_key
+      }
+    });
+  } else {
+    await recordPreferenceAuditEvent({
+      tenantId: workspaceId,
+      domain: "communication",
+      key: "delivery_method",
+      eventType: "one_time_override",
+      value: preference,
+      source: "one_time",
+      userId: session.userId,
+      context: { actionId: row.id, workflowKey: row.workflow_key }
+    });
+  }
+
+  await queryPostgres(
+    `
+    update public.outbound_action_queue
+    set action_type = $3,
+        provider_key = $4,
+        recipient_label = coalesce($5, recipient_label),
+        status = case when $6 = 'skip' then 'canceled' else 'needs_review' end,
+        last_error = null,
+        metadata_json = metadata_json || $7::jsonb,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    `,
+    [
+      workspaceId,
+      row.id,
+      route.actionType,
+      providerKey,
+      recipient,
+      method,
+      JSON.stringify({
+        communicationMethod: method,
+        communicationPreference: preference,
+        communicationMethodScope: parsed.data.saveScope,
+        communicationMethodChangedAt: new Date().toISOString(),
+        communicationMethodChangedBy: session.userId,
+        voiceMessagingEmailIndependent: true
+      })
+    ]
+  );
+
+  revalidatePath("/app/actions");
+  revalidatePath("/app/text-queue");
+  return {
+    ok: true,
+    method,
+    message: parsed.data.saveScope === "one_time"
+      ? "Method changed for this action."
+      : `Method changed and remembered for ${parsed.data.saveScope.replace("_", " ")}.`
+  };
+}
 
 async function logDelivery(input: {
   tenantId: string;
@@ -100,222 +417,6 @@ export async function scanActionQueueAction() {
   revalidatePath("/app/actions");
   revalidatePath("/app/automation-command");
   revalidatePath("/app/owner-command-center");
-  return;
-
-  await queryPostgres(
-    `
-    insert into public.contact_consent_records (tenant_id, brand_id, lead_id, channel, contact_value, status, source, metadata_json)
-    select l.tenant_id, l.brand_id, l.id, 'sms', l.phone,
-      case when l.consent_to_contact then 'granted' else 'unknown' end,
-      'lead_intake',
-      jsonb_build_object('createdByScan', 'action_queue')
-    from public.leads l
-    where l.tenant_id = $1 and l.phone is not null and l.phone <> ''
-    on conflict (tenant_id, channel, contact_value) do update
-    set status = case
-          when public.contact_consent_records.status = 'revoked' then 'revoked'
-          when excluded.status = 'granted' then 'granted'
-          else public.contact_consent_records.status
-        end,
-        updated_at = now()
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.contact_consent_records (tenant_id, brand_id, lead_id, channel, contact_value, status, source, metadata_json)
-    select l.tenant_id, l.brand_id, l.id, 'email', l.email,
-      case when l.consent_to_contact then 'granted' else 'unknown' end,
-      'lead_intake',
-      jsonb_build_object('createdByScan', 'action_queue')
-    from public.leads l
-    where l.tenant_id = $1 and l.email is not null and l.email <> ''
-    on conflict (tenant_id, channel, contact_value) do update
-    set status = case
-          when public.contact_consent_records.status = 'revoked' then 'revoked'
-          when excluded.status = 'granted' then 'granted'
-          else public.contact_consent_records.status
-        end,
-        updated_at = now()
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.outbound_action_queue (
-      tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
-      subject, recipient_label, payload_json, policy_id, metadata_json
-    )
-    select m.tenant_id, m.brand_id,
-      coalesce(route.action_type, case when m.channel = 'sms' then 'sms_send' else 'email_send' end),
-      coalesce(route.default_provider_key, case when m.channel = 'sms' then 'twilio_shared' else 'resend_shared' end),
-      'needs_review',
-      'high',
-      'communication_message',
-      m.id,
-      coalesce(t.subject, 'Customer message'),
-      case
-        when m.channel = 'sms' then coalesce(m.recipient_label, l.phone)
-        when m.channel = 'email' then coalesce(m.recipient_label, l.email)
-        else m.recipient_label
-      end,
-      jsonb_build_object('body', m.body, 'channel', m.channel, 'visibility', m.visibility),
-      p.id,
-      jsonb_build_object(
-        'createdByScan', 'action_queue',
-        'sendDisabledUntilProviderConnected', true,
-        'ownershipMode', coalesce(route.ownership_mode, 'ferocity_managed'),
-        'fallbackProviderKey', route.fallback_provider_key
-      )
-    from public.communication_messages m
-    join public.communication_threads t on t.id = m.thread_id
-    left join public.leads l on l.id = t.lead_id
-    left join lateral (
-      select
-        case when m.channel = 'sms' then 'sms_send' else 'email_send' end as action_type,
-        r.default_provider_key,
-        r.ownership_mode,
-        r.fallback_provider_key
-      from public.provider_routing_rules r
-      where r.tenant_id = m.tenant_id
-        and r.action_type = case when m.channel = 'sms' then 'sms_send' else 'email_send' end
-        and r.status = 'active'
-      limit 1
-    ) route on true
-    left join public.live_action_policies p on p.tenant_id = m.tenant_id
-      and p.action_key = coalesce(route.action_type, case when m.channel = 'sms' then 'sms_send' else 'email_send' end)
-    where m.tenant_id = $1
-      and m.direction = 'draft'
-      and m.visibility = 'customer_visible'
-      and m.channel in ('sms', 'email')
-      and not exists (
-        select 1 from public.outbound_action_queue q
-        where q.tenant_id = m.tenant_id and q.target_type = 'communication_message' and q.target_id = m.id
-      )
-    limit 200
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.outbound_action_queue (
-      tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
-      subject, scheduled_for, payload_json, policy_id, metadata_json
-    )
-    select q.tenant_id, q.brand_id,
-      case when q.target_platform = 'google_business_profile' then 'publish_content' else 'publish_content' end,
-      case
-        when q.target_platform = 'google_business_profile' then 'google_business_profile'
-        else coalesce(route.default_provider_key, 'external_publishing')
-      end,
-      'needs_review',
-      'high',
-      'publishing_queue',
-      q.id,
-      coalesce(d.title, c.title, 'Publish content'),
-      q.scheduled_for,
-      jsonb_build_object('targetPlatform', q.target_platform, 'queueStatus', q.queue_status),
-      p.id,
-      jsonb_build_object(
-        'createdByScan', 'action_queue',
-        'publishingRequiresApproval', true,
-        'ownershipMode', coalesce(route.ownership_mode, 'workspace'),
-        'fallbackProviderKey', route.fallback_provider_key
-      )
-    from public.publishing_queue q
-    left join public.ai_drafts d on d.id = q.draft_id
-    left join public.marketing_calendar_items c on c.id = q.calendar_item_id
-    left join public.provider_routing_rules route on route.tenant_id = q.tenant_id
-      and route.action_type = 'publish_content'
-      and route.status = 'active'
-    left join public.live_action_policies p on p.tenant_id = q.tenant_id and p.action_key = case when q.target_platform = 'google_business_profile' then 'gbp_publish' else 'publish_content' end
-    where q.tenant_id = $1
-      and q.queue_status in ('approved', 'scheduled', 'needs_approval')
-      and not exists (
-        select 1 from public.outbound_action_queue a
-        where a.tenant_id = q.tenant_id and a.target_type = 'publishing_queue' and a.target_id = q.id
-      )
-    limit 200
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.outbound_action_queue (
-      tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
-      subject, scheduled_for, payload_json, policy_id, metadata_json
-    )
-    select r.tenant_id, r.brand_id, 'review_request', coalesce(route.default_provider_key, 'twilio_shared'), 'needs_review', 'high',
-      'review_request_workflow', r.id, 'Review request', r.scheduled_for,
-      jsonb_build_object('channel', r.channel, 'triggerEvent', r.trigger_event, 'negativeInterceptionStatus', r.negative_interception_status),
-      p.id,
-      jsonb_build_object(
-        'createdByScan', 'action_queue',
-        'requiresServiceRecoveryCheck', true,
-        'ownershipMode', coalesce(route.ownership_mode, 'ferocity_managed'),
-        'fallbackProviderKey', route.fallback_provider_key
-      )
-    from public.review_request_workflows r
-    left join public.provider_routing_rules route on route.tenant_id = r.tenant_id
-      and route.action_type = 'review_request'
-      and route.status = 'active'
-    left join public.live_action_policies p on p.tenant_id = r.tenant_id and p.action_key = 'review_request'
-    where r.tenant_id = $1
-      and r.status in ('draft', 'scheduled')
-      and not exists (
-        select 1 from public.outbound_action_queue q
-        where q.tenant_id = r.tenant_id and q.target_type = 'review_request_workflow' and q.target_id = r.id
-      )
-    limit 200
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.outbound_action_queue (
-      tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type, target_id,
-      subject, scheduled_for, payload_json, policy_id, metadata_json
-    )
-    select e.tenant_id, e.brand_id, 'calendar_sync', coalesce(route.default_provider_key, 'calendar_provider'), 'needs_review', 'medium',
-      'operator_schedule_event', e.id, e.title, e.starts_at,
-      jsonb_build_object('eventType', e.event_type, 'startsAt', e.starts_at, 'endsAt', e.ends_at, 'location', e.location),
-      p.id,
-      jsonb_build_object(
-        'createdByScan', 'action_queue',
-        'autoBookingDisabled', true,
-        'ownershipMode', coalesce(route.ownership_mode, 'workspace'),
-        'fallbackProviderKey', route.fallback_provider_key
-      )
-    from public.operator_schedule_events e
-    left join public.provider_routing_rules route on route.tenant_id = e.tenant_id
-      and route.action_type = 'calendar_sync'
-      and route.status = 'active'
-    left join public.live_action_policies p on p.tenant_id = e.tenant_id and p.action_key = 'calendar_sync'
-    where e.tenant_id = $1
-      and e.status = 'scheduled'
-      and not exists (
-        select 1 from public.outbound_action_queue q
-        where q.tenant_id = e.tenant_id and q.target_type = 'operator_schedule_event' and q.target_id = e.id
-      )
-    limit 200
-    `,
-    [workspaceId]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.operator_timeline_events (tenant_id, event_family, event_type, title, body, metadata_json)
-    values ($1, 'system', 'action_queue_scan', 'Action queue scan completed', 'Ferocity checked messages, publishing, reviews, calendar events, and consent records.', $2::jsonb)
-    `,
-    [workspaceId, JSON.stringify({ scan: "action_queue" })]
-  );
-
-  revalidatePath("/app/actions");
 }
 
 export async function sendApprovedEmailAction(formData: FormData) {
@@ -368,6 +469,7 @@ export async function sendApprovedEmailAction(formData: FormData) {
     thread_subject: string | null;
     lead_email: string | null;
     customer_email: string | null;
+    retry_count: number;
   }>(
     `
     select
@@ -384,12 +486,13 @@ export async function sendApprovedEmailAction(formData: FormData) {
       m.recipient_label as message_recipient,
       t.subject as thread_subject,
       l.email as lead_email,
-      c.email as customer_email
+      c.email as customer_email,
+      coalesce((q.metadata_json->>'retryCount')::int, 0) as retry_count
     from public.outbound_action_queue q
-    left join public.communication_messages m on m.id = q.target_id and q.target_type = 'communication_message'
-    left join public.communication_threads t on t.id = m.thread_id
-    left join public.leads l on l.id = t.lead_id
-    left join public.customers c on c.id = t.customer_id
+    left join public.communication_messages m on m.tenant_id = q.tenant_id and m.id = q.target_id and q.target_type = 'communication_message'
+    left join public.communication_threads t on t.tenant_id = q.tenant_id and t.id = m.thread_id
+    left join public.leads l on l.tenant_id = q.tenant_id and l.id = t.lead_id
+    left join public.customers c on c.tenant_id = q.tenant_id and c.id = t.customer_id
     where q.tenant_id = $1
       and q.id = $2
       and q.action_type = 'email_send'
@@ -505,12 +608,22 @@ export async function sendApprovedEmailAction(formData: FormData) {
     return;
   }
 
-  const sendResult = await sendEmailWithResend({
+  const idempotencyKey = row.retry_count > 0
+    ? `outbound-action:${row.id}:attempt:${row.retry_count}`
+    : `outbound-action:${row.id}`;
+  const sendResult = await sendMessage({
+    tenantId: workspaceId,
+    channel: "email",
+    providerKey: row.provider_key === "resend_shared" || row.provider_key === "email_provider" ? "resend_email" : row.provider_key,
     to: email.data,
     subject,
-    text: body,
     queueId: row.id,
-    tenantId: workspaceId
+    idempotencyKey,
+    body,
+    metadata: {
+      source: "outbound_action_queue",
+      originalProviderKey: row.provider_key
+    }
   });
 
   if (!sendResult.ok) {
@@ -539,6 +652,39 @@ export async function sendApprovedEmailAction(formData: FormData) {
     return;
   }
 
+  if (sendResult.status !== "sent") {
+    await queryPostgres(
+      `
+      update public.outbound_action_queue
+      set status = 'queued',
+          last_error = null,
+          metadata_json = metadata_json || $3::jsonb,
+          updated_at = now()
+      where tenant_id = $1 and id = $2
+      `,
+      [
+        workspaceId,
+        row.id,
+        JSON.stringify({
+          deliveryPending: true,
+          messagingEngineStatus: sendResult.status,
+          checkedAt: new Date().toISOString()
+        })
+      ]
+    );
+    await logDelivery({
+      tenantId: workspaceId,
+      queueId: row.id,
+      providerKey: row.provider_key,
+      eventType: "send.pending",
+      status: "received",
+      message: "Another worker already reserved this send, or the provider left it ready for manual completion.",
+      metadata: { messagingEngineStatus: sendResult.status }
+    });
+    revalidatePath("/app/actions");
+    return;
+  }
+
   await queryPostgres(
     `
     update public.outbound_action_queue
@@ -557,7 +703,7 @@ export async function sendApprovedEmailAction(formData: FormData) {
       session?.userId ?? null,
       JSON.stringify({
         sentWith: "resend",
-        providerMessageId: sendResult.providerMessageId,
+        providerMessageId: sendResult.ok ? sendResult.providerMessageId : null,
         sentAt: new Date().toISOString()
       })
     ]
@@ -577,8 +723,8 @@ export async function sendApprovedEmailAction(formData: FormData) {
       [
         workspaceId,
         row.target_id,
-        sendResult.providerMessageId,
-        JSON.stringify({ sentWith: "resend", outboundQueueId: row.id })
+        sendResult.ok ? sendResult.providerMessageId : null,
+        JSON.stringify({ sentWith: sendResult.providerKey, outboundQueueId: row.id })
       ]
     );
   }
@@ -589,8 +735,8 @@ export async function sendApprovedEmailAction(formData: FormData) {
     providerKey: row.provider_key,
     eventType: "provider.accepted",
     status: "received",
-    providerEventId: sendResult.providerMessageId,
-    message: "Resend accepted the email.",
+    providerEventId: sendResult.ok ? sendResult.providerMessageId : null,
+    message: `${sendResult.providerKey} accepted the email.`,
     metadata: { recipient: email.data }
   });
   await logProviderUsage({
@@ -599,7 +745,7 @@ export async function sendApprovedEmailAction(formData: FormData) {
     providerKey: row.provider_key,
     actionType: "email_send",
     billingStatus: "included",
-    metadata: { providerMessageId: sendResult.providerMessageId }
+    metadata: { providerMessageId: sendResult.ok ? sendResult.providerMessageId : null, messagingEngineProvider: sendResult.providerKey }
   });
   await queryPostgres(
     `
@@ -611,7 +757,7 @@ export async function sendApprovedEmailAction(formData: FormData) {
       row.brand_id,
       session?.userId ?? null,
       row.id,
-      JSON.stringify({ providerMessageId: sendResult.providerMessageId, recipient: email.data })
+      JSON.stringify({ providerMessageId: sendResult.ok ? sendResult.providerMessageId : null, recipient: email.data, messagingEngineProvider: sendResult.providerKey })
     ]
   );
 
@@ -681,7 +827,13 @@ export async function updateOutboundActionStatusAction(formData: FormData) {
         approved_by_user_id = case when $3 in ('approved', 'queued', 'sent_manually') then $4 else approved_by_user_id end,
         approved_at = case when $3 in ('approved', 'queued', 'sent_manually') then coalesce(approved_at, now()) else approved_at end,
         processed_at = case when $3 in ('sent_manually', 'sent', 'failed', 'canceled', 'blocked') then now() else processed_at end,
-        metadata_json = metadata_json || $5::jsonb,
+        metadata_json = metadata_json
+          || $5::jsonb
+          || case
+            when status in ('failed', 'blocked') and $3 in ('approved', 'queued')
+              then jsonb_build_object('retryCount', coalesce((metadata_json->>'retryCount')::int, 0) + 1)
+            else '{}'::jsonb
+          end,
         updated_at = now()
     where tenant_id = $1 and id = $2
     returning provider_key, action_type

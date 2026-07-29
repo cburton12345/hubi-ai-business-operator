@@ -255,7 +255,7 @@ export default async function OperatorConsolePage() {
             ))}
             {dashboard.templates.length === 0 ? (
               <li className="list-row">
-                <span className="muted">Templates will appear after migration seeds run.</span>
+                <span className="muted">Complete setup to create the starting templates.</span>
               </li>
             ) : null}
           </ul>

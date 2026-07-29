@@ -24,18 +24,15 @@ export default async function CheckoutSuccessPage({
 
         <section className="public-hero">
           <p className="eyebrow">Checkout received</p>
-          <h1>Payment step finished.</h1>
+          <h1>Payment complete. Check your email.</h1>
           <p className="muted">
-            Ferocity can now finish workspace setup after Stripe webhooks and subscription mapping confirm the plan.
+            Ferocity is verifying the Stripe subscription and preparing the workspace.
+            The activation link will be sent to the email used at checkout.
             {params.plan ? ` Selected plan: ${params.plan}.` : ""}
           </p>
           <div className="button-row">
-            <Link className="button" href="/start?source=checkout_success">
-              Finish setup details
-            </Link>
-            <Link className="button secondary-button" href="/login">
-              Sign in
-            </Link>
+            <Link className="button" href="/login">Sign in</Link>
+            <Link className="button secondary-button" href="/pricing">Review plans</Link>
           </div>
         </section>
 
@@ -44,7 +41,8 @@ export default async function CheckoutSuccessPage({
             <div>
               <h2>Still controlled</h2>
               <p className="muted">
-                Checkout does not turn on publishing, ad spend, provider sync, or customer messaging by itself. Email and app alerts still follow workspace controls.
+                Payment activates the subscription. It does not turn on publishing, ad spend, provider sync,
+                calling, or customer messaging. Those actions still follow workspace setup and approval controls.
               </p>
             </div>
             <CheckCircle2 size={24} />

@@ -72,6 +72,15 @@ function scoreText(status: string) {
   return "needs work";
 }
 
+const planFixes = [
+  ["Free", "Understand the gaps and save the first setup path."],
+  ["Job Tracker", "Organize bids, materials, receipts, job costs, payments, and simple profit tracking."],
+  ["Starter", "Start AI-guided lead follow-up, reviews, daily alerts, and basic customer/work tracking."],
+  ["Growth", "Build the lead engine: funnels, proof, reviews, SEO/GEO drafts, campaigns, and source tracking."],
+  ["Operator", "Add the command center, office manager, monitoring, jobs, invoices, scheduling, and money alerts."],
+  ["Managed Operator", "Have Ferocity configured, watched, tuned, and reviewed through a managed operating path."]
+];
+
 export default async function WebsiteGraderReportPage({
   params,
   searchParams
@@ -133,7 +142,7 @@ export default async function WebsiteGraderReportPage({
           <h1>{report.company_name || extraction.title || "Business health report"}</h1>
           <p className="muted">
             {failed
-              ? "Ferocity could not scan the public page. You can still start setup and add the website details later."
+              ? "Ferocity could not scan the public page. You can still start setup and add the website details manually."
               : "This report shows the Business Health Score, category scores, strengths, weaknesses, missed revenue estimate, and what Ferocity would fix first."}
           </p>
           <div className="button-row">
@@ -147,6 +156,9 @@ export default async function WebsiteGraderReportPage({
             </Link>
             <Link className="button secondary-button" href="/pricing">
               See plans
+            </Link>
+            <Link className="button secondary-button" href="/growth-system">
+              See growth system
             </Link>
           </div>
         </section>
@@ -294,6 +306,28 @@ export default async function WebsiteGraderReportPage({
           </div>
         </section>
 
+        <section className="panel section-actions">
+          <h2>
+            <Sparkles size={18} /> How Ferocity Would Help Fix This
+          </h2>
+          <p className="muted">
+            The report is the diagnosis. Ferocity is the operating system that turns the diagnosis into lead capture,
+            follow-up, work tracking, reviews, marketing, and money visibility.
+          </p>
+          <div className="value-ladder">
+            {planFixes.map(([name, body]) => (
+              <div key={name}>
+                <strong>{name}</strong>
+                <p>{body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="button-row">
+            <Link className="button" href="/pricing">Choose a plan</Link>
+            <Link className="button secondary-button" href="/start?source=grader_report">Start setup</Link>
+          </div>
+        </section>
+
         <section className="grid section-actions">
           <article className="panel span-6">
             <h2>Unlock Full AI Growth Plan</h2>
@@ -304,6 +338,9 @@ export default async function WebsiteGraderReportPage({
             <strong className="price-line">$49 one-time or included with Starter+</strong>
             <Link className="button" href={`/business-health-score/report/${encodeURIComponent(report.report_token)}/upgrade`}>
               Choose report path <ArrowRight size={16} />
+            </Link>
+            <Link className="button secondary-button" href="/growth-system#watch">
+              Watch walkthrough
             </Link>
             <Link className="button secondary-button" href="/pricing#ai-growth-report">
               Compare options

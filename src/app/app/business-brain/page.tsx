@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Bot, Brain, BriefcaseBusiness, CheckCircle2, FileText, Globe2, PlugZap, Users } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getBusinessBrainDashboard, type BrainRow } from "@/lib/business-brain/get-business-brain";
+import { getIndustryKnowledgeContext } from "@/lib/industry-knowledge/get-industry-context";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function statusClass(status: string) {
   if (status.includes("need")) return "high";
@@ -40,6 +42,11 @@ function BrainList({ title, description, rows, empty }: { title: string; descrip
 
 export default async function BusinessBrainPage() {
   const brain = await getBusinessBrainDashboard();
+  const workspaceId = await getCurrentWorkspaceId();
+  const industryModule = await getIndustryKnowledgeContext({
+    tenantId: workspaceId,
+    brandId: brain.brands[0]?.id ?? null
+  });
 
   return (
     <QueuePageShell
@@ -77,6 +84,33 @@ export default async function BusinessBrainPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Industry Knowledge Module</h2>
+            <p className="muted">
+              {industryModule
+                ? `${industryModule.moduleName} is active. Its ${industryModule.items.length} operating rules and ${industryModule.guardrails.length} guardrails feed AI intake, qualification, scheduling, follow-up, and customer conversations.`
+                : "No industry module is matched yet. Ferocity uses safe general-business intake until a module is activated."}
+            </p>
+          </div>
+          <span className={`pill ${industryModule ? "" : "medium"}`}>{industryModule?.moduleKey ?? "General business"}</span>
+        </div>
+        {industryModule ? (
+          <div className="status-grid">
+            {industryModule.items.slice(0, 6).map((item) => (
+              <div className="status-card" key={`${item.category}-${item.title}`}>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p className="muted">{item.content}</p>
+                </div>
+                <span className={`pill ${item.riskLevel === "high" ? "high" : item.riskLevel === "medium" ? "medium" : ""}`}>{item.category}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="panel section-actions">

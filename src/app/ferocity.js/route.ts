@@ -42,6 +42,10 @@ const SCRIPT = `(() => {
     return trackedUrl(appOrigin + "/forms/" + encodeURIComponent(formKey));
   }
 
+  function chatUrl(formKey) {
+    return trackedUrl(appOrigin + "/chat/" + encodeURIComponent(formKey));
+  }
+
   function injectQuoteButton() {
     if (!script) return;
     const formKey = script.getAttribute("data-form-key");
@@ -81,18 +85,33 @@ const SCRIPT = `(() => {
     target.appendChild(link);
   }
 
+  function injectChatButton() {
+    if (!script) return;
+    const formKey = script.getAttribute("data-chat-key");
+    if (!formKey || document.querySelector("[data-ferocity-chat='" + formKey + "']")) return;
+    const link = document.createElement("a");
+    link.href = chatUrl(formKey);
+    link.textContent = script.getAttribute("data-chat-label") || "Chat with us";
+    link.setAttribute("data-ferocity-chat", formKey);
+    link.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:99999;display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:12px 18px;border-radius:999px;background:#111827;color:#fff;text-decoration:none;font:700 15px system-ui;box-shadow:0 10px 24px rgba(17,24,39,.25)";
+    document.body.appendChild(link);
+  }
+
   window.Ferocity = window.Ferocity || {};
   window.Ferocity.connectForms = connectForms;
   window.Ferocity.injectQuoteButton = injectQuoteButton;
+  window.Ferocity.injectChatButton = injectChatButton;
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       connectForms();
       injectQuoteButton();
+      injectChatButton();
     });
   } else {
     connectForms();
     injectQuoteButton();
+    injectChatButton();
   }
 })();`;
 

@@ -21,6 +21,11 @@ export type CustomerDetail = {
   jobs: { id: string; title: string; status: string; schedule: string; nextAction: string; href: string }[];
   invoices: { id: string; title: string; status: string; total: string; dueDate: string; href: string }[];
   recurringPlans: { id: string; title: string; status: string; frequency: string; nextServiceDate: string; price: string; nextAction: string }[];
+  membershipPrograms: { id: string; name: string; frequency: string; price: string; priceValue: string; visitsPerYear: number }[];
+  locations: { id: string; name: string; address: string; type: string; access: string; primary: boolean }[];
+  assets: { id: string; name: string; detail: string; condition: string; warranty: string }[];
+  tags: { id: string; name: string; color: string }[];
+  duplicateCandidates: { id: string; name: string; reason: string; status: string }[];
   timeline: {
     id: string;
     type: string;
@@ -67,7 +72,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
   const customer = customerResult?.rows[0];
   if (!customer) return null;
 
-  const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult, recurringPlansResult] = await Promise.all([
+  const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult, recurringPlansResult, membershipProgramsResult, locationsResult, assetsResult, tagsResult, duplicatesResult] = await Promise.all([
     queryPostgres<{ public_token: string; enabled: boolean; last_viewed_at: Date | null }>(
       `
       select public_token, enabled, last_viewed_at
@@ -151,6 +156,48 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       order by coalesce(next_service_date, created_at) asc
       `,
       [workspaceId, customerId]
+    ),
+    queryPostgres<{ id: string; name: string; billing_frequency: string; price_cents: number; visits_per_year: number }>(
+      `
+      select id, name, billing_frequency, price_cents, visits_per_year
+      from public.membership_programs
+      where tenant_id = $1 and active = true
+      order by name
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{ id: string; name: string; location_type: string; address_line1: string | null; city: string | null; state: string | null; access_instructions: string | null; is_primary: boolean }>(
+      `select id, name, location_type, address_line1, city, state, access_instructions, is_primary
+       from public.customer_locations where tenant_id = $1 and customer_id = $2 and active = true
+       order by is_primary desc, name`,
+      [workspaceId, customerId]
+    ),
+    queryPostgres<{ id: string; name: string; manufacturer: string | null; model: string | null; serial_number: string | null; condition: string; warranty_expires_at: Date | null }>(
+      `select id, name, manufacturer, model, serial_number, condition, warranty_expires_at
+       from public.customer_assets where tenant_id = $1 and customer_id = $2 and status = 'active'
+       order by name`,
+      [workspaceId, customerId]
+    ),
+    queryPostgres<{ id: string; name: string; color: string | null }>(
+      `select t.id, t.name, t.color from public.customer_tags t
+       join public.customer_tag_assignments a on a.tag_id = t.id and a.tenant_id = t.tenant_id
+       where a.tenant_id = $1 and a.customer_id = $2 order by t.name`,
+      [workspaceId, customerId]
+    ),
+    queryPostgres<{ id: string; name: string; email: string | null; phone: string | null; status: string }>(
+      `
+      select d.id, d.name, d.email, d.phone, d.status
+      from public.customers d
+      where d.tenant_id = $1 and d.id <> $2 and d.status <> 'do_not_contact'
+        and (
+          ($3::text is not null and lower(d.email) = lower($3)) or
+          ($4::text is not null and regexp_replace(d.phone, '\\D', '', 'g') <> ''
+            and regexp_replace(d.phone, '\\D', '', 'g') = regexp_replace($4, '\\D', '', 'g'))
+        )
+      order by d.created_at
+      limit 10
+      `,
+      [workspaceId, customerId, customer.email, customer.phone]
     )
   ]);
 
@@ -284,6 +331,39 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       nextServiceDate: plan.next_service_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(plan.next_service_date) : "Not scheduled",
       price: formatMoney(plan.price_cents),
       nextAction: plan.ai_next_action ?? ""
+    })),
+    membershipPrograms: (membershipProgramsResult?.rows ?? []).map((program) => ({
+      id: program.id,
+      name: program.name,
+      frequency: program.billing_frequency,
+      price: formatMoney(program.price_cents),
+      priceValue: (program.price_cents / 100).toFixed(2),
+      visitsPerYear: program.visits_per_year
+    })),
+    locations: (locationsResult?.rows ?? []).map((location) => ({
+      id: location.id,
+      name: location.name,
+      address: [location.address_line1, location.city, location.state].filter(Boolean).join(", ") || "Address not listed",
+      type: location.location_type,
+      access: location.access_instructions ?? "",
+      primary: location.is_primary
+    })),
+    assets: (assetsResult?.rows ?? []).map((asset) => ({
+      id: asset.id,
+      name: asset.name,
+      detail: [asset.manufacturer, asset.model, asset.serial_number ? `S/N ${asset.serial_number}` : null].filter(Boolean).join(" / ") || "No equipment detail",
+      condition: asset.condition,
+      warranty: asset.warranty_expires_at ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(asset.warranty_expires_at) : "No warranty date"
+    })),
+    tags: (tagsResult?.rows ?? []).map((tag) => ({ id: tag.id, name: tag.name, color: tag.color ?? "" })),
+    duplicateCandidates: (duplicatesResult?.rows ?? []).map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      reason:
+        customer.email && candidate.email?.toLowerCase() === customer.email.toLowerCase()
+          ? `Same email: ${customer.email}`
+          : `Same phone: ${customer.phone}`,
+      status: candidate.status
     })),
     timeline
   };

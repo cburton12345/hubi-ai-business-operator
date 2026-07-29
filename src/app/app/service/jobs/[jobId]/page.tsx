@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceJobDetail } from "@/lib/service-ops/get-service-record-detail";
 import { createInvoiceFromJobAction, createJobProofRequestAction, updateJobAction } from "../../actions";
+import { processSingleJobForAuthorityAction } from "@/app/app/authority/actions";
 
 const statuses = ["unscheduled", "scheduled", "in_progress", "completed", "canceled", "lost"];
 
@@ -52,6 +53,47 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             <label>Next action<textarea name="nextAction" rows={3} defaultValue={job.nextAction} /></label>
             <button className="button" type="submit">Save job</button>
           </form>
+        </section>
+
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Authority Engine</h2>
+              <p className="muted">
+                When the job is completed, Ferocity can prepare the proof, review request, case study, FAQ, social posts, website improvements, and video script for approval.
+              </p>
+            </div>
+            <span className="pill">{job.authorityBundle ? job.authorityBundle.status : job.status === "completed" ? "ready" : "complete job first"}</span>
+          </div>
+          {job.authorityBundle ? (
+            <div className="notice-card section-actions">
+              <div>
+                <strong>{job.authorityBundle.title}</strong>
+                <p className="muted">{job.authorityBundle.draftCount} drafts / {job.authorityBundle.queueCount} publishing items</p>
+              </div>
+              <Link className="mini-button" href={`/app/authority/bundles/${job.authorityBundle.id}`}>Review authority bundle</Link>
+            </div>
+          ) : (
+            <form action={processSingleJobForAuthorityAction} className="compact-form">
+              <input name="jobId" type="hidden" value={job.id} />
+              <button className="mini-button" type="submit" disabled={job.status !== "completed"}>
+                Process this job for authority
+              </button>
+            </form>
+          )}
+          <div className="value-ladder compact-value-ladder section-actions">
+            {[
+              ["Proof", "Photos, video, testimonial, and permission."],
+              ["Reviews", "Review request after satisfaction is checked."],
+              ["Content", "Case study, FAQ, post, blog, and video script."],
+              ["Website", "Service/page proof block and internal-link ideas."]
+            ].map(([title, body]) => (
+              <div key={title}>
+                <strong>{title}</strong>
+                <p>{body}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="panel span-12">

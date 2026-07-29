@@ -2,6 +2,8 @@ import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { syncCustomerLifecycleForTenant } from "@/lib/customer-lifecycle/sync-customer-lifecycle";
+import { evaluateVisitSchedule } from "@/lib/scheduling/evaluate-visit";
 
 export type AgentWorkflowRow = {
   id: string;
@@ -66,6 +68,22 @@ const defaultWorkflows = [
     plainName: "Follow up"
   },
   {
+    agentKey: "customer_lifecycle_agent",
+    agentName: "Customer Lifecycle Manager",
+    plainGoal: "Recover missed calls and estimates, nurture leads, reactivate the database, earn referrals, and grow customer lifetime value.",
+    runMode: "approval_required",
+    cadenceKey: "daily",
+    plainName: "Grow customer value"
+  },
+  {
+    agentKey: "dispatcher_agent",
+    agentName: "AI Dispatcher",
+    plainGoal: "Protect the schedule, find unassigned work, detect conflicts, and recommend the next safe dispatch action.",
+    runMode: "approval_required",
+    cadenceKey: "hourly",
+    plainName: "Run the field day"
+  },
+  {
     agentKey: "review_agent",
     agentName: "Review Agent",
     plainGoal: "Turn completed jobs into review requests, proof capture, and reputation tasks.",
@@ -82,21 +100,41 @@ const defaultWorkflows = [
     plainName: "Collect money"
   },
   {
+    agentKey: "estimator_agent",
+    agentName: "AI Estimator",
+    plainGoal: "Read job notes and measurements, prepare material takeoffs, flag missing scope, and build reviewed bid drafts.",
+    runMode: "approval_required",
+    cadenceKey: "daily",
+    plainName: "Build bids"
+  },
+  {
     agentKey: "seo_marketing_agent",
-    agentName: "SEO And Marketing Agent",
-    plainGoal: "Prepare useful SEO and marketing drafts from services, areas, proof, reviews, and lead sources.",
+    agentName: "AI Marketing Department",
+    plainGoal: "Recommend campaigns and prepare useful marketing drafts from services, areas, proof, reviews, capacity, stale leads, and lead sources.",
     runMode: "draft_only",
     cadenceKey: "weekly",
-    plainName: "Get found"
+    plainName: "Create demand"
+  },
+  {
+    agentKey: "authority_manager",
+    agentName: "Authority Manager",
+    plainGoal: "Turn completed jobs, proof, reviews, and customer questions into review-ready authority assets.",
+    runMode: "approval_required",
+    cadenceKey: "daily",
+    plainName: "Build trust"
   }
 ];
 
 const agentRequiredFeatures: Record<string, string[]> = {
   lead_response_agent: ["ai_generation", "follow_up_recovery"],
   follow_up_agent: ["follow_up_recovery"],
+  customer_lifecycle_agent: ["follow_up_recovery", "review_requests"],
+  dispatcher_agent: ["ai_office_manager"],
   review_agent: ["review_requests"],
   invoice_reminder_agent: ["payment_collection"],
-  seo_marketing_agent: ["seo_autopilot"]
+  estimator_agent: ["ai_estimator_takeoff"],
+  seo_marketing_agent: ["seo_autopilot"],
+  authority_manager: ["authority_engine"]
 };
 
 function nextRunSql(cadenceKey: string) {
@@ -170,7 +208,7 @@ export async function getAgentWorkflowDashboard(): Promise<AgentWorkflowDashboar
           from public.ai_agent_outputs o
           where o.tenant_id = w.tenant_id
             and o.workflow_id = w.id
-            and o.status in ('prepared', 'needs_review', 'blocked')
+            and o.status in ('needs_review', 'blocked')
         )::text as open_outputs
       from public.ai_agent_workflows w
       where w.tenant_id = $1 and w.status <> 'archived'
@@ -178,9 +216,13 @@ export async function getAgentWorkflowDashboard(): Promise<AgentWorkflowDashboar
         case w.agent_key
           when 'lead_response_agent' then 1
           when 'follow_up_agent' then 2
-          when 'review_agent' then 3
-          when 'invoice_reminder_agent' then 4
-          when 'seo_marketing_agent' then 5
+          when 'customer_lifecycle_agent' then 3
+          when 'dispatcher_agent' then 4
+          when 'review_agent' then 5
+          when 'invoice_reminder_agent' then 6
+          when 'estimator_agent' then 7
+          when 'seo_marketing_agent' then 8
+          when 'authority_manager' then 9
           else 99
         end
       `,
@@ -340,7 +382,18 @@ async function recordOutput(input: {
     insert into public.ai_agent_outputs (
       tenant_id, run_id, workflow_id, agent_key, output_type, title, status, target_type, target_id, metadata_json
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+    select $1, $2, $3, $4, $5, $6,
+      case
+        when w.run_mode = 'auto_allowed' and $7::text in ('prepared', 'needs_review') then 'prepared'
+        else $7::text
+      end,
+      $8, $9,
+      $10::jsonb || jsonb_build_object(
+        'runMode', w.run_mode,
+        'reviewOptional', w.run_mode = 'auto_allowed' and $7::text in ('prepared', 'needs_review')
+      )
+    from public.ai_agent_workflows w
+    where w.tenant_id = $1 and w.id = $3
     `,
     [
       input.tenantId,
@@ -577,6 +630,145 @@ async function runFollowUpAgent(tenantId: string, workflowId: string, runId: str
   };
 }
 
+async function runCustomerLifecycleAgent(tenantId: string, workflowId: string, runId: string) {
+  const result = await syncCustomerLifecycleForTenant(tenantId);
+  const preparedCount = Object.values(result).reduce((sum, value) => sum + value, 0);
+  await recordOutput({
+    tenantId,
+    workflowId,
+    runId,
+    agentKey: "customer_lifecycle_agent",
+    outputType: "follow_up_workflow",
+    title: preparedCount
+      ? `Prepared ${preparedCount} customer lifecycle action(s)`
+      : "Customer lifecycle is caught up",
+    status: preparedCount ? "needs_review" : "prepared",
+    metadata: result
+  });
+  return {
+    preparedCount,
+    summary: preparedCount
+      ? `Prepared ${preparedCount} guarded lifecycle action(s) across missed calls, estimates, nurturing, reactivation, referrals, and past-customer growth.`
+      : "No customer lifecycle action was due."
+  };
+}
+
+async function runDispatcherAgent(tenantId: string, workflowId: string, runId: string) {
+  const visitsResult = await queryPostgres<{
+    id: string;
+    title: string;
+    status: string;
+    scheduled_start: string | null;
+    customer_name: string;
+    assigned_workers: string;
+  }>(
+    `
+    select
+      v.id, v.title, v.status, v.scheduled_start, c.name as customer_name,
+      count(distinct va.worker_id) filter (
+        where va.worker_id is not null
+          and va.status in ('proposed','assigned','acknowledged','dispatched')
+      )::text as assigned_workers
+    from public.service_visits v
+    join public.customers c on c.id = v.customer_id and c.tenant_id = v.tenant_id
+    left join public.service_visit_assignments va
+      on va.visit_id = v.id and va.tenant_id = v.tenant_id
+    where v.tenant_id = $1
+      and v.status not in ('completed','canceled','no_show')
+      and (
+        v.status = 'unscheduled'
+        or v.scheduled_start < now() + interval '30 days'
+        or v.status in ('dispatched','en_route','arrived','in_progress','paused')
+      )
+    group by v.id, c.name
+    order by v.scheduled_start nulls first, v.priority desc, v.created_at
+    limit 300
+    `,
+    [tenantId]
+  );
+
+  let blocking = 0;
+  let warnings = 0;
+  let unassigned = 0;
+  const urgentOutputs: Array<{
+    id: string;
+    title: string;
+    customerName: string;
+    status: string;
+    scheduledStart: string | null;
+    conflicts: Awaited<ReturnType<typeof evaluateVisitSchedule>>;
+  }> = [];
+
+  for (const visit of visitsResult?.rows ?? []) {
+    const conflicts = await evaluateVisitSchedule({ tenantId, visitId: visit.id });
+    const visitBlocking = conflicts.filter((conflict) => conflict.severity === "blocking").length;
+    const visitWarnings = conflicts.filter((conflict) => conflict.severity === "warning").length;
+    blocking += visitBlocking;
+    warnings += visitWarnings;
+    if (Number(visit.assigned_workers) === 0) unassigned += 1;
+    if (visitBlocking > 0 || visit.status === "unscheduled") {
+      urgentOutputs.push({
+        id: visit.id,
+        title: visit.title,
+        customerName: visit.customer_name,
+        status: visit.status,
+        scheduledStart: visit.scheduled_start,
+        conflicts
+      });
+    }
+  }
+
+  for (const visit of urgentOutputs.slice(0, 30)) {
+    const conflictTitles = visit.conflicts.map((conflict) => conflict.title);
+    await recordOutput({
+      tenantId,
+      workflowId,
+      runId,
+      agentKey: "dispatcher_agent",
+      outputType: visit.status === "unscheduled" ? "schedule_needed" : "dispatch_risk",
+      title:
+        visit.status === "unscheduled"
+          ? `Schedule ${visit.title} for ${visit.customerName}`
+          : `Resolve dispatch risk for ${visit.title}`,
+      status: "needs_review",
+      targetType: "service_visit",
+      targetId: visit.id,
+      metadata: {
+        href: `/app/schedule#visit-${visit.id}`,
+        visitStatus: visit.status,
+        scheduledStart: visit.scheduledStart,
+        conflicts: visit.conflicts,
+        nextAction:
+          conflictTitles.length > 0
+            ? `Resolve: ${conflictTitles.join("; ")}`
+            : "Choose a time and eligible worker."
+      }
+    });
+  }
+
+  const checked = visitsResult?.rows.length ?? 0;
+  const summary = checked
+    ? `AI Dispatcher checked ${checked} visit(s): ${blocking} blocking conflict(s), ${warnings} warning(s), and ${unassigned} unassigned visit(s).`
+    : "AI Dispatcher found no open visits to review.";
+
+  await logAgentTimeline({
+    tenantId,
+    agentKey: "dispatcher_agent",
+    title: "AI Dispatcher checked the field day",
+    body: summary,
+    metadata: { checked, blocking, warnings, unassigned, reviewItems: urgentOutputs.length }
+  });
+
+  return {
+    summary,
+    checked,
+    prepared: urgentOutputs.length,
+    blocking,
+    warnings,
+    unassigned
+  };
+}
+
 async function runReviewAgent(tenantId: string, workflowId: string, runId: string) {
   const result = await queryPostgres<{ id: string }>(
     `
@@ -671,6 +863,228 @@ async function runInvoiceReminderAgent(tenantId: string, workflowId: string, run
 }
 
 async function runSeoMarketingAgent(tenantId: string, workflowId: string, runId: string) {
+  const brandSignals = await queryPostgres<{
+    brand_id: string;
+    brand_name: string;
+    service_name: string | null;
+    area_name: string | null;
+    completed_jobs: string;
+    open_jobs: string;
+    stale_leads: string;
+    proof_assets: string;
+  }>(
+    `
+    select
+      b.id as brand_id,
+      b.name as brand_name,
+      s.name as service_name,
+      coalesce(l.service_area_name, l.city, b.primary_location) as area_name,
+      (select count(*) from public.service_jobs j where j.tenant_id = b.tenant_id and j.brand_id = b.id and j.status = 'completed')::text as completed_jobs,
+      (select count(*) from public.service_jobs j where j.tenant_id = b.tenant_id and j.brand_id = b.id and j.status in ('scheduled','in_progress'))::text as open_jobs,
+      (select count(*) from public.leads lead where lead.tenant_id = b.tenant_id and lead.brand_id = b.id and lead.status in ('new','qualified') and lead.created_at < now() - interval '1 day')::text as stale_leads,
+      (select count(*) from public.marketing_media_assets a where a.tenant_id = b.tenant_id and a.brand_id = b.id and a.status <> 'archived')::text as proof_assets
+    from public.brands b
+    left join lateral (
+      select name from public.brand_services s
+      where s.brand_id = b.id and s.active = true
+      order by s.priority desc, s.created_at asc
+      limit 1
+    ) s on true
+    left join lateral (
+      select service_area_name, city from public.brand_locations l
+      where l.brand_id = b.id and l.active = true
+      order by l.priority desc, l.created_at asc
+      limit 1
+    ) l on true
+    where b.tenant_id = $1 and b.status = 'active'
+    order by b.created_at asc
+    limit 5
+    `,
+    [tenantId]
+  );
+  const signals = brandSignals?.rows ?? [];
+
+  for (const signal of signals) {
+    const sourceSignals = {
+      completedJobs: Number(signal.completed_jobs),
+      openJobs: Number(signal.open_jobs),
+      staleLeads: Number(signal.stale_leads),
+      proofAssets: Number(signal.proof_assets),
+      serviceName: signal.service_name,
+      areaName: signal.area_name
+    };
+    const recommendationKey = sourceSignals.staleLeads > 0
+      ? "reactivate_stale_leads"
+      : sourceSignals.completedJobs > 0 || sourceSignals.proofAssets > 0
+        ? "completed_job_proof_machine"
+        : "fill_open_schedule";
+    const title = recommendationKey === "reactivate_stale_leads"
+      ? "Recover stale leads before they disappear"
+      : recommendationKey === "completed_job_proof_machine"
+        ? "Turn completed jobs into proof and reviews"
+        : "Fill open schedule with profitable work";
+    const recommendedOutputs = recommendationKey === "reactivate_stale_leads"
+      ? ["follow-up email", "call list", "reply script"]
+      : recommendationKey === "completed_job_proof_machine"
+        ? ["review request", "GBP post", "before/after social post", "case study"]
+        : ["Facebook post", "GBP post", "landing page", "Google ad copy"];
+
+    const recommendation = await queryPostgres<{ id: string }>(
+      `
+      insert into public.marketing_campaign_recommendations (
+        tenant_id, brand_id, recommendation_key, title, trigger_reason, primary_goal,
+        recommended_channels, recommended_outputs_json, expected_impact, difficulty, priority_score,
+        source_signals_json, metadata_json
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::jsonb, $13::jsonb)
+      on conflict (tenant_id, brand_id, recommendation_key) do update set
+        title = excluded.title,
+        trigger_reason = excluded.trigger_reason,
+        primary_goal = excluded.primary_goal,
+        recommended_channels = excluded.recommended_channels,
+        recommended_outputs_json = excluded.recommended_outputs_json,
+        expected_impact = excluded.expected_impact,
+        difficulty = excluded.difficulty,
+        priority_score = excluded.priority_score,
+        source_signals_json = excluded.source_signals_json,
+        metadata_json = public.marketing_campaign_recommendations.metadata_json || excluded.metadata_json,
+        status = case when public.marketing_campaign_recommendations.status in ('dismissed','paused') then public.marketing_campaign_recommendations.status else 'recommended' end,
+        updated_at = now()
+      returning id
+      `,
+      [
+        tenantId,
+        signal.brand_id,
+        recommendationKey,
+        title,
+        `Based on current signals for ${signal.brand_name}: ${sourceSignals.staleLeads} stale leads, ${sourceSignals.completedJobs} completed jobs, ${sourceSignals.proofAssets} proof assets, ${sourceSignals.openJobs} open jobs.`,
+        recommendationKey === "reactivate_stale_leads" ? "Recover already-earned opportunities." : recommendationKey === "completed_job_proof_machine" ? "Turn real work into trust and demand." : "Create demand for open capacity.",
+        recommendationKey === "reactivate_stale_leads" ? ["email", "manual call", "approved text draft"] : ["Google Business Profile", "Facebook", "website", "email"],
+        JSON.stringify(recommendedOutputs),
+        recommendationKey === "reactivate_stale_leads" ? "Recovered conversations and booked work." : "More trust, stronger conversion, and more qualified demand.",
+        recommendationKey === "completed_job_proof_machine" ? "low" : "medium",
+        recommendationKey === "reactivate_stale_leads" && sourceSignals.staleLeads > 0 ? 88 : recommendationKey === "completed_job_proof_machine" ? 84 : 76,
+        JSON.stringify(sourceSignals),
+        JSON.stringify({ createdByAgent: "seo_marketing_agent", noLivePublishing: true })
+      ]
+    );
+    const recommendationId = recommendation?.rows[0]?.id;
+    await recordOutput({
+      tenantId,
+      workflowId,
+      runId,
+      agentKey: "seo_marketing_agent",
+      outputType: "campaign_recommendation",
+      title: `Recommended campaign: ${title}`,
+      status: "needs_review",
+      targetType: "marketing_campaign_recommendation",
+      targetId: recommendationId,
+      metadata: { sourceSignals, noLivePublishing: true }
+    });
+
+    const campaign = await queryPostgres<{ id: string }>(
+      `
+      insert into public.content_studio_campaigns (
+        tenant_id, brand_id, campaign_key, prompt, campaign_name, goal, status, mode, approval_required, metadata_json
+      )
+      values ($1, $2, 'ai_marketing_department_check', $3, $4, $5, 'needs_review', 'simple', true, $6::jsonb)
+      returning id
+      `,
+      [
+        tenantId,
+        signal.brand_id,
+        `${title}. Service: ${signal.service_name ?? "main service"}. Area: ${signal.area_name ?? "primary market"}. Build review-first creative variants, a landing page, ad copy, and a video script.`,
+        title,
+        recommendationKey === "reactivate_stale_leads" ? "Recover stale leads" : recommendationKey === "completed_job_proof_machine" ? "Turn proof into demand" : "Fill open schedule",
+        JSON.stringify({ createdByAgent: "seo_marketing_agent", recommendationId, sourceSignals, noLivePublishing: true })
+      ]
+    );
+    const campaignId = campaign?.rows[0]?.id;
+    if (campaignId) {
+      const landing = await queryPostgres<{ id: string }>(
+        `
+        insert into public.content_studio_outputs (
+          tenant_id, brand_id, campaign_id, output_type, platform, title, body, status, risk_level, metadata_json
+        )
+        values
+          ($1, $2, $3, 'landing_page', 'website', $4, $5, 'needs_review', 'medium', $6::jsonb),
+          ($1, $2, $3, 'image_ad', 'meta', $7, $8, 'needs_review', 'medium', $6::jsonb),
+          ($1, $2, $3, 'short_video_script', 'video', $9, $10, 'needs_review', 'medium', $6::jsonb)
+        returning id
+        `,
+        [
+          tenantId,
+          signal.brand_id,
+          campaignId,
+          `${title} landing page`,
+          `Draft a focused page for ${signal.service_name ?? "the main service"}${signal.area_name ? ` in ${signal.area_name}` : ""}. Use real proof, clear CTA, source tracking, and review before publishing.`,
+          JSON.stringify({ createdByAgent: "seo_marketing_agent", noLivePublishing: true, recommendationId }),
+          `${title} static ad`,
+          "Create a simple image ad concept using one hook, one proof point, one offer, and one CTA.",
+          `${title} video script`,
+          "Create a short UGC-style video script with hook, proof, offer, CTA, and safe claims."
+        ]
+      );
+      const landingId = landing?.rows[0]?.id ?? null;
+      const experiment = await queryPostgres<{ id: string }>(
+        `
+        insert into public.marketing_ad_experiments (
+          tenant_id, brand_id, campaign_id, experiment_name, objective, platforms, budget_mode,
+          status, landing_page_output_id, creative_count, launch_checklist_json, metadata_json
+        )
+        values ($1, $2, $3, $4, 'book_more_work', $5, 'manual_export', 'needs_review', $6, 3, $7::jsonb, $8::jsonb)
+        returning id
+        `,
+        [
+          tenantId,
+          signal.brand_id,
+          campaignId,
+          `${title} launch kit`,
+          recommendationKey === "reactivate_stale_leads" ? ["email", "manual"] : ["facebook", "google", "website"],
+          landingId,
+          JSON.stringify(["Approve offer and claims.", "Connect or export to customer-owned ad account.", "Track campaign source through lead, job, invoice, and revenue."]),
+          JSON.stringify({ createdByAgent: "seo_marketing_agent", recommendationId, noLiveSpend: true })
+        ]
+      );
+      const experimentId = experiment?.rows[0]?.id;
+      for (const [angleIndex, angle] of ["Proof", "Offer", "Urgency"].entries()) {
+        await queryPostgres(
+          `
+          insert into public.marketing_creative_variants (
+            tenant_id, brand_id, campaign_id, experiment_id, platform, format, hook, angle, audience, cta, status, predicted_score, metadata_json
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Request a quote', 'needs_review', $10, $11::jsonb)
+          `,
+          [
+            tenantId,
+            signal.brand_id,
+            campaignId,
+            experimentId,
+            angleIndex === 0 ? "facebook" : angleIndex === 1 ? "google" : "website",
+            angleIndex === 1 ? "search_ad" : "static_ad",
+            angle === "Proof" ? "Real work creates the next customer." : angle === "Offer" ? "Clear next step, no guessing." : "Open schedule should become booked work.",
+            angle,
+            signal.area_name,
+            78 - angleIndex * 4,
+            JSON.stringify({ createdByAgent: "seo_marketing_agent", noProviderSubmitted: true })
+          ]
+        );
+      }
+      await recordOutput({
+        tenantId,
+        workflowId,
+        runId,
+        agentKey: "seo_marketing_agent",
+        outputType: "ad_launch_kit",
+        title: `Prepared launch kit: ${title}`,
+        status: "needs_review",
+        targetType: "marketing_ad_experiment",
+        targetId: experimentId,
+        metadata: { campaignId, recommendationId, noLiveSpend: true }
+      });
+    }
+  }
+
   const result = await queryPostgres<{ id: string; title: string }>(
     `
     insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, status, risk_level, metadata_json)
@@ -722,9 +1136,118 @@ async function runSeoMarketingAgent(tenantId: string, workflowId: string, runId:
       metadata: { draftOnly: true }
     });
   }
+  for (const signal of signals) {
+    await queryPostgres(
+      `
+      insert into public.marketing_memory_items (
+        tenant_id, brand_id, memory_type, title, summary, source_table, performance_json, score, status, metadata_json
+      )
+      values ($1, $2, 'campaign', $3, $4, 'ai_agent_runs', $5::jsonb, 60, 'learning', $6::jsonb)
+      `,
+      [
+        tenantId,
+        signal.brand_id,
+        `Marketing signal: ${signal.service_name ?? "main service"}${signal.area_name ? ` in ${signal.area_name}` : ""}`,
+        "Use business operations, proof, lead source, completed job, and capacity signals when planning marketing.",
+        JSON.stringify({
+          completedJobs: Number(signal.completed_jobs),
+          staleLeads: Number(signal.stale_leads),
+          proofAssets: Number(signal.proof_assets)
+        }),
+        JSON.stringify({ createdByAgent: "seo_marketing_agent", runId })
+      ]
+    );
+  }
   return {
-    preparedCount: rows.length,
-    summary: rows.length ? `Prepared ${rows.length} draft SEO asset(s).` : "No new SEO drafts were needed."
+    preparedCount: rows.length + signals.length,
+    summary: rows.length || signals.length
+      ? `Prepared ${rows.length} SEO draft(s) and ${signals.length} marketing recommendation(s).`
+      : "No new SEO or marketing work was needed."
+  };
+}
+
+async function runAuthorityManagerAgent(tenantId: string, workflowId: string, runId: string) {
+  const result = await queryPostgres<{
+    completed_jobs: string;
+    unprocessed_jobs: string;
+    proof_items: string;
+    approved_proof_items: string;
+    open_gaps: string;
+  }>(
+    `
+    select
+      (select count(*) from public.service_jobs where tenant_id = $1 and status = 'completed')::text as completed_jobs,
+      (
+        select count(*)
+        from public.service_jobs j
+        where j.tenant_id = $1
+          and j.status = 'completed'
+          and not exists (
+            select 1 from public.authority_content_bundles b
+            where b.tenant_id = j.tenant_id and b.job_id = j.id and b.bundle_type = 'completed_job'
+          )
+      )::text as unprocessed_jobs,
+      (select count(*) from public.ugc_submissions where tenant_id = $1)::text as proof_items,
+      (select count(*) from public.ugc_submissions where tenant_id = $1 and status = 'approved')::text as approved_proof_items,
+      (select count(*) from public.authority_content_gaps where tenant_id = $1 and status in ('open','planned','drafted'))::text as open_gaps
+    `,
+    [tenantId]
+  );
+  const row = result?.rows[0];
+  const unprocessedJobs = Number(row?.unprocessed_jobs ?? 0);
+  const proofItems = Number(row?.proof_items ?? 0);
+  const openGaps = Number(row?.open_gaps ?? 0);
+
+  if (unprocessedJobs > 0) {
+    await queryPostgres(
+      `
+      insert into public.authority_events (
+        tenant_id, event_type, status, priority, title, summary, recommended_action, metadata_json
+      )
+      values ($1, 'job_completed', 'open', 'high', 'Completed jobs need authority bundles', $2, $3, $4::jsonb)
+      `,
+      [
+        tenantId,
+        `${unprocessedJobs} completed jobs have not been turned into proof, review, content, and publishing work yet.`,
+        "Open Authority Engine and process completed jobs.",
+        JSON.stringify({ createdByAgent: "authority_manager", runId, unprocessedJobs })
+      ]
+    );
+  }
+
+  const title = unprocessedJobs > 0
+    ? "Authority Manager found completed jobs to process"
+    : "Authority Manager checked completed jobs";
+  const summary = unprocessedJobs > 0
+    ? `${unprocessedJobs} completed jobs need authority bundles. ${proofItems} proof items and ${openGaps} content gaps are currently tracked.`
+    : `No unprocessed completed jobs found. ${proofItems} proof items and ${openGaps} content gaps are currently tracked.`;
+
+  await recordOutput({
+    tenantId,
+    workflowId,
+    runId,
+    agentKey: "authority_manager",
+    outputType: "authority_check",
+    title,
+    status: unprocessedJobs > 0 ? "needs_review" : "prepared",
+    targetType: "authority_engine",
+    targetId: null,
+    metadata: {
+      href: "/app/authority",
+      completedJobs: Number(row?.completed_jobs ?? 0),
+      unprocessedJobs,
+      proofItems,
+      approvedProofItems: Number(row?.approved_proof_items ?? 0),
+      openGaps
+    }
+  });
+
+  return {
+    summary,
+    checked: Number(row?.completed_jobs ?? 0),
+    prepared: unprocessedJobs,
+    proofItems,
+    openGaps
   };
 }
 
@@ -822,11 +1345,17 @@ async function runAgentWorkflowForTenant(input: {
         ? await runLeadResponseAgent(tenantId, workflow.id, runId)
         : agentKey === "follow_up_agent"
           ? await runFollowUpAgent(tenantId, workflow.id, runId)
+          : agentKey === "customer_lifecycle_agent"
+            ? await runCustomerLifecycleAgent(tenantId, workflow.id, runId)
+          : agentKey === "dispatcher_agent"
+            ? await runDispatcherAgent(tenantId, workflow.id, runId)
           : agentKey === "review_agent"
             ? await runReviewAgent(tenantId, workflow.id, runId)
             : agentKey === "invoice_reminder_agent"
               ? await runInvoiceReminderAgent(tenantId, workflow.id, runId)
-              : await runSeoMarketingAgent(tenantId, workflow.id, runId);
+              : agentKey === "authority_manager"
+                ? await runAuthorityManagerAgent(tenantId, workflow.id, runId)
+                : await runSeoMarketingAgent(tenantId, workflow.id, runId);
 
     await finishRun({
       tenantId,

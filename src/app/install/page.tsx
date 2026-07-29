@@ -20,7 +20,6 @@ export default function InstallPage() {
           <div>
             <Link href="/demo">Demo</Link>
             <Link href="/features">Features</Link>
-            <Link href="/business-health-score">Free Grader</Link>
             <Link href="/pricing">Plans</Link>
             <Link href="/start">Start</Link>
             <Link href="/login">Sign in</Link>
@@ -82,7 +81,7 @@ export default function InstallPage() {
         <section className="panel section-actions">
           <h2>No app store required.</h2>
           <p className="muted">
-            Ferocity installs from the browser, opens from the home screen, and stays connected to the same secure workspace login.
+            Ferocity installs from the browser, opens from the home screen, and stays connected to the same secure business login.
           </p>
         </section>
 

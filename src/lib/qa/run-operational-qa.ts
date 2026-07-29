@@ -79,8 +79,8 @@ export async function runOperationalQa(userId?: string | null) {
     check("beta-checks", "Beta checks exist", Number(row?.beta_checks ?? 0), 5),
     check("settings", "Workspace settings exist", Number(row?.settings ?? 0)),
     check("workflows", "Business workflows exist", Number(row?.workflows ?? 0)),
-    check("billing", "Billing placeholder exists", Number(row?.billing ?? 0)),
-    check("integrations", "Integration placeholders exist", Number(row?.integrations ?? 0), 3),
+    check("billing", "Billing readiness records exist", Number(row?.billing ?? 0)),
+    check("integrations", "Integration readiness records exist", Number(row?.integrations ?? 0), 3),
     {
       key: "live-integrations-disabled",
       label: "Live provider actions are disabled",
@@ -93,7 +93,7 @@ export async function runOperationalQa(userId?: string | null) {
       passed: Number(row?.live_provider_accounts ?? 0) === 0,
       detail: `${Number(row?.live_provider_accounts ?? 0)} live provider accounts enabled; expected 0 before provider keys and final approval.`
     },
-    check("integration-callbacks", "Provider callback stubs exist", Number(row?.integration_callbacks ?? 0), 3),
+    check("integration-callbacks", "Provider callback routes exist", Number(row?.integration_callbacks ?? 0), 3),
     check("provider-routes", "Provider routing rules exist", Number(row?.provider_routes ?? 0), 5),
     {
       key: "action-queue-visible",
@@ -115,7 +115,14 @@ export async function runOperationalQa(userId?: string | null) {
   await queryPostgres(
     `
     insert into public.operational_qa_runs (tenant_id, status, checks_json, summary, created_by_user_id, completed_at)
-    values ($1, $2, $3::jsonb, $4, $5, now())
+    select $1, $2, $3::jsonb, $4, $5, now()
+    where not exists (
+      select 1
+      from public.operational_qa_runs
+      where tenant_id = $1
+        and coalesce(created_by_user_id::text, '') = coalesce($5::text, '')
+        and created_at >= now() - interval '45 seconds'
+    )
     `,
     [workspaceId, passed ? "passed" : "failed", JSON.stringify(checks), passed ? "Operational QA passed." : "Operational QA has failures.", userId ?? null]
   );

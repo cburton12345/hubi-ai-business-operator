@@ -1,13 +1,21 @@
 import { runDueAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { ensureDefaultMonitorSetup } from "@/lib/ai-monitoring/get-ai-monitoring-center";
+import { syncLinkAuthorityForTenant, type LinkAuthoritySyncResult } from "@/lib/authority/sync-link-authority";
 import { scanActionQueueForTenant, type ActionQueueScanResult } from "@/lib/actions-queue/scan-action-queue";
+import { processReadyMessagesForTenant, type ReadyMessageProcessingResult } from "@/lib/actions-queue/process-ready-messages";
 import { getServiceGate } from "@/lib/controls/service-gates";
+import { syncConstructionHealthForTenant } from "@/lib/construction/job-health";
 import { queryPostgres } from "@/lib/db/postgres";
+import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } from "@/lib/revenue-growth/revenue-loop-automation";
 
 export type BusinessAutomationRunResult = {
   ok: true;
   tenantsChecked: number;
   actionQueueScans: ActionQueueScanResult[];
+  revenueLoops: Array<{ tenantId: string } & RevenueLoopAutomationResult>;
+  constructionHealth: Array<{ tenantId: string; jobsChecked: number; highRiskJobs: number; fieldLogsToReview: number }>;
+  linkAuthority: Array<{ tenantId: string } & LinkAuthoritySyncResult>;
+  readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   elapsedMs: number;
@@ -185,11 +193,19 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
   const startedAt = Date.now();
   const tenantIds = input.tenantId ? [input.tenantId] : await getAutomationTenantIds(input.tenantLimit ?? 100);
   const actionQueueScans: ActionQueueScanResult[] = [];
+  const revenueLoops: BusinessAutomationRunResult["revenueLoops"] = [];
+  const constructionHealth: BusinessAutomationRunResult["constructionHealth"] = [];
+  const linkAuthority: BusinessAutomationRunResult["linkAuthority"] = [];
+  const readyMessages: BusinessAutomationRunResult["readyMessages"] = [];
   const dailyBriefs: BusinessAutomationRunResult["dailyBriefs"] = [];
 
   for (const tenantId of tenantIds) {
     await ensureDefaultMonitorSetup(tenantId);
+    revenueLoops.push({ tenantId, ...(await runRevenueLoopAutomationForTenant(tenantId)) });
+    constructionHealth.push({ tenantId, ...(await syncConstructionHealthForTenant(tenantId)) });
+    linkAuthority.push({ tenantId, ...(await syncLinkAuthorityForTenant(tenantId)) });
     actionQueueScans.push(await scanActionQueueForTenant(tenantId));
+    readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
     dailyBriefs.push(await generateTenantDailyBrief(tenantId));
   }
 
@@ -209,6 +225,10 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
       JSON.stringify({
         tenantsChecked: tenantIds.length,
         actionQueueScans,
+        revenueLoops,
+        constructionHealth,
+        linkAuthority,
+        readyMessages,
         dailyBriefs,
         aiWorkforce,
         elapsedMs: Date.now() - startedAt,
@@ -221,6 +241,10 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     ok: true,
     tenantsChecked: tenantIds.length,
     actionQueueScans,
+    revenueLoops,
+    constructionHealth,
+    linkAuthority,
+    readyMessages,
     dailyBriefs,
     aiWorkforce,
     elapsedMs: Date.now() - startedAt

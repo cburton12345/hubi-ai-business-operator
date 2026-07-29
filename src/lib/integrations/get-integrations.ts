@@ -49,13 +49,32 @@ export const plannedConnections = [
   {
     provider: "twilio_shared",
     displayName: "Optional SMS Provider",
-    notes: "Optional future SMS delivery. Ferocity defaults to app alerts, email, dashboard queues, and manual text drafts so owners can start without telecom setup.",
+    notes: "Optional SMS delivery. Ferocity defaults to app alerts, email, dashboard queues, and manual text drafts so owners can start without telecom setup.",
     envVars: [],
     setupItems: ["Use app alerts and email by default", "Keep manual text drafts available", "Add SMS only if consent, compliance, and cost limits are ready"],
     callbackPath: "/api/integrations/twilio/status",
     riskLevel: "high",
-    setupMode: "optional_later",
+    setupMode: "optional_provider",
     liveActionRule: "SMS is optional. Live SMS sends require explicit opt-in, consent, approval gates, and plan limits."
+  },
+  {
+    provider: "voice_ai",
+    displayName: "Business Phone & AI Receptionist",
+    notes: "Keep the business number customers already know, connect it fully, or get a new number. Ferocity keeps the phone and AI providers behind the scenes unless Advanced setup is opened.",
+    envVars: ["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET", "VOICE_PHONE_NUMBER", "VOICE_MONTHLY_BUDGET_CENTS"],
+    setupItems: [
+      "Choose: keep the current number, connect it fully, get a new number, or use Advanced",
+      "Tell Ferocity where important calls should transfer",
+      "Choose business hours, voicemail, recording, and message behavior",
+      "Confirm call recording and transcription disclosures",
+      "Complete an authorized test call",
+      "Set monthly limits before live AI calling",
+      "Keep human handoff available for low confidence, money, legal, safety, or angry callers"
+    ],
+    callbackPath: "/api/integrations/voice-ai/webhook",
+    riskLevel: "high",
+    setupMode: "premium_voice_provider",
+    liveActionRule: "Office-manager setup works now. Live calls, outbound calls, recordings, and voice-provider charges stay off until provider keys, consent, budget, and approval gates are ready."
   },
   {
     provider: "supabase_auth",
@@ -88,7 +107,7 @@ export const plannedConnections = [
       "Map Stripe customer to workspace",
       "Use customer-owned Stripe for payment links unless Stripe Connect managed payments is intentionally added",
       "Do not absorb processor, payout, refund, dispute, chargeback, or instant-payout fees by default",
-      "Add publishable key only if embedded payment elements are added later"
+      "Add publishable key only if embedded payment elements are enabled"
     ],
     callbackPath: "/api/integrations/stripe/webhook",
     riskLevel: "high",
@@ -98,11 +117,10 @@ export const plannedConnections = [
   {
     provider: "stripe_connect",
     displayName: "Stripe Connect Managed Payments",
-    notes: "Future managed-payments path for connected Stripe accounts and Ferocity platform fees. This should not block normal subscription billing or customer-owned Stripe links.",
-    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_CLIENT_ID", "FEROCITY_MANAGED_PAYMENTS_ENABLED", "FEROCITY_MANAGED_PAYMENT_FEE_BPS"],
+    notes: "Managed-payments path for connected Stripe accounts and Ferocity platform fees. This does not block normal subscription billing or customer-owned Stripe links.",
+    envVars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "FEROCITY_MANAGED_PAYMENTS_ENABLED", "FEROCITY_MANAGED_PAYMENT_FEE_BPS"],
     setupItems: [
       "Create Stripe Connect platform profile",
-      "Add STRIPE_CONNECT_CLIENT_ID",
       "Keep FEROCITY_MANAGED_PAYMENTS_ENABLED false until onboarding is tested",
       "Create connected account onboarding and account-status refresh",
       "Store connected accounts in payment_provider_accounts",
@@ -117,11 +135,11 @@ export const plannedConnections = [
   },
   {
     provider: "quickbooks",
-    displayName: "QuickBooks / Accounting Export",
-    notes: "Accounting sync is provider-gated. Ferocity can prepare clean job cost, invoice, payment, receipt, reimbursement, and ledger records before any live accounting push.",
+    displayName: "Portable Accounting / Optional QuickBooks",
+    notes: "Invoice, vendor-bill, expense, and ledger CSV exports work without provider credentials. QuickBooks or another accounting connection is optional for businesses that want automatic two-way sync.",
     envVars: [],
     setupItems: [
-      "Keep manual exports and owner review available first",
+      "Use portable CSV exports and owner review by default",
       "Map customers, invoices, payments, expenses, reimbursements, and job costs",
       "Require owner approval before sending accounting data",
       "Add QuickBooks OAuth credentials when live sync is ready",
@@ -129,13 +147,13 @@ export const plannedConnections = [
     ],
     callbackPath: null,
     riskLevel: "high",
-    setupMode: "provider_later",
-    liveActionRule: "Accounting exports can be prepared for review. Live QuickBooks sync stays disabled until OAuth, mapping, approvals, and audit logs are ready."
+    setupMode: "keyless_export_optional_sync",
+    liveActionRule: "Portable exports work now. Live QuickBooks sync stays optional and disabled until OAuth, mapping, approvals, and audit logs are ready."
   },
   {
     provider: "google_business_profile",
     displayName: "Google Business Profile",
-    notes: "GBP post publishing later. Drafts remain internal.",
+    notes: "Google Business Profile drafts and recommendations are available now. Live publishing requires the connected Google account, approved scopes, and workspace approval rules.",
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Google Cloud OAuth app", "Request Business Profile scopes", "Verify redirect URL", "Require approval before publishing"],
     callbackPath: "/api/integrations/google/oauth/callback",
@@ -146,7 +164,7 @@ export const plannedConnections = [
   {
     provider: "facebook",
     displayName: "Facebook / Meta",
-    notes: "Social publishing and ads later. Drafts remain manual for now.",
+    notes: "Social and ad drafts are available now. Live publishing, replies, and ad spend require the connected Meta account, approved permissions, and workspace approval rules.",
     envVars: ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Meta app", "Request pages and ads permissions", "Configure redirect URL", "Keep publishing disabled until reviewed"],
     callbackPath: "/api/integrations/meta/oauth/callback",
@@ -155,9 +173,52 @@ export const plannedConnections = [
     liveActionRule: "Read and draft first. Page publishing, replies, ads, and spend require approval."
   },
   {
+    provider: "tiktok",
+    displayName: "TikTok",
+    notes: "Prepared for TikTok creator/content workflows, short-form ad briefs, and reporting. Drafts and creative plans work now; live posting and spend require approved provider access.",
+    envVars: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"],
+    setupItems: [
+      "Create a TikTok developer or business API app",
+      "Configure the deployed Ferocity callback URL",
+      "Start with creative drafts, scripts, content calendars, and reporting",
+      "Keep posting, creator actions, campaign creation, and ad spend approval-gated"
+    ],
+    callbackPath: "/api/integrations/tiktok/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Creative drafts, scripts, and reporting first. Posting, creator actions, campaign creation, and spend require approval."
+  },
+  {
+    provider: "premium_video_rendering",
+    displayName: "Premium Video Rendering",
+    notes: "Ferocity can prepare video ad scripts, scenes, hooks, platform variants, and provider-ready briefs now. Finished AI video rendering requires a connected premium media provider, budget limits, and approval rules.",
+    envVars: [
+      "VIDEO_PROVIDER",
+      "VIDEO_API_KEY",
+      "VIDEO_MODEL",
+      "VIDEO_RENDERING_ENABLED",
+      "VIDEO_MONTHLY_BUDGET_CENTS",
+      "VIDEO_WORKSPACE_MONTHLY_BUDGET_CENTS",
+      "VIDEO_PROVIDER_COST_CENTS_PER_SECOND",
+      "VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND"
+    ],
+    setupItems: [
+      "Choose the rendering provider such as Veo, Runway, Kling, OpenAI media, or another approved vendor",
+      "Add the provider API key and model name",
+      "Set global and per-workspace monthly cost caps before enabling renders",
+      "Set provider cost and customer price per rendered second; customer price must exceed provider cost",
+      "Keep rendered videos approval-gated before publishing or spending",
+      "Use real customer proof, source assets, and release permissions before generating ad creative"
+    ],
+    callbackPath: null,
+    riskLevel: "high",
+    setupMode: "premium_media_provider",
+    liveActionRule: "Scripts and briefs are available now. Live rendering stays off until provider credentials, budget caps, proof permissions, and approval gates are ready."
+  },
+  {
     provider: "google_ads",
     displayName: "Google Ads",
-    notes: "Campaign and budget sync later. No API connection in this phase.",
+    notes: "Campaign planning and read-only readiness are available now. Reporting, campaign creation, and budget changes require Google Ads credentials and approval rules.",
     envVars: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Create Ads developer token", "Connect manager account", "Request OAuth consent", "Require approval for budget changes"],
     callbackPath: "/api/integrations/google/oauth/callback",
@@ -168,7 +229,7 @@ export const plannedConnections = [
   {
     provider: "reddit",
     displayName: "Reddit",
-    notes: "Community listening, draft responses, and future ads/reporting. Ferocity will not post or spend without review and credentials.",
+    notes: "Community listening, draft responses, ads readiness, and reporting. Ferocity will not post or spend without review and credentials.",
     envVars: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"],
     setupItems: [
       "Create a Reddit app",
@@ -184,7 +245,7 @@ export const plannedConnections = [
   {
     provider: "microsoft_ads",
     displayName: "Microsoft Ads",
-    notes: "Future ad reporting and conversion attribution for Bing/Microsoft channels. No budget actions run by default.",
+    notes: "Ad reporting and conversion attribution for Bing/Microsoft channels. No budget actions run by default.",
     envVars: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI", "MICROSOFT_ADS_DEVELOPER_TOKEN"],
     setupItems: [
       "Create Microsoft Entra app credentials",
@@ -200,7 +261,7 @@ export const plannedConnections = [
   {
     provider: "yahoo_ads",
     displayName: "Yahoo / Native Ads",
-    notes: "Prepared for future native ad reporting and campaign attribution. No live sync is active.",
+    notes: "Prepared for native ad reporting and campaign attribution. Live sync requires provider credentials and approval.",
     envVars: ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"],
     setupItems: [
       "Confirm the Yahoo or native ads provider",
@@ -233,7 +294,7 @@ export const plannedConnections = [
   {
     provider: "search_console",
     displayName: "Google Search Console",
-    notes: "SEO reporting and ranking signals later. Manual SEO recommendations are available now.",
+    notes: "Manual SEO recommendations and source tracking are available now. Search Console reporting requires a connected Google property.",
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Verify site property ownership", "Request Search Console scope", "Map properties to brands", "Use data for recommendations only"],
     callbackPath: "/api/integrations/google/oauth/callback",
@@ -244,7 +305,7 @@ export const plannedConnections = [
   {
     provider: "analytics",
     displayName: "Analytics",
-    notes: "Traffic and conversion reporting later. Lead source and campaign attribution are tracked internally now.",
+    notes: "Lead source and campaign attribution are tracked internally now. GA4 traffic and conversion reporting requires the connected analytics property.",
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GA4_PROPERTY_ID"],
     setupItems: ["Confirm GA4 property", "Map events to lead sources", "Avoid storing personal analytics data unnecessarily"],
     callbackPath: "/api/integrations/google/oauth/callback",
@@ -266,18 +327,18 @@ export const plannedConnections = [
   {
     provider: "twilio",
     displayName: "Optional Twilio SMS",
-    notes: "Optional SMS delivery later. Launch default is push/app alerts, email, dashboard queues, and manual text drafts.",
+    notes: "Customer-owned Twilio can provide automated outbound SMS, inbound replies, delivery tracking, and opt-out handling. Ferocity keeps app alerts, email, queues, and manual text drafts as fallbacks.",
     envVars: ["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
-    setupItems: ["Keep disabled unless the business explicitly wants SMS", "Verify number", "Configure messaging compliance", "Confirm consent before sending", "Keep SMS replies draft-only until approved"],
-    callbackPath: "/api/integrations/twilio/status",
+    setupItems: ["Save the workspace Twilio credentials", "Verify and activate the customer-owned number", "Configure messaging compliance", "Set both inbound and status callbacks to the Ferocity Twilio webhook", "Confirm consent before automated sending"],
+    callbackPath: "/api/messaging/webhooks/twilio",
     riskLevel: "high",
     setupMode: "api_key",
-    liveActionRule: "SMS is optional. Live SMS sends require consent, approval gates, plan limits, and explicit workspace opt-in."
+    liveActionRule: "SMS is optional. Live SMS sends require verified workspace credentials, consent, suppression checks, limits, and explicit activation."
   },
   {
     provider: "review_platform",
     displayName: "Review Platform",
-    notes: "Review ingestion and response workflows later. Public review responses require manual approval.",
+    notes: "Review ingestion and response workflows require a connected review provider. Public review responses require manual approval.",
     envVars: ["REVIEW_PROVIDER", "REVIEW_API_KEY"],
     setupItems: ["Choose review provider", "Map locations to brands", "Require approval before public responses", "Never invent testimonials"],
     callbackPath: "/api/integrations/reviews/webhook",
@@ -287,14 +348,14 @@ export const plannedConnections = [
   },
   {
     provider: "calendar_provider",
-    displayName: "Calendar / Appointments",
-    notes: "Calendar sync later. Jobs and appointment requests are tracked internally now.",
+    displayName: "Keyless Calendar / Optional Two-Way Sync",
+    notes: "Jobs and appointments work internally, and private revocable iCalendar feeds sync outward without provider credentials. Google or Microsoft OAuth is optional for two-way edits.",
     envVars: ["CALENDAR_PROVIDER", "CALENDAR_CLIENT_ID", "CALENDAR_CLIENT_SECRET", "CALENDAR_OAUTH_REDIRECT_URI"],
-    setupItems: ["Choose Google or Microsoft calendar", "Map calendars to brands/users", "Avoid auto-booking until rules are approved"],
+    setupItems: ["Create a private iCalendar feed from Schedule", "Subscribe from the owner's calendar", "Choose Google or Microsoft OAuth only if two-way editing is needed", "Avoid auto-booking until rules are approved"],
     callbackPath: "/api/integrations/calendar/oauth/callback",
     riskLevel: "medium",
-    setupMode: "oauth",
-    liveActionRule: "Read and draft schedule changes first. Auto-booking requires explicit rules."
+    setupMode: "keyless_feed_optional_oauth",
+    liveActionRule: "Private read-only schedule feeds work now. Provider-side edits and auto-booking require an optional connected account and explicit rules."
   },
   {
     provider: "webhook_framework",
@@ -310,7 +371,7 @@ export const plannedConnections = [
   {
     provider: "external_publishing",
     displayName: "External Publishing",
-    notes: "CMS/social publishing later. Export packages are manual.",
+    notes: "Approved export packages are available now. Direct CMS or social publishing requires a connected provider and live-action approval rules.",
     envVars: ["CMS_PROVIDER", "CMS_API_KEY"],
     setupItems: ["Choose CMS/provider", "Map pages to brands", "Require approval before publishing", "Preserve manual export fallback"],
     callbackPath: null,
@@ -414,8 +475,13 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
 
   return (result?.rows ?? []).map((row) => {
     const envVars = row.metadata_json?.envVars ?? [];
-    const missing = missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
     const account = accounts.get(row.provider);
+    const tenantCredentialsReady =
+      account?.credentials_status === "configured"
+      && ["connected", "paused", "error"].includes(account.status);
+    const missing = tenantCredentialsReady
+      ? []
+      : missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
     const oauthConfig = getOAuthProviderConfig(row.provider);
     const envCredentialsReady = missing.length === 0 && envVars.length > 0;
 
@@ -426,7 +492,7 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       status: row.status,
       credentialsStatus: envCredentialsReady ? "configured" : account?.credentials_status ?? row.credentials_status,
       ownershipMode: account?.ownership_mode ?? (row.provider.endsWith("_shared") ? "ferocity_managed" : "workspace"),
-      notes: row.metadata_json?.notes ?? "Prepared for a later integration phase.",
+      notes: row.metadata_json?.notes ?? "Prepared for provider connection and approval-gated live actions.",
       envVars,
       setupItems: row.metadata_json?.setupItems ?? [],
       callbackPath: row.metadata_json?.callbackPath ?? null,

@@ -107,7 +107,7 @@ function gradeLabel(score: number) {
   if (score >= 85) return "Excellent";
   if (score >= 75) return "Strong";
   if (score >= 50) return "Needs Work";
-  return "Leaking Revenue";
+  return "Missing Opportunities";
 }
 
 function statusFromAnswer(value: string | null | undefined): HealthStatus {
@@ -402,7 +402,7 @@ function buildMissedRevenueEstimate(score: number, categories: BusinessHealthCat
     high,
     label: `$${low.toLocaleString()} - $${high.toLocaleString()} annually`,
     explanation:
-      "This is a directional estimate based on gaps in lead capture, follow-up, local SEO, reviews, and conversion tracking. It is not a promise of revenue; it shows where money may be leaking."
+      "This is a directional estimate based on gaps in lead capture, follow-up, local SEO, reviews, and conversion tracking. It is not a promise of revenue; it shows where the business may be missing booked income."
   };
 }
 
@@ -520,7 +520,7 @@ function ecosystem(input: OperationsAssessmentInput, categories: BusinessHealthC
     rows.push({
       issue: "Government contract opportunities",
       product: "BidOps",
-      recommendation: "Use BidOps later if public-sector opportunities become a real strategy. Ferocity does not force that path."
+      recommendation: "Use BidOps if public-sector opportunities become a real strategy. Ferocity does not force that path."
     });
   }
 

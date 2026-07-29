@@ -26,6 +26,7 @@ export default async function CashCollectionPage() {
             <Link className="button" href="/app/service">Create invoice</Link>
             <Link className="button secondary-button" href="/app/text-queue">Text bill reminders</Link>
             <Link className="button secondary-button" href="/app/billing">Stripe setup</Link>
+            <Link className="button secondary-button" href="/app/purchasing">Purchasing & accounting</Link>
             <Link className="button secondary-button" href="/app/reports">Reports</Link>
           </div>
         </div>
@@ -61,7 +62,7 @@ export default async function CashCollectionPage() {
                 <span className="priority-number">1</span>
                 <div>
                   <h3>No urgent cash collection issue found</h3>
-                  <p className="muted">Open invoices, payment requests, payments, and ledger entries will appear here as work is created.</p>
+                  <p className="muted">Create invoices, payment requests, payments, or ledger entries to populate this board.</p>
                 </div>
                 <span className="pill low">low</span>
               </li>
@@ -83,8 +84,8 @@ export default async function CashCollectionPage() {
       <section className="panel section-actions">
         <h2><ShieldCheck size={18} /> Fee Safety Rules</h2>
         <p className="muted">
-          Manual payment records do not create processing fees. Online payment links use provider fees. Future managed payments must pass through
-          processor fees, instant-payout fees, refunds, disputes, chargebacks, and bank-return costs instead of Ferocity eating them by accident.
+          Manual payment records do not create processing fees. Online payment links use provider fees. Managed payments must pass through
+          processor fees, instant-payout fees, refunds, disputes, chargebacks, and bank-return costs before managed payment options are enabled.
         </p>
       </section>
 

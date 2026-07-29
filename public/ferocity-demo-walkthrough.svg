@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Ferocity animated product walkthrough</title>
+  <desc id="desc">Animated overview of Ferocity acting as an AI workforce: watching work, preparing next actions, and bringing important decisions to the business.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#101820"/>
+      <stop offset="0.55" stop-color="#18272d"/>
+      <stop offset="1" stop-color="#263a32"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1">
+      <stop offset="0" stop-color="#f4b860"/>
+      <stop offset="1" stop-color="#85d6a8"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .small{font:500 24px Arial,sans-serif;fill:#b9c7c0}
+      .tiny{font:600 18px Arial,sans-serif;fill:#809088;text-transform:uppercase;letter-spacing:2px}
+      .title{font:800 52px Arial,sans-serif;fill:#f8fbf8}
+      .mid{font:700 30px Arial,sans-serif;fill:#f8fbf8}
+      .cardText{font:700 24px Arial,sans-serif;fill:#f8fbf8}
+      .muted{font:500 19px Arial,sans-serif;fill:#afbeb7}
+      .pill{fill:#243a33;stroke:#4f7d65;stroke-width:1}
+      .panel{fill:#152028;stroke:#29413e;stroke-width:1.5}
+      .gold{fill:#f4b860}
+      .green{fill:#85d6a8}
+      .stroke{stroke:#85d6a8;stroke-width:4;fill:none;stroke-linecap:round}
+      .fade1{animation:fade 16s infinite}
+      .fade2{animation:fade 16s infinite;animation-delay:4s;opacity:0}
+      .fade3{animation:fade 16s infinite;animation-delay:8s;opacity:0}
+      .fade4{animation:fade 16s infinite;animation-delay:12s;opacity:0}
+      @keyframes fade{0%,6%{opacity:0;transform:translateY(18px)}10%,24%{opacity:1;transform:translateY(0)}29%,100%{opacity:0;transform:translateY(-14px)}}
+      .pulse{animation:pulse 2.2s infinite}
+      @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+      .slide{animation:slide 16s infinite}
+      @keyframes slide{0%,22%{transform:translateX(0)}25%,47%{transform:translateX(235px)}50%,72%{transform:translateX(470px)}75%,100%{transform:translateX(705px)}}
+    </style>
+  </defs>
+
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="1130" cy="100" r="130" fill="#315c48" opacity=".25"/>
+  <circle cx="90" cy="660" r="180" fill="#6e4d27" opacity=".18"/>
+
+  <g transform="translate(70 64)">
+    <text class="tiny" x="0" y="0">Ferocity</text>
+    <text class="title" x="0" y="68">Your AI workforce is watching.</text>
+    <text class="small" x="0" y="112">Ferocity prepares the next step and brings decisions to you.</text>
+  </g>
+
+  <g transform="translate(70 210)" filter="url(#shadow)">
+    <rect class="panel" width="520" height="390" rx="22"/>
+    <text class="tiny" x="32" y="48">Today</text>
+    <text class="mid" x="32" y="91">What needs attention</text>
+
+    <g class="fade1">
+      <rect x="32" y="124" width="456" height="70" rx="14" fill="#253536"/>
+      <circle cx="68" cy="159" r="14" class="gold pulse"/>
+      <text class="cardText" x="98" y="154">6 leads need replies</text>
+      <text class="muted" x="98" y="181">First responses are drafted.</text>
+    </g>
+    <g class="fade2">
+      <rect x="32" y="124" width="456" height="70" rx="14" fill="#253536"/>
+      <circle cx="68" cy="159" r="14" class="green pulse"/>
+      <text class="cardText" x="98" y="154">$28k in estimates are waiting</text>
+      <text class="muted" x="98" y="181">Follow-up reminders are ready.</text>
+    </g>
+    <g class="fade3">
+      <rect x="32" y="124" width="456" height="70" rx="14" fill="#253536"/>
+      <circle cx="68" cy="159" r="14" class="gold pulse"/>
+      <text class="cardText" x="98" y="154">Two invoices need attention</text>
+      <text class="muted" x="98" y="181">Payment reminders are prepared.</text>
+    </g>
+    <g class="fade4">
+      <rect x="32" y="124" width="456" height="70" rx="14" fill="#253536"/>
+      <circle cx="68" cy="159" r="14" class="green pulse"/>
+      <text class="cardText" x="98" y="154">12 jobs can create reviews</text>
+      <text class="muted" x="98" y="181">Review requests and posts are ready.</text>
+    </g>
+
+    <g transform="translate(32 236)">
+      <rect class="pill" width="130" height="42" rx="21"/><text class="muted" x="22" y="28">Approve</text>
+      <rect class="pill" x="148" width="104" height="42" rx="21"/><text class="muted" x="177" y="28">Edit</text>
+      <rect class="pill" x="270" width="116" height="42" rx="21"/><text class="muted" x="301" y="28">Pause</text>
+    </g>
+
+    <text class="muted" x="32" y="340">AI prepares the work. You choose what runs.</text>
+  </g>
+
+  <g transform="translate(675 236)">
+    <rect x="0" y="0" width="500" height="320" rx="24" fill="#f5f0e6"/>
+    <text x="34" y="58" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#526157">Business loop</text>
+    <text x="34" y="102" font-family="Arial,sans-serif" font-size="34" font-weight="800" fill="#16221d">From lead to booked income</text>
+
+    <g transform="translate(38 145)">
+      <line x1="30" y1="42" x2="408" y2="42" class="stroke" opacity=".45"/>
+      <circle cx="30" cy="42" r="18" fill="#16221d"/>
+      <circle cx="165" cy="42" r="18" fill="#16221d"/>
+      <circle cx="300" cy="42" r="18" fill="#16221d"/>
+      <circle cx="408" cy="42" r="18" fill="#16221d"/>
+      <circle class="slide" cx="30" cy="42" r="10" fill="url(#accent)"/>
+      <text x="0" y="92" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#34443d">Lead</text>
+      <text x="122" y="92" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#34443d">Follow up</text>
+      <text x="273" y="92" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#34443d">Job</text>
+      <text x="375" y="92" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#34443d">Paid</text>
+    </g>
+
+    <g transform="translate(34 270)">
+      <text font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#16221d">Ferocity keeps the business moving.</text>
+    </g>
+  </g>
+</svg>

@@ -114,7 +114,7 @@ export default async function SeoAutopilotPage() {
 
         <section className="panel span-6">
           <h2>Publishing Connections</h2>
-          <p className="muted">Where approved work can go later. Live publishing stays off until connected.</p>
+          <p className="muted">Where approved work can go when connected. Live publishing stays off until connected.</p>
           <ul className="list">
             {trafficEngine.publishingConnections.map((item) => (
               <li className="list-row" key={item.id}>

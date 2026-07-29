@@ -9,7 +9,7 @@ export default async function ProofEnginePage() {
   return (
     <QueuePageShell
       eyebrow="Customer Proof"
-      title="UGC Proof Engine"
+      title="Turn Finished Work Into New Customers"
       description="Capture real customer photos, testimonials, before/after links, consent, and draft marketing outputs from completed work."
     >
       <div className="grid section-actions">
@@ -24,8 +24,8 @@ export default async function ProofEnginePage() {
           <div>
             <h2>How It Works</h2>
             <p className="muted">
-              After real work is done, send a proof link. The customer can share a story, photo links, video links, rating, and permissions.
-              Ferocity keeps everything in review before it becomes marketing.
+              After real work is done, send a proof link. The customer can share a story, photos, video links, rating, and permissions.
+              Ferocity turns approved proof into review requests, testimonials, posts, SEO updates, ad ideas, and video briefs.
             </p>
           </div>
           <div className="inline-actions">
@@ -47,6 +47,33 @@ export default async function ProofEnginePage() {
                       : "Prepare GBP, Facebook, SEO, testimonial, and ad drafts."}
               </p>
             </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Why this matters</p>
+            <h2>Every completed job should help win the next job.</h2>
+            <p className="muted">
+              Reviews, photos, testimonials, before/after proof, and customer stories usually convert better than generic marketing.
+              Ferocity keeps consent visible and drafts the next growth assets from real work.
+            </p>
+          </div>
+          <Link className="button" href="/app/authority">Open Authority Engine</Link>
+        </div>
+        <div className="value-ladder">
+          {[
+            ["Review request", "Ask at the right time after good work is complete."],
+            ["Proof library", "Keep approved photos, stories, ratings, and permissions organized."],
+            ["SEO update", "Draft location/service content from real jobs instead of thin generic pages."],
+            ["Social and ads", "Prepare Facebook, Google profile, testimonial, and short-video creative from proof."]
+          ].map(([title, body]) => (
+            <div key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </div>
           ))}
         </div>
       </section>

@@ -72,7 +72,10 @@ const preset = defaults[platformKey] || {
   moneyCents: 0
 };
 
-const url = env.FEROCITY_OWNER_EVENTS_URL || "http://localhost:3017/api/owner-command-center/events";
+const url =
+  env.FEROCITY_OWNER_EVENTS_URL ||
+  (env.FEROCITY_APP_URL ? `${env.FEROCITY_APP_URL.replace(/\/$/, "")}/api/owner-command-center/events` : null) ||
+  "http://localhost:3000/api/owner-command-center/events";
 const token = env.FEROCITY_OWNER_EVENTS_TOKEN || env.OWNER_COMMAND_CENTER_TOKEN;
 const tenantId = env.FEROCITY_TENANT_ID || fallbackTenantId;
 const externalEventId = `${platformKey}-smoke-${Date.now()}`;

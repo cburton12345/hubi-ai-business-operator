@@ -54,7 +54,7 @@ export async function createWebhookEndpointAction(formData: FormData) {
       parsed.data.url,
       parsed.data.direction,
       JSON.stringify(eventTypes),
-      token ? "token-created-copy-now" : "configure-secret-later",
+      token ? "token-created-copy-now" : "outbound-secret-required",
       token ? hashSessionToken(token) : null
     ]
   );

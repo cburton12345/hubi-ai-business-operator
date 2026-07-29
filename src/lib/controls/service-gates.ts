@@ -2,7 +2,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 
 export type ServiceMode = "off" | "draft_only" | "review_required" | "enabled";
 export type OveragePolicy = "block" | "allow_with_review" | "allow";
-export type PlanKey = "free" | "job_tracker" | "starter" | "growth" | "operator" | "pro_agency";
+export type PlanKey = "free" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
 
 export type ServiceGate = {
   featureKey: string;
@@ -25,6 +25,7 @@ const planRank: Record<PlanKey, number> = {
   starter: 10,
   growth: 20,
   operator: 30,
+  managed_operator: 35,
   pro_agency: 40
 };
 
@@ -34,11 +35,12 @@ const planLabel: Record<PlanKey, string> = {
   starter: "Starter",
   growth: "Growth",
   operator: "Operator",
+  managed_operator: "Managed Operator",
   pro_agency: "Pro / Agency"
 };
 
 const featureMinimumPlan: Record<string, PlanKey> = {
-  ai_generation: "starter",
+  ai_generation: "free",
   seo_autopilot: "growth",
   hosted_growth_pages: "growth",
   publishing_queue: "growth",
@@ -60,20 +62,25 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   voice_ai: "operator",
   bulk_email: "growth",
   premium_ai_tasks: "operator",
+  ai_office_manager: "starter",
   byo_credential_vault: "operator",
   ai_search_visibility: "free",
   seo_content_strategy: "growth",
+  authority_engine: "starter",
   authority_builder: "growth",
+  authority_link_intelligence: "growth",
   cms_publishing_connections: "growth",
   ai_monitoring_briefing: "operator",
   owner_ai_decisions: "operator",
   labor_staffing_requests: "job_tracker",
   labor_worker_intake: "job_tracker",
-  labor_match_suggestions: "starter"
+  labor_match_suggestions: "starter",
+  construction_job_health: "job_tracker"
 };
 
 function normalizePlanKey(planKey: string | null | undefined): PlanKey {
   if (planKey === "job_tracker") return planKey;
+  if (planKey === "managed_operator") return planKey;
   if (planKey === "starter" || planKey === "growth" || planKey === "operator" || planKey === "pro_agency") return planKey;
   if (planKey === "internal" || planKey === "enterprise" || planKey === "agency") return "pro_agency";
   return "free";
@@ -91,6 +98,13 @@ export function planName(planKey: string | null | undefined) {
   return planLabel[normalizePlanKey(planKey)];
 }
 
+export function usesCountBasedLimit(featureKey: string) {
+  // Core AI is protected by actual provider-cost budgets in the AI service.
+  // A cheap command, draft, or summary should not become unavailable merely
+  // because an arbitrary request counter was reached.
+  return featureKey !== "ai_generation";
+}
+
 const serviceUsageSql: Record<string, string> = {
   ai_generation: "select count(*)::int as current_usage from public.ai_generation_runs where tenant_id = $1 and created_at >= date_trunc('month', now())",
   seo_autopilot: `
@@ -102,8 +116,18 @@ const serviceUsageSql: Record<string, string> = {
   `,
   hosted_growth_pages: "select count(*)::int as current_usage from public.brand_landing_pages where tenant_id = $1 and status <> 'archived'",
   publishing_queue: "select count(*)::int as current_usage from public.publishing_queue where tenant_id = $1 and queue_status <> 'canceled'",
-  sms_send: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'sms_send' and created_at >= date_trunc('month', now())",
-  email_send: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'email_send' and created_at >= date_trunc('month', now())",
+  sms_send: `
+    select greatest(
+      (select coalesce(sum(unit_count), 0)::int from public.provider_usage_events where tenant_id = $1 and action_type = 'sms_send' and created_at >= date_trunc('month', now())),
+      (select count(*)::int from public.messages where tenant_id = $1 and channel in ('sms', 'mms') and status in ('sent', 'sent_manually', 'delivered') and created_at >= date_trunc('month', now()))
+    ) as current_usage
+  `,
+  email_send: `
+    select greatest(
+      (select coalesce(sum(unit_count), 0)::int from public.provider_usage_events where tenant_id = $1 and action_type = 'email_send' and created_at >= date_trunc('month', now())),
+      (select count(*)::int from public.messages where tenant_id = $1 and channel = 'email' and status in ('sent', 'sent_manually', 'delivered') and created_at >= date_trunc('month', now()))
+    ) as current_usage
+  `,
   review_requests: "select count(*)::int as current_usage from public.review_request_workflows where tenant_id = $1 and created_at >= date_trunc('month', now())",
   ugc_proof_capture: "select count(*)::int as current_usage from public.ugc_submissions where tenant_id = $1 and created_at >= date_trunc('month', now())",
   calendar_sync: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'calendar_sync' and created_at >= date_trunc('month', now())",
@@ -120,15 +144,19 @@ const serviceUsageSql: Record<string, string> = {
   voice_ai: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'voice_ai' and created_at >= date_trunc('month', now())",
   bulk_email: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'bulk_email' and created_at >= date_trunc('month', now())",
   premium_ai_tasks: "select coalesce(sum(unit_count), 0)::int as current_usage from public.provider_usage_events where tenant_id = $1 and action_type = 'premium_ai_task' and created_at >= date_trunc('month', now())",
+  ai_office_manager: "select count(*)::int as current_usage from public.office_manager_action_requests where tenant_id = $1 and created_at >= date_trunc('month', now())",
   byo_credential_vault: "select count(*)::int as current_usage from public.tenant_provider_credentials where tenant_id = $1 and status <> 'archived'",
   ai_search_visibility: "select count(*)::int as current_usage from public.ai_search_visibility_checks where tenant_id = $1 and created_at >= date_trunc('month', now())",
   seo_content_strategy: "select count(*)::int as current_usage from public.seo_content_strategy_items where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  authority_engine: "select count(*)::int as current_usage from public.authority_content_bundles where tenant_id = $1 and created_at >= date_trunc('month', now())",
   authority_builder: "select count(*)::int as current_usage from public.seo_authority_tasks where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  authority_link_intelligence: "select count(*)::int as current_usage from public.authority_link_opportunities where tenant_id = $1 and discovered_at >= date_trunc('month', now())",
   cms_publishing_connections: "select count(*)::int as current_usage from public.brand_publishing_connections where tenant_id = $1 and status <> 'archived'",
   ai_monitoring_briefing: "select count(*)::int as current_usage from public.owner_daily_briefings where tenant_id = $1 and generated_at >= date_trunc('month', now())",
   labor_staffing_requests: "select count(*)::int as current_usage from public.labor_staffing_requests where tenant_id = $1 and created_at >= date_trunc('month', now())",
   labor_worker_intake: "select count(*)::int as current_usage from public.labor_worker_availability where tenant_id = $1 and source = 'public_form' and created_at >= date_trunc('month', now())",
-  labor_match_suggestions: "select count(*)::int as current_usage from public.labor_staffing_matches where tenant_id = $1 and created_at >= date_trunc('month', now())"
+  labor_match_suggestions: "select count(*)::int as current_usage from public.labor_staffing_matches where tenant_id = $1 and created_at >= date_trunc('month', now())",
+  construction_job_health: "select count(*)::int as current_usage from public.construction_daily_logs where tenant_id = $1 and created_at >= date_trunc('month', now())"
 };
 
 export async function getServiceUsage(tenantId: string, featureKey: string) {
@@ -203,7 +231,7 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   const mode = row.status === "disabled" ? "off" : row.metadata_json?.approvalMode ?? "review_required";
   const overagePolicy = row.metadata_json?.overagePolicy ?? "block";
   const remaining = row.usage_limit === null ? null : Math.max(row.usage_limit - currentUsage, 0);
-  const limitReached = row.usage_limit !== null && currentUsage >= row.usage_limit;
+  const limitReached = usesCountBasedLimit(featureKey) && row.usage_limit !== null && currentUsage >= row.usage_limit;
   const enabled = planAllowed && row.status !== "disabled" && mode !== "off" && (!limitReached || overagePolicy !== "block");
 
   return {

@@ -5,9 +5,18 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import { logAppError } from "@/lib/observability/log-error";
+import {
+  calculatePlatformFeeCents,
+  getManagedPaymentAccount,
+  managedPaymentsEnabled,
+  stripeFormRequest
+} from "@/lib/payments/stripe-connect";
 import { dollarsToCents } from "@/lib/service-ops/money";
+import { generateDueMembershipVisits } from "@/lib/service-ops/generate-membership-visits";
+import { ensureServiceKernelForJob } from "@/lib/service-ops/service-kernel";
 import { makePublicToken } from "@/lib/ugc/proof";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -41,7 +50,20 @@ const estimateStatusSchema = z.object({
   estimateId: z.string().uuid(),
   status: z.enum(["draft", "sent_manually", "approved", "declined", "expired"]),
   internalNotes: z.string().max(1200).optional(),
-  followUpDraft: z.string().max(2000).optional()
+  followUpDraft: z.string().max(2000).optional(),
+  customerDisplayMode: z.enum(["simple", "grouped", "detailed"]).default("grouped"),
+  customerIntro: z.string().max(1200).optional(),
+  customerScopeSummary: z.string().max(1600).optional(),
+  customerExclusions: z.string().max(1200).optional(),
+  paymentTerms: z.string().max(1200).optional(),
+  acceptanceNotes: z.string().max(1200).optional(),
+  customerNextSteps: z.string().max(1200).optional(),
+  showLineItemPrices: z.boolean().default(true),
+  showQuantities: z.boolean().default(true),
+  showMaterialDetails: z.boolean().default(false),
+  showLaborDetails: z.boolean().default(false),
+  showOverheadDetails: z.boolean().default(false),
+  showProfitDetails: z.boolean().default(false)
 });
 
 const jobStatusSchema = z.object({
@@ -80,6 +102,13 @@ const estimateLineItemSchema = z.object({
   unitPriceCents: z.number().int().min(0)
 });
 
+const estimatePricebookItemSchema = z.object({
+  estimateId: z.string().uuid(),
+  pricebookItemId: z.string().uuid(),
+  quantity: z.coerce.number().min(0.01).max(9999).default(1),
+  optional: z.boolean().default(false)
+});
+
 const invoiceLineItemSchema = z.object({
   invoiceId: z.string().uuid(),
   itemId: z.string().uuid().optional(),
@@ -113,8 +142,43 @@ const customerPortalSchema = z.object({
   customerId: z.string().uuid()
 });
 
+const customerTagSchema = z.object({
+  customerId: z.string().uuid(),
+  name: z.string().trim().min(1).max(80)
+});
+
+const customerLocationSchema = z.object({
+  customerId: z.string().uuid(),
+  name: z.string().trim().min(1).max(120),
+  locationType: z.enum(["service", "billing", "service_and_billing", "commercial_site", "other"]),
+  addressLine1: z.string().trim().max(180).optional(),
+  city: z.string().trim().max(120).optional(),
+  state: z.string().trim().max(80).optional(),
+  postalCode: z.string().trim().max(30).optional(),
+  accessInstructions: z.string().trim().max(1200).optional()
+});
+
+const customerAssetSchema = z.object({
+  customerId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  name: z.string().trim().min(1).max(180),
+  assetType: z.string().trim().min(1).max(80),
+  manufacturer: z.string().trim().max(120).optional(),
+  model: z.string().trim().max(120).optional(),
+  serialNumber: z.string().trim().max(120).optional(),
+  condition: z.enum(["unknown", "new", "good", "fair", "poor", "failed", "retired"]),
+  warrantyExpiresAt: z.string().optional()
+});
+
+const customerMergeSchema = z.object({
+  targetCustomerId: z.string().uuid(),
+  sourceCustomerId: z.string().uuid(),
+  confirmation: z.literal("MERGE")
+}).refine((value) => value.targetCustomerId !== value.sourceCustomerId);
+
 const recurringPlanSchema = z.object({
   customerId: z.string().uuid(),
+  membershipProgramId: z.string().uuid().optional(),
   title: z.string().min(1).max(180),
   serviceType: z.string().max(160).optional(),
   frequency: z.enum(["weekly", "monthly", "quarterly", "annual", "custom"]),
@@ -135,6 +199,18 @@ const inventoryItemSchema = z.object({
   notes: z.string().max(1200).optional()
 });
 
+const inventoryLocationSchema = z.object({
+  name: z.string().trim().min(1).max(180),
+  locationType: z.enum(["warehouse", "vehicle", "office", "job_site", "virtual"]),
+  address: z.string().trim().max(500).optional()
+});
+
+const inventoryAdjustmentSchema = z.object({
+  itemId: z.string().uuid(),
+  quantityDelta: z.coerce.number().min(-999999).max(999999).refine((value) => value !== 0),
+  reason: z.string().trim().min(2).max(500)
+});
+
 const serviceTaskStatusSchema = z.object({
   taskId: z.string().uuid(),
   status: z.enum(["open", "scheduled", "done", "dismissed"])
@@ -153,6 +229,13 @@ const estimateToJobSchema = z.object({
   dispatcherNotes: z.string().max(1200).optional()
 });
 
+const estimateShareSchema = z.object({
+  estimateId: z.string().uuid(),
+  emailTo: z.string().email().optional().or(z.literal("")),
+  sendEmail: z.boolean().default(false),
+  expiresInDays: z.coerce.number().int().min(1).max(90).default(30)
+});
+
 const jobToInvoiceSchema = z.object({
   jobId: z.string().uuid(),
   dueDate: z.string().optional()
@@ -162,8 +245,80 @@ function emptyToNull(value: string | undefined) {
   return value?.trim() ? value.trim() : null;
 }
 
+function formCheckbox(formData: FormData, key: string) {
+  return formData.get(key) === "on";
+}
+
 function dateTimeOrNull(value: string | undefined) {
   return value?.trim() ? new Date(value).toISOString() : null;
+}
+
+async function customerBelongsToWorkspace(workspaceId: string, customerId: string) {
+  const result = await queryPostgres<{ id: string }>(
+    "select id from public.customers where tenant_id = $1 and id = $2 limit 1",
+    [workspaceId, customerId]
+  );
+  return Boolean(result?.rows[0]);
+}
+
+async function recentCustomerExists(workspaceId: string, parsed: z.infer<typeof customerSchema>) {
+  const result = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.customers
+    where tenant_id = $1
+      and lower(name) = lower($2)
+      and coalesce(lower(email), '') = coalesce(lower($3), '')
+      and coalesce(phone, '') = coalesce($4, '')
+      and created_at >= now() - interval '45 seconds'
+    order by created_at desc
+    limit 1
+    `,
+    [workspaceId, parsed.name.trim(), emptyToNull(parsed.email), emptyToNull(parsed.phone)]
+  );
+  return result?.rows[0]?.id ?? null;
+}
+
+async function recentMoneyRecordExists(input: {
+  table: "service_estimates" | "service_invoices";
+  workspaceId: string;
+  customerId: string;
+  title: string;
+  amountCents: number;
+}) {
+  const result = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.${input.table}
+    where tenant_id = $1
+      and customer_id = $2
+      and lower(title) = lower($3)
+      and total_cents = $4
+      and created_at >= now() - interval '45 seconds'
+    order by created_at desc
+    limit 1
+    `,
+    [input.workspaceId, input.customerId, input.title.trim(), input.amountCents]
+  );
+  return result?.rows[0]?.id ?? null;
+}
+
+async function recentJobExists(workspaceId: string, parsed: z.infer<typeof jobSchema>) {
+  const result = await queryPostgres<{ id: string }>(
+    `
+    select id
+    from public.service_jobs
+    where tenant_id = $1
+      and customer_id = $2
+      and lower(title) = lower($3)
+      and coalesce(scheduled_start::text, '') = coalesce($4, '')
+      and created_at >= now() - interval '45 seconds'
+    order by created_at desc
+    limit 1
+    `,
+    [workspaceId, parsed.customerId, parsed.title.trim(), dateTimeOrNull(parsed.scheduledStart)]
+  );
+  return result?.rows[0]?.id ?? null;
 }
 
 async function recalculateEstimateTotal(workspaceId: string, estimateId: string) {
@@ -176,7 +331,7 @@ async function recalculateEstimateTotal(workspaceId: string, estimateId: string)
     from (
       select coalesce(sum(total_cents), 0)::integer as total_cents
       from public.estimate_line_items
-      where tenant_id = $1 and estimate_id = $2
+      where tenant_id = $1 and estimate_id = $2 and selected = true
     ) totals
     where tenant_id = $1 and id = $2
     returning customer_id
@@ -442,6 +597,10 @@ export async function createCustomerAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  if (await recentCustomerExists(workspaceId, parsed.data)) {
+    revalidatePath("/app/service");
+    return;
+  }
   await queryPostgres(
     `
     insert into public.customers (tenant_id, name, email, phone, city, state, notes, ai_summary)
@@ -473,6 +632,11 @@ export async function createEstimateAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  if (!(await customerBelongsToWorkspace(workspaceId, parsed.data.customerId))) return;
+  if (await recentMoneyRecordExists({ table: "service_estimates", workspaceId, customerId: parsed.data.customerId, title: parsed.data.title, amountCents: parsed.data.amountCents })) {
+    revalidatePath("/app/service");
+    return;
+  }
   const estimateResult = await queryPostgres<{ id: string }>(
     `
     insert into public.service_estimates (tenant_id, customer_id, title, subtotal_cents, total_cents, customer_summary, internal_notes, manual_follow_up_draft)
@@ -515,11 +679,17 @@ export async function createJobAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  if (!(await customerBelongsToWorkspace(workspaceId, parsed.data.customerId))) return;
+  if (await recentJobExists(workspaceId, parsed.data)) {
+    revalidatePath("/app/service");
+    return;
+  }
   const scheduledStart = dateTimeOrNull(parsed.data.scheduledStart);
-  await queryPostgres(
+  const jobResult = await queryPostgres<{ id: string }>(
     `
     insert into public.service_jobs (tenant_id, customer_id, title, status, scheduled_start, scheduled_end, service_area, dispatcher_notes, ai_next_action)
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    returning id
     `,
     [
       workspaceId,
@@ -533,7 +703,10 @@ export async function createJobAction(formData: FormData) {
       scheduledStart ? "Confirm schedule, assign a team member, and prepare job notes." : "Schedule this job and assign the right team member."
     ]
   );
+  const jobId = jobResult?.rows[0]?.id;
+  if (jobId) await ensureServiceKernelForJob({ tenantId: workspaceId, jobId, eventSource: "user" });
   revalidatePath("/app/service");
+  revalidatePath("/app/schedule");
 }
 
 export async function createInvoiceAction(formData: FormData) {
@@ -548,6 +721,11 @@ export async function createInvoiceAction(formData: FormData) {
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
+  if (!(await customerBelongsToWorkspace(workspaceId, parsed.data.customerId))) return;
+  if (await recentMoneyRecordExists({ table: "service_invoices", workspaceId, customerId: parsed.data.customerId, title: parsed.data.title, amountCents: parsed.data.amountCents })) {
+    revalidatePath("/app/service");
+    return;
+  }
   const invoiceResult = await queryPostgres<{ id: string }>(
     `
     insert into public.service_invoices (tenant_id, customer_id, title, subtotal_cents, total_cents, internal_notes, manual_payment_notes)
@@ -650,6 +828,7 @@ export async function convertEstimateToJobAction(formData: FormData) {
   );
   const job = jobResult?.rows[0];
   if (!job) return;
+  await ensureServiceKernelForJob({ tenantId: workspaceId, jobId: job.id, eventSource: "user" });
 
   if (estimate.status !== "approved") {
     await queryPostgres(
@@ -816,7 +995,20 @@ export async function updateEstimateAction(formData: FormData) {
     estimateId: formData.get("estimateId"),
     status: formData.get("status"),
     internalNotes: String(formData.get("internalNotes") ?? ""),
-    followUpDraft: String(formData.get("followUpDraft") ?? "")
+    followUpDraft: String(formData.get("followUpDraft") ?? ""),
+    customerDisplayMode: formData.get("customerDisplayMode") ?? "grouped",
+    customerIntro: String(formData.get("customerIntro") ?? ""),
+    customerScopeSummary: String(formData.get("customerScopeSummary") ?? ""),
+    customerExclusions: String(formData.get("customerExclusions") ?? ""),
+    paymentTerms: String(formData.get("paymentTerms") ?? ""),
+    acceptanceNotes: String(formData.get("acceptanceNotes") ?? ""),
+    customerNextSteps: String(formData.get("customerNextSteps") ?? ""),
+    showLineItemPrices: formCheckbox(formData, "showLineItemPrices"),
+    showQuantities: formCheckbox(formData, "showQuantities"),
+    showMaterialDetails: formCheckbox(formData, "showMaterialDetails"),
+    showLaborDetails: formCheckbox(formData, "showLaborDetails"),
+    showOverheadDetails: formCheckbox(formData, "showOverheadDetails"),
+    showProfitDetails: formCheckbox(formData, "showProfitDetails")
   });
   if (!parsed.success) return;
 
@@ -827,6 +1019,19 @@ export async function updateEstimateAction(formData: FormData) {
     set status = $3,
         internal_notes = $4,
         manual_follow_up_draft = $5,
+        customer_display_mode = $6,
+        customer_intro = $7,
+        customer_scope_summary = $8,
+        customer_exclusions = $9,
+        payment_terms = $10,
+        acceptance_notes = $11,
+        customer_next_steps = $12,
+        show_line_item_prices = $13,
+        show_quantities = $14,
+        show_material_details = $15,
+        show_labor_details = $16,
+        show_overhead_details = $17,
+        show_profit_details = $18,
         updated_at = now()
     where tenant_id = $1 and id = $2
     returning customer_id
@@ -836,13 +1041,151 @@ export async function updateEstimateAction(formData: FormData) {
       parsed.data.estimateId,
       parsed.data.status,
       emptyToNull(parsed.data.internalNotes),
-      emptyToNull(parsed.data.followUpDraft)
+      emptyToNull(parsed.data.followUpDraft),
+      parsed.data.customerDisplayMode,
+      emptyToNull(parsed.data.customerIntro),
+      emptyToNull(parsed.data.customerScopeSummary),
+      emptyToNull(parsed.data.customerExclusions),
+      emptyToNull(parsed.data.paymentTerms),
+      emptyToNull(parsed.data.acceptanceNotes),
+      emptyToNull(parsed.data.customerNextSteps),
+      parsed.data.showLineItemPrices,
+      parsed.data.showQuantities,
+      parsed.data.showMaterialDetails,
+      parsed.data.showLaborDetails,
+      parsed.data.showOverheadDetails,
+      parsed.data.showProfitDetails
     ]
   );
   const row = result?.rows[0];
   revalidatePath("/app/service");
   revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
+}
+
+export async function prepareEstimateShareLinkAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = estimateShareSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    emailTo: String(formData.get("emailTo") ?? ""),
+    sendEmail: formCheckbox(formData, "sendEmail"),
+    expiresInDays: formData.get("expiresInDays") || 30
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const estimateResult = await queryPostgres<{
+    id: string;
+    customer_id: string;
+    customer_name: string;
+    customer_email: string | null;
+    title: string;
+    status: string;
+    total_cents: number;
+  }>(
+    `
+    select e.id, e.customer_id, c.name as customer_name, c.email as customer_email, e.title, e.status, e.total_cents
+    from public.service_estimates e
+    join public.customers c on c.id = e.customer_id and c.tenant_id = e.tenant_id
+    where e.tenant_id = $1 and e.id = $2
+    limit 1
+    `,
+    [workspaceId, parsed.data.estimateId]
+  );
+  const estimate = estimateResult?.rows[0];
+  if (!estimate) return;
+
+  const token = makePublicToken("est");
+  const emailTo = emptyToNull(parsed.data.emailTo) ?? estimate.customer_email;
+  const expiresAt = new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const shareResult = await queryPostgres<{ id: string; public_token: string }>(
+    `
+    insert into public.estimate_share_links (
+      tenant_id, estimate_id, customer_id, public_token, status, email_to, expires_at, metadata_json
+    )
+    values ($1,$2,$3,$4,'ready',$5,$6,$7::jsonb)
+    on conflict (tenant_id, estimate_id) do update
+    set public_token = excluded.public_token,
+        status = 'ready',
+        email_to = excluded.email_to,
+        expires_at = excluded.expires_at,
+        metadata_json = public.estimate_share_links.metadata_json || excluded.metadata_json,
+        updated_at = now()
+    returning id, public_token
+    `,
+    [
+      workspaceId,
+      estimate.id,
+      estimate.customer_id,
+      token,
+      emailTo,
+      expiresAt,
+      JSON.stringify({ source: "estimate_editor", sendEmailRequested: parsed.data.sendEmail })
+    ]
+  );
+  const share = shareResult?.rows[0];
+  if (!share) return;
+
+  const appUrl = env.FEROCITY_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
+  const publicUrl = `${appUrl.replace(/\/$/, "")}/estimate/${share.public_token}`;
+  let emailStatus: "not_requested" | "sent" | "skipped" | "failed" = parsed.data.sendEmail ? "skipped" : "not_requested";
+  let providerMessageId: string | null = null;
+
+  if (parsed.data.sendEmail && emailTo) {
+    const result = await sendTransactionalEmail({
+      to: emailTo,
+      subject: `Estimate from ${estimate.customer_name}`,
+      text: [
+        `Hi ${estimate.customer_name},`,
+        "",
+        `Your estimate is ready to review: ${publicUrl}`,
+        "",
+        "You can review the scope, total, terms, and next steps from that secure link.",
+        "",
+        "Thank you."
+      ].join("\n"),
+      tenantId: workspaceId,
+      eventKey: `estimate-share-${estimate.id}`,
+      metadata: { estimateId: estimate.id, shareLinkId: share.id }
+    });
+    emailStatus = result.ok ? "sent" : result.skipped ? "skipped" : "failed";
+    providerMessageId = result.ok ? result.providerMessageId : null;
+  }
+
+  await queryPostgres(
+    `
+    update public.estimate_share_links
+    set status = case when $4 = 'sent' then 'sent' else status end,
+        sent_at = case when $4 = 'sent' then now() else sent_at end,
+        provider_message_id = coalesce($5, provider_message_id),
+        metadata_json = metadata_json || $6::jsonb,
+        updated_at = now()
+    where tenant_id = $1 and id = $2 and estimate_id = $3
+    `,
+    [
+      workspaceId,
+      share.id,
+      estimate.id,
+      emailStatus,
+      providerMessageId,
+      JSON.stringify({ publicUrl, emailStatus, emailTo })
+    ]
+  );
+
+  await queryPostgres(
+    `
+    update public.service_estimates
+    set status = case when status = 'draft' then 'sent_manually' else status end,
+        updated_at = now()
+    where tenant_id = $1 and id = $2
+    `,
+    [workspaceId, estimate.id]
+  );
+
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/estimates/${estimate.id}`);
+  revalidatePath(`/app/service/estimates/${estimate.id}/preview`);
 }
 
 export async function updateJobAction(formData: FormData) {
@@ -883,8 +1226,16 @@ export async function updateJobAction(formData: FormData) {
       emptyToNull(parsed.data.nextAction)
     ]
   );
+  if (result?.rows[0]) {
+    await ensureServiceKernelForJob({
+      tenantId: workspaceId,
+      jobId: parsed.data.jobId,
+      eventSource: "user"
+    });
+  }
   const row = result?.rows[0];
   revalidatePath("/app/service");
+  revalidatePath("/app/schedule");
   revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
 }
@@ -1001,8 +1352,16 @@ export async function updateTechnicianJobAction(formData: FormData) {
       emptyToNull(parsed.data.nextAction)
     ]
   );
+  if (result?.rows[0]) {
+    await ensureServiceKernelForJob({
+      tenantId: workspaceId,
+      jobId: parsed.data.jobId,
+      eventSource: "worker"
+    });
+  }
   const row = result?.rows[0];
   revalidatePath("/app/service");
+  revalidatePath("/app/schedule");
   revalidatePath("/app/service/routes");
   revalidatePath("/app/service/tech");
   revalidatePath(`/app/service/jobs/${parsed.data.jobId}`);
@@ -1083,22 +1442,48 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
   const balanceDue = Math.max(invoice.total_cents - invoice.amount_paid_cents, 0);
   if (balanceDue <= 0) return;
 
+  const managedAccount = managedPaymentsEnabled() ? await getManagedPaymentAccount(workspaceId) : null;
+  const canUseConnectDirect =
+    Boolean(managedAccount?.providerAccountId) && managedAccount?.chargesEnabled === true && managedAccount?.payoutsEnabled === true;
+  const platformFeeCents = canUseConnectDirect ? calculatePlatformFeeCents(balanceDue) : 0;
+  const paymentMode = canUseConnectDirect ? "stripe_connect_direct" : "platform_direct";
+  const connectedAccountId = canUseConnectDirect ? managedAccount?.providerAccountId ?? null : null;
+  const netToBusinessCents = Math.max(balanceDue - platformFeeCents, 0);
+
   const requestResult = await queryPostgres<{ id: string }>(
     `
     insert into public.service_invoice_payment_links (
-      tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, currency, metadata_json
+      tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, currency,
+      payment_mode, connected_account_id, platform_fee_cents, net_to_business_cents, metadata_json
     )
     values (
       $1, $2, $3, $4, 'stripe', 'draft', $5, 'usd',
+      $6, $7, $8, $9,
       jsonb_build_object(
         'mode', 'prepared',
-        'plainStatus', 'Stripe payment collection is prepared. No customer charge is made until an approved link is sent.',
-        'nextStep', 'Review the invoice balance, customer email, and approval rules before sending this payment link.'
+        'plainStatus', $10::text,
+        'nextStep', $11::text
       )
     )
     returning id
     `,
-    [workspaceId, invoice.brand_id, invoice.customer_id, invoice.id, balanceDue]
+    [
+      workspaceId,
+      invoice.brand_id,
+      invoice.customer_id,
+      invoice.id,
+      balanceDue,
+      paymentMode,
+      connectedAccountId,
+      platformFeeCents,
+      netToBusinessCents,
+      canUseConnectDirect
+        ? "Stripe Connect payment collection is prepared. The connected business is the merchant of record and receives the payment directly."
+        : "Stripe checkout can be prepared, but this workspace does not have a live connected payout account yet.",
+      canUseConnectDirect
+        ? "Review the invoice, fee disclosure, customer email, and approval rules before sending this payment link."
+        : "Connect Stripe managed payments before using Ferocity-held checkout for a customer business."
+    ]
   );
   const paymentLinkId = requestResult?.rows[0]?.id;
   if (!paymentLinkId) return;
@@ -1122,24 +1507,29 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
       "metadata[customer_id]": invoice.customer_id,
       "metadata[payment_link_id]": paymentLinkId,
       "metadata[amount_cents]": String(balanceDue),
-      "metadata[currency]": "usd"
+      "metadata[currency]": "usd",
+      "metadata[payment_mode]": paymentMode,
+      "metadata[connected_account_id]": connectedAccountId ?? "",
+      "metadata[platform_fee_cents]": String(platformFeeCents)
     });
+
+    if (canUseConnectDirect && connectedAccountId) {
+      body.set("payment_intent_data[application_fee_amount]", String(platformFeeCents));
+    }
 
     if (invoice.customer_email) {
       body.set("customer_email", invoice.customer_email);
     }
 
-    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body
-    });
-
-    if (response.ok) {
-      const session = (await response.json()) as { id?: string; url?: string; payment_intent?: string };
+    try {
+      const session = await stripeFormRequest<{ id?: string; url?: string; payment_intent?: string }>(
+        "checkout/sessions",
+        body,
+        {
+          connectedAccountId: connectedAccountId ?? undefined,
+          idempotencyKey: `ferocity-invoice-checkout-${paymentLinkId}`
+        }
+      );
       paymentUrl = session.url ?? "";
       requestStatus = paymentUrl ? "ready" : "draft";
       await queryPostgres(
@@ -1160,16 +1550,16 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
           session.id ?? null,
           session.payment_intent ?? null,
           paymentUrl || null,
-          JSON.stringify({ stripeCheckoutPrepared: Boolean(paymentUrl) })
+            JSON.stringify({ stripeCheckoutPrepared: Boolean(paymentUrl) })
         ]
       );
-    } else {
-      const detail = await response.text();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Stripe Checkout request failed.";
       await logAppError({
         source: "app.service.prepareInvoicePaymentRequestAction",
         message: "Stripe invoice checkout session creation failed.",
         severity: "warning",
-        metadata: { invoiceId: invoice.id, status: response.status, detail: detail.slice(0, 500) }
+        metadata: { invoiceId: invoice.id, detail: detail.slice(0, 500) }
       });
     }
   }
@@ -1184,6 +1574,7 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
       $6,
       'stripe',
       jsonb_build_object('paymentLinkId', $7::uuid, 'status', $8::text, 'paymentUrlReady', $9::boolean)
+        || jsonb_build_object('paymentMode', $10::text, 'connectedAccountId', nullif($11::text, ''), 'platformFeeCents', $12::integer)
     )
     `,
     [
@@ -1197,7 +1588,10 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
         : "Prepared payment request for invoice balance. No live checkout link was created.",
       paymentLinkId,
       requestStatus,
-      Boolean(paymentUrl)
+      Boolean(paymentUrl),
+      paymentMode,
+      connectedAccountId ?? "",
+      platformFeeCents
     ]
   );
 
@@ -1238,6 +1632,15 @@ export async function recordManualInvoicePaymentAction(formData: FormData) {
         jsonb_build_object('note', $4::text, 'source', 'manual_record')
       from bounded
       where payment_cents > 0
+        and not exists (
+          select 1
+          from public.service_invoice_payments existing
+          where existing.tenant_id = bounded.tenant_id
+            and existing.invoice_id = bounded.id
+            and existing.provider = 'manual'
+            and existing.amount_cents = bounded.payment_cents
+            and existing.created_at >= now() - interval '45 seconds'
+        )
       returning id, tenant_id, brand_id, customer_id, invoice_id, amount_cents
     ),
     ledger as (
@@ -1323,6 +1726,40 @@ export async function saveEstimateLineItemAction(formData: FormData) {
       ]
     );
   }
+  const customerId = await recalculateEstimateTotal(workspaceId, parsed.data.estimateId);
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+  if (customerId) revalidatePath(`/app/service/customers/${customerId}`);
+}
+
+export async function addPricebookItemToEstimateAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = estimatePricebookItemSchema.safeParse({
+    estimateId: formData.get("estimateId"),
+    pricebookItemId: formData.get("pricebookItemId"),
+    quantity: formData.get("quantity") ?? 1,
+    optional: formData.get("optional") === "on"
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.estimate_line_items (
+      tenant_id, estimate_id, pricebook_item_id, name, description, quantity,
+      unit_price_cents, cost_cents, taxable, optional, selected, total_cents, position
+    )
+    select
+      i.tenant_id, $2, i.id, i.name, i.customer_description, $4,
+      i.price_cents, i.cost_cents, i.taxable, $5, not $5,
+      round(i.price_cents * $4)::integer,
+      coalesce((select max(position) + 1 from public.estimate_line_items where tenant_id = $1 and estimate_id = $2), 0)
+    from public.pricebook_items i
+    join public.service_estimates e on e.id = $2 and e.tenant_id = i.tenant_id
+    where i.tenant_id = $1 and i.id = $3 and i.active = true
+    `,
+    [workspaceId, parsed.data.estimateId, parsed.data.pricebookItemId, parsed.data.quantity, parsed.data.optional]
+  );
   const customerId = await recalculateEstimateTotal(workspaceId, parsed.data.estimateId);
   revalidatePath("/app/service");
   revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
@@ -1460,10 +1897,260 @@ export async function disableCustomerPortalAction(formData: FormData) {
   revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
 }
 
+export async function addCustomerTagAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerTagSchema.safeParse({ customerId: formData.get("customerId"), name: formData.get("name") });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    with tag as (
+      insert into public.customer_tags (tenant_id, name)
+      values ($1, $3)
+      on conflict (tenant_id, name) do update set name = excluded.name
+      returning id
+    )
+    insert into public.customer_tag_assignments (tenant_id, customer_id, tag_id)
+    select $1, $2, id from tag
+    on conflict (customer_id, tag_id) do nothing
+    `,
+    [tenantId, parsed.data.customerId, parsed.data.name]
+  );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function createCustomerLocationAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerLocationSchema.safeParse({
+    customerId: formData.get("customerId"), name: formData.get("name"),
+    locationType: formData.get("locationType"), addressLine1: String(formData.get("addressLine1") ?? ""),
+    city: String(formData.get("city") ?? ""), state: String(formData.get("state") ?? ""),
+    postalCode: String(formData.get("postalCode") ?? ""), accessInstructions: String(formData.get("accessInstructions") ?? "")
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.customer_locations (
+      tenant_id, customer_id, name, location_type, address_line1, city, state,
+      postal_code, access_instructions, is_primary
+    )
+    select $1,$2,$3,$4,$5,$6,$7,$8,$9,
+      not exists (select 1 from public.customer_locations where tenant_id = $1 and customer_id = $2 and active = true)
+    where exists (select 1 from public.customers where tenant_id = $1 and id = $2)
+    `,
+    [
+      tenantId, parsed.data.customerId, parsed.data.name, parsed.data.locationType,
+      parsed.data.addressLine1 || null, parsed.data.city || null, parsed.data.state || null,
+      parsed.data.postalCode || null, parsed.data.accessInstructions || null
+    ]
+  );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function createCustomerAssetAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerAssetSchema.safeParse({
+    customerId: formData.get("customerId"), locationId: formData.get("locationId"),
+    name: formData.get("name"), assetType: formData.get("assetType") || "equipment",
+    manufacturer: String(formData.get("manufacturer") ?? ""), model: String(formData.get("model") ?? ""),
+    serialNumber: String(formData.get("serialNumber") ?? ""), condition: formData.get("condition") || "unknown",
+    warrantyExpiresAt: String(formData.get("warrantyExpiresAt") ?? "")
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.customer_assets (
+      tenant_id, customer_id, location_id, asset_type, name, manufacturer,
+      model, serial_number, condition, warranty_expires_at
+    )
+    select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+    where exists (
+      select 1 from public.customer_locations
+      where tenant_id = $1 and id = $3 and customer_id = $2 and active = true
+    )
+    `,
+    [
+      tenantId, parsed.data.customerId, parsed.data.locationId, parsed.data.assetType,
+      parsed.data.name, parsed.data.manufacturer || null, parsed.data.model || null,
+      parsed.data.serialNumber || null, parsed.data.condition, parsed.data.warrantyExpiresAt || null
+    ]
+  );
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function mergeDuplicateCustomerAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = customerMergeSchema.safeParse({
+    targetCustomerId: formData.get("targetCustomerId"),
+    sourceCustomerId: formData.get("sourceCustomerId"),
+    confirmation: formData.get("confirmation")
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    with source as (
+      select to_jsonb(c.*) as snapshot from public.customers c
+      where c.tenant_id = $1 and c.id = $3 and c.status <> 'do_not_contact'
+      for update
+    ),
+    target as (
+      select id from public.customers where tenant_id = $1 and id = $2 for update
+    ),
+    clear_primary as (
+      update public.customer_locations set is_primary = false, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_locations as (
+      update public.customer_locations set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and id in (select id from clear_primary) returning id
+    ),
+    move_contacts as (
+      update public.customer_location_contacts set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_assets as (
+      update public.customer_assets set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_estimates as (
+      update public.service_estimates set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_jobs as (
+      update public.service_jobs set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_invoices as (
+      update public.service_invoices set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_payment_links as (
+      update public.service_invoice_payment_links set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_payments as (
+      update public.service_invoice_payments set customer_id = $2
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_ledger as (
+      update public.service_ledger_entries set customer_id = $2
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_work_orders as (
+      update public.service_work_orders set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_visits as (
+      update public.service_visits set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_plans as (
+      update public.recurring_service_plans set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_conversations as (
+      update public.messaging_conversations set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_legacy_threads as (
+      update public.communication_threads set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_followups as (
+      update public.follow_up_workflows set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_estimate_links as (
+      update public.estimate_share_links set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_estimate_acceptances as (
+      update public.estimate_acceptances set customer_id = $2
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_portal_requests as (
+      update public.customer_portal_requests set customer_id = $2, updated_at = now()
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_portal_messages as (
+      update public.customer_portal_messages set customer_id = $2
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    move_portal_documents as (
+      update public.customer_portal_documents set customer_id = $2
+      where tenant_id = $1 and customer_id = $3 returning id
+    ),
+    copy_tags as (
+      insert into public.customer_tag_assignments (tenant_id, customer_id, tag_id)
+      select tenant_id, $2, tag_id from public.customer_tag_assignments
+      where tenant_id = $1 and customer_id = $3
+      on conflict (customer_id, tag_id) do nothing
+    ),
+    copy_fields as (
+      insert into public.customer_custom_field_values (tenant_id, customer_id, definition_id, value_json)
+      select tenant_id, $2, definition_id, value_json
+      from public.customer_custom_field_values where tenant_id = $1 and customer_id = $3
+      on conflict (customer_id, definition_id) do nothing
+    ),
+    copy_portal as (
+      insert into public.customer_portal_access (
+        tenant_id, customer_id, public_token, enabled, expires_at, last_viewed_at, created_at, updated_at
+      )
+      select tenant_id, $2, public_token, enabled, expires_at, last_viewed_at, created_at, now()
+      from public.customer_portal_access where tenant_id = $1 and customer_id = $3
+      on conflict (tenant_id, customer_id) do nothing
+    ),
+    deactivate_source as (
+      update public.customers
+      set status = 'inactive',
+        notes = concat_ws(E'\\n', nullif(notes, ''), 'Merged into customer ' || $2::text || '.'),
+        updated_at = now()
+      where tenant_id = $1 and id = $3
+    )
+    insert into public.customer_merge_audits (
+      tenant_id, target_customer_id, source_customer_id, reason,
+      source_snapshot_json, affected_counts_json, merged_by_user_id
+    )
+    select $1, $2, $3, 'Owner-confirmed duplicate merge', source.snapshot,
+      jsonb_build_object(
+        'locations', (select count(*) from move_locations),
+        'assets', (select count(*) from move_assets),
+        'estimates', (select count(*) from move_estimates),
+        'jobs', (select count(*) from move_jobs),
+        'invoices', (select count(*) from move_invoices),
+        'payments', (select count(*) from move_payments),
+        'workOrders', (select count(*) from move_work_orders),
+        'visits', (select count(*) from move_visits),
+        'plans', (select count(*) from move_plans)
+      ),
+      $4
+    from source, target
+    `,
+    [
+      tenantId, parsed.data.targetCustomerId, parsed.data.sourceCustomerId,
+      actor.userId === "admin-token" ? null : actor.userId
+    ]
+  );
+  await queryPostgres(
+    `
+    delete from public.customer_tag_assignments where tenant_id = $1 and customer_id = $2;
+    delete from public.customer_custom_field_values where tenant_id = $1 and customer_id = $2;
+    delete from public.customer_portal_access where tenant_id = $1 and customer_id = $2;
+    `,
+    [tenantId, parsed.data.sourceCustomerId]
+  );
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/customers/${parsed.data.targetCustomerId}`);
+}
+
 export async function createRecurringPlanAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = recurringPlanSchema.safeParse({
     customerId: formData.get("customerId"),
+    membershipProgramId: String(formData.get("membershipProgramId") ?? "") || undefined,
     title: formData.get("title"),
     serviceType: String(formData.get("serviceType") ?? ""),
     frequency: formData.get("frequency"),
@@ -1480,6 +2167,7 @@ export async function createRecurringPlanAction(formData: FormData) {
     insert into public.recurring_service_plans (
       tenant_id,
       customer_id,
+      membership_program_id,
       title,
       service_type,
       frequency,
@@ -1489,11 +2177,12 @@ export async function createRecurringPlanAction(formData: FormData) {
       internal_notes,
       ai_next_action
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `,
     [
       workspaceId,
       parsed.data.customerId,
+      parsed.data.membershipProgramId ?? null,
       parsed.data.title.trim(),
       emptyToNull(parsed.data.serviceType),
       parsed.data.frequency,
@@ -1504,6 +2193,17 @@ export async function createRecurringPlanAction(formData: FormData) {
       "Confirm the next service date manually and create a job when the visit is ready to schedule."
     ]
   );
+  revalidatePath("/app/service");
+  revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
+}
+
+export async function generateDueMembershipVisitsAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = customerPortalSchema.safeParse({ customerId: formData.get("customerId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await generateDueMembershipVisits(workspaceId, parsed.data.customerId);
+  revalidatePath("/app/schedule");
   revalidatePath("/app/service");
   revalidatePath(`/app/service/customers/${parsed.data.customerId}`);
 }
@@ -1549,6 +2249,70 @@ export async function createInventoryItemAction(formData: FormData) {
       emptyToNull(parsed.data.location),
       emptyToNull(parsed.data.notes)
     ]
+  );
+  revalidatePath("/app/service/inventory");
+}
+
+export async function createInventoryLocationAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = inventoryLocationSchema.safeParse({
+    name: formData.get("name"),
+    locationType: formData.get("locationType"),
+    address: String(formData.get("address") ?? "")
+  });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    insert into public.inventory_locations (tenant_id, name, location_type, address)
+    values ($1, $2, $3, $4)
+    on conflict (tenant_id, name)
+    do update set location_type = excluded.location_type, address = excluded.address,
+      active = true, updated_at = now()
+    `,
+    [workspaceId, parsed.data.name, parsed.data.locationType, emptyToNull(parsed.data.address)]
+  );
+  revalidatePath("/app/service/inventory");
+}
+
+export async function adjustInventoryQuantityAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = inventoryAdjustmentSchema.safeParse({
+    itemId: formData.get("itemId"),
+    quantityDelta: formData.get("quantityDelta"),
+    reason: formData.get("reason")
+  });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `
+    with locked as (
+      select id, quantity, unit_cost_cents
+      from public.service_inventory_items
+      where tenant_id = $1 and id = $2
+      for update
+    ),
+    movement as (
+      insert into public.inventory_transactions (
+        tenant_id, inventory_item_id, transaction_type, quantity_delta, unit_cost_cents, reason, source
+      )
+      select $1, id, 'adjust', $3, unit_cost_cents, $4, 'inventory_page'
+      from locked
+      where quantity + $3 >= 0
+      returning inventory_item_id
+    )
+    update public.service_inventory_items i
+    set quantity = i.quantity + $3,
+      status = case
+        when i.status in ('maintenance', 'retired') then i.status
+        when i.quantity + $3 <= 0 then 'reserved'
+        else 'available'
+      end,
+      updated_at = now()
+    from movement m
+    where i.tenant_id = $1 and i.id = m.inventory_item_id
+    `,
+    [workspaceId, parsed.data.itemId, parsed.data.quantityDelta, parsed.data.reason]
   );
   revalidatePath("/app/service/inventory");
 }

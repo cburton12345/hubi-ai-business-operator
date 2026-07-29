@@ -1,13 +1,14 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { adminSessionCookieName, isAdminTokenValid } from "@/lib/auth/admin-session";
+import { adminSessionCookieName, adminSessionCookieValue, isAdminTokenValid } from "@/lib/auth/admin-session";
 import { appSessionCookieName } from "@/lib/auth/session";
-import { hashSessionToken, randomSessionToken, verifyPassword } from "@/lib/auth/password";
+import { hashPassword, hashSessionToken, randomSessionToken, verifyPassword } from "@/lib/auth/password";
 import { signInWithSupabasePassword } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
+import { consumeLoginRateLimit } from "@/lib/security/rate-limit";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -18,18 +19,35 @@ const loginSchema = z.object({
 export async function loginAdmin(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   const nextPath = String(formData.get("next") ?? "/app");
+  const requestHeaders = await headers();
+  const adminLimit = await consumeLoginRateLimit({
+    scope: "emergency-admin-login",
+    identifier: "admin",
+    clientHint:
+      requestHeaders.get("x-nf-client-connection-ip") ||
+      requestHeaders.get("x-forwarded-for") ||
+      requestHeaders.get("user-agent") ||
+      "unknown",
+    limit: 5,
+    windowSeconds: 15 * 60
+  });
 
-  if (!isAdminTokenValid(token)) {
+  if (!adminLimit.allowed || !isAdminTokenValid(token)) {
     redirect(`/login?error=1&next=${encodeURIComponent(nextPath)}`);
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(adminSessionCookieName, token, {
+  const sessionValue = adminSessionCookieValue();
+  if (!sessionValue) {
+    redirect(`/login?error=1&next=${encodeURIComponent(nextPath)}`);
+  }
+  cookieStore.set(adminSessionCookieName, sessionValue, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 12
+    maxAge: 60 * 60 * 2,
+    priority: "high"
   });
 
   redirect(nextPath.startsWith("/app") ? nextPath : "/app");
@@ -44,6 +62,21 @@ export async function loginUser(formData: FormData) {
 
   if (!parsed.success) {
     redirect(`/login?error=credentials`);
+  }
+  const requestHeaders = await headers();
+  const loginLimit = await consumeLoginRateLimit({
+    scope: "workspace-password-login",
+    identifier: parsed.data.email,
+    clientHint:
+      requestHeaders.get("x-nf-client-connection-ip") ||
+      requestHeaders.get("x-forwarded-for") ||
+      requestHeaders.get("user-agent") ||
+      "unknown",
+    limit: 10,
+    windowSeconds: 15 * 60
+  });
+  if (!loginLimit.allowed) {
+    redirect(`/login?error=credentials&next=${encodeURIComponent(parsed.data.next ?? "/app")}`);
   }
 
   const supabaseIdentity = await signInWithSupabasePassword(parsed.data.email, parsed.data.password);
@@ -95,6 +128,18 @@ export async function loginUser(formData: FormData) {
     redirect(`/login?error=credentials&next=${encodeURIComponent(parsed.data.next ?? "/app")}`);
   }
 
+  if (localPasswordValid && (user.password_iterations ?? 0) < 210000) {
+    const upgraded = hashPassword(parsed.data.password);
+    await queryPostgres(
+      `
+      update public.user_password_credentials
+      set password_hash = $2, password_salt = $3, password_iterations = $4, updated_at = now()
+      where user_id = $1
+      `,
+      [user.user_id, upgraded.hash, upgraded.salt, upgraded.iterations]
+    );
+  }
+
   if (supabaseIdentity && user.auth_user_id !== supabaseIdentity.authUserId) {
     await queryPostgres(
       `
@@ -121,7 +166,8 @@ export async function loginUser(formData: FormData) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 14
+    maxAge: 60 * 60 * 24 * 14,
+    priority: "high"
   });
 
   redirect(parsed.data.next?.startsWith("/app") ? parsed.data.next : "/app");

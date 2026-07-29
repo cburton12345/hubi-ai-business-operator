@@ -13,7 +13,7 @@ const workflowUpdateSchema = z.object({
 });
 
 const workflowRunSchema = z.object({
-  agentKey: z.enum(["lead_response_agent", "follow_up_agent", "review_agent", "invoice_reminder_agent", "seo_marketing_agent"])
+  agentKey: z.enum(["lead_response_agent", "follow_up_agent", "review_agent", "invoice_reminder_agent", "seo_marketing_agent", "estimator_agent", "authority_manager"])
 });
 
 export async function updateAiAgentWorkflowAction(formData: FormData) {
@@ -44,4 +44,5 @@ export async function runAiAgentWorkflowAction(formData: FormData) {
   revalidatePath("/app/review");
   revalidatePath("/app/drafts");
   revalidatePath("/app/reports");
+  revalidatePath("/app/authority");
 }

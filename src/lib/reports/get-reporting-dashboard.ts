@@ -18,6 +18,18 @@ export type ReportingDashboard = {
     collectedRevenueCents: number;
     openPipelineCents: number;
   };
+  growthSinceBaseline: {
+    hasBaseline: boolean;
+    baselineDate: string | null;
+    confidence: string;
+    monthsTracked: number;
+    revenue: { baselineCents: number; currentCents: number; changeCents: number; changePct: number | null };
+    leads: { baseline: number; current: number; change: number; changePct: number | null };
+    jobs: { baseline: number; current: number; change: number; changePct: number | null };
+    reviews: { baseline: number; current: number; change: number; changePct: number | null };
+    adSpend: { baselineCents: number; currentCents: number; changeCents: number; changePct: number | null };
+    summary: string;
+  };
   channelRoi: {
     label: string;
     leads: number;
@@ -44,6 +56,22 @@ export type ReportingDashboard = {
     completedRequests: number;
     serviceRecovery: number;
   };
+  expenseSummary: {
+    ytdExpenseCents: number;
+    ytdTaxCents: number;
+    ytdJobCostCents: number;
+    ytdOverheadCents: number;
+    monthExpenseCents: number;
+    pendingReimbursementCents: number;
+    receiptsNeedReview: number;
+    receiptProofCount: number;
+  };
+  expenseCategories: {
+    category: string;
+    totalCents: number;
+    taxCents: number;
+    count: number;
+  }[];
   recentEvents: {
     id: string;
     type: string;
@@ -53,9 +81,18 @@ export type ReportingDashboard = {
   }[];
 };
 
+function pctChange(current: number, baseline: number) {
+  if (baseline <= 0) return current > 0 ? null : 0;
+  return Math.round(((current - baseline) / baseline) * 100);
+}
+
+function monthsBetween(from: Date, to: Date) {
+  return Math.max(0, (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()));
+}
+
 export async function getReportingDashboard(): Promise<ReportingDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [counts, events, channelRoi, serviceCityRevenue, providerGaps] = await Promise.all([
+  const [counts, events, channelRoi, serviceCityRevenue, providerGaps, baselineResult, currentMonthResult, expenseSummary, expenseCategories] = await Promise.all([
     queryPostgres<{
       ai_runs: string;
       fallback_runs: string;
@@ -209,6 +246,135 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
       limit 12
       `,
       [workspaceId]
+    ),
+    queryPostgres<{
+      baseline_date: Date;
+      confidence: string;
+      monthly_revenue_cents: number;
+      monthly_leads: number;
+      monthly_booked_jobs: number;
+      monthly_ad_spend_cents: number;
+      review_count: number;
+    }>(
+      `
+      select baseline_date, confidence, monthly_revenue_cents, monthly_leads, monthly_booked_jobs,
+        monthly_ad_spend_cents, review_count
+      from public.business_growth_baselines
+      where tenant_id = $1
+      order by baseline_date asc, created_at asc
+      limit 1
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      revenue_cents: string;
+      leads: string;
+      jobs: string;
+      ad_spend_cents: string;
+      review_requests: string;
+    }>(
+      `
+      select
+        (
+          select coalesce(sum(amount_paid_cents), 0)
+          from public.service_invoices
+          where tenant_id = $1
+            and status in ('partially_paid', 'paid')
+            and updated_at >= date_trunc('month', now())
+        )::text as revenue_cents,
+        (
+          select count(*)
+          from public.leads
+          where tenant_id = $1
+            and created_at >= date_trunc('month', now())
+        )::text as leads,
+        (
+          select count(*)
+          from public.service_jobs
+          where tenant_id = $1
+            and status = 'completed'
+            and updated_at >= date_trunc('month', now())
+        )::text as jobs,
+        (
+          select coalesce(sum(metric_value), 0)
+          from public.external_metric_snapshots
+          where tenant_id = $1
+            and metric_key in ('spend_cents', 'cost_cents')
+            and period_start >= date_trunc('month', now())
+        )::text as ad_spend_cents,
+        (
+          select count(*)
+          from public.review_request_workflows
+          where tenant_id = $1
+            and created_at >= date_trunc('month', now())
+        )::text as review_requests
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      ytd_expense_cents: string;
+      ytd_tax_cents: string;
+      ytd_job_cost_cents: string;
+      ytd_overhead_cents: string;
+      month_expense_cents: string;
+      pending_reimbursement_cents: string;
+      receipts_need_review: string;
+      receipt_proof_count: string;
+    }>(
+      `
+      select
+        coalesce(sum(amount_cents + tax_cents) filter (
+          where status <> 'rejected'
+            and coalesce(expense_date, created_at::date) >= date_trunc('year', current_date)::date
+        ), 0)::text as ytd_expense_cents,
+        coalesce(sum(tax_cents) filter (
+          where status <> 'rejected'
+            and coalesce(expense_date, created_at::date) >= date_trunc('year', current_date)::date
+        ), 0)::text as ytd_tax_cents,
+        coalesce(sum(amount_cents + tax_cents) filter (
+          where status <> 'rejected'
+            and assign_to = 'job'
+            and coalesce(expense_date, created_at::date) >= date_trunc('year', current_date)::date
+        ), 0)::text as ytd_job_cost_cents,
+        coalesce(sum(amount_cents + tax_cents) filter (
+          where status <> 'rejected'
+            and assign_to = 'overhead'
+            and coalesce(expense_date, created_at::date) >= date_trunc('year', current_date)::date
+        ), 0)::text as ytd_overhead_cents,
+        coalesce(sum(amount_cents + tax_cents) filter (
+          where status <> 'rejected'
+            and coalesce(expense_date, created_at::date) >= date_trunc('month', current_date)::date
+        ), 0)::text as month_expense_cents,
+        coalesce(sum(amount_cents + tax_cents - paid_back_cents) filter (
+          where reimbursement_status in ('submitted', 'approved')
+        ), 0)::text as pending_reimbursement_cents,
+        count(*) filter (where status = 'needs_review')::text as receipts_need_review,
+        count(*) filter (where receipt_url is not null)::text as receipt_proof_count
+      from public.operations_expenses
+      where tenant_id = $1
+      `,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      category: string;
+      total_cents: string;
+      tax_cents: string;
+      expense_count: string;
+    }>(
+      `
+      select coalesce(nullif(category, ''), 'uncategorized') as category,
+        coalesce(sum(amount_cents + tax_cents), 0)::text as total_cents,
+        coalesce(sum(tax_cents), 0)::text as tax_cents,
+        count(*)::text as expense_count
+      from public.operations_expenses
+      where tenant_id = $1
+        and status <> 'rejected'
+        and coalesce(expense_date, created_at::date) >= date_trunc('year', current_date)::date
+      group by coalesce(nullif(category, ''), 'uncategorized')
+      order by coalesce(sum(amount_cents + tax_cents), 0) desc
+      limit 12
+      `,
+      [workspaceId]
     )
   ]);
 
@@ -217,6 +383,24 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
     if (spendCents <= 0) return revenueCents > 0 ? "No spend recorded" : "Needs data";
     return `${Math.round(((revenueCents - spendCents) / spendCents) * 100)}%`;
   };
+  const baseline = baselineResult?.rows[0];
+  const currentMonth = currentMonthResult?.rows[0];
+  const currentRevenue = Number(currentMonth?.revenue_cents ?? 0);
+  const currentLeads = Number(currentMonth?.leads ?? 0);
+  const currentJobs = Number(currentMonth?.jobs ?? 0);
+  const currentAdSpend = Number(currentMonth?.ad_spend_cents ?? 0);
+  const currentReviews = Number(currentMonth?.review_requests ?? 0);
+  const baselineDate = baseline?.baseline_date ? new Date(baseline.baseline_date) : null;
+  const baselineRevenue = Number(baseline?.monthly_revenue_cents ?? 0);
+  const baselineLeads = Number(baseline?.monthly_leads ?? 0);
+  const baselineJobs = Number(baseline?.monthly_booked_jobs ?? 0);
+  const baselineAdSpend = Number(baseline?.monthly_ad_spend_cents ?? 0);
+  const baselineReviews = Number(baseline?.review_count ?? 0);
+  const revenueDelta = currentRevenue - baselineRevenue;
+  const leadDelta = currentLeads - baselineLeads;
+  const jobDelta = currentJobs - baselineJobs;
+  const reviewDelta = currentReviews - baselineReviews;
+  const expenseRow = expenseSummary?.rows[0];
 
   return {
     aiRuns: Number(row?.ai_runs ?? 0),
@@ -234,6 +418,45 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
       unpaidInvoices: Number(row?.unpaid_invoices ?? 0),
       collectedRevenueCents: Number(row?.collected_revenue_cents ?? 0),
       openPipelineCents: Number(row?.open_pipeline_cents ?? 0)
+    },
+    growthSinceBaseline: {
+      hasBaseline: Boolean(baseline),
+      baselineDate: baselineDate ? baselineDate.toISOString() : null,
+      confidence: baseline?.confidence ?? "not_set",
+      monthsTracked: baselineDate ? monthsBetween(baselineDate, new Date()) : 0,
+      revenue: {
+        baselineCents: baselineRevenue,
+        currentCents: currentRevenue,
+        changeCents: revenueDelta,
+        changePct: pctChange(currentRevenue, baselineRevenue)
+      },
+      leads: {
+        baseline: baselineLeads,
+        current: currentLeads,
+        change: leadDelta,
+        changePct: pctChange(currentLeads, baselineLeads)
+      },
+      jobs: {
+        baseline: baselineJobs,
+        current: currentJobs,
+        change: jobDelta,
+        changePct: pctChange(currentJobs, baselineJobs)
+      },
+      reviews: {
+        baseline: baselineReviews,
+        current: currentReviews,
+        change: reviewDelta,
+        changePct: pctChange(currentReviews, baselineReviews)
+      },
+      adSpend: {
+        baselineCents: baselineAdSpend,
+        currentCents: currentAdSpend,
+        changeCents: currentAdSpend - baselineAdSpend,
+        changePct: pctChange(currentAdSpend, baselineAdSpend)
+      },
+      summary: baseline
+        ? `This month-to-date is being compared with the ${baseline.confidence.replaceAll("_", " ")} baseline from ${baselineDate?.toLocaleDateString("en-US") ?? "day one"}: ${leadDelta >= 0 ? "+" : ""}${leadDelta} leads, ${jobDelta >= 0 ? "+" : ""}${jobDelta} booked jobs, and ${revenueDelta >= 0 ? "+" : ""}$${Math.round(revenueDelta / 100).toLocaleString()} tracked revenue.`
+        : "No baseline has been captured yet. Add day-one numbers so Ferocity can prove growth honestly over time."
     },
     channelRoi: (channelRoi?.rows ?? []).map((item) => {
       const revenueCents = Number(item.revenue_cents ?? 0);
@@ -265,6 +488,22 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
       completedRequests: Number(row?.completed_review_requests ?? 0),
       serviceRecovery: Number(row?.service_recovery ?? 0)
     },
+    expenseSummary: {
+      ytdExpenseCents: Number(expenseRow?.ytd_expense_cents ?? 0),
+      ytdTaxCents: Number(expenseRow?.ytd_tax_cents ?? 0),
+      ytdJobCostCents: Number(expenseRow?.ytd_job_cost_cents ?? 0),
+      ytdOverheadCents: Number(expenseRow?.ytd_overhead_cents ?? 0),
+      monthExpenseCents: Number(expenseRow?.month_expense_cents ?? 0),
+      pendingReimbursementCents: Number(expenseRow?.pending_reimbursement_cents ?? 0),
+      receiptsNeedReview: Number(expenseRow?.receipts_need_review ?? 0),
+      receiptProofCount: Number(expenseRow?.receipt_proof_count ?? 0)
+    },
+    expenseCategories: (expenseCategories?.rows ?? []).map((item) => ({
+      category: item.category,
+      totalCents: Number(item.total_cents ?? 0),
+      taxCents: Number(item.tax_cents ?? 0),
+      count: Number(item.expense_count ?? 0)
+    })),
     recentEvents: (events?.rows ?? []).map((event) => ({
       id: event.id,
       type: event.event_type,

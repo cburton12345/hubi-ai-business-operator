@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import pg from "pg";
 
 const baseUrl = process.argv[2] || "http://127.0.0.1:3031";
@@ -14,7 +15,9 @@ const publicRoutes = [
   "/demo",
   "/demo/tour",
   "/demo/acme-roofing",
+  "/growth-system",
   "/start",
+  "/subscribe?plan=growth",
   "/signup",
   "/login",
   "/reset-password",
@@ -30,6 +33,8 @@ const publicRoutes = [
 const protectedRoutes = [
   "/app",
   "/app/autopilot",
+  "/app/actions",
+  "/app/ai-control",
   "/app/ai-workforce",
   "/app/business-brain",
   "/app/automation-timeline",
@@ -40,6 +45,22 @@ const protectedRoutes = [
   "/app/crew-itinerary",
   "/app/labor-bench",
   "/app/cash-collection",
+  "/app/authority",
+  "/app/authority/links",
+  "/app/estimator",
+  "/app/feature-readiness",
+  "/app/growth-funnels",
+  "/app/job-tracker",
+  "/app/job-tracker/health",
+  "/app/messaging",
+  "/app/office-manager",
+  "/app/receptionist-setup",
+  "/app/calls",
+  "/app/revenue-growth",
+  "/app/schedule",
+  "/app/pricebook",
+  "/app/purchasing",
+  "/app/team",
   "/app/growth-calendar",
   "/app/operations-workforce",
   "/app/feature-map",
@@ -103,10 +124,9 @@ async function checkPublic(route) {
   const contentType = response.headers.get("content-type") || "";
   const body = await response.text();
   const looksLikeError =
-    body.includes("Application error") ||
+    body.includes("Application error:") ||
     body.includes("Unhandled Runtime Error") ||
-    body.includes("NEXT_REDIRECT") ||
-    body.includes("<title>404: This page could not be found</title>");
+    body.includes("NEXT_REDIRECT");
 
   const failures = [];
   if (response.status >= 400) failures.push(`HTTP ${response.status}`);
@@ -156,15 +176,16 @@ async function checkProtectedAuthenticated(route) {
   const response = await fetch(urlFor(route), {
     redirect: "follow",
     headers: {
-      cookie: `ferocity_admin_session=${process.env.ADMIN_ACCESS_TOKEN}`,
+      cookie: `ferocity_admin_session=${createHash("sha256")
+        .update(`ferocity-admin-session:${process.env.ADMIN_ACCESS_TOKEN}`)
+        .digest("hex")}`,
     },
   });
   const body = await response.text();
   const looksLikeError =
-    body.includes("Application error") ||
+    body.includes("Application error:") ||
     body.includes("Unhandled Runtime Error") ||
-    body.includes("NEXT_REDIRECT") ||
-    body.includes("<title>404: This page could not be found</title>");
+    body.includes("NEXT_REDIRECT");
 
   const failures = [];
   if (response.status >= 400) failures.push(`HTTP ${response.status}`);

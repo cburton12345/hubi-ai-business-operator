@@ -1,10 +1,12 @@
 import { env } from "@/lib/env";
+import type { TwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
 
 export type TwilioSmsResult =
   | { ok: true; providerMessageId: string | null }
   | { ok: false; status: number; error: string };
 
-export function getTwilioSmsReadiness() {
+export function getTwilioSmsReadiness(configuration?: TwilioSmsConfiguration | null) {
+  if (configuration) return { ready: true, missing: [] };
   const missing: string[] = [];
 
   if (env.ENABLE_TWILIO_SMS_SENDS !== "true") missing.push("ENABLE_TWILIO_SMS_SENDS=true");
@@ -18,8 +20,12 @@ export function getTwilioSmsReadiness() {
   };
 }
 
-export async function sendSmsWithTwilio(input: { to: string; body: string }): Promise<TwilioSmsResult> {
-  const readiness = getTwilioSmsReadiness();
+export async function sendSmsWithTwilio(input: {
+  to: string;
+  body: string;
+  configuration?: TwilioSmsConfiguration | null;
+}): Promise<TwilioSmsResult> {
+  const readiness = getTwilioSmsReadiness(input.configuration);
   if (!readiness.ready) {
     return {
       ok: false,
@@ -28,14 +34,23 @@ export async function sendSmsWithTwilio(input: { to: string; body: string }): Pr
     };
   }
 
-  const auth = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString("base64");
+  const configuration = input.configuration ?? {
+    accountSid: env.TWILIO_ACCOUNT_SID!,
+    authUsername: env.TWILIO_ACCOUNT_SID!,
+    authPassword: env.TWILIO_AUTH_TOKEN!,
+    webhookAuthToken: env.TWILIO_AUTH_TOKEN!,
+    fromNumber: env.TWILIO_FROM_NUMBER!,
+    messagingServiceSid: null
+  };
+  const auth = Buffer.from(`${configuration.authUsername}:${configuration.authPassword}`).toString("base64");
   const body = new URLSearchParams({
-    From: env.TWILIO_FROM_NUMBER!,
     To: input.to,
     Body: input.body
   });
+  if (configuration.messagingServiceSid) body.set("MessagingServiceSid", configuration.messagingServiceSid);
+  else if (configuration.fromNumber) body.set("From", configuration.fromNumber);
 
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${configuration.accountSid}/Messages.json`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,

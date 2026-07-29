@@ -31,7 +31,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     provider: "marketplacepro",
-    status: "stub_ready",
+    status: "status_receiver_ready",
     message: "POST signed MarketplacePro status updates here. Outbound sync remains paused until rules are reviewed."
   });
 }

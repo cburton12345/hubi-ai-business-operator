@@ -19,7 +19,7 @@ const connectionSteps = [
   },
   {
     title: "Add a quote link or form",
-    body: "Put a Ferocity form link, button, or embed on the existing website so leads enter the workspace with source data attached.",
+    body: "Put a Ferocity form link, button, or embed on the existing website so leads arrive with source data attached.",
     icon: MousePointerClick
   },
   {
@@ -43,7 +43,7 @@ const options = [
   ["Fastest", "Add a quote button", "Best when the business already has a website and only needs leads routed into Ferocity."],
   ["Most flexible", "Embed a Ferocity form", "Best when the website can add an iframe or form section and the owner wants cleaner capture."],
   ["No website yet", "Use hosted growth pages", "Best when Ferocity needs to host a campaign, service, or city page quickly."],
-  ["SEO-first", "Move finished pages to the existing site", "Best when a developer, WordPress, Webflow, Netlify, or CMS workflow can place the content."],
+  ["SEO-first", "Move approved pages to the existing site", "Best when the website already has WordPress, Webflow, Shopify, custom code, or a person who updates it."],
   ["Marketplace", "Connect marketplace leads", "Best when public discovery or partner leads should flow back into Ferocity follow-up."]
 ];
 
@@ -68,14 +68,13 @@ export default function ConnectWebsitePage() {
             <Link href="/business-health-score">Free Grader</Link>
             <Link href="/start">Start</Link>
             <Link href="/pricing">Plans</Link>
-            <Link href="/install">Install App</Link>
             <Link href="/login">Sign in</Link>
           </div>
         </nav>
 
         <section className="public-hero">
           <p className="eyebrow">Website + marketing platforms</p>
-          <h1>Ferocity connects to the website so leads, campaigns, follow-up, and revenue can be tracked.</h1>
+          <h1>Connect the website so Ferocity can track leads, follow-up, campaigns, and revenue.</h1>
           <p className="muted">
             The simple version: paste the website URL, add one Ferocity line to the site, test one lead, then let Ferocity
             recommend the marketing, follow-up, review, and attribution system.
@@ -90,9 +89,6 @@ export default function ConnectWebsitePage() {
             <Link className="button secondary-button" href="/pricing">
               View plans
             </Link>
-            <Link className="button secondary-button" href="/install">
-              Install app
-            </Link>
           </div>
         </section>
 
@@ -100,8 +96,8 @@ export default function ConnectWebsitePage() {
           <div className="list-row flush-row">
             <div>
               <p className="eyebrow">Almost effortless setup</p>
-              <h2>The owner should not need to understand tracking.</h2>
-              <p className="muted">Ferocity gives them the form, script, test link, and next actions in one setup path.</p>
+              <h2>You should not need to understand tracking code.</h2>
+              <p className="muted">Ferocity gives you the form, link, test step, and next actions in one setup path.</p>
             </div>
             <CheckCircle2 size={22} />
           </div>
@@ -164,7 +160,7 @@ export default function ConnectWebsitePage() {
           <div className="list-row flush-row">
             <div>
               <p className="eyebrow">Simple owner version</p>
-              <h2>What does the owner actually do?</h2>
+              <h2>What do you actually do?</h2>
             </div>
             <ShieldCheck size={22} />
           </div>

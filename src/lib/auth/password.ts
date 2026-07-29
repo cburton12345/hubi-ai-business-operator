@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-const iterations = 120000;
+const iterations = 210000;
 const keyLength = 64;
 const digest = "sha512";
 

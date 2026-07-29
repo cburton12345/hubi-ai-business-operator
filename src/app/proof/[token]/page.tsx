@@ -162,7 +162,7 @@ export function ProofCaptureShell({
               The business may contact me if they need clarification.
             </label>
             <p className="muted">
-              You can contact the business later to ask for a change or removal. Public use still requires internal review.
+              You can contact the business anytime to ask for a change or removal. The business reviews anything before it is shared publicly.
             </p>
           </fieldset>
 

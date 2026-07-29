@@ -8,13 +8,19 @@ export type EncryptedSecretPayload = {
   secretFingerprint: string;
 };
 
+export type StoredEncryptedSecret = {
+  encryptedSecret: string;
+  encryptionIv: string;
+  encryptionTag: string;
+};
+
 export function hasCredentialEncryptionKey() {
-  return Boolean(process.env.CREDENTIAL_ENCRYPTION_KEY?.trim());
+  return (process.env.CREDENTIAL_ENCRYPTION_KEY?.trim().length ?? 0) >= 32;
 }
 
 function encryptionKey() {
   const configured = process.env.CREDENTIAL_ENCRYPTION_KEY?.trim();
-  if (!configured) return null;
+  if (!configured || configured.length < 32) return null;
   return crypto.createHash("sha256").update(configured).digest();
 }
 
@@ -25,7 +31,9 @@ export function previewSecret(secret: string) {
 }
 
 export function fingerprintSecret(secret: string) {
-  return crypto.createHash("sha256").update(secret.trim()).digest("hex");
+  const key = process.env.SECURITY_HMAC_KEY?.trim() || process.env.CREDENTIAL_ENCRYPTION_KEY?.trim();
+  if (!key) return "";
+  return crypto.createHmac("sha256", key).update(secret.trim()).digest("hex");
 }
 
 export function encryptSecret(secret: string): EncryptedSecretPayload | null {
@@ -44,4 +52,24 @@ export function encryptSecret(secret: string): EncryptedSecretPayload | null {
     secretPreview: previewSecret(secret),
     secretFingerprint: fingerprintSecret(secret)
   };
+}
+
+export function decryptSecret(payload: StoredEncryptedSecret): string | null {
+  const key = encryptionKey();
+  if (!key) return null;
+
+  try {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      key,
+      Buffer.from(payload.encryptionIv, "base64")
+    );
+    decipher.setAuthTag(Buffer.from(payload.encryptionTag, "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(payload.encryptedSecret, "base64")),
+      decipher.final()
+    ]).toString("utf8");
+  } catch {
+    return null;
+  }
 }

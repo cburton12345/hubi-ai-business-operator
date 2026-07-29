@@ -17,7 +17,7 @@ export default async function TenantPage({ params }: { params: Promise<{ tenantS
           <div>
             <p className="eyebrow">Workspace</p>
             <h1>{tenant.name}</h1>
-            <p className="muted">Workspace-scoped operating context. Future customer organizations use this same shape.</p>
+            <p className="muted">Workspace-scoped operating context. Customer organizations use this same shape.</p>
           </div>
           <form action={generateWorkspaceMarketingPlanAction}>
             <input name="workspaceSlug" type="hidden" value={tenant.slug} />

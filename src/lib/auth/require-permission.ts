@@ -1,13 +1,20 @@
 import { redirect } from "next/navigation";
+import { hasAdminSession } from "@/lib/auth/admin-session";
 import { can, type Permission } from "@/lib/auth/permissions";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 import type { TenantRole } from "@/types/core";
 
 export async function getCurrentActor() {
-  const [session, workspace] = await Promise.all([getCurrentAppSession(), getCurrentWorkspace()]);
+  const [session, adminSession] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
 
-  if (!session) {
+  if (!session && !adminSession) {
+    redirect("/login");
+  }
+
+  const workspace = await getCurrentWorkspace();
+
+  if (adminSession) {
     return {
       userId: "admin-token",
       email: "admin-token",
@@ -18,9 +25,9 @@ export async function getCurrentActor() {
   }
 
   return {
-    userId: session.userId,
-    email: session.email,
-    platformRole: session.platformRole,
+    userId: session!.userId,
+    email: session!.email,
+    platformRole: session!.platformRole,
     tenantRole: workspace.role as TenantRole,
     workspace
   };
