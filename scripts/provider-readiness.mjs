@@ -164,7 +164,20 @@ function checkStaticGroups() {
 
   const results = [];
   for (const [label, keys] of groups) {
-    const gaps = missing(keys);
+    let gaps = missing(keys);
+    if (
+      label === "Premium video rendering"
+      && ["openai", "openai_video"].includes((process.env.VIDEO_PROVIDER ?? "").trim().toLowerCase())
+      && has("OPENAI_API_KEY")
+    ) {
+      gaps = gaps.filter((key) => key !== "VIDEO_API_KEY");
+    }
+    if (label === "AI Office Manager voice" && has("RETELL_API_KEY")) {
+      gaps = gaps.filter((key) => !["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET"].includes(key));
+    }
+    if (label === "AI Office Manager voice" && has("VAPI_API_KEY")) {
+      gaps = gaps.filter((key) => !["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET"].includes(key));
+    }
     const optional = ["Google/GBP connection", "Meta connection", "TikTok connection", "Reddit connection", "Microsoft connection", "Yahoo connection", "Premium video rendering", "AI Office Manager voice", "Optional Twilio SMS"].includes(label);
     const status = gaps.length === 0 ? "ready" : optional ? "warning" : "blocked";
     const detail = label === "Optional Twilio SMS" && gaps.length

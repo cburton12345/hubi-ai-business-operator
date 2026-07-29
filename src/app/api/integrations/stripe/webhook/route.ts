@@ -458,7 +458,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, received: true, duplicate: true });
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     await handleCheckoutCompleted(event, object);
   }
 
