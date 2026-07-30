@@ -399,7 +399,7 @@ export default async function IntegrationsPage({
 
 function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }) {
   return (
-    <div className="status-card">
+    <div className="status-card provider-lane-card">
       <div className="list-row flush-row">
         <div>
           <strong>{title}</strong>
