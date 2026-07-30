@@ -489,7 +489,12 @@ async function logUsage(input: MessagingSendInput, result: MessagingSendResult) 
       customerChargeCents,
       managed ? "pending_review" : "included",
       `messaging:${messagingUsageId}`,
-      JSON.stringify({ channel: input.channel, costBasis: "conservative_estimate" })
+      JSON.stringify({
+        channel: input.channel,
+        costBasis: "conservative_estimate",
+        ownershipMode: managed ? "ferocity_managed" : "customer_owned",
+        providerCostBilledBy: managed ? "ferocity" : "customer_provider"
+      })
     ]
   );
   const meterId = meterResult?.rows[0]?.id;

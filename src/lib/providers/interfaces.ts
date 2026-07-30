@@ -22,6 +22,25 @@ export type ProviderUsage = {
   metadata?: Record<string, unknown>;
 };
 
+export type ProviderFundingSnapshot = {
+  providerKey: string;
+  balanceCents: number | null;
+  promotionalBalanceCents?: number | null;
+  providerPeriodSpendCents?: number | null;
+  currency: string;
+  observedAt: string;
+  syncStatus: "current" | "stale" | "failed" | "unsupported";
+  metadata?: Record<string, unknown>;
+};
+
+export interface ProviderFundingProvider {
+  providerKey: string;
+  fundingStatus: "live" | "manual" | "unsupported";
+  getFundingSnapshot(
+    context: ProviderContext
+  ): Promise<ProviderResult<ProviderFundingSnapshot>>;
+}
+
 export type PhoneNumberRequest = {
   areaCode?: string;
   locality?: string;

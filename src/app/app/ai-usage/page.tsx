@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Gauge, PackagePlus, ReceiptText, ShieldCheck } from "lucide-react";
+import { Gauge, PackagePlus, ReceiptText } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getAiUsageDashboard } from "@/lib/usage/get-ai-usage-dashboard";
 
@@ -27,8 +27,7 @@ export default async function AiUsagePage() {
     >
       <section className="grid section-actions">
         <Metric icon={<Gauge size={18} />} label="Estimated charges" value={money(dashboard.totals.estimatedChargesCents)} />
-        <Metric icon={<ReceiptText size={18} />} label="Customer charge" value={money(dashboard.totals.customerChargeCents)} />
-        <Metric icon={<ShieldCheck size={18} />} label="Provider cost tracked" value={money(dashboard.totals.providerCostCents)} />
+        <Metric icon={<ReceiptText size={18} />} label="Usage charges this month" value={money(dashboard.totals.customerChargeCents)} />
       </section>
 
       <section className="panel section-actions">

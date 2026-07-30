@@ -28,7 +28,6 @@ export type AiUsageDashboard = {
   }>;
   totals: {
     estimatedChargesCents: number;
-    providerCostCents: number;
     customerChargeCents: number;
   };
   spendLimits: Array<{
@@ -114,12 +113,10 @@ export async function getAiUsageDashboard(): Promise<AiUsageDashboard> {
       [workspaceId]
     ),
     queryPostgres<{
-      provider_cost_cents: string;
       customer_charge_cents: string;
     }>(
       `
-      select coalesce(sum(provider_cost_cents), 0)::text as provider_cost_cents,
-             coalesce(sum(customer_charge_cents), 0)::text as customer_charge_cents
+      select coalesce(sum(customer_charge_cents), 0)::text as customer_charge_cents
       from public.usage_meter_events
       where tenant_id = $1
         and billing_period_start = $2::date
@@ -198,7 +195,6 @@ export async function getAiUsageDashboard(): Promise<AiUsageDashboard> {
     }),
     totals: {
       estimatedChargesCents: num(totals?.customer_charge_cents),
-      providerCostCents: num(totals?.provider_cost_cents),
       customerChargeCents: num(totals?.customer_charge_cents)
     },
     spendLimits: (spendLimitResult?.rows ?? []).map((limit) => ({

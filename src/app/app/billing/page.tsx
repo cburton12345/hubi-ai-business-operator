@@ -3,6 +3,8 @@ import { approveUsageChargeAction, voidUsageChargeAction } from "./actions";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { getBillingOverview } from "@/lib/billing/get-billing-overview";
+import { getCurrentActor } from "@/lib/auth/require-permission";
+import { can } from "@/lib/auth/permissions";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function dollars(cents: number) {
@@ -48,7 +50,7 @@ function providerLabel(providerKey: string) {
 }
 
 export default async function BillingPage() {
-  const [billing, workspaceId] = await Promise.all([getBillingOverview(), getCurrentWorkspaceId()]);
+  const [billing, workspaceId, actor] = await Promise.all([getBillingOverview(), getCurrentWorkspaceId(), getCurrentActor()]);
   const leadLimits = await checkLeadIntakeLimits(workspaceId);
   const currentPlan = billing.subscription?.planKey ?? leadLimits.planKey ?? "free";
   const leadUsage =
@@ -90,6 +92,7 @@ export default async function BillingPage() {
           <Link className="button secondary-button" href="/start?source=billing_upgrade">Request upgrade help</Link>
           <Link className="button secondary-button" href="/app/ai-usage">AI usage</Link>
           <Link className="mini-button" href="/app/controls">Control limits</Link>
+          {can(actor, "platform:manage") ? <Link className="mini-button" href="/app/provider-costs">Provider costs</Link> : null}
         </div>
         <details className="panel subtle-panel">
           <summary>Connect online invoice payments</summary>

@@ -9,6 +9,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } from "@/lib/revenue-growth/revenue-loop-automation";
 import { syncMaturedUsageChargesForTenant, type MaturedUsageSyncResult } from "@/lib/billing/sync-matured-usage-charges";
 import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-factory";
+import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
 
 export type BusinessAutomationRunResult = {
   ok: true;
@@ -22,6 +23,7 @@ export type BusinessAutomationRunResult = {
   adapterFactory: Array<{ tenantId: string } & Awaited<ReturnType<typeof processAdapterFactoryQueueForTenant>>>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
+  providerFunding: Awaited<ReturnType<typeof evaluateProviderFundingAlerts>>;
   elapsedMs: number;
 };
 
@@ -218,6 +220,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
   }
 
   const aiWorkforce = await runDueAgentWorkflows({ limit: input.agentLimit ?? 25, tenantId: input.tenantId ?? null });
+  const providerFunding = await evaluateProviderFundingAlerts();
 
   await queryPostgres(
     `
@@ -241,6 +244,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
         adapterFactory,
         dailyBriefs,
         aiWorkforce,
+        providerFunding,
         elapsedMs: Date.now() - startedAt,
         liveActionsStillGated: true
       })
@@ -259,6 +263,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     adapterFactory,
     dailyBriefs,
     aiWorkforce,
+    providerFunding,
     elapsedMs: Date.now() - startedAt
   };
 }
