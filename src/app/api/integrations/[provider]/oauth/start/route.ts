@@ -18,6 +18,8 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   await requirePermission("tenant:manage");
   const { provider } = await context.params;
   const config = getOAuthProviderConfig(provider);
+  const requestUrl = new URL(request.url);
+  const useTikTokSandbox = config?.provider === "tiktok" && requestUrl.searchParams.get("sandbox") === "1";
 
   if (!config) {
     return appRedirect(request, { provider, setup: "unsupported" });
@@ -28,7 +30,9 @@ export async function GET(request: Request, context: { params: Promise<{ provide
 
   const requiredEnv = getOAuthRequiredEnv(config);
   const missing = [
-    ...missingEnvVars(requiredEnv),
+    ...(useTikTokSandbox
+      ? missingEnvVars(["TIKTOK_SANDBOX_CLIENT_KEY", "TIKTOK_SANDBOX_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"])
+      : missingEnvVars(requiredEnv)),
     ...(config.provider === "tiktok" && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
   ];
   const workspaceId = await getCurrentWorkspaceId();
@@ -47,6 +51,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
         label: config.label,
         oauthState: state,
         requestedScopes: config.scopes,
+        credentialProfile: useTikTokSandbox ? "sandbox" : "production",
         missingEnvVars: missing,
         liveActionRule: config.liveActionRule
       }),
@@ -93,7 +98,10 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   }
 
   const authorizeUrl = new URL(config.authorizeUrl);
-  authorizeUrl.searchParams.set(config.clientIdParam ?? "client_id", String(env[config.clientIdEnv]));
+  authorizeUrl.searchParams.set(
+    config.clientIdParam ?? "client_id",
+    String(useTikTokSandbox ? env.TIKTOK_SANDBOX_CLIENT_KEY : env[config.clientIdEnv])
+  );
   authorizeUrl.searchParams.set("redirect_uri", String(env[config.redirectUriEnv]));
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));

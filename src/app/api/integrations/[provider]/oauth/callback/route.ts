@@ -21,7 +21,7 @@ function appRedirect(request: Request, params: Record<string, string>) {
 }
 
 async function claimOAuthJob(workspaceId: string, state: string) {
-  const result = await queryPostgres<{ id: string }>(
+  const result = await queryPostgres<{ id: string; credential_profile: string | null }>(
     `
     update public.integration_jobs
     set status = 'running',
@@ -39,11 +39,11 @@ async function claimOAuthJob(workspaceId: string, state: string) {
       limit 1
       for update skip locked
     )
-    returning id
+    returning id, payload_json->>'credentialProfile' as credential_profile
     `,
     [workspaceId, state]
   );
-  return result?.rows[0]?.id ?? null;
+  return result?.rows[0] ?? null;
 }
 
 async function finishOAuthJob(jobId: string, status: "completed" | "failed", result: Record<string, unknown>, error?: string) {
@@ -208,8 +208,10 @@ async function handleTikTokCallback(request: Request) {
   if (!state) return appRedirect(request, { provider: "tiktok", setup: "invalid_state" });
 
   const workspaceId = await getCurrentWorkspaceId();
-  const jobId = await claimOAuthJob(workspaceId, state);
-  if (!jobId) return appRedirect(request, { provider: "tiktok", setup: "invalid_state" });
+  const job = await claimOAuthJob(workspaceId, state);
+  if (!job) return appRedirect(request, { provider: "tiktok", setup: "invalid_state" });
+  const jobId = job.id;
+  const useSandboxCredentials = job.credential_profile === "sandbox";
 
   const providerError = url.searchParams.get("error") || url.searchParams.get("error_code");
   if (providerError) {
@@ -218,7 +220,9 @@ async function handleTikTokCallback(request: Request) {
   }
 
   const code = url.searchParams.get("code");
-  if (!code || !env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET || !env.TIKTOK_OAUTH_REDIRECT_URI) {
+  const clientKey = useSandboxCredentials ? env.TIKTOK_SANDBOX_CLIENT_KEY : env.TIKTOK_CLIENT_KEY;
+  const clientSecret = useSandboxCredentials ? env.TIKTOK_SANDBOX_CLIENT_SECRET : env.TIKTOK_CLIENT_SECRET;
+  if (!code || !clientKey || !clientSecret || !env.TIKTOK_OAUTH_REDIRECT_URI) {
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "incomplete_callback" }, "TikTok callback was incomplete.");
     return appRedirect(request, { provider: "tiktok", setup: "failed" });
   }
@@ -234,8 +238,8 @@ async function handleTikTokCallback(request: Request) {
 
   try {
     const tokens = await exchangeTikTokAuthorizationCode({
-      clientKey: env.TIKTOK_CLIENT_KEY,
-      clientSecret: env.TIKTOK_CLIENT_SECRET,
+      clientKey,
+      clientSecret,
       code,
       redirectUri: env.TIKTOK_OAUTH_REDIRECT_URI
     });
@@ -245,6 +249,7 @@ async function handleTikTokCallback(request: Request) {
     const refreshExpiresAt = tokenExpiryFromNow(tokens.refresh_expires_in);
     const commonMetadata = {
       source: "tiktok_oauth",
+      credentialProfile: useSandboxCredentials ? "sandbox" : "production",
       openId: profile.open_id,
       scopes: tokens.scope.split(",").filter(Boolean)
     };
@@ -273,6 +278,7 @@ async function handleTikTokCallback(request: Request) {
       provider: "tiktok",
       openId: profile.open_id,
       displayName: profile.display_name,
+      credentialProfile: useSandboxCredentials ? "sandbox" : "production",
       liveActionsEnabled: false
     });
     return appRedirect(request, { provider: "tiktok", setup: "connected" });
