@@ -6,11 +6,13 @@ export type OAuthProviderConfig = {
   provider: string;
   label: string;
   authorizeUrl: string;
+  clientIdParam?: string;
   clientIdEnv: EnvKey;
   redirectUriEnv: EnvKey;
   clientSecretEnv?: EnvKey;
   extraRequiredEnv?: EnvKey[];
   scopes: string[];
+  scopeSeparator?: string;
   query: Record<string, string>;
   liveActionRule: string;
 };
@@ -77,10 +79,12 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     provider: "tiktok",
     label: "TikTok",
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    clientIdParam: "client_key",
     clientIdEnv: "TIKTOK_CLIENT_KEY",
     clientSecretEnv: "TIKTOK_CLIENT_SECRET",
     redirectUriEnv: "TIKTOK_OAUTH_REDIRECT_URI",
     scopes: ["user.info.basic"],
+    scopeSeparator: ",",
     query: {},
     liveActionRule: "Creative drafts, scripts, and reporting first. Posting, creator actions, campaign creation, and spend require approval."
   },

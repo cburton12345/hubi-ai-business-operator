@@ -8,6 +8,7 @@ const executableAdapters = new Set([
   "stripe",
   "stripe_connect",
   "supabase_auth",
+  "tiktok",
   "twilio",
   "voice_ai",
   "webhook_framework"

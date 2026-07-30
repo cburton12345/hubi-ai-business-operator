@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getOAuthProviderConfig, getOAuthRequiredEnv } from "@/lib/integrations/oauth-providers";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
+import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -26,7 +27,10 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   }
 
   const requiredEnv = getOAuthRequiredEnv(config);
-  const missing = missingEnvVars(requiredEnv);
+  const missing = [
+    ...missingEnvVars(requiredEnv),
+    ...(config.provider === "tiktok" && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
+  ];
   const workspaceId = await getCurrentWorkspaceId();
   const state = randomUUID();
 
@@ -56,14 +60,21 @@ export async function GET(request: Request, context: { params: Promise<{ provide
 
   await queryPostgres(
     `
-    update public.integration_connections
-    set metadata_json = metadata_json || $3::jsonb,
+    insert into public.integration_connections (
+      tenant_id, provider, display_name, status, credentials_status, scopes_json, metadata_json
+    )
+    values ($1, $2, $3, 'planned', 'not_configured', $4::jsonb, $5::jsonb)
+    on conflict (tenant_id, provider) do update
+    set display_name = excluded.display_name,
+        scopes_json = excluded.scopes_json,
+        metadata_json = public.integration_connections.metadata_json || excluded.metadata_json,
         updated_at = now()
-    where tenant_id = $1 and provider = $2
     `,
     [
       workspaceId,
       config.provider,
+      config.label,
+      JSON.stringify(config.scopes),
       JSON.stringify({
         lastOAuthStartAt: new Date().toISOString(),
         lastOAuthStartState: missing.length > 0 ? "missing_credentials" : "redirected",
@@ -82,10 +93,10 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   }
 
   const authorizeUrl = new URL(config.authorizeUrl);
-  authorizeUrl.searchParams.set("client_id", String(env[config.clientIdEnv]));
+  authorizeUrl.searchParams.set(config.clientIdParam ?? "client_id", String(env[config.clientIdEnv]));
   authorizeUrl.searchParams.set("redirect_uri", String(env[config.redirectUriEnv]));
   authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("scope", config.scopes.join(" "));
+  authorizeUrl.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));
   authorizeUrl.searchParams.set("state", state);
   Object.entries(config.query).forEach(([key, value]) => authorizeUrl.searchParams.set(key, value));
 
