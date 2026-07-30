@@ -537,7 +537,8 @@ export default async function OperationsWorkforcePage() {
           id: media.id,
           title: `${media.title} / ${media.type}`,
           meta: `${media.worker} / ${media.summary} / ${media.consent}`,
-          pill: media.status
+          pill: media.status,
+          href: `/api/field/media/${media.id}`
         }))} />
         <section className="panel span-6">
           <h2><DollarSign size={18} /> Payroll Exports</h2>
@@ -631,7 +632,15 @@ function AssignmentSelect({ assignments }: { assignments: { id: string; title: s
   );
 }
 
-function ListPanel({ title, icon, rows }: { title: string; icon: ReactNode; rows: { id: string; title: string; meta: string; pill: string }[] }) {
+function ListPanel({
+  title,
+  icon,
+  rows
+}: {
+  title: string;
+  icon: ReactNode;
+  rows: { id: string; title: string; meta: string; pill: string; href?: string }[];
+}) {
   return (
     <section className="panel span-6">
       <h2>{icon} {title}</h2>
@@ -641,6 +650,7 @@ function ListPanel({ title, icon, rows }: { title: string; icon: ReactNode; rows
             <div>
               <h3>{row.title}</h3>
               <p className="muted">{row.meta}</p>
+              {row.href ? <a className="mini-button" href={row.href} target="_blank" rel="noreferrer">View file</a> : null}
             </div>
             <span className="pill">{row.pill}</span>
           </li>

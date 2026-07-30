@@ -21,9 +21,6 @@ export default async function EmployeeAppPage() {
             <strong>Employee app</strong>
             <span className="muted">Today, time, receipts, proof</span>
           </div>
-          <Link className="mini-button" href="/app">
-            Owner app
-          </Link>
         </header>
         <EmployeeWorkday />
       </section>

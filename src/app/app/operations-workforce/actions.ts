@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { canAccessEmployeeAssignment, getEmployeeAccessContext } from "@/lib/employee/employee-access";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
+import { uploadFieldMediaFile } from "@/lib/operations-workforce/field-media-upload";
 import { extractReceiptFieldsWithVision } from "@/lib/operations-workforce/receipt-extraction";
 import { isUploadFile, uploadReceiptPhoto } from "@/lib/operations-workforce/receipt-upload";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -162,7 +165,40 @@ function numeric(value?: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
+async function resolveWorkerActionTarget(
+  formData: FormData,
+  requestedWorkerId?: string,
+  assignmentId?: string
+) {
+  const employeeMode = formData.get("employeeMode") === "1";
+  if (employeeMode) {
+    const context = await getEmployeeAccessContext();
+    if (!context.workerId) return null;
+    if (assignmentId && !(await canAccessEmployeeAssignment(context, assignmentId))) return null;
+    return { tenantId: context.tenantId, workerId: context.workerId, employeeMode: true };
+  }
+
+  const actor = await requirePermission("lead:manage");
+  const tenantId = actor.workspace.id;
+  if (requestedWorkerId) {
+    const worker = await queryPostgres<{ allowed: boolean }>(
+      `select exists(select 1 from public.operations_workers where tenant_id = $1 and id = $2 and availability_status <> 'inactive') as allowed`,
+      [tenantId, requestedWorkerId]
+    );
+    if (worker?.rows[0]?.allowed !== true) return null;
+  }
+  if (assignmentId) {
+    const assignment = await queryPostgres<{ allowed: boolean }>(
+      `select exists(select 1 from public.operations_assignments where tenant_id = $1 and id = $2 and status <> 'archived') as allowed`,
+      [tenantId, assignmentId]
+    );
+    if (assignment?.rows[0]?.allowed !== true) return null;
+  }
+  return { tenantId, workerId: requestedWorkerId ?? null, employeeMode: false };
+}
+
 export async function createWorkerAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = workerSchema.safeParse({
     name: text(formData, "name"),
     roleType: text(formData, "roleType") ?? "employee",
@@ -173,13 +209,27 @@ export async function createWorkerAction(formData: FormData) {
     payrollType: text(formData, "payrollType") ?? "hourly"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     insert into public.operations_workers (
-      tenant_id, name, role_type, trade, phone, email, hourly_rate_cents, payroll_type, metadata_json
+      tenant_id, user_id, name, role_type, trade, phone, email, hourly_rate_cents, payroll_type, metadata_json
     )
-    values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+    select $1, matched_user.id, $2,$3,$4,$5,$6,$7,$8,$9::jsonb
+    from (values (1)) seed(value)
+    left join lateral (
+      select u.id
+      from public.users u
+      join public.tenant_users tu
+        on tu.user_id = u.id and tu.tenant_id = $1 and tu.status = 'active'
+      where $6::text is not null
+        and lower(u.email) = lower($6)
+        and not exists (
+          select 1 from public.operations_workers existing
+          where existing.tenant_id = $1 and existing.user_id = u.id
+        )
+      limit 1
+    ) matched_user on true
     `,
     [
       tenantId,
@@ -241,7 +291,9 @@ export async function createClockInAction(formData: FormData) {
     gpsVerified: formData.get("gpsVerified") === "on"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
+  if (!target?.workerId) return;
+  const tenantId = target.tenantId;
   await queryPostgres(
     `
     insert into public.operations_time_entries (
@@ -251,12 +303,15 @@ export async function createClockInAction(formData: FormData) {
     `,
     [
       tenantId,
-      parsed.data.workerId,
+      target.workerId,
       parsed.data.assignmentId ?? null,
       parsed.data.clockInLocation ?? null,
       parsed.data.gpsVerified,
       parsed.data.notes ?? null,
-      JSON.stringify({ clockMode: parsed.data.gpsVerified ? "gps_verified" : "manual" })
+      JSON.stringify({
+        clockMode: parsed.data.gpsVerified ? "gps_verified" : "manual",
+        source: target.employeeMode ? "employee_app" : "operations_workforce"
+      })
     ]
   );
   revalidatePath("/app/operations-workforce");
@@ -270,7 +325,12 @@ export async function clockOutTimeEntryAction(formData: FormData) {
     notes: text(formData, "notes")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const employeeMode = formData.get("employeeMode") === "1";
+  const context = employeeMode ? await getEmployeeAccessContext() : null;
+  if (employeeMode && !context?.workerId) return;
+  const tenantId = employeeMode
+    ? context!.tenantId
+    : (await requirePermission("lead:manage")).workspace.id;
   await queryPostgres(
     `
     update public.operations_time_entries
@@ -283,6 +343,7 @@ export async function clockOutTimeEntryAction(formData: FormData) {
       metadata_json = metadata_json || $6::jsonb,
       updated_at = now()
     where id = $1 and tenant_id = $2 and status = 'open'
+      and ($7::uuid is null or worker_id = $7)
     `,
     [
       parsed.data.timeEntryId,
@@ -290,7 +351,12 @@ export async function clockOutTimeEntryAction(formData: FormData) {
       parsed.data.clockOutLocation ?? null,
       Math.max(0, Math.round(numeric(parsed.data.breakMinutes))),
       parsed.data.notes ?? null,
-      JSON.stringify({ clockOutMode: "manual", payrollReviewRequired: true })
+      JSON.stringify({
+        clockOutMode: "manual",
+        payrollReviewRequired: true,
+        source: employeeMode ? "employee_app" : "operations_workforce"
+      }),
+      context?.workerId ?? null
     ]
   );
   revalidatePath("/app/operations-workforce");
@@ -312,7 +378,9 @@ export async function createExpenseAction(formData: FormData) {
     aiSummary: text(formData, "aiSummary")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
+  if (!target) return;
+  const tenantId = target.tenantId;
   const receiptPhoto = isUploadFile(formData.get("receiptPhoto")) ? formData.get("receiptPhoto") as File : null;
   const uploaded = await uploadReceiptPhoto(tenantId, receiptPhoto);
   const extractionRequested = parsed.data.extractReceipt === "on";
@@ -343,7 +411,7 @@ export async function createExpenseAction(formData: FormData) {
     `,
     [
       tenantId,
-      parsed.data.workerId ?? null,
+      target.workerId,
       parsed.data.assignmentId ?? null,
       vendor,
       amountCents,
@@ -381,12 +449,16 @@ export async function createExpenseAction(formData: FormData) {
       `,
       [
         tenantId,
-        parsed.data.workerId ?? null,
+        target.workerId,
         parsed.data.assignmentId ?? null,
         vendor ?? uploaded.fileName ?? "Receipt",
         receiptUrl,
         parsed.data.aiSummary ?? "Receipt submitted from employee view.",
-        JSON.stringify({ source: "employee_view", expenseId, uploadStatus: uploaded.uploadStatus })
+        JSON.stringify({
+          source: target.employeeMode ? "employee_app" : "operations_workforce",
+          expenseId,
+          uploadStatus: uploaded.uploadStatus
+        })
       ]
     );
     const mediaId = media?.rows[0]?.id;
@@ -490,7 +562,9 @@ export async function createMileageAction(formData: FormData) {
     entryMethod: text(formData, "entryMethod") ?? "manual"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
+  if (!target) return;
+  const tenantId = target.tenantId;
   await queryPostgres(
     `
     insert into public.operations_mileage_entries (
@@ -500,14 +574,17 @@ export async function createMileageAction(formData: FormData) {
     `,
     [
       tenantId,
-      parsed.data.workerId ?? null,
+      target.workerId,
       parsed.data.assignmentId ?? null,
       parsed.data.vehicleLabel ?? null,
       parsed.data.startLocation ?? null,
       parsed.data.endLocation ?? null,
       numeric(parsed.data.miles),
       parsed.data.entryMethod,
-      JSON.stringify({ irsFriendly: true })
+      JSON.stringify({
+        irsFriendly: true,
+        source: target.employeeMode ? "employee_app" : "operations_workforce"
+      })
     ]
   );
   revalidatePath("/app/operations-workforce");
@@ -595,27 +672,59 @@ export async function createFieldMediaAction(formData: FormData) {
     consentStatus: text(formData, "consentStatus") ?? "internal_only"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
+  if (!target) return;
+  const tenantId = target.tenantId;
+  const mediaEntry = formData.get("mediaFile");
+  const mediaFile =
+    mediaEntry &&
+    typeof mediaEntry === "object" &&
+    "arrayBuffer" in mediaEntry &&
+    "size" in mediaEntry &&
+    typeof mediaEntry.size === "number" &&
+    mediaEntry.size > 0
+      ? mediaEntry as File
+      : null;
+  const uploaded = await uploadFieldMediaFile({
+    tenantId,
+    assignmentId: parsed.data.assignmentId,
+    file: mediaFile
+  });
+  if (target.employeeMode && !uploaded.storageUri) return;
+  if (uploaded.uploadStatus !== "none" && uploaded.uploadStatus !== "uploaded") return;
+  const fileUrl = uploaded.storageUri ?? parsed.data.fileUrl ?? null;
   const insert = await queryPostgres<{ id: string }>(
     `
     insert into public.operations_field_media (
-      tenant_id, worker_id, assignment_id, media_type, title, file_url, ai_summary,
+      tenant_id, worker_id, assignment_id, service_job_id, media_type, title, file_url, ai_summary,
       customer_visible, consent_status, metadata_json
     )
-    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+    select $1,$2,$3,a.service_job_id,$4,$5,$6,$7,$8,$9,$10::jsonb
+    from public.operations_assignments a
+    where a.tenant_id = $1 and a.id = $3
+    union all
+    select $1,$2,null,null,$4,$5,$6,$7,$8,$9,$10::jsonb
+    where $3::uuid is null
     returning id
     `,
     [
       tenantId,
-      parsed.data.workerId ?? null,
+      target.workerId,
       parsed.data.assignmentId ?? null,
       parsed.data.mediaType,
       parsed.data.title,
-      parsed.data.fileUrl ?? null,
+      fileUrl,
       parsed.data.aiSummary ?? "AI proof summary pending.",
       parsed.data.consentStatus === "approved_for_customer" || parsed.data.consentStatus === "approved_for_marketing",
       parsed.data.consentStatus,
-      JSON.stringify({ uploadPipeline: "ready", aiWalkthroughLinkReady: true })
+      JSON.stringify({
+        uploadPipeline: uploaded.uploadStatus === "uploaded" ? "private_storage" : "external_link",
+        aiWalkthroughLinkReady: true,
+        originalFileName: uploaded.fileName,
+        mimeType: uploaded.mimeType,
+        uploadStatus: uploaded.uploadStatus,
+        source: target.employeeMode ? "employee_app" : "operations_workforce"
+      })
     ]
   );
   const fieldMediaId = insert?.rows[0]?.id;
@@ -624,8 +733,8 @@ export async function createFieldMediaAction(formData: FormData) {
       tenantId,
       vendor: parsed.data.title,
       text: parsed.data.aiSummary ?? parsed.data.title,
-      imageUrl: parsed.data.fileUrl ?? null,
-      mimeType: parsed.data.fileUrl ? "image/unknown" : null
+      imageUrl: uploaded.signedUrl ?? parsed.data.fileUrl ?? null,
+      mimeType: uploaded.mimeType ?? (parsed.data.fileUrl ? "image/unknown" : null)
     });
     await queryPostgres(
       `
@@ -646,6 +755,7 @@ export async function createFieldMediaAction(formData: FormData) {
     );
   }
   revalidatePath("/app/operations-workforce");
+  revalidatePath("/employee");
 }
 
 export async function createPayrollExportAction(formData: FormData) {

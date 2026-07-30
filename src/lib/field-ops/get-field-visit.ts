@@ -1,5 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
-import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { canAccessEmployeeVisit, getEmployeeAccessContext } from "@/lib/employee/employee-access";
 
 type VisitRow = {
   id: string;
@@ -47,7 +47,9 @@ type FormRow = {
 };
 
 export async function getFieldVisit(visitId: string) {
-  const tenantId = await getCurrentWorkspaceId();
+  const access = await getEmployeeAccessContext();
+  if (!(await canAccessEmployeeVisit(access, visitId))) return null;
+  const tenantId = access.tenantId;
   const [visitResult, formsResult, assetsResult, eventsResult, mediaResult] = await Promise.all([
     queryPostgres<VisitRow>(
       `

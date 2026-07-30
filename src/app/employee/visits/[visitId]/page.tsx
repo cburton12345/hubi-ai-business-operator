@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateVisitDispatchStatusAction } from "@/app/app/schedule/actions";
 import { getFieldVisit } from "@/lib/field-ops/get-field-visit";
 import {
   saveVisitFieldNoteAction,
   saveVisitSignatureAction,
-  submitFieldFormAction
+  submitFieldFormAction,
+  updateEmployeeVisitStatusAction
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +63,7 @@ export default async function EmployeeVisitPage({ params }: { params: Promise<{ 
           <article className="panel span-4">
             <h2>Move the visit</h2>
             <p className="muted">Ferocity records the real dispatch timestamps. Completion is blocked until required forms pass.</p>
-            <form action={updateVisitDispatchStatusAction} className="form-stack">
+            <form action={updateEmployeeVisitStatusAction} className="form-stack">
               <input type="hidden" name="visitId" value={visit.id} />
               <select name="status" defaultValue={visit.status}>
                 <option value="dispatched">Dispatched</option>
@@ -148,6 +148,28 @@ export default async function EmployeeVisitPage({ params }: { params: Promise<{ 
         </section>
 
         <section className="grid">
+          <article className="panel span-6">
+            <h2>Job photos and proof</h2>
+            <ul className="list">
+              {dashboard.media.map((media) => (
+                <li className="list-row" key={media.id}>
+                  <div>
+                    <h3>{media.title}</h3>
+                    <p className="muted">{media.media_type.replaceAll("_", " ")} · {dateTime(media.created_at)}</p>
+                    <p>{media.ai_summary || "Ready for office review."}</p>
+                    {media.file_url ? (
+                      <a className="mini-button" href={`/api/field/media/${media.id}`} target="_blank" rel="noreferrer">
+                        View file
+                      </a>
+                    ) : null}
+                  </div>
+                  <span className="pill">{media.status.replaceAll("_", " ")}</span>
+                </li>
+              ))}
+              {dashboard.media.length === 0 ? <li className="list-row"><span className="muted">No job photos or proof uploaded yet.</span></li> : null}
+            </ul>
+          </article>
+
           <article className="panel span-6">
             <h2>Equipment and assets</h2>
             <ul className="list">
