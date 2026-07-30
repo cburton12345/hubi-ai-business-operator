@@ -5,9 +5,9 @@ describe("public Ferocity plans", () => {
   it("sells the core AI engine as part of Starter", () => {
     const starter = getPublicPlan("starter");
 
-    expect(starter?.bullets).toContain("Command Engine: ask Ferocity in plain English");
-    expect(starter?.bullets.some((item) => item.startsWith("AI Office Manager:"))).toBe(true);
-    expect(starter?.bullets.some((item) => item.startsWith("Authority Lite:"))).toBe(true);
+    expect(starter?.bullets.some((item) => item.includes("Ask Ferocity"))).toBe(true);
+    expect(starter?.bestFor).toMatch(/handles routine work/i);
+    expect(starter?.bestFor).toMatch(/authority level the owner chooses/i);
   });
 
   it("does not advertise arbitrary AI run quotas", () => {

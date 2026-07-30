@@ -1,10 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { ArrowRight, BellRing, CheckCircle2, CircleDollarSign, Download, Megaphone, ShieldCheck, TimerReset } from "lucide-react";
+import { ArrowRight, BellRing, CheckCircle2, CircleDollarSign, Megaphone, ShieldCheck, TimerReset } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
-  title: "Ferocity | AI Operating System for Modern Businesses",
+  title: "Ferocity | AI Operating System for Service Businesses",
   description:
     "Put your business on accelerated autopilot with one AI workforce for leads, follow-up, jobs, money, reviews, marketing, reminders, and daily owner decisions.",
   alternates: { canonical: "/" }
@@ -40,18 +41,18 @@ const businessAreas = [
 
 const promises = [
   {
-    title: "Accelerated autopilot",
-    body: "Ferocity watches the business, prepares the next move, and keeps authorized routine work moving—even when you are not staring at a dashboard.",
+    title: "Win more work",
+    body: "Respond faster, follow up longer, recover aging estimates, and keep good leads from disappearing when the day gets busy.",
     icon: TimerReset
   },
   {
-    title: "More of the business in one place",
-    body: "Leads, customers, jobs, money, team, marketing, communications, reporting, and connected services share one operating context.",
+    title: "Stop profit leaks",
+    body: "Keep jobs, receipts, invoices, overdue money, customer promises, and next actions connected instead of scattered across memory and apps.",
     icon: Megaphone
   },
   {
-    title: "Your authority. Your providers.",
-    body: "Set a choice once and Ferocity remembers it. Change it instantly when needed, choose what requires approval, and connect the providers you already trust.",
+    title: "Get your time back",
+    body: "Let Ferocity prepare or handle approved repeat work while you stay in control of customer messages, spending, publishing, and important decisions.",
     icon: ShieldCheck
   }
 ];
@@ -69,36 +70,26 @@ export default function HomePage() {
   return (
     <main className="public-page public-home">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/install">Install app</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="hero-command">
           <div className="hero-copy">
-            <p className="eyebrow">One AI workforce. One connected operating system.</p>
-            <h1>Put your business on accelerated autopilot.</h1>
+            <p className="eyebrow">AI operating system for service businesses</p>
+            <h1>Win more work. Lose less money. Get your life back.</h1>
             <p>
-              Ferocity helps run the repeat work you approve across leads, follow-up, jobs, estimates,
-              invoices, reviews, marketing, reminders, and daily decisions—so the business moves faster
-              and you get more of your life back.
+              Ferocity follows up with leads, keeps jobs moving, tracks money, builds customer trust,
+              and handles approved routine office work—so the business runs without everything depending on you.
             </p>
-            <div className="demo-proof-flow compact-proof-flow" aria-label="Business areas Ferocity supports">
-              {businessAreas.map((area) => (
-                <span key={area}>{area}</span>
-              ))}
-            </div>
             <div className="button-row">
-              <Link className="button" href="/pricing">
-                Choose a plan <ArrowRight size={16} />
+              <Link className="button" href="/subscribe?plan=growth">
+                Start Ferocity <ArrowRight size={16} />
               </Link>
-              <Link className="button secondary-button" href="/business-health-score">Grade my business free</Link>
+              <Link className="button secondary-button" href="/demo">See it work</Link>
+            </div>
+            <div className="trust-strip" aria-label="Ferocity buying assurances">
+              <span><ShieldCheck size={15} /> Secure Stripe checkout</span>
+              <span><CheckCircle2 size={15} /> You choose what AI may do</span>
+              <span><CircleDollarSign size={15} /> No surprise provider spending</span>
             </div>
           </div>
 
@@ -165,6 +156,19 @@ export default function HomePage() {
               </article>
             );
           })}
+        </section>
+
+        <section className="panel outcome-band">
+          <div>
+            <p className="eyebrow">One place for the operating day</p>
+            <h2>Capture the lead. Win the job. Do the work. Get paid. Earn the next customer.</h2>
+            <p className="muted">
+              Ferocity connects the entire customer and job lifecycle so every finished step can trigger the right next step.
+            </p>
+          </div>
+          <div className="demo-proof-flow compact-proof-flow" aria-label="Business areas Ferocity supports">
+            {businessAreas.map((area) => <span key={area}>{area}</span>)}
+          </div>
         </section>
 
         <section className="demo-positioning">
@@ -234,13 +238,10 @@ export default function HomePage() {
             <p>Run the free grader, then choose what you want Ferocity to watch, prepare, remind, or automate.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/pricing">
-              Choose a plan <ArrowRight size={16} />
+            <Link className="button" href="/subscribe?plan=growth">
+              Start Ferocity <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/install">
-              <Download size={16} />
-              Install Ferocity
-            </Link>
+            <Link className="button secondary-button" href="/pricing">Compare plans</Link>
           </div>
         </section>
       </section>

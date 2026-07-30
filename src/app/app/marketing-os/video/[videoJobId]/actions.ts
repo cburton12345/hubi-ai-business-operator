@@ -9,7 +9,8 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import {
   getManagedVideoConfiguration,
-  getVideoGenerationProvider
+  getVideoGenerationProvider,
+  normalizeVideoDuration
 } from "@/lib/providers/video-adapters";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -31,13 +32,6 @@ type VideoJobRow = {
   metadata_json: Record<string, unknown> | null;
   provider_response_json: Record<string, unknown> | null;
 };
-
-function normalizedSeconds(value: unknown) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 4) return 4;
-  if (number <= 8) return 8;
-  return 12;
-}
 
 function aspectRatio(value: unknown) {
   if (value === "16:9") return "16:9";
@@ -142,10 +136,13 @@ export async function submitVideoRenderAction(formData: FormData) {
 
   const request = safeRecord(job.provider_request_json);
   const metadata = safeRecord(job.metadata_json);
-  const seconds = normalizedSeconds(metadata.durationSeconds ?? request.durationSeconds);
+  const seconds = normalizeVideoDuration(
+    configuration.providerKey,
+    Number(metadata.durationSeconds ?? request.durationSeconds)
+  );
   const providerCostCents = seconds * configuration.providerCostCentsPerSecond;
   const customerChargeCents = seconds * configuration.customerPriceCentsPerSecond;
-  const usageKey = `premium-video:${job.id}:openai-video`;
+  const usageKey = `premium-video:${job.id}:${configuration.providerKey}`;
 
   const reservation = await queryPostgres<{ id: string }>(
     `
@@ -167,7 +164,7 @@ export async function submitVideoRenderAction(formData: FormData) {
       customer_charge_cents, status, source, idempotency_key, metadata_json
     )
     select
-      $1, $2, $3, $4, 'premium_video', 'openai_video',
+      $1, $2, $3, $4, 'premium_video', $13,
       'marketing_video_jobs', $5, 'video_second', $6, $7,
       $8, 'pending_review', 'system', $9, $10::jsonb
     from usage
@@ -192,7 +189,8 @@ export async function submitVideoRenderAction(formData: FormData) {
         customerPriceCentsPerSecond: configuration.customerPriceCentsPerSecond
       }),
       configuration.globalMonthlyBudgetCents,
-      configuration.workspaceMonthlyBudgetCents
+      configuration.workspaceMonthlyBudgetCents,
+      configuration.providerKey
     ]
   );
   const usageId = reservation?.rows[0]?.id;
@@ -268,7 +266,7 @@ export async function submitVideoRenderAction(formData: FormData) {
       returning id
     )
     update public.marketing_video_jobs
-    set provider_key = 'openai_video', status = 'submitted',
+    set provider_key = $13, status = 'submitted',
         provider_response_json = $11::jsonb, error_message = null,
         history_json = history_json || $12::jsonb, updated_at = now()
     where tenant_id = $1 and id = $7
@@ -299,8 +297,9 @@ export async function submitVideoRenderAction(formData: FormData) {
       JSON.stringify([{
         status: "submitted",
         at: new Date().toISOString(),
-        note: `Submitted to OpenAI Video for ${seconds} seconds after cost approval.`
-      }])
+        note: `Submitted to ${configuration.providerKey === "google_veo" ? "Google Veo" : "OpenAI Video"} for ${seconds} seconds after cost approval.`
+      }]),
+      configuration.providerKey
     ]
   );
 

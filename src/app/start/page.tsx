@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 
 const goals = [
   ["find_gaps", "Tell me what is missing"],
@@ -70,18 +71,7 @@ export default async function StartPage({
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">
-            Ferocity
-          </Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">Start simple</p>

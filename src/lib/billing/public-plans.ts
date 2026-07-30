@@ -18,15 +18,15 @@ export const publicPlans: PublicPlan[] = [
     name: "Starter",
     price: "$79/mo",
     priceCents: 7900,
-    fit: "Your core AI operator.",
+    fit: "Your everyday business control.",
     bestFor: "Ferocity watches the everyday business and handles routine work under the authority level the owner chooses.",
     bullets: [
-      "Command Engine: ask Ferocity in plain English",
-      "AI Office Manager: leads, reminders, and daily queue",
-      "Customers, estimates, jobs, schedule, invoices, and payments",
-      "Simple field view, job evidence, and customer appointment links",
-      "Authority Lite: turn finished jobs into proof and review drafts",
-      "AI Estimator and marketing: reviewed bids, SEO, graphics, and ad briefs"
+      "Ask Ferocity what needs attention and what to do next",
+      "Keep leads, reminders, estimates, and follow-up from slipping",
+      "Manage customers, jobs, schedules, invoices, and payments",
+      "Give employees a simple field view for time, receipts, and job proof",
+      "Turn finished work into review requests and customer trust",
+      "Prepare reviewed estimates, marketing, graphics, and ad briefs"
     ],
     moreFeatures: [
       "Business profile and service-area memory",
@@ -58,20 +58,19 @@ export const publicPlans: PublicPlan[] = [
     name: "Growth",
     price: "$199/mo",
     priceCents: 19900,
-    fit: "Your AI growth department.",
+    fit: "Your growth and follow-up team.",
     bestFor: "Ferocity connects follow-up, proof, content, search, campaigns, and revenue so the business can create and measure demand.",
     bullets: [
       "Everything in Starter",
-      "Office Manager Growth: customer service and marketing follow-up",
-      "Shared inbox and lifecycle follow-up that stops when customers respond",
-      "Memberships, recurring service, and retention workflows",
-      "Authority Plus: proof-to-content bundles and publishing queue",
-      "Connected SMS, email, review, and recovery workflows",
-      "Qualification funnels, booked-appointment reminders, and show-rate tracking",
-      "Content Studio, SEO/GEO, and AI-search visibility",
-      "Campaign variants, marketing memory, and revenue attribution",
-      "Backlink health, linkable assets, and earned-link opportunities",
-      "Estimator Plus: supplier comparisons and margin review"
+      "Respond faster and keep following up until the customer answers",
+      "Bring SMS, email, reviews, and recovery work into one customer history",
+      "Build repeat business with memberships, reminders, and retention campaigns",
+      "Turn job proof into content, reviews, and publish-ready marketing",
+      "Qualify leads, improve appointment show-up, and recover old opportunities",
+      "Create search, AI-search, content, and campaign work from real business data",
+      "See which lead sources and campaigns become booked and paid work",
+      "Find legitimate link opportunities and protect valuable backlinks",
+      "Compare supplier pricing and protect estimate margins"
     ],
     moreFeatures: [
       "Everything listed in Starter",
@@ -103,16 +102,16 @@ export const publicPlans: PublicPlan[] = [
     name: "Operator",
     price: "$399/mo",
     priceCents: 39900,
-    fit: "Your AI operating team.",
+    fit: "Your proactive operating team.",
     bestFor: "Ferocity proactively monitors the operating day and coordinates sales, jobs, money, schedule, team, and connected systems.",
     bullets: [
       "Everything in Growth",
-      "AI COO: monitoring, escalation, and decision memory",
-      "AI Dispatcher: scheduling, eligibility, coordination, and collections",
-      "Authority Manager: reputation, backlink, and opportunity monitoring",
-      "Owner Command Center and daily operating digest",
-      "Inventory, procurement, workforce, recruiting, and job-cost intelligence",
-      "Provider-ready payments, accounting, calendar, voice, video, and integrations"
+      "Have Ferocity monitor the operating day and remember important decisions",
+      "Coordinate scheduling, job progress, collections, and customer handoffs",
+      "Watch reputation, backlinks, and growth opportunities",
+      "Start each day with one owner briefing and a clear attention list",
+      "Control inventory, purchasing, workforce, recruiting, and job-cost risks",
+      "Connect payments, accounting, calendars, phone, video, and other providers"
     ],
     moreFeatures: [
       "Everything listed in Growth",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Ferocity Demo | See the AI Business Loop",
@@ -33,16 +34,7 @@ export default function DemoPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/features">Features</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="hero-command demo-hero">
           <div className="hero-copy">
@@ -53,10 +45,10 @@ export default function DemoPage() {
               prepares the next move, and keeps important decisions in front of the owner.
             </p>
             <div className="button-row">
-              <Link className="button" href="/business-health-score">
-                Run free grader <ArrowRight size={16} />
+              <Link className="button" href="/subscribe?plan=growth">
+                Start Ferocity <ArrowRight size={16} />
               </Link>
-              <Link className="button secondary-button" href="/start?source=demo">Start setup</Link>
+              <Link className="button secondary-button" href="/pricing">Compare plans</Link>
             </div>
           </div>
 

@@ -41,6 +41,7 @@
     "typecheck": "node scripts/clean-next-types.mjs && tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^2.14.0",
     "@supabase/supabase-js": "^2.89.0",
     "@types/web-push": "^3.6.4",
     "lucide-react": "^0.571.0",

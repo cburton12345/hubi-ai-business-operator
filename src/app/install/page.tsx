@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Download, MonitorSmartphone, Smartphone, Star } from "lucide-react";
 import { InstallAppButton } from "@/components/InstallAppButton";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Install Ferocity App",
@@ -15,16 +16,7 @@ export default function InstallPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">Ferocity app</p>

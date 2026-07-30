@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 import { getPublicPlan } from "@/lib/billing/public-plans";
 
 export const metadata: Metadata = {
@@ -20,20 +21,13 @@ export default async function SubscribePage({
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">Start {plan.name}</p>
-          <h1>One short step, then secure checkout.</h1>
+          <h1>Start putting Ferocity to work.</h1>
           <p className="muted">
-            Tell us where to create the workspace. Stripe handles payment securely, then Ferocity sends the account activation link.
+            Enter your work email and company name. Stripe handles payment securely, then Ferocity sends your account activation link.
           </p>
         </section>
 

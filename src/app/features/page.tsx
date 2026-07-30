@@ -11,6 +11,7 @@ import {
   MessageSquareText,
   Wrench
 } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Ferocity Features | AI Workforce for Business",
@@ -41,7 +42,7 @@ const features = [
     body: "Create invoices, record payments, track money due, prepare reminders, and offer secure online checkout after the business connects Stripe payouts."
   },
   {
-    title: "Authority Engine",
+    title: "Turn finished work into trust",
     icon: CheckCircle2,
     body: "Turn finished work into proof, reviews, case studies, FAQs, posts, website trust, video scripts, linkable assets, and legitimate backlink opportunities."
   },
@@ -51,7 +52,7 @@ const features = [
     body: "Build qualification funnels, appointment follow-up, SEO drafts, ad and video packages, and a source-to-booked-work-to-revenue feedback loop."
   },
   {
-    title: "AI command center",
+    title: "Know what needs attention",
     icon: Bot,
     body: "Ask what needs attention, what AI handled, what needs approval, and what to do next."
   },
@@ -63,10 +64,10 @@ const features = [
 ];
 
 const status = [
-  ["Available now", "Customer tracking, leads, jobs, estimates, material lists, invoices, reports, reminders, grader, AI drafts, app install."],
-  ["Needs setup", "Website forms, business profile, team access, payment terms, approval rules, brand memory."],
-  ["Needs connection", "Online checkout, provider-sent email or SMS, AI voice, premium rendering, and direct outside-platform execution."],
-  ["Owner-chosen authority", "Keep work as drafts, require approval, or allow routine actions after provider, consent, suppression, plan, and cost checks."]
+  ["Works immediately", "Customers, leads, jobs, estimates, materials, invoices, reports, reminders, AI drafts, and the installable app."],
+  ["Personalize during setup", "Your services, business details, team access, payment terms, approval choices, and brand voice."],
+  ["Connect when useful", "Online checkout, provider-sent email or SMS, AI phone agents, premium video rendering, and outside publishing."],
+  ["You stay in control", "Keep work as drafts, approve important actions, or allow safe repeat work after consent, limits, and cost checks."]
 ];
 
 const engines = [
@@ -94,29 +95,20 @@ export default function FeaturesPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero features-hero">
           <p className="eyebrow">Features</p>
-            <h1>One AI workforce for growth, daily work, money, and control.</h1>
+            <h1>Everything your service business needs to win, run, and grow work.</h1>
           <p className="muted">
             Ferocity can start as a simple tracker or become the command center for qualified leads,
             follow-up, jobs, payments, reviews, SEO, ads, video briefs, team visibility, and daily decisions.
           </p>
           <div className="button-row">
-            <Link className="button" href="/business-health-score">
-              Run free grader <ArrowRight size={16} />
+            <Link className="button" href="/subscribe?plan=growth">
+              Start Ferocity <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/pricing">Compare plans</Link>
+            <Link className="button secondary-button" href="/demo">See it work</Link>
           </div>
         </section>
 
@@ -178,8 +170,8 @@ export default function FeaturesPage() {
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">Status</p>
-          <h2>What works now and what needs connection.</h2>
+          <p className="eyebrow">Start with what matters</p>
+          <h2>Use the core immediately. Connect outside services when you want them.</h2>
           <div className="value-ladder">
             {status.map(([title, body]) => (
               <div key={title}>
@@ -197,10 +189,10 @@ export default function FeaturesPage() {
             <p>Run the free grader, then choose the plan that fits the amount of help you want.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/business-health-score">
-              Grade my business free <ArrowRight size={16} />
+            <Link className="button" href="/subscribe?plan=growth">
+              Start Ferocity <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/pricing">See plans</Link>
+            <Link className="button secondary-button" href="/pricing">Compare plans</Link>
           </div>
         </section>
       </section>

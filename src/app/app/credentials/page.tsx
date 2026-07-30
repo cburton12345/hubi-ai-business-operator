@@ -221,14 +221,14 @@ export default async function CredentialsPage() {
               <p className="muted">The customer pays OpenAI directly and their provider account may retain task content under its own settings.</p>
             </section>
             <section className="span-6">
-              <h3>Ferocity-Managed OpenAI Video</h3>
+              <h3>Ferocity-Managed AI Video</h3>
               <p className="muted">
-                Set <strong>VIDEO_PROVIDER=openai</strong>, <strong>VIDEO_API_KEY</strong>, and <strong>VIDEO_MODEL</strong>
-                in the server environment. Rendering also requires <strong>VIDEO_RENDERING_ENABLED=true</strong>,
-                global and per-workspace monthly cost caps, provider cost per second, and a higher customer price per second.
+                Choose an approved provider such as Google Veo or OpenAI Video, then set its server-only key and model.
+                Rendering also requires explicit activation, global and per-workspace monthly cost caps, provider cost
+                per second, and a higher customer price per second.
               </p>
               <p className="muted">
-                Briefs and storyboards keep working when these values are absent. Adding a key alone never enables paid renders.
+                Briefs and storyboards keep working when paid rendering is off. Adding a key alone never enables provider spending.
               </p>
             </section>
           </div>

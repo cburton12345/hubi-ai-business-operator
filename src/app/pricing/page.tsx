@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 import { jobTrackerPlan, primaryPublicPlans } from "@/lib/billing/public-plans";
 
 export const metadata: Metadata = {
@@ -49,18 +50,18 @@ const fees = [
 const engineLevels = [
   {
     name: "Starter",
-    title: "Core AI operator",
-    body: "Tell Ferocity what needs attention. It can inspect the business, surface priorities, prepare reviewed work, follow up on opportunities, and turn completed jobs into proof."
+    title: "Keep the everyday business under control",
+    body: "See what needs attention, prepare follow-up, organize customers and jobs, track money, and turn finished work into reviews and proof."
   },
   {
     name: "Growth",
-    title: "Connected growth operator",
-    body: "Adds more capacity and connected execution across follow-up, content, SEO, publishing, campaigns, reviews, and revenue attribution."
+    title: "Create and convert more demand",
+    body: "Add persistent follow-up, customer retention, reviews, content, search visibility, campaigns, and clear source-to-revenue tracking."
   },
   {
     name: "Operator",
-    title: "Cross-business operator",
-    body: "Adds proactive monitoring and deeper operational control across jobs, estimates, invoices, payments, scheduling, team, voice, video, and owner decisions."
+    title: "Have the operating day watched for you",
+    body: "Add proactive monitoring across jobs, estimates, invoices, scheduling, the team, customer communications, and owner decisions."
   }
 ];
 
@@ -78,29 +79,20 @@ export default function PricingPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/growth-system">Growth System</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">Simple paid plans</p>
-          <h1>Choose the amount of business you want Ferocity to handle.</h1>
+          <h1>Choose how much work you want taken off your plate.</h1>
           <p className="muted">
-            Every main plan includes the real Ferocity AI engine. Higher tiers add whole departments,
-            deeper workflows, more connected systems, and more proactive operating responsibility.
+            Every plan includes Ferocity’s real AI engine. Higher tiers handle more of the customer journey,
+            connect more of the business, and watch for more problems before they cost you.
           </p>
           <div className="button-row">
-            <Link className="button" href="#plans">
-              Compare plans <ArrowRight size={16} />
+            <Link className="button" href="/subscribe?plan=growth">
+              Start Growth <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="/business-health-score">Grade my business free</Link>
+            <Link className="button secondary-button" href="#plans">Compare plans</Link>
           </div>
         </section>
 
@@ -111,8 +103,11 @@ export default function PricingPage() {
                 <p className="eyebrow">{plan.featured ? "Most popular · " : ""}{plan.name}</p>
                 <strong className="price-line">{plan.price}</strong>
                 <h2>{plan.fit}</h2>
-                <p className="muted">{plan.bestFor}</p>
               </div>
+              <Link className="button plan-primary-cta" href={`/subscribe?plan=${plan.key}`}>
+                Start {plan.name}
+              </Link>
+              <p className="muted">{plan.bestFor}</p>
               <ul className="plain-list">
                 {plan.bullets.map((item) => (
                   <li key={item}>
@@ -141,7 +136,7 @@ export default function PricingPage() {
 
         <section className="section-actions">
           <p className="eyebrow">One engine, three levels</p>
-          <h2>Starter is real Ferocity—not a hollow version of it.</h2>
+          <h2>Every plan does real work. Higher plans take on a larger job.</h2>
           <p className="muted">
             Higher plans do not unlock the idea of AI running the work. They give the same core engine more
             business context, more specialized workflows, more connected systems, and more permission to operate proactively.
@@ -159,7 +154,7 @@ export default function PricingPage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">What the upgrades actually unlock</p>
-          <h2>More than limits—each tier gives Ferocity a larger job.</h2>
+          <h2>The upgrade is more responsibility—not arbitrary usage limits.</h2>
           <div className="table-wrap">
             <table>
               <thead>

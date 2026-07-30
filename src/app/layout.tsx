@@ -4,11 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://ferocity.live"),
   title: {
-    default: "Ferocity | AI Workforce for Modern Businesses",
+    default: "Ferocity | AI Operating System for Service Businesses",
     template: "%s | Ferocity"
   },
   description:
-    "Ferocity gives modern businesses an AI workforce for leads, follow-up, marketing, jobs, payments, reviews, tasks, and approved repeat work.",
+    "Ferocity helps service businesses win more work, run jobs, get paid, grow customer trust, and take routine office work off the owner.",
   applicationName: "Ferocity",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -31,9 +31,9 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://ferocity.live",
     siteName: "Ferocity",
-    title: "Ferocity | AI Workforce for Modern Businesses",
+    title: "Ferocity | AI Operating System for Service Businesses",
     description:
-      "Digital employees for lead response, follow-up, office work, marketing, payments, reviews, tasks, and approved repeat work."
+      "Win more work, lose less money, and get your time back with one AI operating system for service businesses."
   },
   twitter: {
     card: "summary_large_image",

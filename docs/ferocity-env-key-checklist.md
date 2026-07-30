@@ -97,7 +97,7 @@ Redirect:
 - `VIDEO_RENDERING_ENABLED`
 - `VIDEO_MONTHLY_BUDGET_CENTS`
 
-Keep `VIDEO_RENDERING_ENABLED=false` and `VIDEO_MONTHLY_BUDGET_CENTS=0` until a paid media provider, cost controls, and approval rules are ready. Ferocity can still create video scripts, storyboards, scene plans, hooks, platform variants, and provider briefs without submitting premium renders.
+Use `VIDEO_PROVIDER=google_veo` with `VIDEO_MODEL=veo-3.1-lite-generate-preview` for the lowest-cost managed Veo route, or `VIDEO_PROVIDER=openai_video` for the existing OpenAI route. Keep `VIDEO_RENDERING_ENABLED=false` and `VIDEO_MONTHLY_BUDGET_CENTS=0` until a paid media provider, cost controls, and approval rules are ready. Ferocity can still create video scripts, storyboards, scene plans, hooks, platform variants, and provider briefs without submitting premium renders.
 
 Redirect:
 

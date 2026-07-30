@@ -110,6 +110,20 @@ textarea {
   line-height: 1.2;
 }
 
+.public-nav .nav-cta {
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.18);
+}
+
+.public-nav .nav-cta:hover {
+  background: var(--accent-strong);
+  color: white;
+}
+
 .public-hero {
   display: grid;
   gap: 10px;
@@ -127,7 +141,7 @@ textarea {
   grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
   gap: 28px;
   align-items: center;
-  padding: 42px 0 22px;
+  padding: 28px 0 18px;
 }
 
 .demo-hero {
@@ -143,8 +157,15 @@ textarea {
 .hero-copy h1 {
   max-width: 720px;
   margin: 0;
-  font-size: 64px;
-  line-height: 0.98;
+  font-size: 56px;
+  line-height: 1;
+}
+
+.outcome-band {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+  gap: 24px;
+  align-items: center;
 }
 
 .hero-copy p {
@@ -3951,6 +3972,16 @@ pre {
     font-size: 12px;
     text-align: center;
     white-space: normal;
+  }
+
+  .public-nav .nav-cta:not(.brand-mark) {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: white;
+  }
+
+  .outcome-band {
+    grid-template-columns: 1fr;
   }
 
   .panel,

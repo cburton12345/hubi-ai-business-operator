@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
-import { getManagedVideoAccessConfiguration } from "@/lib/providers/video-adapters";
+import {
+  fetchManagedVideoContent,
+  getManagedVideoAccessConfiguration
+} from "@/lib/providers/video-adapters";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export const dynamic = "force-dynamic";
@@ -45,17 +48,11 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "The rendered video is not available." }, { status: 404 });
   }
 
-  const providerResponse = await fetch(
-    `https://api.openai.com/v1/videos/${encodeURIComponent(providerJobId)}/content`,
-    {
-      headers: { Authorization: `Bearer ${configuration.apiKey}` },
-      cache: "no-store"
-    }
-  );
-  if (!providerResponse.ok || !providerResponse.body) {
+  const providerResponse = await fetchManagedVideoContent(job.provider_key, providerJobId);
+  if (!providerResponse || !providerResponse.ok || !providerResponse.body) {
     return NextResponse.json(
       { ok: false, error: "The provider could not return this rendered video." },
-      { status: providerResponse.status === 404 ? 404 : 502 }
+      { status: providerResponse?.status === 404 ? 404 : 502 }
     );
   }
 

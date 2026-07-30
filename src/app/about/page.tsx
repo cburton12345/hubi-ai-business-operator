@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "About Ferocity",
@@ -14,17 +15,7 @@ export default function AboutPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/business-health-score">Free Grader</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
         <section className="public-hero">
           <p className="eyebrow">About Ferocity</p>
           <h1>Built for owners who are tired of being the whole back office.</h1>

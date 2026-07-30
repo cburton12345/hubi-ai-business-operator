@@ -16,6 +16,7 @@ import {
   Sparkles,
   Target
 } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Ferocity Growth System | Free Business Audit",
@@ -97,16 +98,7 @@ export default function GrowthSystemPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="hero-command">
           <div className="hero-copy">

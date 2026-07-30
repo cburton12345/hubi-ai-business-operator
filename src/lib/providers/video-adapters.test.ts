@@ -17,6 +17,9 @@ vi.mock("@/lib/env", () => ({ env: mocked.env }));
 
 import {
   getManagedVideoConfiguration,
+  getVideoGenerationProvider,
+  listVideoGenerationProviders,
+  normalizeVideoDuration,
   OpenAiVideoAdapter
 } from "@/lib/providers/video-adapters";
 
@@ -30,7 +33,11 @@ const context = {
 describe("OpenAI video adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    mocked.env.VIDEO_PROVIDER = "openai";
+    mocked.env.VIDEO_API_KEY = "video-key";
+    mocked.env.VIDEO_MODEL = "sora-2";
     mocked.env.VIDEO_RENDERING_ENABLED = "true";
+    mocked.env.VIDEO_PROVIDER_COST_CENTS_PER_SECOND = "10";
     mocked.env.VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND = "18";
   });
 
@@ -79,5 +86,32 @@ describe("OpenAI video adapter", () => {
     );
     const result = await new OpenAiVideoAdapter().getVideo(context, "video_123");
     expect(result).toEqual({ ok: true, data: { status: "completed" } });
+  });
+});
+
+describe("provider-independent video routing", () => {
+  it("registers Google Veo without replacing the existing OpenAI adapter", () => {
+    expect(listVideoGenerationProviders()).toEqual([
+      { providerKey: "openai_video", displayName: "OpenAI Video" },
+      { providerKey: "google_veo", displayName: "Google Veo" }
+    ]);
+    expect(getVideoGenerationProvider("openai")?.providerKey).toBe("openai_video");
+    expect(getVideoGenerationProvider("veo")?.providerKey).toBe("google_veo");
+  });
+
+  it("uses Veo-supported durations and the selected provider's cost configuration", () => {
+    mocked.env.VIDEO_PROVIDER = "google_veo";
+    mocked.env.VIDEO_MODEL = "veo-3.1-lite-generate-preview";
+    mocked.env.VIDEO_PROVIDER_COST_CENTS_PER_SECOND = "5";
+    mocked.env.VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND = "15";
+
+    expect(getManagedVideoConfiguration()).toMatchObject({
+      providerKey: "google_veo",
+      model: "veo-3.1-lite-generate-preview",
+      providerCostCentsPerSecond: 5,
+      customerPriceCentsPerSecond: 15
+    });
+    expect(normalizeVideoDuration("google_veo", 5)).toBe(6);
+    expect(normalizeVideoDuration("google_veo", 30)).toBe(8);
   });
 });
