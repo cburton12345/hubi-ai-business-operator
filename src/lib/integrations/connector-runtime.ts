@@ -2,6 +2,7 @@ export type ConnectorExecutionMode = "executable_adapter" | "native_fallback" | 
 
 const executableAdapters = new Set([
   "email_provider",
+  "facebook",
   "marketplacepro",
   "premium_video_rendering",
   "resend_shared",

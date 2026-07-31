@@ -3,8 +3,10 @@ import { connectorCanBeMarkedReady, connectorExecutionMode } from "./connector-r
 
 describe("connector runtime truthfulness", () => {
   it("recognizes executable adapters", () => {
+    expect(connectorExecutionMode("facebook")).toBe("executable_adapter");
     expect(connectorExecutionMode("twilio")).toBe("executable_adapter");
     expect(connectorExecutionMode("voice_ai")).toBe("executable_adapter");
+    expect(connectorCanBeMarkedReady("facebook")).toBe(true);
   });
 
   it("recognizes a useful native path without claiming provider sync", () => {
