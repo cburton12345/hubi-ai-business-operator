@@ -142,10 +142,10 @@ export default async function WorkspaceOnboardingPage() {
           </label>
           <label>
             Approval mode
-            <select name="approvalMode" defaultValue="manual">
-              <option value="manual">Manual approval</option>
+            <select name="approvalMode" defaultValue="low_risk_auto">
+              <option value="low_risk_auto">Let Ferocity handle low-risk routine work (Recommended)</option>
+              <option value="manual">Ask before important actions</option>
               <option value="recommend_only">Recommend only</option>
-              <option value="low_risk_auto">Low-risk drafts allowed</option>
             </select>
           </label>
           <label>

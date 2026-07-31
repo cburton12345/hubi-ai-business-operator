@@ -127,7 +127,7 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
       values (
         $1, $2, 'Capture qualified leads for owner review.', 'Complete guided setup before publishing.',
         'Review requests remain draft-only until approved.', 'Follow-up remains review-first until approved.',
-        'Clear, direct, helpful, and professional.', 'manual'
+        'Clear, direct, helpful, and professional.', 'low_risk_auto'
       )
       on conflict (brand_id) do nothing
       `,
@@ -203,6 +203,55 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
         updated_at = now()
     `,
     [tenantId, input.planKey]
+  );
+
+  await queryPostgres(
+    `
+    update public.workspace_feature_entitlements
+    set metadata_json = metadata_json || jsonb_build_object(
+          'approvalMode', 'enabled',
+          'overagePolicy', case
+            when feature_key in ('ai_generation', 'website_import', 'media_library', 'construction_job_health', 'growth_attribution', 'follow_up_recovery')
+              then 'allow'
+            else 'allow_with_review'
+          end,
+          'autonomyDefault', 'trusted_autopilot'
+        ),
+        updated_at = now()
+    where tenant_id = $1
+      and feature_key = any($2::text[])
+    `,
+    [
+      tenantId,
+      [
+        "ai_generation",
+        "website_import",
+        "seo_autopilot",
+        "ai_search_visibility",
+        "content_studio",
+        "media_library",
+        "authority_engine",
+        "construction_job_health",
+        "growth_attribution",
+        "follow_up_recovery"
+      ]
+    ]
+  );
+
+  await queryPostgres(
+    `
+    update public.ai_agent_workflows
+    set run_mode = 'auto_allowed',
+        output_policy_json = output_policy_json || jsonb_build_object(
+          'mode', 'auto_allowed',
+          'customerSendsControlledSeparately', true,
+          'publicPublishingControlledSeparately', true,
+          'financialAuthorityControlledSeparately', true
+        ),
+        updated_at = now()
+    where tenant_id = $1 and status <> 'archived'
+    `,
+    [tenantId]
   );
 
   if (!existingMembership?.rows[0]) {

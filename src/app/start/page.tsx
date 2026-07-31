@@ -190,10 +190,10 @@ export default async function StartPage({
             </fieldset>
             <label>
               How much should Ferocity do at first?
-              <select name="autonomyMode" defaultValue="approval_first">
-                <option value="recommend_only">Just recommend the next steps</option>
+              <select name="autonomyMode" defaultValue="low_risk_auto">
+                <option value="low_risk_auto">Handle safe repeat work after setup (Recommended)</option>
                 <option value="approval_first">Prepare the work, ask before anything important</option>
-                <option value="low_risk_auto">Handle safe repeat work after setup</option>
+                <option value="recommend_only">Just recommend the next steps</option>
                 <option value="not_sure">Help me choose</option>
               </select>
             </label>

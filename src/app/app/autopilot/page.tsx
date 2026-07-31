@@ -104,6 +104,12 @@ export default async function AutopilotPage() {
   ];
   const modeCards = [
     {
+      preset: "hands_free",
+      title: "Hands-Free",
+      detail: "Ferocity may send routine consented follow-ups, request reviews, keep calendars synchronized, and publish through channels you separately connect and authorize. Spending, payments, voice calls, premium video, and consequential decisions remain protected.",
+      button: "Use Hands-Free"
+    },
+    {
       preset: "owner_shield",
       title: "Owner Shield",
       detail: "Ferocity watches leads, follow-up, reviews, payments, and daily risk. Normal work goes into the daily brief. Urgent money or customer issues can push you.",
@@ -197,7 +203,7 @@ export default async function AutopilotPage() {
           </button>
         </form>
         <details className="subtle-panel section-actions">
-          <summary>Choose a more cautious or specialized mode</summary>
+          <summary>Choose broader authority or a more cautious mode</summary>
           <div className="grid section-actions">
             {modeCards.map((mode) => (
               <form action={applyAutopilotPresetAction} className="panel span-4" key={mode.preset}>

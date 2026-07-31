@@ -148,7 +148,7 @@ export async function applyAutopilotPresetAction(formData: FormData) {
   const actor = await requirePermission("tenant:manage");
   const parsed = z
     .object({
-      preset: z.enum(["trusted_autopilot", "owner_shield", "growth_engine", "manual_first"])
+      preset: z.enum(["trusted_autopilot", "hands_free", "owner_shield", "growth_engine", "manual_first"])
     })
     .safeParse({
       preset: formData.get("preset")
@@ -175,6 +175,30 @@ export async function applyAutopilotPresetAction(formData: FormData) {
         { featureKey: "sms_send", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
         { featureKey: "review_requests", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
         { featureKey: "publishing_queue", mode: "review_required", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "payment_collection", mode: "review_required", usageLimit: null, overagePolicy: "block" }
+      ]
+    },
+    hands_free: {
+      label: "Hands-Free",
+      controls: [
+        { featureKey: "ai_generation", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "website_import", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "seo_autopilot", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "ai_search_visibility", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "content_studio", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "media_library", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "authority_engine", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "construction_job_health", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "growth_attribution", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "follow_up_recovery", mode: "enabled", usageLimit: null, overagePolicy: "allow" },
+        { featureKey: "email_send", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "sms_send", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "review_requests", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "calendar_sync", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "hosted_growth_pages", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "publishing_queue", mode: "enabled", usageLimit: null, overagePolicy: "allow_with_review" },
+        { featureKey: "ai_video_generation", mode: "review_required", usageLimit: null, overagePolicy: "block" },
+        { featureKey: "voice_ai", mode: "review_required", usageLimit: null, overagePolicy: "block" },
         { featureKey: "payment_collection", mode: "review_required", usageLimit: null, overagePolicy: "block" }
       ]
     },
@@ -230,7 +254,7 @@ export async function applyAutopilotPresetAction(formData: FormData) {
   }
 
   const workflowMode =
-    parsed.data.preset === "trusted_autopilot"
+    parsed.data.preset === "trusted_autopilot" || parsed.data.preset === "hands_free"
       ? "auto_allowed"
       : parsed.data.preset === "manual_first"
         ? "draft_only"

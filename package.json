@@ -14,6 +14,7 @@
     "provider:check": "node scripts/provider-readiness.mjs",
     "provider:reconcile": "node scripts/reconcile-configured-providers.mjs",
     "provider:lanes:smoke": "node scripts/provider-lanes-smoke.mjs",
+    "retell:configure": "node scripts/configure-ferocity-retell.mjs",
     "stripe:live:smoke": "node scripts/stripe-live-readiness-smoke.mjs",
     "readiness": "npm run prod:check && npm run provider:check && npm run provider:lanes:smoke",
     "customer:path:smoke": "node scripts/customer-path-smoke.mjs",
