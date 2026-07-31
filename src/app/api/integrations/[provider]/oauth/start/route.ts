@@ -104,7 +104,12 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   );
   authorizeUrl.searchParams.set("redirect_uri", String(env[config.redirectUriEnv]));
   authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));
+  if (config.configurationIdEnv) {
+    authorizeUrl.searchParams.set("config_id", String(env[config.configurationIdEnv]));
+  }
+  if (config.sendScopes !== false) {
+    authorizeUrl.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));
+  }
   authorizeUrl.searchParams.set("state", state);
   Object.entries(config.query).forEach(([key, value]) => authorizeUrl.searchParams.set(key, value));
 

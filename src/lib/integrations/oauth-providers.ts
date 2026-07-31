@@ -11,7 +11,9 @@ export type OAuthProviderConfig = {
   redirectUriEnv: EnvKey;
   clientSecretEnv?: EnvKey;
   extraRequiredEnv?: EnvKey[];
+  configurationIdEnv?: EnvKey;
   scopes: string[];
+  sendScopes?: boolean;
   scopeSeparator?: string;
   query: Record<string, string>;
   liveActionRule: string;
@@ -71,8 +73,10 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     clientIdEnv: "META_APP_ID",
     clientSecretEnv: "META_APP_SECRET",
     redirectUriEnv: "META_OAUTH_REDIRECT_URI",
+    configurationIdEnv: "META_BUSINESS_LOGIN_CONFIG_ID",
     scopes: ["pages_read_engagement", "pages_show_list", "business_management", "ads_read"],
-    query: {},
+    sendScopes: false,
+    query: { override_default_response_type: "true" },
     liveActionRule: "Read and draft first. Page publishing, replies, ads, and spend require approval."
   },
   tiktok: {
@@ -129,7 +133,11 @@ export function getOAuthProviderConfig(provider: string) {
 }
 
 export function getOAuthRequiredEnv(config: OAuthProviderConfig): EnvKey[] {
-  return [config.clientIdEnv, config.clientSecretEnv, config.redirectUriEnv, ...(config.extraRequiredEnv ?? [])].filter(
-    (key): key is EnvKey => Boolean(key)
-  );
+  return [
+    config.clientIdEnv,
+    config.clientSecretEnv,
+    config.redirectUriEnv,
+    config.configurationIdEnv,
+    ...(config.extraRequiredEnv ?? [])
+  ].filter((key): key is EnvKey => Boolean(key));
 }

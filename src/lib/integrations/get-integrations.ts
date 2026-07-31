@@ -167,7 +167,7 @@ export const plannedConnections = [
     provider: "facebook",
     displayName: "Facebook / Meta",
     notes: "Social and ad drafts are available now. Live publishing, replies, and ad spend require the connected Meta account, approved permissions, and workspace approval rules.",
-    envVars: ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI"],
+    envVars: ["META_APP_ID", "META_APP_SECRET", "META_OAUTH_REDIRECT_URI", "META_BUSINESS_LOGIN_CONFIG_ID"],
     setupItems: ["Create Meta app", "Request pages and ads permissions", "Configure redirect URL", "Keep publishing disabled until reviewed"],
     callbackPath: "/api/integrations/meta/oauth/callback",
     riskLevel: "high",

@@ -88,6 +88,7 @@ Redirect:
 - `META_APP_ID`
 - `META_APP_SECRET`
 - `META_OAUTH_REDIRECT_URI`
+- `META_BUSINESS_LOGIN_CONFIG_ID`
 
 ## Premium Video Rendering
 

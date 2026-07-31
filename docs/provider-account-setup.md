@@ -64,6 +64,7 @@ Use one Google Cloud project if possible.
   - `META_APP_ID`
   - `META_APP_SECRET`
   - `META_OAUTH_REDIRECT_URI=https://ferocity.live/api/integrations/meta/oauth/callback`
+  - `META_BUSINESS_LOGIN_CONFIG_ID`
 - First safe use: page/ad reporting and draft preparation.
 - Promo check: Meta ad credits are usually account-specific or invitation-specific. Check Business Manager billing and account notifications before spend.
 - Do not enable: page posting, replies, campaign creation, or ad spend without approval gates.
