@@ -15,7 +15,7 @@ export default function PrivacyPage() {
         <section className="panel">
           <p className="eyebrow">Privacy</p>
           <h1>Privacy Policy</h1>
-          <p className="muted">Last updated: May 26, 2026</p>
+          <p className="muted">Last updated: July 30, 2026</p>
           <h2>Information Ferocity handles</h2>
           <p>
             Ferocity stores workspace, brand, lead, customer, job, estimate, invoice, message, review, marketing, integration, and activity records that users choose to manage in the platform.
@@ -31,6 +31,10 @@ export default function PrivacyPage() {
           <h2>AI and automation</h2>
           <p>
             AI features are intended to prepare summaries, suggested replies, content drafts, next actions, and operational insights. Live sending, publishing, syncing, or spending requires the configured provider, permissions, and approval controls.
+          </p>
+          <h2>Disconnecting providers and deleting data</h2>
+          <p>
+            Workspace owners can disconnect an external provider from Ferocity at any time. To request deletion of provider data or a Ferocity workspace, email ferocityflow@outlook.com from the address associated with the workspace and include the business name and the provider to disconnect. Ferocity will verify the requester&apos;s authority, revoke or remove stored provider credentials, and delete the requested provider data subject to legal, fraud-prevention, security, and financial record-retention requirements.
           </p>
           <h2>Contact</h2>
           <p>Questions can be sent to ferocityflow@outlook.com.</p>

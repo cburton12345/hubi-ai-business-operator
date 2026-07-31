@@ -67,11 +67,11 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
   facebook: {
     provider: "facebook",
     label: "Facebook / Meta",
-    authorizeUrl: "https://www.facebook.com/v20.0/dialog/oauth",
+    authorizeUrl: "https://www.facebook.com/v25.0/dialog/oauth",
     clientIdEnv: "META_APP_ID",
     clientSecretEnv: "META_APP_SECRET",
     redirectUriEnv: "META_OAUTH_REDIRECT_URI",
-    scopes: ["pages_read_engagement", "pages_manage_posts", "ads_read"],
+    scopes: ["pages_read_engagement", "pages_show_list", "business_management", "ads_read"],
     query: {},
     liveActionRule: "Read and draft first. Page publishing, replies, ads, and spend require approval."
   },
