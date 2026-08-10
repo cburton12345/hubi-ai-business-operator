@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
+import { resilientFetch } from "@/lib/http/resilient-fetch";
 
 export type StripeConnectedAccount = {
   id: string;
@@ -7,6 +8,7 @@ export type StripeConnectedAccount = {
   payouts_enabled?: boolean;
   details_submitted?: boolean;
   requirements?: { currently_due?: string[]; past_due?: string[]; disabled_reason?: string | null };
+  capability_statuses?: { card_payments?: string; payouts?: string };
 };
 
 export type StripeV2ConnectedAccount = {
@@ -68,11 +70,11 @@ export async function stripeFormRequest<T>(
   if (options.connectedAccountId) headers["Stripe-Account"] = options.connectedAccountId;
   if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
-  const response = await fetch(`https://api.stripe.com/v1/${path.replace(/^\/+/, "")}`, {
+  const response = await resilientFetch(`https://api.stripe.com/v1/${path.replace(/^\/+/, "")}`, {
     method: "POST",
     headers,
     body
-  });
+  }, { timeoutMs: 15_000, retries: options.idempotencyKey ? 1 : 0, retryUnsafeMethods: Boolean(options.idempotencyKey) });
 
   const text = await response.text();
   const json = text ? (JSON.parse(text) as T & { error?: { message?: string } }) : ({} as T & { error?: { message?: string } });
@@ -85,12 +87,12 @@ export async function stripeFormRequest<T>(
 export async function stripeGetRequest<T>(path: string) {
   if (!env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is not configured.");
 
-  const response = await fetch(`https://api.stripe.com/v1/${path.replace(/^\/+/, "")}`, {
+  const response = await resilientFetch(`https://api.stripe.com/v1/${path.replace(/^\/+/, "")}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`
     }
-  });
+  }, { timeoutMs: 12_000, retries: 2 });
 
   const text = await response.text();
   const json = text ? (JSON.parse(text) as T & { error?: { message?: string } }) : ({} as T & { error?: { message?: string } });
@@ -115,10 +117,14 @@ export async function stripeV2JsonRequest<T>(
   };
   if (options.body) headers["Content-Type"] = "application/json";
   if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
-  const response = await fetch(`https://api.stripe.com/v2/${path.replace(/^\/+/, "")}`, {
+  const response = await resilientFetch(`https://api.stripe.com/v2/${path.replace(/^\/+/, "")}`, {
     method: options.method ?? (options.body ? "POST" : "GET"),
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined
+  }, {
+    timeoutMs: 15_000,
+    retries: options.idempotencyKey || !options.body ? 1 : 0,
+    retryUnsafeMethods: Boolean(options.idempotencyKey)
   });
   const text = await response.text();
   const json = text ? (JSON.parse(text) as T & { error?: { message?: string } }) : ({} as T & { error?: { message?: string } });
@@ -158,6 +164,10 @@ export function normalizeStripeV2Account(account: StripeV2ConnectedAccount): Str
           : capabilityRestricted
             ? "capability.restricted"
             : null
+    },
+    capability_statuses: {
+      card_payments: cardStatus,
+      payouts: payoutStatus
     }
   };
 }
@@ -200,10 +210,18 @@ export async function getManagedPaymentAccount(tenantId: string): Promise<Manage
 }
 
 export function stripeConnectStatus(account: StripeConnectedAccount) {
+  if (account.requirements?.currently_due?.length || account.requirements?.past_due?.length) return "requirements_due";
+  if (account.charges_enabled && account.payouts_enabled) return "connected";
+  const cardStatus = account.capability_statuses?.card_payments;
+  const payoutStatus = account.capability_statuses?.payouts;
+  if (
+    account.details_submitted &&
+    (cardStatus === "pending" || payoutStatus === "pending") &&
+    cardStatus !== "unsupported" &&
+    payoutStatus !== "unsupported"
+  ) return "pending_review";
   if (account.requirements?.disabled_reason) return "restricted";
   if (!account.details_submitted) return "onboarding_started";
-  if (account.charges_enabled && account.payouts_enabled) return "connected";
-  if (account.requirements?.currently_due?.length || account.requirements?.past_due?.length) return "requirements_due";
   return "onboarding_started";
 }
 

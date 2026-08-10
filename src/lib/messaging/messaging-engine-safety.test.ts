@@ -32,6 +32,10 @@ import { sendMessage } from "./messaging-engine";
 const safeAccount = {
   id: "account-1",
   ownership_mode: "customer_owned",
+  connection_status: "active",
+  credentials_status: "configured",
+  live_sending_enabled: true,
+  outbound_enabled: true,
   emergency_paused: false,
   monthly_unit_cap: 1000,
   monthly_cost_cap_cents: 10000,
@@ -137,6 +141,17 @@ describe("messaging engine provider-risk safeguards", () => {
     expect(providerSendMock).not.toHaveBeenCalled();
   });
 
+  it("does not treat stored BYO credentials as permission for live sending", async () => {
+    installQueryResponses({ ...safeAccount, connection_status: "configured", live_sending_enabled: false });
+    const result = await sendMessage(authorizedInput());
+
+    expect(result).toMatchObject({
+      ok: false,
+      metadata: { blockedBy: "account_not_active" }
+    });
+    expect(providerSendMock).not.toHaveBeenCalled();
+  });
+
   it("blocks recipient over-contact without pausing other tenants", async () => {
     installQueryResponses({ ...safeAccount, recipient_hourly_sends: 5 });
     const result = await sendMessage(authorizedInput());
@@ -178,4 +193,3 @@ describe("messaging engine provider-risk safeguards", () => {
     expect(providerSendMock).toHaveBeenCalledOnce();
   });
 });
-

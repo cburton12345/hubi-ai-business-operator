@@ -428,9 +428,19 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       },
       {
         label: "Managed ad spend controls",
-        status: managedAdBudgets.some((budget) => budget.liveSpendEnabled && budget.approvedByCustomer && budget.dailyCapCents > 0 && budget.monthlyCapCents > 0) ? "ready" : "needs_setup",
+        status: managedAdBudgets.some(
+          (budget) =>
+            budget.liveSpendEnabled &&
+            budget.approvedByCustomer &&
+            budget.providerFundingReady &&
+            budget.availableCents > 0 &&
+            budget.dailyCapCents > 0 &&
+            budget.monthlyCapCents > 0
+        )
+          ? "ready"
+          : "needs_setup",
         detail: managedAdBudgets.length
-          ? "Managed ad lanes are tracked separately from customer-owned ad accounts. Ferocity-managed spend still requires prepaid budget, customer approval, and hard caps."
+          ? "Managed ad lanes are separate from customer-owned accounts. Live spend requires customer prepaid funds, approval, automatic safety boundaries, an emergency stop, and a current linked provider balance. Customers may add or remove their own tighter limits."
           : "Apply the managed ad spend controls migration before offering Ferocity-managed ad buying."
       },
       {

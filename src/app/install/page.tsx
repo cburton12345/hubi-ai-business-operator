@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Download, MonitorSmartphone, Smartphone, Star } from "lucide-react";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Install Ferocity App",
@@ -89,6 +90,7 @@ export default function InstallPage() {
             <Link className="button secondary-button" href="/login?next=/app/notifications">Sign in to enable</Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

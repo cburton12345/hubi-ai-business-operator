@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { BellRing, CalendarClock, FileCheck2, MailCheck, Megaphone, MessageSquareReply, ShieldCheck, Star } from "lucide-react";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "AI Business Automations for Leads, Reviews, Estimates, and Invoices",
@@ -149,6 +150,7 @@ export default function AutomationsPage() {
             </Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

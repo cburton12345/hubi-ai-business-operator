@@ -92,7 +92,24 @@ const emptyAnalysis = (websiteUrl: string): PublicWebsiteAnalysis => ({
   formCount: 0,
   ctaHints: [],
   trustHints: [],
-  mediaHints: []
+  mediaHints: [],
+  platformHints: [],
+  searchVisibility: {
+    score: 0,
+    status: "needs_attention",
+    robotsUrl: "",
+    robotsStatus: null,
+    sitemapUrl: "",
+    sitemapStatus: null,
+    sitemapUrlCount: 0,
+    canonicalUrl: null,
+    metaRobots: null,
+    xRobotsTag: null,
+    googlebotAllowed: true,
+    bingbotAllowed: true,
+    checks: [],
+    scannedAt: new Date(0).toISOString()
+  }
 });
 
 function finding(input: WebsiteGradeFinding) {
@@ -184,6 +201,27 @@ function addWebsiteFindings(findings: WebsiteGradeFinding[], analysis: PublicWeb
           status: "missing",
           title: "Search basics need cleanup",
           body: "The page is missing a clear title or meta description, which makes it harder for searchers to understand the offer.",
+          points: 0
+        })
+  );
+
+  findings.push(
+    analysis.searchVisibility.status === "indexable"
+      ? finding({
+          area: "SEO",
+          status: "good",
+          title: "Search visibility is technically ready",
+          body: "The homepage permits indexing, Googlebot and Bingbot are allowed, the sitemap is reachable, and the canonical address matches.",
+          points: 0
+        })
+      : finding({
+          area: "SEO",
+          status: analysis.searchVisibility.status === "blocked" ? "missing" : "needs_work",
+          title: analysis.searchVisibility.status === "blocked" ? "Search visibility is blocked" : "Search visibility needs attention",
+          body: analysis.searchVisibility.checks
+            .filter((check) => check.status !== "good")
+            .map((check) => check.detail)
+            .join(" "),
           points: 0
         })
   );
@@ -562,7 +600,8 @@ export async function gradeWebsiteUrl(
     scannedWebsite ? scoreClassCount(analysis.serviceHints.length, 2) : 40,
     serviceAreaCoverage,
     scannedWebsite ? (analysis.metaDescription ? 82 : 45) : 40,
-    scannedWebsite ? scoreClassCount(analysis.internalLinks.length, 6) : 40
+    scannedWebsite ? scoreClassCount(analysis.internalLinks.length, 6) : 40,
+    scannedWebsite ? analysis.searchVisibility.score : 40
   ]);
   const gbpScore = average([hasGoogleBusinessProfile(input) ? 72 : 35, hasGoogleBusinessProfile(input) && input.marketingChannels?.includes("google_maps") ? 82 : 45]);
   const reputationScore = average([scoreFromStatus(reviewStatus), scannedWebsite ? scoreClassCount(analysis.trustHints.length + analysis.mediaHints.length, 2) : 45]);

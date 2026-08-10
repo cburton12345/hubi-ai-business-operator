@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resilientFetch } from "@/lib/http/resilient-fetch";
 
 const tiktokTokenResponseSchema = z.object({
   access_token: z.string().min(1),
@@ -43,13 +44,25 @@ async function readJson(response: Response) {
   return body;
 }
 
+async function readTokenSet(response: Response) {
+  const body = await readJson(response);
+  if (body && typeof body === "object") {
+    const record = body as Record<string, unknown>;
+    const providerError = record.error_description ?? record.message ?? record.error;
+    if (!record.access_token && providerError) {
+      throw new Error(`TikTok OAuth: ${String(providerError)}`);
+    }
+  }
+  return tiktokTokenResponseSchema.parse(body);
+}
+
 export async function exchangeTikTokAuthorizationCode(input: {
   clientKey: string;
   clientSecret: string;
   code: string;
   redirectUri: string;
 }) {
-  const response = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+  const response = await resilientFetch("https://open.tiktokapis.com/v2/oauth/token/", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -60,18 +73,39 @@ export async function exchangeTikTokAuthorizationCode(input: {
       redirect_uri: input.redirectUri
     }),
     cache: "no-store"
-  });
+  }, { timeoutMs: 12_000 });
 
-  return tiktokTokenResponseSchema.parse(await readJson(response));
+  return readTokenSet(response);
+}
+
+export async function refreshTikTokAccessToken(input: {
+  clientKey: string;
+  clientSecret: string;
+  refreshToken: string;
+  fetchImpl?: typeof fetch;
+}) {
+  const response = await (input.fetchImpl ?? fetch)("https://open.tiktokapis.com/v2/oauth/token/", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_key: input.clientKey,
+      client_secret: input.clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: input.refreshToken
+    }),
+    cache: "no-store"
+  });
+  return readTokenSet(response);
 }
 
 export async function fetchTikTokProfile(accessToken: string) {
-  const response = await fetch(
+  const response = await resilientFetch(
     "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name",
     {
       headers: { authorization: `Bearer ${accessToken}` },
       cache: "no-store"
-    }
+    },
+    { timeoutMs: 10_000, retries: 1 }
   );
   const parsed = tiktokUserResponseSchema.parse(await readJson(response));
   if (parsed.error?.code && parsed.error.code !== "ok") {

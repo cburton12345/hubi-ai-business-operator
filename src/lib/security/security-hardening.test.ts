@@ -10,7 +10,8 @@ describe("security hardening invariants", () => {
   it("never treats an unauthenticated request as emergency admin", () => {
     const permissionSource = source("src/lib/auth/require-permission.ts");
     expect(permissionSource).toContain("if (!session && !adminSession)");
-    expect(permissionSource).toContain('redirect("/login")');
+    expect(permissionSource).toContain('redirect(absoluteAppUrl("/login"))');
+    expect(permissionSource).toContain('import { absoluteAppUrl } from "@/lib/http/safe-redirect"');
     expect(permissionSource).toContain("if (adminSession)");
   });
 
@@ -36,6 +37,7 @@ describe("security hardening invariants", () => {
     expect(connectSource).toContain('dashboard: "full"');
     expect(connectSource).toContain('fees_collector: "stripe"');
     expect(connectSource).toContain('losses_collector: "stripe"');
+    expect(connectSource).not.toContain("stripe_balance");
     expect(connectSource).toContain('stripeAccountApiVersion: "v2"');
     expect(connectSource).not.toContain('type: "express"');
     expect(connectWebhookSource).toContain('"v2.core.account[requirements].updated"');

@@ -1,4 +1,5 @@
 import { getEmailProvider } from "@/lib/email/provider-registry";
+import { normalizeResendDeliveryReceipt } from "@/lib/messaging/message-health";
 import type { MessagingCapability, MessagingProvider, MessagingSendInput, MessagingSendResult } from "../types";
 
 const capabilities: MessagingCapability[] = ["email", "inbound_webhook", "delivery_webhook"];
@@ -15,6 +16,9 @@ export const resendEmailProvider: MessagingProvider = {
   getStatus() {
     return getEmailProvider("resend_email")?.getStatus()
       ?? { ready: false, missing: ["resend_email"], status: "not_configured" };
+  },
+  normalizeDeliveryReceipt(input) {
+    return normalizeResendDeliveryReceipt(input);
   },
   async sendMessage(input: MessagingSendInput): Promise<MessagingSendResult> {
     const provider = getEmailProvider("resend_email");

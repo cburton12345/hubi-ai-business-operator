@@ -3,13 +3,14 @@ import { redirect } from "next/navigation";
 import { EmployeeWorkday } from "@/components/employee/EmployeeWorkday";
 import { hasAdminSession } from "@/lib/auth/admin-session";
 import { getCurrentAppSession } from "@/lib/auth/session";
+import { absoluteAppUrl } from "@/lib/http/safe-redirect";
 
 export const dynamic = "force-dynamic";
 
 export default async function EmployeeAppPage() {
   const [adminSession, appSession] = await Promise.all([hasAdminSession(), getCurrentAppSession()]);
   if (!adminSession && !appSession) {
-    redirect("/login?next=/employee");
+    redirect(absoluteAppUrl("/login?next=/employee"));
   }
 
   return (

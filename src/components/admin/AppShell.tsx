@@ -45,7 +45,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   ]);
   const releaseId = (process.env.DEPLOY_ID || process.env.COMMIT_REF || "local").slice(0, 8);
   const currentPath = requestHeaders.get("x-ferocity-app-path")?.split("?")[0] ?? "/app";
-  const showCompactCommand = currentPath !== "/app";
+  const showCompactCommand = currentPath !== "/app" && currentPath !== "/app/ferocity";
   const isPlatformAdmin = !session || session.platformRole === "super_admin";
 
   return (
@@ -70,7 +70,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 <section>
                   <p>Start & AI</p>
                   <Link href="/app/welcome">Start Here</Link>
-                  <Link href="/app/ai-workforce">Ask Ferocity</Link>
+                  <Link href="/app/ferocity">Ask Ferocity</Link>
                   <Link href="/app/office-manager">AI Office Manager</Link>
                   <Link href="/app/managed-operator">Managed Operator</Link>
                   <Link href="/app/build-system">Guided Setup</Link>
@@ -182,17 +182,21 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         {showCompactCommand ? (
           <section className="operator-command-strip panel" aria-label="Ferocity command shortcuts">
+            <div className="operator-command-title">
+              <strong>Ask Ferocity anything. Tell it what to do.</strong>
+              <span>Use normal words—Ferocity finds the right people, AI employees, and tools.</span>
+            </div>
             <form className="operator-command-input" action={executeAiWorkforceCommandSimpleAction}>
-              <label className="sr-only" htmlFor="ferocity-command">Tell Ferocity what to do</label>
+              <label className="sr-only" htmlFor="ferocity-command">Ask Ferocity a question or tell it what to do</label>
               <input
                 id="ferocity-command"
                 name="command"
-                placeholder="Tell Ferocity what to do: log hours, add a receipt, make a video ad, follow up, plan tomorrow..."
+                placeholder="Ask a question or describe what you want done..."
                 minLength={8}
                 maxLength={2000}
                 required
               />
-              <button className="mini-button" type="submit">Ask Ferocity</button>
+              <button className="mini-button" type="submit">Send to Ferocity</button>
             </form>
             <div className="operator-command-chips">
               {commandShortcuts.map(([label, href]) => (

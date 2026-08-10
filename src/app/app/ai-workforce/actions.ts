@@ -652,5 +652,5 @@ export async function executeAiWorkforceCommandSimpleAction(formData: FormData) 
   if (classifyAiCommandIntent(command) === "read_only") {
     redirect(readOnlyRouteForCommand(command));
   }
-  redirect(`/app/ai-workforce?command=${encodeURIComponent(command)}`);
+  redirect(`/app/ferocity?command=${encodeURIComponent(command)}`);
 }

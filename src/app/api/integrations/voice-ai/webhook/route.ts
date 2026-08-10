@@ -298,7 +298,11 @@ export async function POST(request: NextRequest) {
           when jsonb_array_length(excluded.action_items_json) > 0 then excluded.action_items_json
           else public.receptionist_calls.action_items_json
         end,
-        follow_up_status = excluded.follow_up_status,
+        follow_up_status = case
+          when public.receptionist_calls.follow_up_status in ('created', 'completed')
+            then public.receptionist_calls.follow_up_status
+          else excluded.follow_up_status
+        end,
         usage_units = greatest(public.receptionist_calls.usage_units, excluded.usage_units),
         updated_at = now()
     returning id
@@ -332,6 +336,24 @@ export async function POST(request: NextRequest) {
   let callDecision: Awaited<ReturnType<typeof safelyEvaluateAndStoreCallManagementDecision>> = null;
 
   if (callId) {
+    await queryPostgres(
+      `
+      update public.receptionist_calls c
+      set follow_up_status = 'created', updated_at = now()
+      where c.id = $1
+        and exists (
+          select 1
+          from public.operator_schedule_events e
+          where e.tenant_id = c.tenant_id
+            and e.event_type = 'callback'
+            and e.status = 'scheduled'
+            and e.metadata_json->>'source' = 'retell_sales_callback_tool'
+            and e.metadata_json->>'providerCallId' = c.provider_call_id
+        )
+      `,
+      [callId]
+    );
+
     await queryPostgres(
       `
       insert into public.receptionist_call_events (

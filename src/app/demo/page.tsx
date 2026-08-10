@@ -1,36 +1,33 @@
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
+import { FeaturedDemoMedia } from "@/components/public/FeaturedDemoMedia";
+import { BusinessLoopDemo } from "@/components/public/BusinessLoopDemo";
+import { PublicCommandStory } from "@/components/public/PublicCommandStory";
+import { getPublicCopy } from "@/lib/public-site/featured-demo";
+
+export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Ferocity Demo | See the AI Business Loop",
+  title: "Ferocity Demo | Watch the AI Business Operating System Think",
   description:
-    "See how Ferocity helps businesses set up growth, catch leads, follow up, run work, collect money, request reviews, and keep owners focused.",
+    "See one shared Business Brain coordinate people, AI employees, departments, and providers from the first conversation through future growth.",
   alternates: { canonical: "/demo" }
 };
 
-const sampleActions = [
-  ["Reply", "6 leads need a response today"],
-  ["Show up", "Booked jobs get confirmation and timed reminder work"],
-  ["Follow up", "$28k in estimates are waiting"],
-  ["Collect", "$9.8k is overdue"],
-  ["Protect jobs", "Schedule, cost, material, change, and safety risks are explained"],
-  ["Grow", "Finished work becomes proof, content, reviews, and legitimate link opportunities"]
+const loop = ["Remember", "Watch", "Understand", "Decide", "Coordinate", "Act", "Verify", "Continue"];
+
+const intelligence = [
+  ["Reputation and retention", "Reviews, referrals, memberships, reminders, reactivation, and customer-lifetime campaigns."],
+  ["Search and content", "SEO, GEO, legitimate authority building, content, images, and video generation grounded in real proof."],
+  ["Campaign intelligence", "Offers, creative variants, channel plans, managed budgets, and source-to-paid-revenue measurement."],
+  ["Owner intelligence", "The Business Brain, Daily Briefs, reports, profit leaks, risks, approvals, and operational monitoring."]
 ];
 
-const loop = ["AI setup", "Create demand", "Qualify", "Book", "Improve show-up", "Win and do the work", "Get paid", "Feed revenue back"];
-
-const engines = [
-  ["Find demand", "Audit gaps, SEO targets, reviews, community questions, ads, and offers."],
-  ["Qualify leads", "Use forms, questions, source tracking, urgency, service area, and fit."],
-  ["Move work forward", "Prepare replies, booked-appointment reminders, estimates, jobs, invoices, and daily tasks."],
-  ["Protect the job", "Explain schedule, cost, material, change, safety, and missing-information risks with evidence."],
-  ["Improve the system", "Feed booked work, sales, payments, proof, reviews, and real referral revenue back into growth decisions."]
-];
-
-export default function DemoPage() {
+export default async function DemoPage() {
+  const hero = await getPublicCopy("demo_hero");
   return (
     <main className="public-page">
       <section className="public-shell">
@@ -38,52 +35,59 @@ export default function DemoPage() {
 
         <section className="hero-command demo-hero">
           <div className="hero-copy">
-            <p className="eyebrow">Product demo</p>
-            <h1>See the business machine Ferocity helps build.</h1>
-            <p>
-              First Ferocity helps set up the growth and operations loop. Then it watches the queue,
-              prepares the next move, and keeps important decisions in front of the owner.
-            </p>
+            <p className="eyebrow">{hero.eyebrow}</p>
+            <h1>{hero.headline}</h1>
+            <p>{hero.body}</p>
             <div className="button-row">
-              <Link className="button" href="/subscribe?plan=growth">
-                Start Ferocity <ArrowRight size={16} />
+              <Link className="button" href={hero.ctaHref}>
+                {hero.ctaLabel} <ArrowRight size={16} />
               </Link>
-              <Link className="button secondary-button" href="/pricing">Compare plans</Link>
+              <Link className="button secondary-button" href={hero.secondaryCtaHref}>{hero.secondaryCtaLabel}</Link>
             </div>
           </div>
 
           <div className="video-frame">
-            <Image
-              className="walkthrough-animation"
-              src="/ferocity-demo-walkthrough.svg"
-              width={1280}
-              height={720}
-              priority
-              unoptimized
-              alt="Animated Ferocity walkthrough showing the work queue, approvals, and business loop"
-            />
+            <FeaturedDemoMedia priority fallbackAlt="Animated Ferocity walkthrough showing the business noticing, coordinating, acting, and learning" />
           </div>
         </section>
 
-        <section className="public-grid">
-          {sampleActions.map(([action, detail]) => (
-            <article className="panel value-card" key={action}>
-              <CheckCircle2 size={18} />
-              <h2>{action}</h2>
-              <p className="muted">{detail}</p>
-            </article>
-          ))}
+        <BusinessLoopDemo />
+
+        <PublicCommandStory />
+
+        <section className="demo-positioning">
+          <div>
+            <p className="eyebrow">What makes it intelligent</p>
+            <h2>The entire workforce shares the thread when work crosses departments.</h2>
+            <p>
+              Ferocity gives people and AI employees the same business context. It remembers what happened, watches for meaningful change, explains why it matters, determines what should happen next, completes authorized work, verifies the result, and continues watching.
+            </p>
+          </div>
+          <div className="demo-proof-flow">
+            {loop.map((item) => <span key={item}>{item}</span>)}
+          </div>
+        </section>
+
+        <section className="feature-split">
+          <article className="panel">
+            <h2>The customer conversation, connected</h2>
+            <p className="muted">
+              AI phone answering and voice conversations, website chat, texting, email, lead capture, qualification, long-term follow-up, estimating, booking, reminders, and customer history all share context.
+            </p>
+          </article>
+          <article className="panel">
+            <h2>The business operation, connected</h2>
+            <p className="muted">
+              Customers, jobs, dispatch, scheduling, crews, field work, inventory, purchasing, documents, invoicing, online payments, collections, job profit, and accounting records move as one operation.
+            </p>
+          </article>
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">The engine</p>
-          <h2>The demo starts before the lead comes in.</h2>
-          <p className="muted">
-            Ferocity can help set up the website path, lead source tracking, follow-up rules, proof capture,
-            reviews, SEO/GEO drafts, and campaign ideas before traffic arrives.
-          </p>
+          <p className="eyebrow">The outcome feeds the next decision</p>
+          <h2>Completed work makes the entire business smarter.</h2>
           <div className="value-ladder">
-            {engines.map(([title, body]) => (
+            {intelligence.map(([title, body]) => (
               <div key={title}>
                 <strong>{title}</strong>
                 <p>{body}</p>
@@ -94,50 +98,35 @@ export default function DemoPage() {
 
         <section className="demo-positioning">
           <div>
-            <p className="eyebrow">How it works</p>
-            <h2>Ferocity connects the full loop, then keeps it moving.</h2>
+            <p className="eyebrow">Authority without bottlenecks</p>
+            <h2>The right work goes to the right worker—human or AI.</h2>
             <p>
-              You choose what AI can help with and what it may do automatically. Ferocity keeps protected actions controlled,
-              tracks what happened, and shows what needs attention next. The result is fewer missed steps
-              and a business that feels more under control.
+              Assign work to a person, choose Draft only or Ask first for an AI employee, or authorize routine work to run automatically. Ferocity follows consent, spending, publishing, payment, and provider rules—and keeps every action traceable.
             </p>
           </div>
-          <div className="demo-proof-flow">
-            {loop.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
+          <div className="notice-card">
+            <CheckCircle2 size={20} />
+            <div>
+              <strong>Only real decisions interrupt the work</strong>
+              <p className="muted">Exceptions, uncertainty, protected actions, and choices outside the rules go to the person with the authority and context to decide.</p>
+            </div>
           </div>
-        </section>
-
-        <section className="feature-split">
-          <article className="panel">
-            <h2>What can be automated</h2>
-            <p className="muted">
-              Lead replies, callbacks, old-lead recovery, appointment reminders, estimates, material lists, invoice reminders,
-              review requests, Job Health checks, link monitoring, SEO/GEO drafts, ad and video briefs, and daily work lists.
-            </p>
-          </article>
-          <article className="panel">
-            <h2>What stays controlled</h2>
-            <p className="muted">
-              Customer sends, public posts, payment requests, ad spend, publishing, and connected accounts follow the authority and spending rules you choose.
-            </p>
-          </article>
         </section>
 
         <section className="final-cta">
           <div>
-            <p className="eyebrow">Try it</p>
-            <h2>Start with the free grader.</h2>
-            <p>It shows what Ferocity can take off your plate first.</p>
+            <p className="eyebrow">Start with one problem</p>
+            <h2>Give your people and AI workforce one system for what happens next.</h2>
+            <p>Start with the free grader, compare the operating levels, or connect the organization now.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/business-health-score">
-              Grade my business free <ArrowRight size={16} />
+            <Link className="button" href="/subscribe">
+              Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/pricing">Compare plans</Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

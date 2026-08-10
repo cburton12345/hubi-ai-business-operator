@@ -2,6 +2,11 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
+import {
+  evaluateSearchVisibility,
+  sitemapCandidates,
+  type SearchVisibilityHealth
+} from "@/lib/sites/search-visibility-health";
 
 type WebsiteImportRow = {
   id: string;
@@ -35,6 +40,8 @@ export type PublicWebsiteAnalysis = NonNullable<WebsiteImportProcessResult["extr
   ctaHints: string[];
   trustHints: string[];
   mediaHints: string[];
+  platformHints: string[];
+  searchVisibility: SearchVisibilityHealth;
 };
 
 const PRIVATE_IPV4_PATTERNS = [
@@ -250,6 +257,19 @@ function extractMediaHints(html: string) {
   return hints;
 }
 
+export function detectWebsitePlatformHints(html: string, finalUrl: string) {
+  const source = html.toLowerCase();
+  const hostname = new URL(finalUrl).hostname.toLowerCase();
+  const hints: string[] = [];
+  if (source.includes("wp-content/") || source.includes("wp-includes/") || /generator[^>]+wordpress/i.test(html)) hints.push("wordpress");
+  if (source.includes("wixstatic.com") || source.includes("wix-code") || hostname.endsWith(".wixsite.com")) hints.push("wix");
+  if (source.includes("cdn.shopify.com") || source.includes("shopify.theme") || hostname.endsWith(".myshopify.com")) hints.push("shopify");
+  if (source.includes("static1.squarespace.com") || /generator[^>]+squarespace/i.test(html)) hints.push("squarespace");
+  if (source.includes("webflow.css") || source.includes("data-wf-page") || hostname.endsWith(".webflow.io")) hints.push("webflow");
+  if (source.includes("secureservercdn.net") || source.includes("godaddy.com/websites")) hints.push("godaddy");
+  return unique(hints, 4);
+}
+
 export async function analyzePublicWebsiteUrl(websiteUrl: string): Promise<
   | { ok: true; analysis: PublicWebsiteAnalysis }
   | { ok: false; message: string }
@@ -260,13 +280,63 @@ export async function analyzePublicWebsiteUrl(websiteUrl: string): Promise<
   }
 
   try {
-    const { html, finalUrl, contentType } = await fetchPublicHtml(url);
+    const { html, finalUrl, contentType, xRobotsTag } = await fetchPublicHtml(url);
     const text = stripTags(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " "));
     const title = extractTag(html, "title");
     const metaDescription = extractMetaDescription(html);
     const headings = extractHeadings(html);
     const links = extractLinks(html, new URL(finalUrl));
     const formCount = (html.match(/<form\b/gi) ?? []).length;
+    const origin = new URL(finalUrl).origin;
+    const robotsUrl = new URL("/robots.txt", origin);
+    let robotsStatus: number | null = null;
+    let robotsText: string | null = null;
+    try {
+      const robots = await fetchPublicResource(robotsUrl, {
+        accept: "text/plain,*/*;q=0.5",
+        maxChars: 200000,
+        requireOk: false
+      });
+      robotsStatus = robots.status;
+      robotsText = robots.status >= 200 && robots.status < 400 ? robots.text : null;
+    } catch {
+      // The main page scan remains useful when the optional robots check fails.
+    }
+
+    const sitemapUrls = sitemapCandidates(robotsText, origin);
+    let sitemapUrl = sitemapUrls[0];
+    let sitemapStatus: number | null = null;
+    let sitemapText: string | null = null;
+    for (const candidate of sitemapUrls.slice(0, 5)) {
+      try {
+        const sitemap = await fetchPublicResource(new URL(candidate), {
+          accept: "application/xml,text/xml,*/*;q=0.5",
+          maxChars: 500000,
+          requireOk: false
+        });
+        sitemapUrl = sitemap.finalUrl;
+        sitemapStatus = sitemap.status;
+        if (sitemap.status >= 200 && sitemap.status < 400) {
+          sitemapText = sitemap.text;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const searchVisibility = evaluateSearchVisibility({
+      pageUrl: finalUrl,
+      html,
+      xRobotsTag,
+      robotsUrl: robotsUrl.toString(),
+      robotsStatus,
+      robotsText,
+      sitemapUrl,
+      sitemapStatus,
+      sitemapText
+    });
+
     return {
       ok: true,
       analysis: {
@@ -284,7 +354,9 @@ export async function analyzePublicWebsiteUrl(websiteUrl: string): Promise<
         formCount,
         ctaHints: extractCtaHints(text, links),
         trustHints: extractTrustHints(text),
-        mediaHints: extractMediaHints(html)
+        mediaHints: extractMediaHints(html),
+        platformHints: detectWebsitePlatformHints(html, finalUrl),
+        searchVisibility
       }
     };
   } catch (error) {
@@ -292,7 +364,13 @@ export async function analyzePublicWebsiteUrl(websiteUrl: string): Promise<
   }
 }
 
-async function fetchPublicHtml(url: URL) {
+type PublicResourceOptions = {
+  accept: string;
+  maxChars: number;
+  requireOk: boolean;
+};
+
+async function fetchPublicResource(url: URL, options: PublicResourceOptions) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
@@ -305,7 +383,7 @@ async function fetchPublicHtml(url: URL) {
         redirect: "manual",
         signal: controller.signal,
         headers: {
-          accept: "text/html,application/xhtml+xml",
+          accept: options.accept,
           "user-agent": "FerocityWebsiteImport/1.0 (+https://ferocity.live)"
         }
       });
@@ -320,15 +398,12 @@ async function fetchPublicHtml(url: URL) {
     if (!response) throw new Error("Website did not return a response.");
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (!response.ok) {
+    if (options.requireOk && !response.ok) {
       throw new Error(`Website returned ${response.status}.`);
-    }
-    if (contentType && !contentType.toLowerCase().includes("text/html")) {
-      throw new Error("Website did not return HTML.");
     }
 
     const contentLength = Number(response.headers.get("content-length") ?? 0);
-    if (Number.isFinite(contentLength) && contentLength > 1_000_000) {
+    if (Number.isFinite(contentLength) && contentLength > options.maxChars * 3) {
       throw new Error("Website response is too large to import safely.");
     }
 
@@ -336,17 +411,35 @@ async function fetchPublicHtml(url: URL) {
     if (!reader) throw new Error("Website returned an empty response.");
     const decoder = new TextDecoder();
     let html = "";
-    while (html.length < 300000) {
+    while (html.length < options.maxChars) {
       const chunk = await reader.read();
       if (chunk.done) break;
       html += decoder.decode(chunk.value, { stream: true });
     }
     await reader.cancel();
-    html = html.slice(0, 300000);
-    return { html, finalUrl: currentUrl.toString(), contentType };
+    html = html.slice(0, options.maxChars);
+    return {
+      text: html,
+      finalUrl: currentUrl.toString(),
+      contentType,
+      status: response.status,
+      xRobotsTag: response.headers.get("x-robots-tag")
+    };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchPublicHtml(url: URL) {
+  const resource = await fetchPublicResource(url, {
+    accept: "text/html,application/xhtml+xml",
+    maxChars: 300000,
+    requireOk: true
+  });
+  if (resource.contentType && !resource.contentType.toLowerCase().includes("text/html")) {
+    throw new Error("Website did not return HTML.");
+  }
+  return { ...resource, html: resource.text };
 }
 
 async function markImportFailed(workspaceId: string, importId: string, message: string) {

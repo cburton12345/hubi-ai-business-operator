@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 function loadLocalEnv() {
+  if (process.env.SKIP_LOCAL_ENV === "1") return;
   if (!fs.existsSync(".env.local")) return;
   for (const rawLine of fs.readFileSync(".env.local", "utf8").split(/\r?\n/)) {
     const line = rawLine.trim();

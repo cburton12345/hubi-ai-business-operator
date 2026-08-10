@@ -4,6 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const sourceRoot = path.join(root, "src");
 const appRoot = path.join(sourceRoot, "app");
+const publicRoot = path.join(root, "public");
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -38,12 +39,18 @@ const routePatterns = walk(appRoot)
 const componentFiles = walk(sourceRoot).filter((file) => /\.(?:tsx|jsx)$/.test(file));
 const brokenLinks = [];
 
+function isPublicAsset(pathname) {
+  const relative = decodeURIComponent(pathname).replace(/^\/+/, "");
+  const target = path.resolve(publicRoot, relative);
+  return target.startsWith(`${path.resolve(publicRoot)}${path.sep}`) && fs.existsSync(target) && fs.statSync(target).isFile();
+}
+
 for (const file of componentFiles) {
   const source = fs.readFileSync(file, "utf8");
   for (const match of source.matchAll(/href\s*=\s*["'](\/(?!\/)[^"']*)["']/g)) {
     const href = match[1];
     const pathname = href.split(/[?#]/)[0] || "/";
-    if (!routePatterns.some((pattern) => pattern.test(pathname))) {
+    if (!routePatterns.some((pattern) => pattern.test(pathname)) && !isPublicAsset(pathname)) {
       brokenLinks.push(`${path.relative(root, file)} -> ${href}`);
     }
   }
@@ -62,6 +69,18 @@ const menuTargets = [...menuSource.matchAll(/<Link\b[^>]*href="([^"]+)"/g)].map(
 const repeatedMenuTargets = [...new Set(menuTargets.filter((target, index) => menuTargets.indexOf(target) !== index))];
 
 const failures = [];
+const demoFallbackPath = path.join(publicRoot, "ferocity-demo-walkthrough.svg");
+const featuredDemoComponent = fs.readFileSync(
+  path.join(sourceRoot, "components", "public", "FeaturedDemoMedia.tsx"),
+  "utf8"
+);
+
+if (!fs.existsSync(demoFallbackPath) || fs.statSync(demoFallbackPath).size < 1_000) {
+  failures.push("The safe built-in Ferocity demo fallback is missing or unexpectedly small.");
+}
+if (!featuredDemoComponent.includes("/ferocity-demo-walkthrough.svg")) {
+  failures.push("FeaturedDemoMedia does not reference the safe built-in demo fallback.");
+}
 if (brokenLinks.length > 0) {
   failures.push(`Invalid literal internal links:\n- ${brokenLinks.join("\n- ")}`);
 }
@@ -78,5 +97,5 @@ if (failures.length > 0) {
 
 console.log(
   `UI quality check passed: ${routePatterns.length} routes, ${componentFiles.length} component files, ` +
-  `${menuTargets.length} unique All Tools destinations.`
+  `${menuTargets.length} unique All Tools destinations, and the public demo fallback gate.`
 );

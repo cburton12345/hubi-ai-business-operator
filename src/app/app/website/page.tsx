@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { CheckCircle2, Code2, ExternalLink, FileText, MousePointerClick, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Code2, ExternalLink, FileText, MousePointerClick, Search, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getPublicFormRows } from "@/lib/forms/get-public-forms";
 import { getHostedGrowthPages } from "@/lib/sites/hosted-growth-pages";
+import { getWebsiteConnections, websiteConnectionModeLabel, websiteConnectionStatusLabel } from "@/lib/sites/website-connections";
+import { disconnectWebsiteConnectionAction, saveWebsiteConnectionAction, verifyWebsiteConnectionAction } from "./actions";
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
 
@@ -11,7 +13,7 @@ function firstFormUrl(publicKey: string) {
 }
 
 export default async function WebsiteConnectorPage() {
-  const [forms, hostedPages] = await Promise.all([getPublicFormRows(), getHostedGrowthPages()]);
+  const [forms, hostedPages, websiteConnections] = await Promise.all([getPublicFormRows(), getHostedGrowthPages(), getWebsiteConnections()]);
   const activeForms = forms.filter((form) => form.active);
   const primaryForm = activeForms[0] ?? forms[0];
   const formUrl = primaryForm ? firstFormUrl(primaryForm.publicKey) : `${appUrl}/forms/YOUR_FORM_KEY`;
@@ -69,6 +71,108 @@ export default async function WebsiteConnectorPage() {
           Marketing
         </Link>
       </div>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Website ownership</p>
+            <h2>Tell Ferocity which website it is working with.</h2>
+            <p className="muted">
+              A domain is the address, not the integration. Save the site once, choose what Ferocity may do, and connect a website platform only when publishing is needed.
+            </p>
+          </div>
+          <span className="pill">{websiteConnections.length} connected</span>
+        </div>
+        <form action={saveWebsiteConnectionAction} className="grid section-actions">
+          <label className="field span-4">
+            <span>Website URL</span>
+            <input name="websiteUrl" type="url" placeholder="https://example.com" required />
+          </label>
+          <label className="field span-3">
+            <span>Business or site name</span>
+            <input name="displayName" placeholder="Main company website" />
+          </label>
+          <label className="field span-3">
+            <span>How should it connect?</span>
+            <select name="connectionMode" defaultValue="public_scan">
+              <option value="public_scan">Read-only scan</option>
+              <option value="install_snippet">Lead/chat snippet</option>
+              <option value="ferocity_hosted">Ferocity-hosted pages</option>
+              <option value="cms_oauth">Website platform login</option>
+              <option value="api_key">Website API key</option>
+              <option value="git_deploy">Git or deploy workflow</option>
+              <option value="signed_webhook">Signed webhook</option>
+              <option value="manual_export">Manual export</option>
+            </select>
+          </label>
+          <label className="field span-2">
+            <span>Platform (optional)</span>
+            <input name="providerKey" placeholder="WordPress" />
+          </label>
+          <div className="span-12">
+            <button className="button" type="submit">Save website</button>
+          </div>
+        </form>
+      </section>
+
+      {websiteConnections.length ? (
+        <section className="panel section-actions">
+          <h2>Saved Websites</h2>
+          <ul className="list">
+            {websiteConnections.map((connection) => (
+              <li className="list-row" key={connection.id}>
+                <div>
+                  <h3>{connection.displayName || connection.normalizedOrigin}</h3>
+                  <p className="muted">{websiteConnectionModeLabel(connection.connectionMode)} · {websiteConnectionStatusLabel(connection.status)}</p>
+                  {connection.providerKey ? <p className="muted">Likely platform: {connection.providerKey.replaceAll("_", " ")}</p> : null}
+                  <p className="muted">{connection.capabilities.length ? connection.capabilities.join(" · ") : "No live capabilities claimed"}</p>
+                  {connection.lastError ? <p className="muted">Last check: {connection.lastError}</p> : null}
+                  {connection.searchVisibility ? (
+                    <div className="panel section-actions">
+                      <div className="list-row flush-row">
+                        <div>
+                          <h4><Search size={16} /> Search visibility: {connection.searchVisibility.score}/100</h4>
+                          <p className="muted">
+                            {connection.searchVisibility.status === "indexable"
+                              ? "Search engines can discover and understand this website."
+                              : connection.searchVisibility.status === "blocked"
+                                ? "A setting is preventing this website from appearing normally in search."
+                                : "The website is visible, but one or more search basics need attention."}
+                          </p>
+                        </div>
+                        <span className="pill">
+                          {connection.searchVisibility.status === "indexable" ? "Ready" : connection.searchVisibility.status === "blocked" ? "Blocked" : "Needs attention"}
+                        </span>
+                      </div>
+                      <ul className="plain-list">
+                        {connection.searchVisibility.checks.map((check) => (
+                          <li key={check.key}>
+                            <strong>{check.status === "good" ? "Ready" : check.status === "blocked" ? "Blocked" : "Review"}: {check.label}</strong>
+                            <span className="muted"> — {check.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="muted">Run Check site to confirm crawler access, indexing permission, sitemap, and canonical address.</p>
+                  )}
+                </div>
+                <div className="button-row">
+                  <a className="mini-button" href={connection.websiteUrl} target="_blank" rel="noreferrer">Open</a>
+                  <form action={verifyWebsiteConnectionAction}>
+                    <input type="hidden" name="connectionId" value={connection.id} />
+                    <button className="mini-button" type="submit">Check site</button>
+                  </form>
+                  <form action={disconnectWebsiteConnectionAction}>
+                    <input type="hidden" name="connectionId" value={connection.id} />
+                    <button className="mini-button" type="submit">Disconnect</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="panel section-actions">
         <div className="list-row flush-row">

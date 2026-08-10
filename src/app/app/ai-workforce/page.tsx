@@ -224,8 +224,8 @@ export default async function AiWorkforcePage({
   return (
     <QueuePageShell
       eyebrow="AI Workforce"
-      title="AI Workforce"
-      description="Tell Ferocity what outcome you want. It routes the request to the right AI helper, reads Business Info, prepares the work, and logs what happened."
+      title="Ask Ferocity"
+      description="Ask anything about the business or tell Ferocity what you want done. It routes the request to the right AI employees and systems, reads the Business Brain, prepares or completes authorized work, and logs what happened."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">

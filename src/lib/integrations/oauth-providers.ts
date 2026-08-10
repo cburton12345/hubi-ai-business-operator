@@ -17,9 +17,32 @@ export type OAuthProviderConfig = {
   scopeSeparator?: string;
   query: Record<string, string>;
   liveActionRule: string;
+  pkce?: boolean;
 };
 
 export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
+  google_calendar: {
+    provider: "google_calendar",
+    label: "Google Calendar",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
+    scopes: ["openid", "email", "https://www.googleapis.com/auth/calendar"],
+    query: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
+    liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
+  },
+  microsoft_calendar: {
+    provider: "microsoft_calendar",
+    label: "Microsoft Outlook Calendar",
+    authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    clientIdEnv: "MICROSOFT_CLIENT_ID",
+    clientSecretEnv: "MICROSOFT_CLIENT_SECRET",
+    redirectUriEnv: "MICROSOFT_OAUTH_REDIRECT_URI",
+    scopes: ["offline_access", "openid", "profile", "User.Read", "Calendars.ReadWrite"],
+    query: { response_mode: "query" },
+    liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
+  },
   google_business_profile: {
     provider: "google_business_profile",
     label: "Google Business Profile",
@@ -61,7 +84,6 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
     redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
-    extraRequiredEnv: ["GA4_PROPERTY_ID"],
     scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
     query: { access_type: "offline", prompt: "consent" },
     liveActionRule: "Read traffic and conversion reporting only. No site changes happen from analytics."
@@ -114,6 +136,23 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     scopes: ["offline_access", "https://ads.microsoft.com/msads.manage"],
     query: { response_mode: "query" },
     liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
+  },
+  jobber: {
+    provider: "jobber",
+    label: "Jobber",
+    authorizeUrl: "https://api.getjobber.com/api/oauth/authorize",
+    clientIdEnv: "JOBBER_CLIENT_ID",
+    clientSecretEnv: "JOBBER_CLIENT_SECRET",
+    redirectUriEnv: "JOBBER_OAUTH_REDIRECT_URI",
+    scopes: [
+      "clients:read", "requests:read", "quotes:read", "jobs:read", "scheduled_items:read",
+      "invoices:read", "payments:read", "users:read", "custom_fields:read", "tax_rates:read",
+      "expenses:read", "timesheets:read", "vehicles_equipment:read", "marketing:read"
+    ],
+    sendScopes: false,
+    pkce: true,
+    query: {},
+    liveActionRule: "Read the connected Jobber business for analysis. Ferocity never writes back until the owner enables a specific action."
   },
   yahoo_ads: {
     provider: "yahoo_ads",

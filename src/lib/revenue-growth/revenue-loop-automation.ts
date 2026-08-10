@@ -1,6 +1,8 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { scoreLeadsForTenant } from "@/lib/revenue-growth/score-leads";
 
 export type RevenueLoopAutomationResult = {
+  leadsScored: number;
   appointmentsSynced: number;
   remindersPrepared: number;
   followupEnrollmentsCreated: number;
@@ -13,6 +15,7 @@ function changedRows(result: { rowCount?: number | null } | null) {
 }
 
 export async function runRevenueLoopAutomationForTenant(tenantId: string): Promise<RevenueLoopAutomationResult> {
+  const leadScoring = await scoreLeadsForTenant(tenantId);
   const appointmentResult = await queryPostgres(
     `
     insert into public.revenue_appointments (
@@ -310,6 +313,7 @@ export async function runRevenueLoopAutomationForTenant(tenantId: string): Promi
   );
 
   return {
+    leadsScored: leadScoring.scored,
     appointmentsSynced: changedRows(appointmentResult),
     remindersPrepared: changedRows(reminderResult),
     followupEnrollmentsCreated: changedRows(enrollmentResult),

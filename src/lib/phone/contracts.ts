@@ -91,7 +91,7 @@ export type VoiceConversation = {
 export interface VoiceAgent {
   startConversation(
     context: ProviderContext,
-    input: { toNumber: string; fromNumber: string; assistantId: string }
+    input: { toNumber: string; fromNumber: string; assistantId: string; dynamicVariables?: Record<string, string> }
   ): Promise<ProviderResult<VoiceConversation>>;
   stopConversation(
     context: ProviderContext,

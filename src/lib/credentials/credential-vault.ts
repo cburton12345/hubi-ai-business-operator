@@ -18,10 +18,15 @@ export function hasCredentialEncryptionKey() {
   return (process.env.CREDENTIAL_ENCRYPTION_KEY?.trim().length ?? 0) >= 32;
 }
 
-function encryptionKey() {
-  const configured = process.env.CREDENTIAL_ENCRYPTION_KEY?.trim();
+function encryptionKey(configured = process.env.CREDENTIAL_ENCRYPTION_KEY?.trim()) {
   if (!configured || configured.length < 32) return null;
   return crypto.createHash("sha256").update(configured).digest();
+}
+
+function decryptionKeys() {
+  const current = encryptionKey();
+  const previous = encryptionKey(process.env.CREDENTIAL_ENCRYPTION_KEY_PREVIOUS?.trim());
+  return [current, previous].flatMap((key) => (key ? [key] : []));
 }
 
 export function previewSecret(secret: string) {
@@ -55,21 +60,21 @@ export function encryptSecret(secret: string): EncryptedSecretPayload | null {
 }
 
 export function decryptSecret(payload: StoredEncryptedSecret): string | null {
-  const key = encryptionKey();
-  if (!key) return null;
-
-  try {
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      key,
-      Buffer.from(payload.encryptionIv, "base64")
-    );
-    decipher.setAuthTag(Buffer.from(payload.encryptionTag, "base64"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(payload.encryptedSecret, "base64")),
-      decipher.final()
-    ]).toString("utf8");
-  } catch {
-    return null;
+  for (const key of decryptionKeys()) {
+    try {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-gcm",
+        key,
+        Buffer.from(payload.encryptionIv, "base64")
+      );
+      decipher.setAuthTag(Buffer.from(payload.encryptionTag, "base64"));
+      return Buffer.concat([
+        decipher.update(Buffer.from(payload.encryptedSecret, "base64")),
+        decipher.final()
+      ]).toString("utf8");
+    } catch {
+      // Continue to the previous key during a controlled rotation window.
+    }
   }
+  return null;
 }

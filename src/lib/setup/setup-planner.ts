@@ -498,7 +498,7 @@ function buildFollowUpQuestions(input: {
     questions.push("When is the right moment to ask for a review after a job or delivery?");
   }
   if (input.wantsAds) {
-    questions.push("What monthly ad budget limit should protect the workspace before paid channels go live?");
+    questions.push("Would you like a custom monthly advertising limit, or should Ferocity apply its automatic safeguards?");
   }
   if (input.isSoftware) {
     questions.push("What demo, trial, or sales call should a software lead be pushed toward?");

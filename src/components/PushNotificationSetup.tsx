@@ -119,7 +119,7 @@ export function PushNotificationSetup() {
         body: JSON.stringify({
           title: "Ferocity test",
           body: "Push notifications are connected to this workspace.",
-          url: "/app/attention-command"
+          url: "/app/ferocity"
         })
       });
       const result = await response.json();

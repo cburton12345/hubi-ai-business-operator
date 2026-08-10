@@ -18,6 +18,7 @@ export type JsonGenerationInput<T> = {
   system: string;
   user: string;
   fallback: T;
+  timeoutMs?: number;
 };
 
 export async function generateJsonWithProvider<T extends Record<string, unknown>>(input: JsonGenerationInput<T>): Promise<T> {

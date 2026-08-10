@@ -20,6 +20,10 @@ export default async function EmployeeVisitPage({ params }: { params: Promise<{ 
   const dashboard = await getFieldVisit(visitId);
   if (!dashboard) notFound();
   const { visit } = dashboard;
+  const onMyWayMessage = `Hi ${visit.customerName.split(" ")[0] || "there"}, ${dashboard.workerName || "your service professional"} is on the way for ${visit.title}. We will see you soon.`;
+  const onMyWayHref = visit.customerPhone
+    ? `sms:${visit.customerPhone}?body=${encodeURIComponent(onMyWayMessage)}`
+    : null;
   const readiness = visit.completionReadiness as { blockers?: Array<{ title?: string; detail?: string }> };
 
   return (
@@ -41,6 +45,7 @@ export default async function EmployeeVisitPage({ params }: { params: Promise<{ 
           <p className="muted">{dateTime(visit.scheduledStart)} – {dateTime(visit.scheduledEnd)}</p>
           <div className="button-row">
             {visit.customerPhone ? <a className="button" href={`tel:${visit.customerPhone}`}>Call customer</a> : null}
+            {onMyWayHref ? <a className="button" href={onMyWayHref}>Text I&apos;m on my way</a> : null}
             {visit.address ? <a className="button secondary-button" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.address)}`} target="_blank" rel="noreferrer">Directions</a> : null}
             {visit.estimateId ? <Link className="button secondary-button" href={`/app/service/estimates/${visit.estimateId}`}>Scope / estimate</Link> : null}
           </div>

@@ -78,6 +78,35 @@ describe("Vapi voice adapter", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("passes Ferocity call context through Vapi's provider-specific variable envelope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ id: "call-id", status: "queued" }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await new VapiVoiceAdapter().startOutboundCall(
+      {
+        tenantId: "11111111-1111-4111-8111-111111111111",
+        correlationId: "context-test",
+        idempotencyKey: "context-test",
+        liveActionsEnabled: true
+      },
+      {
+        toNumber: "+15550001111",
+        fromNumber: "+15550002222",
+        assistantId: "assistant-id",
+        dynamicVariables: { business_name: "North Ridge Roofing", call_purpose: "estimate follow-up" }
+      }
+    );
+    expect(result.ok).toBe(true);
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body));
+    expect(body.assistantOverrides.variableValues).toEqual({
+      business_name: "North Ridge Roofing",
+      call_purpose: "estimate follow-up"
+    });
+  });
+
   it("authenticates and normalizes a Vapi end-of-call webhook", async () => {
     const adapter = new VapiVoiceAdapter();
     const result = await adapter.normalizeWebhook(
@@ -139,6 +168,41 @@ describe("Vapi voice adapter", () => {
 });
 
 describe("Retell voice adapter", () => {
+  it("injects verified briefing context as call-scoped string variables", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ call_id: "owner-call-id", call_status: "registered" }),
+      { status: 201, headers: { "Content-Type": "application/json" } }
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = new RetellVoiceAdapter();
+    const result = await adapter.startOutboundCall(
+      {
+        tenantId: "11111111-1111-4111-8111-111111111111",
+        correlationId: "owner-briefing-test",
+        idempotencyKey: "owner-briefing-test",
+        liveActionsEnabled: true
+      },
+      {
+        toNumber: "+15550001111",
+        fromNumber: "+15550003333",
+        assistantId: "private-owner-agent",
+        dynamicVariables: {
+          owner_name: "Chris",
+          briefing_type: "urgent decision",
+          briefing_context: "{\"items\":[]}"
+        }
+      }
+    );
+    expect(result.ok).toBe(true);
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body));
+    expect(body.retell_llm_dynamic_variables).toEqual({
+      owner_name: "Chris",
+      briefing_type: "urgent decision",
+      briefing_context: "{\"items\":[]}"
+    });
+  });
+
   it("verifies Retell's timestamped raw-body HMAC and rejects stale signatures", () => {
     const body = JSON.stringify({ event: "call_started", call: { call_id: "call-id" } });
     const timestamp = Date.now().toString();

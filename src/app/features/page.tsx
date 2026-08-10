@@ -12,6 +12,7 @@ import {
   Wrench
 } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Ferocity Features | AI Workforce for Business",
@@ -105,7 +106,7 @@ export default function FeaturesPage() {
             follow-up, jobs, payments, reviews, SEO, ads, video briefs, team visibility, and daily decisions.
           </p>
           <div className="button-row">
-            <Link className="button" href="/subscribe?plan=growth">
+            <Link className="button" href="/subscribe">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/demo">See it work</Link>
@@ -189,12 +190,13 @@ export default function FeaturesPage() {
             <p>Run the free grader, then choose the plan that fits the amount of help you want.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/subscribe?plan=growth">
+            <Link className="button" href="/subscribe">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/pricing">Compare plans</Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

@@ -5,6 +5,7 @@ import { getCallManagementDashboard } from "@/lib/office-manager/get-call-manage
 import { getOfficeManagerDashboard } from "@/lib/office-manager/get-office-manager-dashboard";
 import { prepareOfficeManagerAction } from "./actions";
 import { CallManagementPanel } from "./CallManagementPanel";
+import { OwnerBriefingSetup } from "./OwnerBriefingSetup";
 import { VoiceAgentCustomizationForm } from "./VoiceAgentCustomizationForm";
 
 function label(value: string) {
@@ -16,6 +17,7 @@ export default async function OfficeManagerPage() {
     getOfficeManagerDashboard(),
     getCallManagementDashboard()
   ]);
+  const currentOwnerBriefing = dashboard.ownerBriefings.find((item) => item.isCurrentUser);
 
   return (
     <QueuePageShell
@@ -82,6 +84,36 @@ export default async function OfficeManagerPage() {
         )}
       </section>
 
+      <OwnerBriefingSetup
+        defaults={currentOwnerBriefing ? {
+          status: currentOwnerBriefing.status,
+          destinationPreview: currentOwnerBriefing.destinationPreview,
+          destinationVerified: currentOwnerBriefing.destinationVerified,
+          voiceEnabled: currentOwnerBriefing.channels.includes("voice"),
+          smsEnabled: currentOwnerBriefing.channels.includes("text"),
+          maximumCallsPerDay: currentOwnerBriefing.maximumCallsPerDay,
+          timezone: currentOwnerBriefing.timezone,
+          quietHoursStart: currentOwnerBriefing.quietHoursStart,
+          quietHoursEnd: currentOwnerBriefing.quietHoursEnd,
+          voicemailAllowed: currentOwnerBriefing.voicemailAllowed,
+          retryAllowed: currentOwnerBriefing.retryAllowed,
+          textSummaryAfterCall: currentOwnerBriefing.textSummaryAfterCall
+        } : {
+          status: "disabled",
+          destinationPreview: null,
+          destinationVerified: false,
+          voiceEnabled: true,
+          smsEnabled: true,
+          maximumCallsPerDay: 2,
+          timezone: dashboard.workspaceTimezone,
+          quietHoursStart: "21:00",
+          quietHoursEnd: "07:00",
+          voicemailAllowed: false,
+          retryAllowed: true,
+          textSummaryAfterCall: true
+        }}
+      />
+
       <section className="grid section-actions">
         <Metric icon={<Bot size={18} />} label="Office profiles" value={dashboard.metrics.profiles} />
         <Metric icon={<Headphones size={18} />} label="Channels" value={dashboard.metrics.channels} />
@@ -131,6 +163,31 @@ export default async function OfficeManagerPage() {
             status: `${label(row.status)} / ${label(row.customerSentiment)}`
           }))}
           empty="Phone, email, chat, SMS, owner command, and app sessions will appear here when connected."
+        />
+      </section>
+
+      <section className="grid section-actions">
+        <Panel
+          title="Owner Briefings"
+          rows={dashboard.ownerBriefings.map((row) => ({
+            id: row.id,
+            title: row.userName,
+            detail: row.channels.length
+              ? `${row.channels.join(", ")} / up to ${row.maximumCallsPerDay} proactive calls per day`
+              : "No briefing channels selected",
+            status: `${label(row.status)} / ${row.destinationVerified ? "verified" : "verification needed"}`
+          }))}
+          empty="Owner briefings stay off until an authorized user opts in and verifies a private destination."
+        />
+        <Panel
+          title="Decisions From Conversations"
+          rows={dashboard.conversationalActions.map((row) => ({
+            id: row.id,
+            title: label(row.actionType),
+            detail: row.instruction,
+            status: `${label(row.status)} / ${label(row.riskLevel)}`
+          }))}
+          empty="Authenticated owner decisions from voice, text, app, and email will appear here with their results."
         />
       </section>
 

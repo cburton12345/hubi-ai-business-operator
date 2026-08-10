@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { logAppError } from "@/lib/observability/log-error";
+import { isUsableProviderContactEmail } from "@/lib/payments/provider-contact-email";
 import {
   getManagedPaymentAccount,
   normalizeStripeV2Account,
@@ -15,7 +16,7 @@ import {
 export const dynamic = "force-dynamic";
 
 async function resolveContactEmail(tenantId: string, actorEmail: string) {
-  if (actorEmail.includes("@")) return actorEmail;
+  if (isUsableProviderContactEmail(actorEmail)) return actorEmail.trim();
   const result = await queryPostgres<{ email: string }>(
     `
     select u.email
@@ -25,21 +26,27 @@ async function resolveContactEmail(tenantId: string, actorEmail: string) {
       and tu.status = 'active'
       and u.email is not null
     order by case when tu.role = 'owner' then 0 else 1 end, tu.created_at
-    limit 1
+    limit 20
     `,
     [tenantId]
   );
-  const email = result?.rows[0]?.email;
-  if (!email?.includes("@")) {
+  const email = result?.rows.map((row) => row.email).find(isUsableProviderContactEmail);
+  if (!email) {
     throw new Error("A workspace owner email is required before Stripe Connect onboarding.");
   }
-  return email;
+  return email.trim();
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const actor = await requirePermission("tenant:manage");
   const tenantId = actor.workspace.id;
   const appUrl = env.FEROCITY_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
+  const formData = await request.formData().catch(() => null);
+  const country = String(formData?.get("country") ?? "").trim().toUpperCase();
+
+  if (country !== "US") {
+    return NextResponse.json({ ok: false, status: "unsupported_or_missing_country" }, { status: 400 });
+  }
 
   if (!env.STRIPE_SECRET_KEY) {
     return NextResponse.json({ ok: false, status: "missing_stripe_secret" }, { status: 501 });
@@ -69,18 +76,15 @@ export async function POST() {
             contact_email: contactEmail,
             display_name: actor.workspace.name,
             dashboard: "full",
+            identity: { country: country.toLowerCase() },
             configuration: {
               merchant: {
                 capabilities: {
-                  card_payments: { requested: true },
-                  stripe_balance: {
-                    payouts: { requested: true }
-                  }
+                  card_payments: { requested: true }
                 }
               }
             },
             defaults: {
-              currency: "usd",
               responsibilities: {
                 fees_collector: "stripe",
                 losses_collector: "stripe"

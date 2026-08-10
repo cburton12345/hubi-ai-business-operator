@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { runDueAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { ensureDefaultMonitorSetup } from "@/lib/ai-monitoring/get-ai-monitoring-center";
 import { syncLinkAuthorityForTenant, type LinkAuthoritySyncResult } from "@/lib/authority/sync-link-authority";
@@ -10,9 +11,13 @@ import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } f
 import { syncMaturedUsageChargesForTenant, type MaturedUsageSyncResult } from "@/lib/billing/sync-matured-usage-charges";
 import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-factory";
 import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
+import { evaluatePlatformCapacity } from "@/lib/observability/platform-capacity";
+import { safeLogAppError } from "@/lib/observability/log-error";
+import { syncGoldenBusinessLoopsForTenant, type GoldenLoopSyncResult } from "@/lib/business-loop/sync-golden-loop";
 
-export type BusinessAutomationRunResult = {
+export type BusinessAutomationCompletedResult = {
   ok: true;
+  skipped: false;
   tenantsChecked: number;
   actionQueueScans: ActionQueueScanResult[];
   revenueLoops: Array<{ tenantId: string } & RevenueLoopAutomationResult>;
@@ -21,19 +26,90 @@ export type BusinessAutomationRunResult = {
   readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
   usageBilling: Array<{ tenantId: string } & MaturedUsageSyncResult>;
   adapterFactory: Array<{ tenantId: string } & Awaited<ReturnType<typeof processAdapterFactoryQueueForTenant>>>;
+  goldenBusinessLoops: Array<{ tenantId: string } & GoldenLoopSyncResult>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   providerFunding: Awaited<ReturnType<typeof evaluateProviderFundingAlerts>>;
+  platformCapacity: Awaited<ReturnType<typeof evaluatePlatformCapacity>>;
+  tenantFailures: Array<{ tenantId: string; message: string }>;
   elapsedMs: number;
 };
+
+export type BusinessAutomationRunResult = BusinessAutomationCompletedResult | {
+  ok: true;
+  skipped: true;
+  skipReason: "already_running" | "lease_unavailable";
+  elapsedMs: number;
+};
+
+async function acquireAutomationLease(holderId: string) {
+  const result = await queryPostgres<{ holder_id: string }>(
+    `
+    insert into public.platform_runtime_leases (
+      lease_key, holder_id, leased_until, metadata_json
+    )
+    values ('business-automation', $1, now() + interval '18 minutes', '{"source":"scheduled_business_automation"}'::jsonb)
+    on conflict (lease_key) do update
+    set holder_id = excluded.holder_id,
+        leased_until = excluded.leased_until,
+        acquired_at = now(),
+        updated_at = now(),
+        metadata_json = excluded.metadata_json
+    where public.platform_runtime_leases.leased_until <= now()
+    returning holder_id
+    `,
+    [holderId]
+  );
+  if (!result) return "lease_unavailable" as const;
+  return result.rows[0]?.holder_id === holderId ? true : "already_running" as const;
+}
+
+async function releaseAutomationLease(holderId: string) {
+  await queryPostgres(
+    `delete from public.platform_runtime_leases where lease_key = 'business-automation' and holder_id = $1`,
+    [holderId]
+  );
+}
+
+async function cleanupExpiredRuntimeRows() {
+  await queryPostgres(
+    `
+    delete from public.public_request_rate_limits
+    where id in (
+      select id from public.public_request_rate_limits
+      where expires_at < now()
+      order by expires_at
+      limit 1000
+    )
+    `
+  );
+}
 
 async function getAutomationTenantIds(limit: number) {
   const result = await queryPostgres<{ id: string }>(
     `
-    select id
-    from public.tenants
-    where status in ('active', 'trial')
-    order by created_at asc
+    with due_actions as (
+      select tenant_id, min(coalesce(scheduled_for, created_at)) as oldest_due_at
+      from public.outbound_action_queue
+      where status in ('approved','queued')
+        and coalesce(scheduled_for, created_at) <= now()
+      group by tenant_id
+    ), last_runs as (
+      select tenant_id, max(occurred_at) as last_run_at
+      from public.operator_timeline_events
+      where event_type = 'business_automation_loop'
+      group by tenant_id
+    )
+    select t.id
+    from public.tenants t
+    left join due_actions due on due.tenant_id = t.id
+    left join last_runs last_run on last_run.tenant_id = t.id
+    where t.status in ('active', 'trial')
+    order by
+      case when due.tenant_id is not null then 0 else 1 end,
+      due.oldest_due_at nulls last,
+      last_run.last_run_at nulls first,
+      t.created_at asc
     limit $1
     `,
     [limit]
@@ -195,32 +271,60 @@ async function generateTenantDailyBrief(tenantId: string) {
   return { tenantId, status: "ready" as const };
 }
 
-export async function runBusinessAutomationLoop(input: { tenantLimit?: number; agentLimit?: number; tenantId?: string | null } = {}): Promise<BusinessAutomationRunResult> {
+function automationConcurrency(value: number | undefined) {
+  const configured = Number(value ?? process.env.AUTOMATION_TENANT_CONCURRENCY ?? 2);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(Math.floor(configured), 4)) : 2;
+}
+
+async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; agentLimit?: number; tenantId?: string | null; tenantConcurrency?: number } = {}): Promise<BusinessAutomationCompletedResult> {
   const startedAt = Date.now();
   const tenantIds = input.tenantId ? [input.tenantId] : await getAutomationTenantIds(input.tenantLimit ?? 100);
   const actionQueueScans: ActionQueueScanResult[] = [];
-  const revenueLoops: BusinessAutomationRunResult["revenueLoops"] = [];
-  const constructionHealth: BusinessAutomationRunResult["constructionHealth"] = [];
-  const linkAuthority: BusinessAutomationRunResult["linkAuthority"] = [];
-  const readyMessages: BusinessAutomationRunResult["readyMessages"] = [];
-  const usageBilling: BusinessAutomationRunResult["usageBilling"] = [];
-  const adapterFactory: BusinessAutomationRunResult["adapterFactory"] = [];
-  const dailyBriefs: BusinessAutomationRunResult["dailyBriefs"] = [];
+  const revenueLoops: BusinessAutomationCompletedResult["revenueLoops"] = [];
+  const constructionHealth: BusinessAutomationCompletedResult["constructionHealth"] = [];
+  const linkAuthority: BusinessAutomationCompletedResult["linkAuthority"] = [];
+  const readyMessages: BusinessAutomationCompletedResult["readyMessages"] = [];
+  const usageBilling: BusinessAutomationCompletedResult["usageBilling"] = [];
+  const adapterFactory: BusinessAutomationCompletedResult["adapterFactory"] = [];
+  const goldenBusinessLoops: BusinessAutomationCompletedResult["goldenBusinessLoops"] = [];
+  const dailyBriefs: BusinessAutomationCompletedResult["dailyBriefs"] = [];
+  const tenantFailures: BusinessAutomationCompletedResult["tenantFailures"] = [];
 
-  for (const tenantId of tenantIds) {
-    await ensureDefaultMonitorSetup(tenantId);
-    revenueLoops.push({ tenantId, ...(await runRevenueLoopAutomationForTenant(tenantId)) });
-    constructionHealth.push({ tenantId, ...(await syncConstructionHealthForTenant(tenantId)) });
-    linkAuthority.push({ tenantId, ...(await syncLinkAuthorityForTenant(tenantId)) });
-    actionQueueScans.push(await scanActionQueueForTenant(tenantId));
-    readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
-    usageBilling.push({ tenantId, ...(await syncMaturedUsageChargesForTenant(tenantId)) });
-    adapterFactory.push({ tenantId, ...(await processAdapterFactoryQueueForTenant(tenantId, 1)) });
-    dailyBriefs.push(await generateTenantDailyBrief(tenantId));
-  }
+  let nextTenantIndex = 0;
+  const worker = async () => {
+    while (nextTenantIndex < tenantIds.length) {
+      const tenantId = tenantIds[nextTenantIndex++];
+      try {
+        await ensureDefaultMonitorSetup(tenantId);
+        revenueLoops.push({ tenantId, ...(await runRevenueLoopAutomationForTenant(tenantId)) });
+        constructionHealth.push({ tenantId, ...(await syncConstructionHealthForTenant(tenantId)) });
+        linkAuthority.push({ tenantId, ...(await syncLinkAuthorityForTenant(tenantId)) });
+        actionQueueScans.push(await scanActionQueueForTenant(tenantId));
+        readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
+        usageBilling.push({ tenantId, ...(await syncMaturedUsageChargesForTenant(tenantId)) });
+        adapterFactory.push({ tenantId, ...(await processAdapterFactoryQueueForTenant(tenantId, 1)) });
+        goldenBusinessLoops.push({ tenantId, ...(await syncGoldenBusinessLoopsForTenant(tenantId)) });
+        dailyBriefs.push(await generateTenantDailyBrief(tenantId));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown tenant automation failure";
+        tenantFailures.push({ tenantId, message });
+        await safeLogAppError({
+          tenantId,
+          source: "automation.business_loop.tenant",
+          message,
+          severity: "error",
+          retryable: true,
+          metadata: { isolatedToTenant: true }
+        });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(automationConcurrency(input.tenantConcurrency), Math.max(tenantIds.length, 1)) }, () => worker()));
 
   const aiWorkforce = await runDueAgentWorkflows({ limit: input.agentLimit ?? 25, tenantId: input.tenantId ?? null });
   const providerFunding = await evaluateProviderFundingAlerts();
+  const platformCapacity = await evaluatePlatformCapacity();
+  await cleanupExpiredRuntimeRows();
 
   await queryPostgres(
     `
@@ -242,9 +346,12 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
         readyMessages,
         usageBilling,
         adapterFactory,
+        goldenBusinessLoops,
         dailyBriefs,
         aiWorkforce,
         providerFunding,
+        platformCapacity,
+        tenantFailures,
         elapsedMs: Date.now() - startedAt,
         liveActionsStillGated: true
       })
@@ -253,6 +360,7 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
 
   return {
     ok: true,
+    skipped: false,
     tenantsChecked: tenantIds.length,
     actionQueueScans,
     revenueLoops,
@@ -261,9 +369,32 @@ export async function runBusinessAutomationLoop(input: { tenantLimit?: number; a
     readyMessages,
     usageBilling,
     adapterFactory,
+    goldenBusinessLoops,
     dailyBriefs,
     aiWorkforce,
     providerFunding,
+    platformCapacity,
+    tenantFailures,
     elapsedMs: Date.now() - startedAt
   };
+}
+
+export async function runBusinessAutomationLoop(input: { tenantLimit?: number; agentLimit?: number; tenantId?: string | null; tenantConcurrency?: number } = {}): Promise<BusinessAutomationRunResult> {
+  const startedAt = Date.now();
+  const holderId = randomUUID();
+  const lease = await acquireAutomationLease(holderId);
+  if (lease !== true) {
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: lease,
+      elapsedMs: Date.now() - startedAt
+    };
+  }
+
+  try {
+    return await runBusinessAutomationLoopUnlocked(input);
+  } finally {
+    await releaseAutomationLease(holderId);
+  }
 }

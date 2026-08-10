@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
+
+export const metadata: Metadata = {
+  title: "Start Ferocity",
+  description: "Tell Ferocity what your business needs and choose the simplest path to start moving work forward.",
+  alternates: { canonical: "/start" }
+};
 
 const goals = [
   ["find_gaps", "Tell me what is missing"],
@@ -266,6 +274,7 @@ export default async function StartPage({
             </div>
           </aside>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

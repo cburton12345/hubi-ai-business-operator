@@ -6,7 +6,8 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getOAuthProviderConfig, getOAuthRequiredEnv } from "@/lib/integrations/oauth-providers";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
-import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
+import { encryptSecret, hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
+import { createOAuthPkcePair } from "@/lib/integrations/standard-oauth";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -33,10 +34,12 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     ...(useTikTokSandbox
       ? missingEnvVars(["TIKTOK_SANDBOX_CLIENT_KEY", "TIKTOK_SANDBOX_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"])
       : missingEnvVars(requiredEnv)),
-    ...(config.provider === "tiktok" && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
+    ...((config.provider === "tiktok" || config.pkce) && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
   ];
   const workspaceId = await getCurrentWorkspaceId();
   const state = randomUUID();
+  const pkce = config.pkce && missing.length === 0 ? createOAuthPkcePair() : null;
+  const encryptedVerifier = pkce ? encryptSecret(pkce.verifier) : null;
 
   await queryPostgres(
     `
@@ -53,7 +56,16 @@ export async function GET(request: Request, context: { params: Promise<{ provide
         requestedScopes: config.scopes,
         credentialProfile: useTikTokSandbox ? "sandbox" : "production",
         missingEnvVars: missing,
-        liveActionRule: config.liveActionRule
+        liveActionRule: config.liveActionRule,
+        ...(encryptedVerifier
+          ? {
+              pkceVerifier: {
+                encryptedSecret: encryptedVerifier.encryptedSecret,
+                encryptionIv: encryptedVerifier.encryptionIv,
+                encryptionTag: encryptedVerifier.encryptionTag
+              }
+            }
+          : {})
       }),
       JSON.stringify({
         safeMode: true,
@@ -111,6 +123,10 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     authorizeUrl.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));
   }
   authorizeUrl.searchParams.set("state", state);
+  if (pkce) {
+    authorizeUrl.searchParams.set("code_challenge", pkce.challenge);
+    authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  }
   Object.entries(config.query).forEach(([key, value]) => authorizeUrl.searchParams.set(key, value));
 
   return NextResponse.redirect(authorizeUrl);

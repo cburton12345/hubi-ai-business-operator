@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { makePublicToken } from "@/lib/ugc/proof";
+import { prepareProofContentDrafts } from "@/lib/ugc/prepare-proof-content";
 
 const statusSchema = z.object({
   submissionId: z.string().uuid(),
@@ -144,135 +145,12 @@ export async function updateProofAssetAction(formData: FormData) {
   revalidatePath("/app/proof");
 }
 
-function outputBody(kind: string, proof: {
-  title: string | null;
-  customerName: string | null;
-  serviceType: string | null;
-  city: string | null;
-  state: string | null;
-  storyText: string | null;
-  resultSummary: string | null;
-  rating: number | null;
-}) {
-  const location = [proof.city, proof.state].filter(Boolean).join(", ");
-  const service = proof.serviceType || proof.title || "completed service";
-  const customer = proof.customerName || "a customer";
-  const story = proof.storyText || proof.resultSummary || "Customer proof was submitted and is ready for review.";
-
-  if (kind === "gbp_post") {
-    return `Draft Google Business Profile post:\n\nRecent ${service}${location ? ` in ${location}` : ""}. ${story}\n\nReview photos, consent, and any claims before publishing.`;
-  }
-
-  if (kind === "facebook_post") {
-    return `Draft Facebook post:\n\nAnother completed ${service}${location ? ` in ${location}` : ""}. ${story}\n\nAdd approved before/after photos before posting.`;
-  }
-
-  if (kind === "city_page") {
-    return `Draft local SEO page outline:\n\nTitle: ${service}${location ? ` in ${location}` : ""}\n\nUse this customer proof as supporting evidence after approval.\n\nSections:\n- The problem or project\n- Work completed\n- Result\n- Approved customer quote\n- Service area CTA\n\nDo not publish until details, consent, and quality review pass.`;
-  }
-
-  if (kind === "facebook_ad") {
-    return `Draft ad creative:\n\nHook: Need help with ${service}${location ? ` in ${location}` : ""}?\nProof angle: Real customer result from ${customer}.\nBody: ${story}\nCTA: Request a quote.\n\nConfirm claims, permissions, offer, and ad account policy before use.`;
-  }
-
-  return `Approved testimonial card draft:\n\n"${story}"\n\nAttribution: ${customer}${location ? `, ${location}` : ""}\n\nUse only if name/location permission is approved.`;
-}
-
 export async function prepareProofContentDraftsAction(formData: FormData) {
   const parsed = draftSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
 
   const workspaceId = await getCurrentWorkspaceId();
-  const proofResult = await queryPostgres<{
-    id: string;
-    tenant_id: string;
-    brand_id: string | null;
-    title: string | null;
-    customer_name: string | null;
-    service_type: string | null;
-    city: string | null;
-    state: string | null;
-    story_text: string | null;
-    result_summary: string | null;
-    rating: number | null;
-    permission_marketing: boolean;
-    permission_use_name: boolean;
-    permission_use_location: boolean;
-  }>(
-    `
-    select *
-    from public.ugc_submissions
-    where tenant_id = $1 and id = $2
-    limit 1
-    `,
-    [workspaceId, parsed.data.submissionId]
-  );
-
-  const proof = proofResult?.rows[0];
-  if (!proof?.brand_id || !proof.permission_marketing) {
-    revalidatePath("/app/proof");
-    return;
-  }
-
-  const outputs = [
-    { outputType: "gbp_post", contentType: "gbp_post", title: `GBP proof post: ${proof.title || "Customer proof"}` },
-    { outputType: "facebook_post", contentType: "facebook_post", title: `Facebook proof post: ${proof.title || "Customer proof"}` },
-    { outputType: "seo_page", contentType: "city_page", title: `SEO proof page: ${proof.title || "Customer proof"}` },
-    { outputType: "ad_creative", contentType: "facebook_ad", title: `Ad proof angle: ${proof.title || "Customer proof"}` }
-  ];
-
-  for (const output of outputs) {
-    const draftResult = await queryPostgres<{ id: string }>(
-      `
-      insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, metadata_json, status, risk_level)
-      values ($1, $2, $3, $4, $5, $6::jsonb, 'needs_review', 'medium')
-      returning id
-      `,
-      [
-        workspaceId,
-        proof.brand_id,
-        output.contentType,
-        output.title,
-        outputBody(output.outputType, {
-          title: proof.title,
-          customerName: proof.customer_name,
-          serviceType: proof.service_type,
-          city: proof.city,
-          state: proof.state,
-          storyText: proof.story_text,
-          resultSummary: proof.result_summary,
-          rating: proof.rating
-        }),
-        JSON.stringify({
-          source: "ugc_proof",
-          submissionId: proof.id,
-          consent: {
-            marketing: proof.permission_marketing,
-            useName: proof.permission_use_name,
-            useLocation: proof.permission_use_location
-          }
-        })
-      ]
-    );
-
-    const draftId = draftResult?.rows[0]?.id ?? null;
-    await queryPostgres(
-      `
-      insert into public.ugc_content_outputs (tenant_id, brand_id, submission_id, ai_draft_id, output_type, status, title, summary, metadata_json)
-      values ($1, $2, $3, $4, $5, 'needs_review', $6, $7, $8::jsonb)
-      `,
-      [
-        workspaceId,
-        proof.brand_id,
-        proof.id,
-        draftId,
-        output.outputType,
-        output.title,
-        "Prepared from approved customer proof. Review before public use.",
-        JSON.stringify({ generatedWithoutLivePublishing: true })
-      ]
-    );
-  }
+  await prepareProofContentDrafts({ tenantId: workspaceId, submissionId: parsed.data.submissionId, limit: 1 });
 
   revalidatePath("/app/proof");
   revalidatePath("/app/review");

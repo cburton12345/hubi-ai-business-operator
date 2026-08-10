@@ -131,6 +131,23 @@ export async function getHostedGrowthPages(): Promise<HostedGrowthPageRow[]> {
   return (result?.rows ?? []).map(mapRow);
 }
 
+export async function getIndexableHostedGrowthPages(): Promise<Array<{ publicUrl: string; updatedAt: string }>> {
+  const result = await queryPostgres<{ brand_slug: string; page_slug: string; updated_at: string }>(
+    `
+    select b.slug as brand_slug, p.slug as page_slug, p.updated_at
+    from public.brand_landing_pages p
+    join public.brands b on b.id = p.brand_id and b.tenant_id = p.tenant_id
+    where p.status = 'published' and p.noindex = false and b.status = 'active'
+    order by p.updated_at desc
+    limit 10000
+    `
+  );
+  return (result?.rows ?? []).map((row) => ({
+    publicUrl: publicUrl(row.brand_slug, row.page_slug),
+    updatedAt: row.updated_at
+  }));
+}
+
 export async function getPublicHostedGrowthPage(brandSlug: string, pageSlug: string): Promise<PublicHostedGrowthPage | null> {
   const result = await queryPostgres<PublicHostedGrowthPageDbRow>(
     `

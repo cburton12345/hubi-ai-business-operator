@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
-import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
+import { evaluateProviderFundingAlerts, getProviderFundingDashboard } from "@/lib/usage/provider-funding";
 
 const optionalMoney = z.union([z.literal(""), z.coerce.number().min(0).max(5_000_000)]).optional();
 const accountSchema = z.object({
@@ -211,6 +211,19 @@ export async function saveProviderFundingAccountAction(formData: FormData) {
     );
   }
 
+  if (accountId && tenantId === null && data.ownershipMode === "ferocity_managed") {
+    await queryPostgres(
+      `
+      update public.managed_ad_budget_controls
+      set provider_funding_account_id = $1::uuid, updated_at = now()
+      where provider_key = $2
+        and lane_key = 'ferocity_managed'
+        and provider_funding_account_id is null
+      `,
+      [accountId, data.providerKey]
+    );
+  }
+
   await evaluateProviderFundingAlerts();
   revalidatePath("/app/provider-costs");
 }
@@ -301,5 +314,46 @@ export async function reconcileProviderCostAction(formData: FormData) {
       parsed.data.notes ?? ""
     ]
   );
+  revalidatePath("/app/provider-costs");
+}
+
+export async function approveRecommendedProviderCapAction(formData: FormData) {
+  await requirePermission("platform:manage");
+  const parsed = z.object({ accountId: z.string().uuid() }).safeParse({ accountId: formData.get("accountId") });
+  if (!parsed.success) return;
+
+  const dashboard = await getProviderFundingDashboard();
+  const account = dashboard.accounts.find((item) => item.id === parsed.data.accountId);
+  const currentCap = account?.monthlyProviderSpendCapCents;
+  if (!account || !currentCap || currentCap <= 0) return;
+
+  const recommendedCapCents = Math.min(
+    5_000_000,
+    Math.ceil(Math.max(currentCap * 2, account.health.projectedMonthlyProviderCostCents * 1.25, currentCap + 10_000) / 1000) * 1000
+  );
+
+  await queryPostgres(
+    `
+    update public.provider_funding_accounts
+    set monthly_provider_spend_cap_cents = greatest(coalesce(monthly_provider_spend_cap_cents, 0), $2),
+        monthly_reload_limit_cents = case
+          when reload_enabled then greatest(coalesce(monthly_reload_limit_cents, 0), $2)
+          else monthly_reload_limit_cents
+        end,
+        metadata_json = metadata_json || jsonb_build_object(
+          'lastApprovedCapIncreaseAt', now(),
+          'lastApprovedCapIncreaseFromCents', monthly_provider_spend_cap_cents,
+          'lastApprovedCapIncreaseToCents', $2::numeric
+        ),
+        updated_at = now()
+    where id = $1
+    `,
+    [account.id, recommendedCapCents]
+  );
+  await queryPostgres(
+    `update public.provider_funding_alerts set status='resolved', resolved_at=now(), updated_at=now() where funding_account_id=$1 and alert_key='capacity:monthly'`,
+    [account.id]
+  );
+  await evaluateProviderFundingAlerts();
   revalidatePath("/app/provider-costs");
 }

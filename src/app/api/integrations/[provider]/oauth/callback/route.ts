@@ -4,7 +4,6 @@ import { getCurrentAppSession } from "@/lib/auth/session";
 import { encryptSecret, hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
-import { integrationNotConfiguredResponse } from "@/lib/integrations/integration-route";
 import {
   exchangeTikTokAuthorizationCode,
   fetchTikTokProfile,
@@ -13,6 +12,7 @@ import {
   type TikTokTokenSet
 } from "@/lib/integrations/tiktok-oauth";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { handleStandardOAuthCallback } from "@/lib/integrations/complete-standard-oauth";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -303,24 +303,17 @@ async function handleTikTokCallback(request: Request) {
   }
 }
 
-const providerEnv = {
-  reddit: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"],
-  microsoft: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"],
-  yahoo: ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"]
-} as const;
-
 export async function GET(request: Request, context: { params: Promise<{ provider: string }> }) {
   const { provider } = await context.params;
   const normalizedProvider = provider.toLowerCase();
   if (normalizedProvider === "tiktok") return handleTikTokCallback(request);
-
-  const requiredEnv = providerEnv[normalizedProvider as keyof typeof providerEnv];
-  if (!requiredEnv) {
-    return Response.json(
-      { ok: false, status: "unsupported_provider", message: "This OAuth provider is not registered in Ferocity." },
-      { status: 404 }
-    );
+  if (normalizedProvider === "reddit") return handleStandardOAuthCallback(request, ["reddit"]);
+  if (normalizedProvider === "jobber") return handleStandardOAuthCallback(request, ["jobber"]);
+  if (normalizedProvider === "microsoft" || normalizedProvider === "microsoft_ads" || normalizedProvider === "microsoft_calendar") {
+    return handleStandardOAuthCallback(request, ["microsoft_ads", "microsoft_calendar"]);
   }
-
-  return integrationNotConfiguredResponse({ provider: normalizedProvider, request, requiredEnv: [...requiredEnv] });
+  return Response.json(
+    { ok: false, status: "unsupported_provider", message: "This OAuth provider is not registered in Ferocity." },
+    { status: 404 }
+  );
 }

@@ -96,6 +96,7 @@ export type ProviderFundingDashboard = {
     title: string;
     summary: string;
     lastSeenAt: string;
+    metadata: Record<string, unknown>;
   }>;
   untrackedProviders: Array<{
     providerKey: string;
@@ -289,7 +290,7 @@ export async function getProviderFundingDashboard(): Promise<ProviderFundingDash
       select
         a.*,
         t.name as tenant_name,
-        coalesce(u.monthly_provider_cost_cents, 0) as monthly_provider_cost_cents,
+        greatest(coalesce(u.monthly_provider_cost_cents, 0), coalesce(ad.monthly_ad_spend_cents, 0)) as monthly_provider_cost_cents,
         coalesce(u.monthly_customer_charge_cents, 0) as monthly_customer_charge_cents,
         coalesce(u.monthly_quantity, 0) as monthly_quantity
       from public.provider_funding_accounts a
@@ -312,6 +313,14 @@ export async function getProviderFundingDashboard(): Promise<ProviderFundingDash
             or e.metadata_json->>'managedVoice' = 'true'
           )
       ) u on true
+      left join lateral (
+        select sum(e.amount_cents) as monthly_ad_spend_cents
+        from public.managed_ad_spend_events e
+        join public.managed_ad_budget_controls c on c.id = e.budget_control_id
+        where c.provider_funding_account_id = a.id
+          and e.event_type = 'spend_recorded'
+          and e.created_at >= date_trunc('month', now())
+      ) ad on true
       where a.status <> 'closed'
       order by
         case a.status when 'payment_issue' then 0 when 'depleted' then 1 when 'critical' then 2 when 'low_balance' then 3 else 4 end,
@@ -325,9 +334,10 @@ export async function getProviderFundingDashboard(): Promise<ProviderFundingDash
       title: string;
       summary: string;
       last_seen_at: string;
+      metadata_json: Record<string, unknown>;
     }>(
       `
-      select id, funding_account_id, severity, title, summary, last_seen_at
+      select id, funding_account_id, severity, title, summary, last_seen_at, metadata_json
       from public.provider_funding_alerts
       where status = 'active'
       order by case severity when 'high' then 0 when 'medium' then 1 else 2 end, last_seen_at desc
@@ -420,7 +430,8 @@ export async function getProviderFundingDashboard(): Promise<ProviderFundingDash
       severity: row.severity,
       title: row.title,
       summary: row.summary,
-      lastSeenAt: row.last_seen_at
+      lastSeenAt: row.last_seen_at,
+      metadata: row.metadata_json ?? {}
     })),
     untrackedProviders: (untrackedResult?.rows ?? []).map((row) => ({
       providerKey: row.provider_key,
@@ -486,7 +497,7 @@ export async function evaluateProviderFundingAlerts() {
         `
         update public.provider_funding_alerts
         set status = 'resolved', resolved_at = now(), updated_at = now()
-        where funding_account_id = $1 and status = 'active' and alert_key <> $2
+        where funding_account_id = $1 and status = 'active' and alert_key like 'funding:%' and alert_key <> $2
         `,
         [account.id, alertKey]
       );
@@ -496,9 +507,54 @@ export async function evaluateProviderFundingAlerts() {
         `
         update public.provider_funding_alerts
         set status = 'resolved', resolved_at = now(), updated_at = now()
-        where funding_account_id = $1 and status = 'active'
+        where funding_account_id = $1 and status = 'active' and alert_key like 'funding:%'
         `,
         [account.id]
+      );
+      resolved += result?.rowCount ?? 0;
+    }
+
+    const cap = account.monthlyProviderSpendCapCents;
+    const spent = account.health.monthlyProviderCostCents;
+    const utilization = cap && cap > 0 ? spent / cap : 0;
+    const capacityAlertKey = "capacity:monthly";
+    if (cap && utilization >= 0.7) {
+      const recommendedCapCents = Math.min(
+        5_000_000,
+        Math.ceil(Math.max(cap * 2, account.health.projectedMonthlyProviderCostCents * 1.25, cap + 10_000) / 1000) * 1000
+      );
+      const severity = utilization >= 0.85 ? "high" : "medium";
+      await queryPostgres(
+        `
+        insert into public.provider_funding_alerts (
+          funding_account_id, tenant_id, alert_key, severity, status, title, summary, action_href, metadata_json, last_seen_at, updated_at
+        ) values ($1,$2,$3,$4,'active',$5,$6,'/app/provider-costs',$7::jsonb,now(),now())
+        on conflict (funding_account_id, alert_key) do update
+        set severity=excluded.severity, status='active', title=excluded.title, summary=excluded.summary,
+            action_href=excluded.action_href, metadata_json=excluded.metadata_json,
+            last_seen_at=now(), resolved_at=null, updated_at=now()
+        `,
+        [
+          account.id,
+          account.tenantId,
+          capacityAlertKey,
+          severity,
+          `${account.displayName} is approaching its monthly safety ceiling`,
+          `${Math.round(utilization * 100)}% of the ${Math.round(cap / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} ceiling is used. Review the recommended increase before more customer volume arrives.`,
+          JSON.stringify({
+            providerKey: account.providerKey,
+            currentCapCents: cap,
+            monthlyProviderCostCents: spent,
+            utilizationPercent: Math.round(utilization * 100),
+            recommendedCapCents
+          })
+        ]
+      );
+      active += 1;
+    } else {
+      const result = await queryPostgres(
+        `update public.provider_funding_alerts set status='resolved', resolved_at=now(), updated_at=now() where funding_account_id=$1 and alert_key=$2 and status='active'`,
+        [account.id, capacityAlertKey]
       );
       resolved += result?.rowCount ?? 0;
     }

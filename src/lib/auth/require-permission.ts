@@ -4,12 +4,13 @@ import { can, type Permission } from "@/lib/auth/permissions";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 import type { TenantRole } from "@/types/core";
+import { absoluteAppUrl } from "@/lib/http/safe-redirect";
 
 export async function getCurrentActor() {
   const [session, adminSession] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
 
   if (!session && !adminSession) {
-    redirect("/login");
+    redirect(absoluteAppUrl("/login"));
   }
 
   const workspace = await getCurrentWorkspace();

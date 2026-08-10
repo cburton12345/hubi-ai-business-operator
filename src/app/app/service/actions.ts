@@ -8,6 +8,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import { logAppError } from "@/lib/observability/log-error";
+import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
 import {
   calculatePlatformFeeCents,
   getManagedPaymentAccount,
@@ -1404,6 +1405,13 @@ export async function updateInvoiceAction(formData: FormData) {
     ]
   );
   const row = result?.rows[0];
+  if (row && (parsed.data.status === "sent_manually" || parsed.data.status === "paid")) {
+    await ensureInvoiceReviewEnrollment({
+      tenantId: workspaceId,
+      invoiceId: parsed.data.invoiceId,
+      event: parsed.data.status === "paid" ? "invoice_paid" : "invoice_sent"
+    });
+  }
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);
@@ -1706,6 +1714,9 @@ export async function recordManualInvoicePaymentAction(formData: FormData) {
   );
 
   const row = result?.rows[0];
+  if (row) {
+    await ensureInvoiceReviewEnrollment({ tenantId: workspaceId, invoiceId: parsed.data.invoiceId, event: "invoice_paid" });
+  }
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
   if (row) revalidatePath(`/app/service/customers/${row.customer_id}`);

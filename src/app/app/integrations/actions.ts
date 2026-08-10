@@ -8,6 +8,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
 import { markAdapterBuildReleased, queueAdapterFactoryBuild, reviewAdapterBuild } from "@/lib/integrations/adapter-factory";
+import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 
 const integrationToggleSchema = z.object({
   connectionId: z.string().uuid(),
@@ -88,6 +89,30 @@ export async function requestProviderIntegrationAction(formData: FormData) {
       providerName: request.provider_name,
       capabilityCategory: request.capability_category,
       documentationUrl: request.provider_url
+    });
+    await raisePlatformAdminAlert({
+      fingerprint: `provider-request:${request.id}`,
+      family: "customer_request",
+      type: "provider_integration_requested",
+      severity: parsed.data.currentlyUsing === "true" ? "high" : "warning",
+      title: `Provider requested: ${request.provider_name}`,
+      body: [
+        `A customer asked Ferocity to enable ${request.provider_name}.`,
+        `Category: ${request.capability_category.replaceAll("_", " ")}`,
+        `Already using this provider: ${parsed.data.currentlyUsing === "true" ? "Yes" : "No"}`,
+        `Requested use: ${parsed.data.useCase}`,
+        request.provider_url ? `Official specification supplied: ${request.provider_url}` : "No official OpenAPI specification was supplied.",
+        `Workspace: ${tenantId}`,
+        "Review the request and guarded adapter status in Ferocity."
+      ].join("\n"),
+      tenantId,
+      actionUrl: "/app/integrations#request-provider",
+      metadata: {
+        requestId: request.id,
+        providerName: request.provider_name,
+        category: request.capability_category,
+        currentlyUsing: parsed.data.currentlyUsing === "true"
+      }
     });
   }
   revalidatePath("/app/integrations");

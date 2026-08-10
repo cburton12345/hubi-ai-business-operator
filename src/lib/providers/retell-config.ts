@@ -79,7 +79,11 @@ export async function resolveRetellWebhookTenant(agentId: string | null, phoneNu
       from public.provider_accounts
       where provider_key = 'retell_voice'
         and $1::text is not null
-        and metadata_json->>'assistantId' = $1
+        and $1 in (
+          metadata_json->>'assistantId',
+          metadata_json->>'outboundAssistantId',
+          metadata_json->>'ownerVoiceAssistantId'
+        )
       union all
       select tenant_id, 1 as priority
       from public.telephony_numbers

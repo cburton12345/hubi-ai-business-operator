@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Ferocity Integrations",
@@ -28,8 +29,11 @@ const connectionGroups = [
     providers: [
       "Stripe online invoice payments and bank payouts",
       "Twilio business texting",
-      "Retell or Vapi AI voice",
+      "Retell outbound AI voice, with other voice engines added through tested adapters",
       "Resend email",
+      "Google Calendar and Microsoft Outlook Calendar",
+      "Google Search Console and Google Analytics read-only reporting",
+      "Jobber read-only business sync",
       "Marketplace and partner lead sources",
       "Premium video rendering and secure webhooks"
     ]
@@ -38,7 +42,7 @@ const connectionGroups = [
     status: "Prepare and export now",
     detail: "Ferocity can create the work now; direct provider execution stays off until that adapter is activated.",
     providers: [
-      "Google Business Profile, Ads, and Search Console",
+      "Google Business Profile drafts and ad-platform launch packages",
       "Facebook / Meta, Reddit, Microsoft Ads, TikTok, and Yahoo",
       "Website and external publishing packages",
       "Video briefs, scripts, scenes, and voiceover drafts"
@@ -158,6 +162,7 @@ export default function PublicIntegrationsPage() {
             </Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

@@ -321,12 +321,45 @@ async function createRun(tenantId: string, workflowId: string, agentKey: string,
   const result = await queryPostgres<{ id: string }>(
     `
     insert into public.ai_agent_runs (tenant_id, workflow_id, agent_key, status, input_json)
-    values ($1, $2, $3, 'running', $4::jsonb)
+    select $1, $2, $3, 'running', $4::jsonb
+    where not exists (
+      select 1 from public.ai_agent_runs
+      where workflow_id = $2 and status in ('queued', 'running')
+    )
+    on conflict do nothing
     returning id
     `,
     [tenantId, workflowId, agentKey, JSON.stringify({ source })]
   );
   return result?.rows[0]?.id ?? null;
+}
+
+export async function expireStaleAgentRuns(tenantId?: string | null) {
+  const result = await queryPostgres<{ workflow_id: string }>(
+    `
+    with stale as (
+      update public.ai_agent_runs
+      set status = 'failed',
+          summary = coalesce(summary, 'Agent run expired before completion.'),
+          error_message = coalesce(error_message, 'stale_run_timeout'),
+          completed_at = now(),
+          metadata_json = metadata_json || jsonb_build_object('expiredBy', 'stale_run_reaper', 'expiredAt', now())
+      where status in ('queued', 'running')
+        and started_at < now() - interval '30 minutes'
+        and ($1::uuid is null or tenant_id = $1)
+      returning workflow_id, tenant_id
+    ), affected as (
+      select distinct workflow_id, tenant_id from stale where workflow_id is not null
+    )
+    update public.ai_agent_workflows w
+    set last_run_at = now(), last_run_status = 'failed', updated_at = now()
+    from affected a
+    where w.id = a.workflow_id and w.tenant_id = a.tenant_id
+    returning w.id as workflow_id
+    `,
+    [tenantId ?? null]
+  );
+  return result?.rows.length ?? 0;
 }
 
 async function finishRun(input: {
@@ -1283,8 +1316,9 @@ async function runAgentWorkflowForTenant(input: {
   const requiredFeatures = agentRequiredFeatures[agentKey] ?? ["ai_generation"];
   const gates = await Promise.all(requiredFeatures.map((featureKey) => getServiceGate(tenantId, featureKey)));
   const blockedGate = gates.find((gate) => !gate.enabled);
+  await expireStaleAgentRuns(tenantId);
   const runId = await createRun(tenantId, workflow.id, workflow.agent_key, input.source);
-  if (!runId) return { ok: false, message: "Could not start the agent run." };
+  if (!runId) return { ok: false, message: "This agent already has a run in progress." };
 
   if (blockedGate) {
     const summary = `${workflow.agent_key} blocked: ${blockedGate.reason}`;
@@ -1402,6 +1436,7 @@ export async function runAgentWorkflow(agentKey: string) {
 }
 
 export async function runDueAgentWorkflows(input: { limit?: number; tenantId?: string | null } = {}) {
+  await expireStaleAgentRuns(input.tenantId);
   const tenantResult = await queryPostgres<{ id: string }>(
     `
     select id

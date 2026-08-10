@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "About Ferocity",
@@ -47,10 +48,11 @@ export default function AboutPage() {
           <div className="panel">
             <h2>Support</h2>
             <p className="muted">
-              Customers can reach Ferocity at support@ferocity.live. Setup and onboarding requests also flow through the free grader and start pages.
+              Customers can reach Ferocity at ferocityflow@outlook.com. Setup and onboarding requests also flow through the free grader and start pages.
             </p>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

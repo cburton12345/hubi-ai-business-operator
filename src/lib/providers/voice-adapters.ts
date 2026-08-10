@@ -8,6 +8,7 @@ import type {
 } from "@/lib/providers/interfaces";
 import { resolveVapiConfiguration, resolveVapiWebhookTenant } from "@/lib/providers/vapi-config";
 import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/providers/retell-config";
+import { resilientFetch } from "@/lib/http/resilient-fetch";
 
 function notConfigured(providerKey: string): ProviderResult<never> {
   return {
@@ -81,7 +82,12 @@ abstract class PlannedVoiceAdapter implements VoiceAgentProvider {
     return notConfigured(this.providerKey) as ProviderResult<{ assistantId: string; status: string }>;
   }
 
-  async startOutboundCall(_context: ProviderContext, _input: { toNumber: string; fromNumber: string; assistantId: string }) {
+  async startOutboundCall(_context: ProviderContext, _input: {
+    toNumber: string;
+    fromNumber: string;
+    assistantId: string;
+    dynamicVariables?: Record<string, string>;
+  }) {
     return notConfigured(this.providerKey) as ProviderResult<{ providerCallId: string; status: string }>;
   }
 
@@ -99,14 +105,14 @@ async function vapiRequest(
   method: "POST" | "PATCH",
   payload: Record<string, unknown>
 ) {
-  const response = await fetch(`https://api.vapi.ai${path}`, {
+  const response = await resilientFetch(`https://api.vapi.ai${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
-  });
+  }, { timeoutMs: 15_000 });
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   return { response, body };
 }
@@ -158,7 +164,7 @@ async function retellRequest(
   method: "GET" | "POST" | "PATCH",
   payload?: Record<string, unknown>
 ) {
-  const response = await fetch(`https://api.retellai.com${path}`, {
+  const response = await resilientFetch(`https://api.retellai.com${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -166,7 +172,7 @@ async function retellRequest(
     },
     ...(payload ? { body: JSON.stringify(payload) } : {}),
     cache: "no-store"
-  });
+  }, { timeoutMs: 15_000, retries: method === "GET" ? 1 : 0 });
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   return { response, body };
 }
@@ -338,7 +344,7 @@ export class VapiVoiceAdapter implements VoiceAgentProvider {
 
   async startOutboundCall(
     context: ProviderContext,
-    input: { toNumber: string; fromNumber: string; assistantId: string }
+    input: { toNumber: string; fromNumber: string; assistantId: string; dynamicVariables?: Record<string, string> }
   ): Promise<ProviderResult<{ providerCallId: string; status: string }>> {
     const authorizedTest = context.purpose === "authorized_test";
     if (!context.liveActionsEnabled && !authorizedTest) {
@@ -357,6 +363,9 @@ export class VapiVoiceAdapter implements VoiceAgentProvider {
       assistantId: input.assistantId,
       phoneNumberId: credentials.phoneNumberId,
       customer: { number: input.toNumber },
+      ...(input.dynamicVariables ? {
+        assistantOverrides: { variableValues: input.dynamicVariables }
+      } : {}),
       metadata: {
         ferocityTenantId: context.tenantId,
         ferocityBrandId: context.brandId ?? null,
@@ -634,7 +643,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
 
   async startOutboundCall(
     context: ProviderContext,
-    input: { toNumber: string; fromNumber: string; assistantId: string }
+    input: { toNumber: string; fromNumber: string; assistantId: string; dynamicVariables?: Record<string, string> }
   ): Promise<ProviderResult<{ providerCallId: string; status: string }>> {
     const authorizedTest = context.purpose === "authorized_test";
     if (!context.liveActionsEnabled && !authorizedTest) {
@@ -651,6 +660,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       from_number: input.fromNumber,
       to_number: input.toNumber,
       override_agent_id: input.assistantId,
+      ...(input.dynamicVariables ? { retell_llm_dynamic_variables: input.dynamicVariables } : {}),
       metadata: {
         ferocityTenantId: context.tenantId,
         ferocityBrandId: context.brandId ?? null,

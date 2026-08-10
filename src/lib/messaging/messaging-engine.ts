@@ -7,6 +7,18 @@ function normalizeContact(value: string) {
   return value.trim().toLowerCase();
 }
 
+export function messageBodyForStorage(input: MessagingSendInput) {
+  return input.metadata?.securityTransactional === true
+    ? "[Sensitive security message redacted]"
+    : input.body;
+}
+
+export function messageDestinationForStorage(input: MessagingSendInput) {
+  if (input.metadata?.securityTransactional !== true) return input.to;
+  const digits = input.to.replace(/\D/g, "");
+  return `[redacted destination${digits ? ` ending ${digits.slice(-4)}` : ""}]`;
+}
+
 function fallbackProviderKey(input: MessagingSendInput) {
   if (input.channel === "email") return "resend_email";
   if (input.channel === "manual_sms") return "manual_sms";
@@ -26,6 +38,12 @@ function hasSendAuthorization(input: MessagingSendInput) {
     || Boolean(input.authorization?.humanApproved)
     || Boolean(input.authorization?.policyAllowsAuto)
   );
+}
+
+export function hasAuthenticatedOwnerVerificationConsent(input: MessagingSendInput) {
+  return input.authorization?.consentBasis === "authenticated_owner_verification"
+    && input.authorization.source === "authenticated_owner_verification"
+    && input.authorization.humanApproved === true;
 }
 
 function configuredRate(name: string, fallback: number) {
@@ -60,6 +78,10 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
   const result = await queryPostgres<{
     id: string;
     ownership_mode: string;
+    connection_status: string;
+    credentials_status: string;
+    live_sending_enabled: boolean;
+    outbound_enabled: boolean;
     emergency_paused: boolean;
     monthly_unit_cap: number | null;
     monthly_cost_cap_cents: number | null;
@@ -80,6 +102,10 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
     select
       a.id,
       a.ownership_mode,
+      a.connection_status,
+      a.credentials_status,
+      a.live_sending_enabled,
+      a.outbound_enabled,
       a.emergency_paused,
       a.monthly_unit_cap,
       a.monthly_cost_cap_cents,
@@ -174,6 +200,21 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
       category: "account_not_configured"
     };
   }
+  if (
+    providerKey !== "manual_sms"
+    && (
+      account.connection_status !== "active"
+      || !["configured", "not_required"].includes(account.credentials_status)
+      || !account.live_sending_enabled
+      || !account.outbound_enabled
+    )
+  ) {
+    return {
+      allowed: false,
+      reason: "This messaging provider is not active for live outbound sends in this workspace.",
+      category: "account_not_active"
+    };
+  }
   if (account.emergency_paused || account.external_emergency_paused) {
     return {
       allowed: false,
@@ -243,6 +284,7 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
 
 async function hasRequiredConsent(input: MessagingSendInput) {
   if (["internal", "app_push"].includes(input.channel)) return true;
+  if (hasAuthenticatedOwnerVerificationConsent(input)) return true;
   const channel = ["manual_sms", "mms"].includes(input.channel) ? "sms" : input.channel;
   const contact = normalizeContact(input.to);
   const result = await queryPostgres<{ granted: boolean; revoked: boolean }>(
@@ -299,9 +341,9 @@ async function reserveIdempotentSend(input: MessagingSendInput, providerKey: str
       input.channel,
       providerKey,
       input.from ?? null,
-      input.to,
+      messageDestinationForStorage(input),
       input.subject ?? null,
-      input.body,
+      messageBodyForStorage(input),
       Boolean(input.metadata?.aiGenerated),
       idempotencyKey,
       JSON.stringify({ ...(input.metadata ?? {}), queueId: input.queueId ?? null, engineReservation: true })
@@ -378,7 +420,7 @@ async function logEngineFailure(input: MessagingSendInput, providerKey: string, 
 
 async function logMessage(input: MessagingSendInput, result: MessagingSendResult) {
   const idempotencyKey = input.idempotencyKey ?? (input.queueId ? `queue:${input.queueId}` : null);
-  await queryPostgres(
+  const messageResult = await queryPostgres<{ id: string }>(
     `
     insert into public.messages (
       tenant_id, conversation_id, direction, channel, provider_key, provider_message_ref,
@@ -389,6 +431,7 @@ async function logMessage(input: MessagingSendInput, result: MessagingSendResult
       provider_message_ref = coalesce(excluded.provider_message_ref, public.messages.provider_message_ref),
       status = excluded.status,
       metadata_json = public.messages.metadata_json || excluded.metadata_json
+    returning id
     `,
     [
       input.tenantId,
@@ -397,9 +440,9 @@ async function logMessage(input: MessagingSendInput, result: MessagingSendResult
       result.providerKey,
       result.ok ? result.providerMessageId : null,
       input.from ?? null,
-      input.to,
+      messageDestinationForStorage(input),
       input.subject ?? null,
-      input.body,
+      messageBodyForStorage(input),
       result.ok ? (result.status === "manual_ready" ? "queued" : "sent") : "failed",
       Boolean(input.metadata?.aiGenerated),
       idempotencyKey,
@@ -409,6 +452,26 @@ async function logMessage(input: MessagingSendInput, result: MessagingSendResult
         manualHref: result.ok ? result.manualHref ?? null : null,
         engineStatus: result.ok ? result.status : "failed"
       })
+    ]
+  );
+  const messageId = messageResult?.rows[0]?.id;
+  if (!messageId) return;
+  const blocked = !result.ok && typeof result.metadata?.blockedBy === "string";
+  const deliveryStatus = result.ok
+    ? result.status === "manual_ready" ? "unknown" : result.status === "queued" ? "queued" : "sent"
+    : blocked ? "rejected" : "failed";
+  await queryPostgres(
+    `update public.messages
+     set delivery_status=$3, delivery_raw_status=$4, delivery_safe_reason=$5,
+         delivery_final=$6, delivery_updated_at=now()
+     where tenant_id=$1 and id=$2`,
+    [
+      input.tenantId,
+      messageId,
+      deliveryStatus,
+      result.ok ? result.status : "provider_error",
+      result.ok ? null : result.error,
+      !result.ok
     ]
   );
 }
@@ -533,6 +596,20 @@ export async function sendMessage(input: MessagingSendInput): Promise<MessagingS
 
   if (!provider) {
     return { ok: false, providerKey, status: 0, error: `No messaging provider is available for ${input.channel}.`, retryable: false };
+  }
+
+  const requiredCapability = input.channel === "email"
+    ? "email"
+    : input.channel === "mms" ? "mms" : input.channel === "sms" || input.channel === "manual_sms" ? "sms" : null;
+  if (requiredCapability && !provider.supportsCapability(requiredCapability)) {
+    return {
+      ok: false,
+      providerKey: provider.providerKey,
+      status: 0,
+      error: `${provider.displayName} cannot send ${input.channel} messages.`,
+      retryable: false,
+      metadata: { blockedBy: "provider_capability_mismatch" }
+    };
   }
 
   if (!hasSendAuthorization(input)) {

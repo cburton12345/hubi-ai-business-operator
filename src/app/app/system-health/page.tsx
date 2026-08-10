@@ -5,6 +5,8 @@ import { env, hasSupabaseAdminConfig, hasSupabaseBrowserConfig, missingEnvVars }
 import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getEmailProviderHealth, type EmailProviderHealth } from "@/lib/email/provider-health";
+import { getPlatformCapacityDashboard } from "@/lib/observability/platform-capacity";
+import { getActivePlatformAdminAlerts } from "@/lib/observability/platform-admin-alerts";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type HealthStatus = "ok" | "needs_setup" | "warning" | "broken" | "not_connected" | "paused";
@@ -57,7 +59,7 @@ type IntegrationStatus = {
 
 async function getSystemHealthData() {
   const workspaceId = await getCurrentWorkspaceId();
-  const [statsResult, integrationsResult, emailHealth] = await Promise.all([
+  const [statsResult, integrationsResult, emailHealth, capacity, adminAlerts] = await Promise.all([
     queryPostgres<HealthStats>(
       `
       select
@@ -114,10 +116,12 @@ async function getSystemHealthData() {
       `,
       [workspaceId]
     ),
-    getEmailProviderHealth()
+    getEmailProviderHealth(),
+    getPlatformCapacityDashboard(),
+    getActivePlatformAdminAlerts()
   ]);
 
-  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth };
+  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth, capacity, adminAlerts };
 }
 
 function count(value: string | undefined) {
@@ -367,7 +371,7 @@ function iconFor(status: HealthStatus) {
 }
 
 export default async function SystemHealthPage() {
-  const { stats, integrations, emailHealth } = await getSystemHealthData();
+  const { stats, integrations, emailHealth, capacity, adminAlerts } = await getSystemHealthData();
   const checks = buildHealthChecks(stats, integrations, emailHealth);
   const totals = {
     ok: checks.filter((item) => item.status === "ok").length,
@@ -400,6 +404,72 @@ export default async function SystemHealthPage() {
           <div className="panel span-2 metric"><span className="muted">Not connected</span><strong>{totals.notConnected}</strong></div>
           <div className="panel span-2 metric"><span className="muted">Paused</span><strong>{totals.paused}</strong></div>
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div><p className="eyebrow">Owner attention</p><h2>Platform And Customer Alerts</h2><p className="muted">Provider failures, customer integration requests, capacity risk, and other platform exceptions are deduplicated here and important events are emailed.</p></div>
+          <span className={`pill ${adminAlerts.some((alert) => alert.severity === "critical" || alert.severity === "high") ? "high" : ""}`}>{adminAlerts.length} active</span>
+        </div>
+        <ul className="list section-actions">
+          {adminAlerts.map((alert) => (
+            <li className="list-row" key={alert.id}>
+              <div><h3>{alert.title}</h3><p className="muted">{alert.body}</p><p className="muted">Seen {alert.occurrenceCount} time{alert.occurrenceCount === 1 ? "" : "s"}</p></div>
+              <div className="button-row"><span className={`pill ${alert.severity === "critical" || alert.severity === "high" ? "high" : "medium"}`}>{alert.severity}</span>{alert.actionUrl ? <Link className="mini-button" href={alert.actionUrl}>Open</Link> : null}</div>
+            </li>
+          ))}
+          {!adminAlerts.length ? <li className="list-row"><span className="muted">No active platform-owner alerts.</span></li> : null}
+        </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Scale readiness</p>
+            <h2>Upgrade Before Customers Feel It</h2>
+            <p className="muted">Ferocity warns early. Plan purchases stay owner-controlled and do not happen automatically.</p>
+          </div>
+          <span className={`pill ${capacity.alerts.length ? "high" : ""}`}>{capacity.alerts.length} active alert{capacity.alerts.length === 1 ? "" : "s"}</span>
+        </div>
+
+        {capacity.latest ? (
+          <div className="grid section-actions">
+            <div className="panel span-3 metric"><span className="muted">Database connections</span><strong>{capacity.latest.databaseConnectionPercent === null ? "unknown" : `${capacity.latest.databaseConnectionPercent.toFixed(1)}%`}</strong></div>
+            <div className="panel span-3 metric"><span className="muted">Work waiting</span><strong>{capacity.latest.dueActionCount.toLocaleString()}</strong></div>
+            <div className="panel span-3 metric"><span className="muted">Recent failures</span><strong>{capacity.latest.failedActionCount.toLocaleString()}</strong></div>
+            <div className="panel span-3 metric"><span className="muted">Recent errors</span><strong>{capacity.latest.recentErrorCount.toLocaleString()}</strong></div>
+          </div>
+        ) : <p className="muted section-actions">The first capacity snapshot will appear after the background operating loop runs.</p>}
+
+        {capacity.alerts.length ? (
+          <ul className="list section-actions">
+            {capacity.alerts.map((alert) => (
+              <li className="list-row" key={alert.id}>
+                <div><h3>{alert.title}</h3><p className="muted">{alert.summary}</p></div>
+                <span className={`pill ${alert.severity === "critical" ? "high" : "medium"}`}>{alert.severity}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <ul className="list section-actions">
+          <li className="list-row">
+            <div><h3>Database</h3><p className="muted">Watch at 50%, prepare the upgrade at 70%, and treat 85% as urgent.</p></div>
+            <a className="mini-button" href="https://supabase.com/dashboard/org/rhycegutaputwozpebpi/billing" rel="noreferrer" target="_blank">Supabase billing</a>
+          </li>
+          <li className="list-row">
+            <div><h3>Hosting and functions</h3><p className="muted">Review at 50% of monthly credits and upgrade before 75% on a hard-limited plan.</p></div>
+            <a className="mini-button" href="https://app.netlify.com/teams/ferocityflow/billing" rel="noreferrer" target="_blank">Netlify billing</a>
+          </li>
+          <li className="list-row">
+            <div><h3>Customer email</h3><p className="muted">Review at 50% of daily or monthly quota and upgrade before 75% or a planned signup campaign.</p></div>
+            <a className="mini-button" href="https://resend.com/settings/billing" rel="noreferrer" target="_blank">Resend billing</a>
+          </li>
+          <li className="list-row">
+            <div><h3>Voice, video, messaging, and ads</h3><p className="muted">Warn when projected prepaid funding reaches 14 days, escalate at seven days, and pause only if funds are depleted, payment fails, or an approved spending cap is reached.</p></div>
+            <Link className="mini-button" href="/app/provider-costs">Provider costs</Link>
+          </li>
+        </ul>
       </section>
 
       <section className="panel section-actions">

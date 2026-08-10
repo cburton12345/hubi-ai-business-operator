@@ -4,9 +4,89 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { sendMessage } from "@/lib/messaging/messaging-engine";
+import { assessMessageRetry, requiredRetryCapability } from "@/lib/messaging/message-retry";
+import { getMessagingProvider } from "@/lib/messaging/provider-registry";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const accountSchema = z.string().uuid();
+const retrySchema = z.object({
+  messageId: z.string().uuid(),
+  providerKey: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i)
+});
+
+export async function retryMessageAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = retrySchema.safeParse({
+    messageId: formData.get("messageId"),
+    providerKey: formData.get("providerKey")
+  });
+  if (!parsed.success) return;
+  const provider = getMessagingProvider(parsed.data.providerKey);
+  const tenantId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{
+    id: string;
+    conversation_id: string | null;
+    channel: "sms" | "mms" | "email" | "manual_sms";
+    from_value: string | null;
+    to_value: string | null;
+    subject: string | null;
+    body: string;
+    delivery_status: string;
+    retry_attempt: number;
+  }>(
+    `select id, conversation_id, channel, from_value, to_value, subject, body,
+            delivery_status, retry_attempt
+     from public.messages
+     where tenant_id=$1 and id=$2 and direction='outbound'
+       and delivery_status in ('failed','rejected','undelivered','suspected_filtered')
+     limit 1`,
+    [tenantId, parsed.data.messageId]
+  );
+  const original = result?.rows[0];
+  if (!original || !original.to_value) return;
+
+  const manual = parsed.data.providerKey === "manual_sms";
+  const requiredCapability = requiredRetryCapability(original.channel);
+  const assessment = assessMessageRetry({
+    message: {
+      body: original.body,
+      channel: original.channel,
+      deliveryStatus: original.delivery_status,
+      retryAttempt: original.retry_attempt
+    },
+    requestedProviderKey: parsed.data.providerKey,
+    providerExists: Boolean(provider),
+    providerSupportsCapability: provider?.supportsCapability(requiredCapability) ?? false
+  });
+  if (!assessment.allowed || !provider) return;
+  const idempotencyKey = `message-retry:${original.id}:${crypto.randomUUID()}`;
+  await sendMessage({
+    tenantId,
+    channel: manual ? "manual_sms" : original.channel === "manual_sms" ? "sms" : original.channel,
+    to: original.to_value,
+    from: original.from_value ?? undefined,
+    subject: original.subject ?? undefined,
+    body: original.body,
+    conversationId: original.conversation_id ?? undefined,
+    providerKey: parsed.data.providerKey,
+    idempotencyKey,
+    authorization: { source: "message_health_manual_retry", humanApproved: true },
+    metadata: {
+      retryOfMessageId: original.id,
+      retryAttempt: original.retry_attempt + 1,
+      requestedFrom: "message_health"
+    }
+  });
+  await queryPostgres(
+    `update public.messages
+     set retry_of_message_id=$3, retry_attempt=$4
+     where tenant_id=$1 and idempotency_key=$2`,
+    [tenantId, idempotencyKey, original.id, original.retry_attempt + 1]
+  );
+  revalidatePath("/app/messaging");
+  revalidatePath("/app/alerts");
+}
 
 export async function emergencyPauseMessagingAccountAction(formData: FormData) {
   await requirePermission("tenant:manage");
@@ -69,4 +149,3 @@ export async function clearMessagingEmergencyPauseAction(formData: FormData) {
   revalidatePath("/app/messaging");
   revalidatePath("/app/actions");
 }
-

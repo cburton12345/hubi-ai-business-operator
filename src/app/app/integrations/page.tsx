@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, KeyRound, ShieldCheck, Unplug } from "lucide-react";
+import { ArrowRight, CalendarDays, KeyRound, MapPin, ShieldCheck, Unplug } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getCurrentActor } from "@/lib/auth/require-permission";
 import { getAdapterBuildsForTenant } from "@/lib/integrations/adapter-factory";
@@ -87,6 +87,18 @@ export default async function IntegrationsPage({
             </Link>
             <Link className="button secondary-button" href="/app/marketing-os">
               Marketing
+            </Link>
+            <Link className="button secondary-button" href="/app/integrations/calendar">
+              <CalendarDays size={16} /> Calendars
+            </Link>
+            <Link className="button secondary-button" href="/app/integrations/business-profile">
+              <MapPin size={16} /> Google Business Profile
+            </Link>
+            <Link className="button secondary-button" href="/app/integrations/reporting">
+              Search and analytics
+            </Link>
+            <Link className="button secondary-button" href="/app/integrations/service-platforms">
+              <ArrowRight size={16} /> Existing service platform
             </Link>
             <Link className="button secondary-button" href="/docs/provider-account-setup">
               Provider Setup Packet
@@ -427,7 +439,7 @@ function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }
 }
 
 function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number] }) {
-  const canMarkReady = row.missingEnvVars.length === 0 && row.executionMode !== "setup_only";
+  const canMarkReady = row.missingEnvVars.length === 0 && ["executable_adapter", "native_fallback"].includes(row.executionMode);
   const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not used by default";
   const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No backup use";
 
@@ -515,6 +527,7 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
           </button>
           <span className="muted">{row.liveActionsEnabled ? "Live actions on" : "Live actions off"}</span>
           {row.executionMode === "setup_only" ? <span className="muted">Connection can be planned, but not marked ready until its adapter is built.</span> : null}
+          {row.executionMode === "connection_only" ? <span className="muted">The account can be authorized now, but Ferocity will not claim reporting is live until property selection and data sync pass certification.</span> : null}
         </form>
       </div>
     </section>

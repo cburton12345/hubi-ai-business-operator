@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-08-04",
+  "states": ["certified_live", "limited", "connect_account", "approval_blocked", "fallback_only", "planned"],
+  "providers": {
+    "email_provider": {
+      "label": "Email delivery",
+      "state": "certified_live",
+      "summary": "Transactional email delivery is live through the configured Ferocity sender.",
+      "capabilities": ["send_email"],
+      "fallback": "Draft and copy the message for manual sending."
+    },
+    "resend_shared": {
+      "label": "Ferocity-managed email",
+      "state": "certified_live",
+      "summary": "Ferocity-managed outbound email is live. Mailbox ingestion is a separate capability.",
+      "capabilities": ["send_email"],
+      "fallback": "Draft and copy the message for manual sending."
+    },
+    "twilio": {
+      "label": "Customer-owned Twilio",
+      "state": "connect_account",
+      "summary": "The adapter exists; each customer must connect valid credentials and complete applicable messaging compliance before live use.",
+      "capabilities": ["send_sms", "send_mms", "telephony"],
+      "fallback": "Use the native SMS handoff or copy-message flow."
+    },
+    "twilio_shared": {
+      "label": "Ferocity-managed texting",
+      "state": "approval_blocked",
+      "summary": "Managed texting remains unavailable while the provider account and required compliance approvals are unresolved.",
+      "capabilities": [],
+      "fallback": "Use customer-owned Twilio, native SMS handoff, email, or copy-message flow."
+    },
+    "voice_ai": {
+      "label": "Voice AI",
+      "state": "limited",
+      "summary": "Retell outbound calling has been certified; inbound routing, owner briefings, and every alternate engine require separate certification.",
+      "capabilities": ["outbound_ai_call"],
+      "fallback": "Create a human-call task or use the customer's connected phone provider."
+    },
+    "stripe": {
+      "label": "Ferocity subscriptions",
+      "state": "certified_live",
+      "summary": "Ferocity subscription checkout and billing are live.",
+      "capabilities": ["subscription_checkout", "billing_portal"],
+      "fallback": "Contact Ferocity billing support."
+    },
+    "stripe_connect": {
+      "label": "Customer invoice payments",
+      "state": "connect_account",
+      "summary": "Online invoice payment works after the customer completes Stripe Connect onboarding.",
+      "capabilities": ["invoice_checkout", "direct_payouts"],
+      "fallback": "Record an offline payment or send payment instructions."
+    },
+    "premium_video_rendering": {
+      "label": "AI video generation",
+      "state": "certified_live",
+      "summary": "Veo generation is live behind budget and authority controls.",
+      "capabilities": ["generate_video"],
+      "fallback": "Create a production brief for external rendering."
+    },
+    "public_web_chat": {
+      "label": "Website chat",
+      "state": "limited",
+      "summary": "The native public chat path exists; installation and production-site certification must be completed per website.",
+      "capabilities": ["capture_lead", "answer_questions"],
+      "fallback": "Use a hosted lead form or contact link."
+    },
+    "google_calendar": {
+      "label": "Google Calendar",
+      "state": "connect_account",
+      "summary": "OAuth and calendar operations are available after a customer connects and authorizes an account.",
+      "capabilities": ["read_calendar", "write_calendar"],
+      "fallback": "Use Ferocity scheduling and iCalendar export."
+    },
+    "microsoft_calendar": {
+      "label": "Microsoft Outlook Calendar",
+      "state": "connect_account",
+      "summary": "OAuth and calendar operations are available after a customer connects and authorizes an account.",
+      "capabilities": ["read_calendar", "write_calendar"],
+      "fallback": "Use Ferocity scheduling and iCalendar export."
+    },
+    "google_business_profile": {
+      "label": "Google Business Profile",
+      "state": "limited",
+      "summary": "Connection and read foundations exist; publishing, reply, and review actions are not all certified live.",
+      "capabilities": ["connect_profile", "read_profile"],
+      "fallback": "Prepare drafts and deep-link the user to Google Business Profile."
+    },
+    "search_console": {
+      "label": "Google Search Console",
+      "state": "limited",
+      "summary": "Tenant OAuth, property selection, and read-only 28-day reporting sync are implemented; production connection certification remains per account.",
+      "capabilities": ["authorize_read_access", "select_property", "sync_reporting"],
+      "fallback": "Use a website audit and manually supplied search data."
+    },
+    "analytics": {
+      "label": "Google Analytics",
+      "state": "limited",
+      "summary": "Tenant OAuth, GA4 property selection, and read-only 28-day reporting sync are implemented; production connection certification remains per account.",
+      "capabilities": ["authorize_read_access", "select_property", "sync_reporting"],
+      "fallback": "Use Ferocity-native attribution and manually imported reports."
+    },
+    "google_ads": {
+      "label": "Google Ads",
+      "state": "approval_blocked",
+      "summary": "Account setup foundations exist; normalized live campaign execution is not certified.",
+      "capabilities": ["connect_account"],
+      "fallback": "Prepare an approved campaign package for launch in Google Ads."
+    },
+    "facebook": {
+      "label": "Meta and Facebook",
+      "state": "planned",
+      "summary": "Planning and connection surfaces exist, but normalized live publishing and ad execution are not certified.",
+      "capabilities": [],
+      "fallback": "Prepare posts and campaign packages for manual publishing."
+    },
+    "tiktok": {
+      "label": "TikTok",
+      "state": "limited",
+      "summary": "Login Kit account access is distinct from the Marketing API; live ad execution remains approval-dependent.",
+      "capabilities": ["login_kit"],
+      "fallback": "Prepare campaign assets and instructions for TikTok Ads Manager."
+    },
+    "reddit": {
+      "label": "Reddit Ads",
+      "state": "planned",
+      "summary": "Funding and setup do not constitute a certified campaign execution adapter.",
+      "capabilities": [],
+      "fallback": "Prepare a campaign package for Reddit Ads Manager."
+    },
+    "microsoft_ads": {
+      "label": "Microsoft Advertising",
+      "state": "planned",
+      "summary": "Funding and setup do not constitute a certified campaign execution adapter.",
+      "capabilities": [],
+      "fallback": "Prepare a campaign package for Microsoft Advertising."
+    },
+    "jobber": {
+      "label": "Jobber",
+      "state": "limited",
+      "summary": "OAuth and read-only synchronization have been certified; write-back remains off until separately certified.",
+      "capabilities": ["connect_account", "read_sync"],
+      "fallback": "Use Ferocity independently or import/export records."
+    },
+    "quickbooks": {
+      "label": "QuickBooks",
+      "state": "fallback_only",
+      "summary": "Portable accounting and tax exports work; live QuickBooks synchronization is not enabled.",
+      "capabilities": ["accounting_export"],
+      "fallback": "Export the accounting package for QuickBooks or an accountant."
+    },
+    "marketplacepro": {
+      "label": "MarketplacePro",
+      "state": "certified_live",
+      "summary": "Signed MarketplacePro events and owner-event handling are live.",
+      "capabilities": ["receive_signed_events"],
+      "fallback": "Reconcile events from the audit log."
+    },
+    "supabase_auth": {
+      "label": "Authentication and workspace data",
+      "state": "certified_live",
+      "summary": "Authentication and tenant data foundations are live.",
+      "capabilities": ["authentication", "tenant_data"],
+      "fallback": "Use the incident recovery procedure."
+    },
+    "webhook_framework": {
+      "label": "Signed webhooks",
+      "state": "certified_live",
+      "summary": "The signed webhook framework is live for implemented event contracts.",
+      "capabilities": ["receive_signed_events", "send_signed_events"],
+      "fallback": "Queue and replay events from the audit log."
+    },
+    "calendar_provider": {
+      "label": "Portable calendar",
+      "state": "fallback_only",
+      "summary": "Ferocity scheduling and iCalendar export work without a third-party calendar account.",
+      "capabilities": ["native_scheduling", "ical_export"],
+      "fallback": "Use Ferocity scheduling."
+    },
+    "external_publishing": {
+      "label": "Website and content publishing",
+      "state": "fallback_only",
+      "summary": "Hosted pages and exportable publishing packages work; arbitrary CMS editing requires a supported connection mode.",
+      "capabilities": ["hosted_page", "content_export"],
+      "fallback": "Publish a Ferocity-hosted page or export the content package."
+    }
+  }
+}

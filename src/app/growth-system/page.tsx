@@ -17,6 +17,7 @@ import {
   Target
 } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Ferocity Growth System | Free Business Audit",
@@ -408,6 +409,7 @@ export default function GrowthSystemPage() {
             <Link className="button secondary-button" href="/pricing">See plans</Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

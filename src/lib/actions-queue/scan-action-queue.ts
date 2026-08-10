@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { env } from "@/lib/env";
 
 export type ActionQueueScanResult = {
   tenantId: string;
@@ -47,6 +48,7 @@ export async function retryFailedOutboundActionsForTenant(tenantId: string) {
 }
 
 export async function scanActionQueueForTenant(tenantId: string): Promise<ActionQueueScanResult> {
+  const appUrl = (env.FEROCITY_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live").replace(/\/+$/, "");
   const consent = await queryPostgres<{ upserted: string }>(
     `
     with source_contacts as (
@@ -197,7 +199,14 @@ export async function scanActionQueueForTenant(tenantId: string): Promise<Action
           'channel', r.channel,
           'triggerEvent', r.trigger_event,
           'negativeInterceptionStatus', r.negative_interception_status,
-          'message', coalesce(r.ai_response_draft, 'Thanks again for choosing us. If everything looks good, we would appreciate an honest review.')
+          'message', concat(
+            coalesce(r.ai_response_draft, 'Thanks again for choosing us. We would appreciate your honest feedback.'),
+            E'\n\nShare your feedback: ',
+            $2,
+            '/review/',
+            r.public_token::text
+          ),
+          'reviewUrl', concat($2, '/review/', r.public_token::text)
         ),
         p.id,
         jsonb_build_object(
@@ -223,7 +232,7 @@ export async function scanActionQueueForTenant(tenantId: string): Promise<Action
     )
     select count(*)::text as queued from queued
     `,
-    [tenantId]
+    [tenantId, appUrl]
   );
 
   const appointmentReminders = await queryPostgres<{ queued: string }>(

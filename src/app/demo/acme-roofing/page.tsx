@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Roofing Business Demo",
+  description: "See a public example of Ferocity coordinating leads, estimates, follow-up, jobs, reviews, marketing, and revenue for a roofing business.",
+  alternates: { canonical: "/demo/acme-roofing" }
+};
 
 const steps = [
   { title: "Get found", body: "Storm repair, roof replacement, gutter, and service-area pages move through review." },

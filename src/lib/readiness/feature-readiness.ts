@@ -143,7 +143,7 @@ export async function getFeatureReadinessItems() {
       state: hasReady("google_ads") || hasReady("facebook") || hasReady("reddit") ? "approval_first" : "needs_connection",
       whatWorks: "Ferocity can plan campaigns, track sources, and prepare ad ideas.",
       whatIsBlocked: "Live ad creation, budget changes, and spend need Google/Meta/Reddit/Microsoft/Yahoo credentials and approval.",
-      nextStep: "Connect ad accounts only when budget limits and approvals are ready.",
+      nextStep: "Connect an ad account when ready. Ferocity applies safety boundaries automatically; custom limits are optional.",
       href: "/app/integrations"
     }),
     item({

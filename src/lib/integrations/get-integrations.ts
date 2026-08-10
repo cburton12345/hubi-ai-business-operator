@@ -308,7 +308,7 @@ export const plannedConnections = [
     provider: "analytics",
     displayName: "Analytics",
     notes: "Lead source and campaign attribution are tracked internally now. GA4 traffic and conversion reporting requires the connected analytics property.",
-    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GA4_PROPERTY_ID"],
+    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
     setupItems: ["Confirm GA4 property", "Map events to lead sources", "Avoid storing personal analytics data unnecessarily"],
     callbackPath: "/api/integrations/google/oauth/callback",
     riskLevel: "medium",
@@ -358,6 +358,45 @@ export const plannedConnections = [
     riskLevel: "medium",
     setupMode: "keyless_feed_optional_oauth",
     liveActionRule: "Private read-only schedule feeds work now. Provider-side edits and auto-booking require an optional connected account and explicit rules."
+  },
+  {
+    provider: "jobber",
+    displayName: "Jobber",
+    notes: "Native, read-only Jobber connection for whole-business analysis while Jobber remains the operational record. The signed bridge remains available as a fallback.",
+    envVars: ["JOBBER_CLIENT_ID", "JOBBER_CLIENT_SECRET", "JOBBER_OAUTH_REDIRECT_URI"],
+    setupItems: [
+      "Connect the business owner through Jobber OAuth",
+      "Verify the Jobber account identity",
+      "Run the read-only business sync",
+      "Review Ferocity recommendations",
+      "Enable individual write-back actions only if the owner wants them"
+    ],
+    callbackPath: "/api/integrations/jobber/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read and analyze the connected Jobber business. Provider records remain provider-owned and all Jobber writes stay disabled."
+  },
+  {
+    provider: "google_calendar",
+    displayName: "Google Calendar",
+    notes: "Native availability and event synchronization using Ferocity's shared calendar contract. Connection starts read-only; external events remain provider-owned unless explicitly adopted.",
+    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
+    setupItems: ["Connect Google", "Select a calendar", "Run the read-only sync", "Enable outbound Ferocity events only if wanted"],
+    callbackPath: "/api/integrations/google/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
+  },
+  {
+    provider: "microsoft_calendar",
+    displayName: "Microsoft Outlook Calendar",
+    notes: "Native Outlook calendar availability and event synchronization through Microsoft Graph. Connection starts read-only and uses delta cursors to avoid repeated full imports.",
+    envVars: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"],
+    setupItems: ["Connect Microsoft", "Select a calendar", "Run the read-only sync", "Enable outbound Ferocity events only if wanted"],
+    callbackPath: "/api/integrations/microsoft_calendar/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
   },
   {
     provider: "webhook_framework",

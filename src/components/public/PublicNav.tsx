@@ -8,7 +8,7 @@ export function PublicNav() {
         <Link href="/demo">See it work</Link>
         <Link href="/pricing">Plans</Link>
         <Link href="/login">Sign in</Link>
-        <Link className="nav-cta" href="/subscribe?plan=growth">Start Ferocity</Link>
+        <Link className="nav-cta" href="/subscribe">Start Ferocity</Link>
       </div>
     </nav>
   );

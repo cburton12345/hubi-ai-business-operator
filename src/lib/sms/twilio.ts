@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import type { TwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
+import { resilientFetch } from "@/lib/http/resilient-fetch";
 
 export type TwilioSmsResult =
   | { ok: true; providerMessageId: string | null }
@@ -50,14 +51,14 @@ export async function sendSmsWithTwilio(input: {
   if (configuration.messagingServiceSid) body.set("MessagingServiceSid", configuration.messagingServiceSid);
   else if (configuration.fromNumber) body.set("From", configuration.fromNumber);
 
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${configuration.accountSid}/Messages.json`, {
+  const response = await resilientFetch(`https://api.twilio.com/2010-04-01/Accounts/${configuration.accountSid}/Messages.json`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body
-  });
+  }, { timeoutMs: 12_000 });
 
   const payload = (await response.json().catch(() => null)) as { sid?: string; message?: string; error_message?: string } | null;
 

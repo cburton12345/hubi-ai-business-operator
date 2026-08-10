@@ -1,0 +1,42 @@
+name: Ferocity production uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ferocity-production-uptime
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify application health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
+            https://ferocity.live/health > /dev/null
+
+      - name: Verify public status page
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
+            https://ferocity.live/status > /dev/null
+
+      - name: Verify emergency fallback asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
+            https://ferocity.live/emergency.html > /dev/null

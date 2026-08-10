@@ -8,6 +8,9 @@ dist/
 build/
 coverage/
 output/
+artifacts/
+__pycache__/
+*.pyc
 *.log
 tsconfig.tsbuildinfo
 .render-generated-admin-token

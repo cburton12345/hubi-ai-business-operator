@@ -102,6 +102,8 @@ export default async function BillingPage() {
             entries, and follow-up.
           </p>
           <form action="/api/integrations/stripe-connect/onboard" method="post">
+            <input name="country" type="hidden" value="US" />
+            <p className="muted">Available for United States businesses during launch.</p>
             <button className="mini-button" type="submit">Connect Stripe and payout bank</button>
           </form>
         </details>
@@ -219,10 +221,10 @@ export default async function BillingPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Managed Ad Spend Controls</h2>
+            <h2>Advertising Budget</h2>
             <p className="muted">
-              Customer-owned ad accounts are the default. If a business asks Ferocity to run ads through Ferocity-managed accounts, spend stays
-              blocked until prepaid budget, customer approval, daily caps, monthly caps, and provider readiness are all recorded.
+              Choose how much the business wants available for advertising. Ferocity keeps campaigns inside that budget and handles the provider,
+              balance checks, and safety limits in the background.
             </p>
           </div>
           <Link className="mini-button" href="/app/integrations">Open connections</Link>
@@ -233,21 +235,49 @@ export default async function BillingPage() {
               <div className="list-row flush-row">
                 <div>
                   <span className="eyebrow">{providerLabel(budget.providerKey)}</span>
-                  <h3>Ferocity-managed ads</h3>
+                  <h3>{money(budget.availableCents)} available</h3>
                 </div>
                 <span className={`pill ${budget.readinessStatus === "allowed" ? "" : "medium"}`}>
                   {budget.readinessStatus.replaceAll("_", " ")}
                 </span>
               </div>
               <p className="muted">{budget.readinessReason}</p>
-              <ul className="list section-actions">
-                <li className="list-row"><strong>Available prepaid budget</strong><span className="pill">{money(budget.availableCents)}</span></li>
-                <li className="list-row"><strong>Daily cap</strong><span className="pill">{budget.dailyCapCents > 0 ? money(budget.dailyCapCents) : "not set"}</span></li>
-                <li className="list-row"><strong>Monthly cap</strong><span className="pill">{budget.monthlyCapCents > 0 ? money(budget.monthlyCapCents) : "not set"}</span></li>
-                <li className="list-row"><strong>Customer approval</strong><span className={`pill ${budget.approvedByCustomer ? "" : "medium"}`}>{budget.approvedByCustomer ? "yes" : "needed"}</span></li>
-                <li className="list-row"><strong>Live spend</strong><span className={`pill ${budget.liveSpendEnabled ? "high" : ""}`}>{budget.liveSpendEnabled ? "on" : "off"}</span></li>
-                <li className="list-row"><strong>Management fee</strong><span className="pill">{percentLabel(budget.managementFeeBps)}</span></li>
-              </ul>
+              <p className="muted">{money(budget.monthlySpentCents)} used this month</p>
+              {can(actor, "billing:manage") ? (
+                <section className="subtle-panel section-actions">
+                  <h4>Add advertising budget</h4>
+                  <p className="muted">Choose an amount and finish in Stripe. The budget appears here as soon as payment is confirmed.</p>
+                  <form action="/api/billing/ad-wallet/checkout" className="inline-actions" method="post">
+                    <input name="providerKey" type="hidden" value={budget.providerKey} />
+                    <button className="mini-button" name="amount" type="submit" value="100">Add $100</button>
+                    <button className="mini-button" name="amount" type="submit" value="250">Add $250</button>
+                    <button className="mini-button" name="amount" type="submit" value="500">Add $500</button>
+                  </form>
+                  <details>
+                    <summary>Choose another amount</summary>
+                    <form action="/api/billing/ad-wallet/checkout" className="inline-actions" method="post">
+                      <input name="providerKey" type="hidden" value={budget.providerKey} />
+                      <label>
+                        Amount
+                        <input defaultValue="1000" min="25" max="50000" name="amount" step="1" type="number" />
+                      </label>
+                      <button className="mini-button" type="submit">Continue to secure payment</button>
+                    </form>
+                  </details>
+                </section>
+              ) : null}
+              <details className="subtle-panel">
+                <summary>How Ferocity protects this budget</summary>
+                <ul className="list section-actions">
+                  <li className="list-row"><strong>Pending campaign reservations</strong><span className="pill">{money(budget.reservedCents)}</span></li>
+                  <li className="list-row"><strong>Daily safeguard</strong><span className="pill">{budget.dailyCapCents > 0 ? money(budget.dailyCapCents) : "applied at campaign setup"}</span></li>
+                  <li className="list-row"><strong>Monthly safeguard</strong><span className="pill">{budget.monthlyCapCents > 0 ? money(budget.monthlyCapCents) : "applied at campaign setup"}</span></li>
+                  <li className="list-row"><strong>Emergency stop</strong><span className="pill">{budget.stopLossCents > 0 ? money(budget.stopLossCents) : "automatic before launch"}</span></li>
+                  <li className="list-row"><strong>Campaign approval</strong><span className={`pill ${budget.approvedByCustomer ? "" : "medium"}`}>{budget.approvedByCustomer ? "approved" : "needed"}</span></li>
+                  <li className="list-row"><strong>Advertising status</strong><span className={`pill ${budget.liveSpendEnabled ? "high" : ""}`}>{budget.liveSpendEnabled ? "running" : "off"}</span></li>
+                  <li className="list-row"><strong>Management fee</strong><span className="pill">{percentLabel(budget.managementFeeBps)}</span></li>
+                </ul>
+              </details>
             </section>
           ))}
           {billing.managedAdBudgets.length === 0 ? (

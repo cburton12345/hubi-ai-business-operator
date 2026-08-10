@@ -2,6 +2,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { buildCommunicationFailoverOffers, recordCommunicationFailover } from "@/lib/preferences/communication-failover";
 import type { CommunicationFallbackMode, CommunicationMethod } from "@/lib/preferences/communication-preferences";
+import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
 
 export type ReadyMessageProcessingResult = {
   checked: number;
@@ -141,6 +142,14 @@ async function updateQueueResult(input: {
       `,
       [input.tenantId, input.row.target_id]
     );
+  }
+
+  if (input.status === "sent" && input.row.target_type === "service_invoice" && input.row.target_id) {
+    await queryPostgres(
+      "update public.service_invoices set status=case when status='draft' then 'sent_manually' else status end,updated_at=now() where tenant_id=$1 and id=$2",
+      [input.tenantId, input.row.target_id]
+    );
+    await ensureInvoiceReviewEnrollment({ tenantId: input.tenantId, invoiceId: input.row.target_id, event: "invoice_sent" });
   }
 }
 

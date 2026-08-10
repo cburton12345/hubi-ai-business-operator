@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://ferocity.live"),
   title: {
-    default: "Ferocity | AI Operating System for Service Businesses",
+    default: "Ferocity AI | AI Operating System for Service Businesses",
     template: "%s | Ferocity"
   },
   description:
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://ferocity.live",
     siteName: "Ferocity",
-    title: "Ferocity | AI Operating System for Service Businesses",
+    title: "Ferocity AI | AI Operating System for Service Businesses",
     description:
       "Win more work, lose less money, and get your time back with one AI operating system for service businesses."
   },
@@ -47,6 +47,46 @@ export const metadata: Metadata = {
   }
 };
 
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://ferocity.live/#organization",
+      name: "Ferocity",
+      alternateName: "Ferocity AI",
+      url: "https://ferocity.live/",
+      logo: "https://ferocity.live/icon.svg",
+      description: "Ferocity is an AI business operating system that coordinates people, AI employees, customer work, operations, money, and growth for service businesses."
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://ferocity.live/#website",
+      url: "https://ferocity.live/",
+      name: "Ferocity",
+      alternateName: "Ferocity AI",
+      publisher: { "@id": "https://ferocity.live/#organization" },
+      inLanguage: "en-US"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://ferocity.live/#software",
+      name: "Ferocity",
+      alternateName: "Ferocity AI",
+      url: "https://ferocity.live/",
+      applicationCategory: "BusinessApplication",
+      applicationSubCategory: "AI business operating system",
+      operatingSystem: "Web",
+      description: "An AI operating system for service businesses that helps capture and follow up with leads, coordinate jobs and teams, manage customer communication, collect payments, and keep authorized work moving.",
+      publisher: { "@id": "https://ferocity.live/#organization" },
+      audience: {
+        "@type": "BusinessAudience",
+        audienceType: "Service businesses"
+      }
+    }
+  ]
+};
+
 export default function RootLayout({
   children
 }: Readonly<{
@@ -54,7 +94,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

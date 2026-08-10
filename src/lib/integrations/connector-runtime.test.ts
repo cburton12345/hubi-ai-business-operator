@@ -3,10 +3,11 @@ import { connectorCanBeMarkedReady, connectorExecutionMode } from "./connector-r
 
 describe("connector runtime truthfulness", () => {
   it("recognizes executable adapters", () => {
-    expect(connectorExecutionMode("facebook")).toBe("executable_adapter");
     expect(connectorExecutionMode("twilio")).toBe("executable_adapter");
     expect(connectorExecutionMode("voice_ai")).toBe("executable_adapter");
-    expect(connectorCanBeMarkedReady("facebook")).toBe(true);
+    expect(connectorCanBeMarkedReady("jobber")).toBe(true);
+    expect(connectorCanBeMarkedReady("search_console")).toBe(true);
+    expect(connectorCanBeMarkedReady("analytics")).toBe(true);
   });
 
   it("recognizes a useful native path without claiming provider sync", () => {
@@ -15,7 +16,9 @@ describe("connector runtime truthfulness", () => {
   });
 
   it("does not let connection scaffolding masquerade as an executable adapter", () => {
-    expect(connectorExecutionMode("reddit")).toBe("setup_only");
-    expect(connectorCanBeMarkedReady("reddit")).toBe(false);
+    for (const provider of ["facebook", "google_ads", "reddit", "microsoft_ads", "yahoo_ads"]) {
+      expect(connectorExecutionMode(provider)).toBe("setup_only");
+      expect(connectorCanBeMarkedReady(provider)).toBe(false);
+    }
   });
 });

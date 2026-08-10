@@ -47,7 +47,7 @@ export class ProviderBackedVoiceAgent implements VoiceAgent {
 
   async startConversation(
     context: ProviderContext,
-    input: { toNumber: string; fromNumber: string; assistantId: string }
+    input: { toNumber: string; fromNumber: string; assistantId: string; dynamicVariables?: Record<string, string> }
   ): Promise<ProviderResult<VoiceConversation>> {
     if (context.purpose !== "authorized_test") {
       const access = await evaluateVoiceAccess({

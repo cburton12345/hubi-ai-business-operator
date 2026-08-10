@@ -94,7 +94,12 @@ export interface VoiceAgentProvider {
     input: { assistantId: string; webhookUrl: string; inboundWebhookUrl?: string }
   ): Promise<ProviderResult<VoiceProviderConnection>>;
   createOrUpdateAssistant(context: ProviderContext, config: Record<string, unknown>): Promise<ProviderResult<{ assistantId: string; status: string }>>;
-  startOutboundCall(context: ProviderContext, input: { toNumber: string; fromNumber: string; assistantId: string }): Promise<ProviderResult<{ providerCallId: string; status: string }>>;
+  startOutboundCall(context: ProviderContext, input: {
+    toNumber: string;
+    fromNumber: string;
+    assistantId: string;
+    dynamicVariables?: Record<string, string>;
+  }): Promise<ProviderResult<{ providerCallId: string; status: string }>>;
   normalizeWebhook(headers: Headers, rawBody: string): Promise<ProviderResult<InboundCallEvent>>;
 }
 

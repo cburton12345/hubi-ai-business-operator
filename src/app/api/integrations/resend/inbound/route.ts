@@ -4,6 +4,8 @@ import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
 import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
+import { recordMessageDeliveryReceipt } from "@/lib/messaging/message-health";
+import { resendEmailProvider } from "@/lib/messaging/providers/resend-email";
 
 type RouteRow = {
   id: string;
@@ -20,6 +22,10 @@ type LeadRow = {
 type ThreadRow = {
   id: string;
 };
+
+type NormalizedInboundEmail = ReturnType<typeof normalizeInboundEmail>;
+
+const FEROCITY_SUPPORT_ADDRESS = "support@ferocity.live";
 
 function json(status: number, body: Record<string, unknown>) {
   return NextResponse.json(body, { status });
@@ -169,6 +175,101 @@ function normalizeInboundEmail(payload: Record<string, unknown>) {
   };
 }
 
+async function hydrateReceivedEmail(email: NormalizedInboundEmail) {
+  if (!env.EMAIL_API_KEY || !email.providerMessageId) return email;
+
+  try {
+    const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(email.providerMessageId)}`, {
+      headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
+      cache: "no-store"
+    });
+    if (!response.ok) return email;
+
+    const received = asRecord(await response.json().catch(() => null));
+    const textBody = clean(received.text);
+    const htmlBody = clean(received.html);
+    return {
+      ...email,
+      fromEmail: extractEmail(received.from) || email.fromEmail,
+      fromName: extractName(received.from) || email.fromName,
+      replyToEmail: extractEmail(received.reply_to) || email.replyToEmail,
+      recipients: [...new Set([
+        ...email.recipients,
+        ...collectEmails(received.to),
+        ...collectEmails(received.cc)
+      ])],
+      subject: clean(received.subject) || email.subject,
+      body: textBody || stripHtml(htmlBody) || email.body,
+      htmlBody: htmlBody || email.htmlBody,
+      raw: { ...email.raw, received }
+    };
+  } catch {
+    return email;
+  }
+}
+
+async function forwardFerocitySupportEmail(email: NormalizedInboundEmail) {
+  const notifyEmail = env.FEROCITY_NOTIFY_EMAIL?.trim().toLowerCase();
+  if (
+    !env.EMAIL_API_KEY ||
+    !env.EMAIL_FROM_ADDRESS ||
+    !notifyEmail ||
+    !email.recipients.includes(FEROCITY_SUPPORT_ADDRESS)
+  ) {
+    return { attempted: false, forwarded: false };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.EMAIL_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `support-${crypto.createHash("sha256").update(email.providerMessageId).digest("hex").slice(0, 32)}`
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM_ADDRESS,
+        to: [notifyEmail],
+        reply_to: email.replyToEmail || email.fromEmail,
+        subject: `Fwd: ${email.subject}`,
+        text: [
+          `Forwarded from ${email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail}`,
+          `Originally sent to ${FEROCITY_SUPPORT_ADDRESS}`,
+          "",
+          email.body
+        ].join("\n")
+      })
+    });
+
+    if (!response.ok) {
+      await logAppError({
+        source: "api.integrations.resend.inbound",
+        severity: "warning",
+        message: "Ferocity support email could not be forwarded.",
+        category: "provider_routing",
+        retryable: response.status >= 500 || response.status === 429,
+        metadata: { status: response.status, providerMessageId: email.providerMessageId }
+      });
+      return { attempted: true, forwarded: false };
+    }
+
+    return { attempted: true, forwarded: true };
+  } catch (error) {
+    await logAppError({
+      source: "api.integrations.resend.inbound",
+      severity: "warning",
+      message: "Ferocity support email forwarding failed.",
+      category: "provider_routing",
+      retryable: true,
+      metadata: {
+        providerMessageId: email.providerMessageId,
+        reason: error instanceof Error ? error.message : "unknown"
+      }
+    });
+    return { attempted: true, forwarded: false };
+  }
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const verification = verifyInboundSecret(request, rawBody);
@@ -190,10 +291,54 @@ export async function POST(request: Request) {
     return json(400, { ok: false, error: "Invalid JSON payload." });
   }
 
-  const email = normalizeInboundEmail(payload);
+  const eventType = clean(payload.type).toLowerCase();
+  if (eventType.startsWith("email.") && eventType !== "email.received") {
+    const data = asRecord(payload.data);
+    const providerMessageId = clean(data.email_id) || clean(data.id) || clean(payload.id);
+    if (!providerMessageId) return json(400, { ok: false, error: "Delivery event is missing its email ID." });
+    const messageResult = await queryPostgres<{ tenant_id: string }>(
+      `select tenant_id from public.messages
+       where provider_key='resend_email' and provider_message_ref=$1
+       order by created_at desc limit 1`,
+      [providerMessageId]
+    );
+    const tenantId = messageResult?.rows[0]?.tenant_id;
+    if (!tenantId) return json(202, { ok: true, recorded: false, reason: "message_not_found" });
+    const bounce = asRecord(data.bounce);
+    const error = asRecord(data.error);
+    const safeReason = (
+      clean(bounce.message)
+      || clean(data.message)
+      || clean(error.message)
+      || textFromUnknown(data.error)
+      || ""
+    ).slice(0, 1000) || null;
+    const normalized = resendEmailProvider.normalizeDeliveryReceipt?.({
+      status: eventType,
+      errorCode: clean(data.error_code) || clean(error.code) || null,
+      errorMessage: safeReason
+    });
+    if (!normalized) return json(503, { ok: false, error: "Delivery normalization is unavailable." });
+    const eventDate = new Date(clean(payload.created_at));
+    const receiptAt = Number.isFinite(eventDate.getTime()) ? eventDate : new Date();
+    const recorded = await recordMessageDeliveryReceipt({
+      tenantId,
+      providerKey: "resend_email",
+      providerMessageId,
+      providerEventId: request.headers.get("svix-id") || `${providerMessageId}:${eventType}:${receiptAt.toISOString()}`,
+      receiptAt,
+      ...normalized,
+      metadata: { source: "resend_webhook" }
+    });
+    return json(200, { ok: true, recorded: recorded.recorded, duplicate: recorded.duplicate });
+  }
+
+  const email = await hydrateReceivedEmail(normalizeInboundEmail(payload));
   if (!email.fromEmail || email.recipients.length === 0) {
     return json(400, { ok: false, error: "Inbound email payload is missing sender or recipient." });
   }
+
+  const supportForward = await forwardFerocitySupportEmail(email);
 
   const routeResult = await queryPostgres<RouteRow>(
     `
@@ -208,6 +353,9 @@ export async function POST(request: Request) {
   const route = routeResult?.rows[0];
 
   if (!route?.brand_id) {
+    if (supportForward.forwarded) {
+      return json(200, { ok: true, routed: false, forwarded: true, reason: "support_forwarded" });
+    }
     const correlationId = await logAppError({
       source: "api.integrations.resend.inbound",
       severity: "warning",
@@ -410,6 +558,7 @@ export async function POST(request: Request) {
   return json(200, {
     ok: true,
     routed: true,
+    forwarded: supportForward.forwarded,
     leadId: lead.id,
     threadId: thread.id,
     messageCreated: Boolean(messageResult?.rows[0]?.id)

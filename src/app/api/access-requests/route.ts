@@ -197,7 +197,7 @@ async function recordAccessEmailStatus(input: {
     set metadata_json = coalesce(metadata_json, '{}'::jsonb)
           || jsonb_build_object(
             'emailNotifications',
-            coalesce(metadata_json->'emailNotifications', '{}'::jsonb) || jsonb_build_object($2, $3::jsonb)
+            coalesce(metadata_json->'emailNotifications', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)
           ),
         updated_at = now()
     where id = $1

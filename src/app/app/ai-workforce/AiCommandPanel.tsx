@@ -212,9 +212,9 @@ function pickPlan(input: string) {
 }
 
 export function AiCommandPanel({
-  title = "Tell Ferocity What You Want Done",
-  description = "Type like you would text an assistant. Ferocity routes the request to existing business systems, creates safe records, and tells you what still needs approval or details.",
-  initialCommand = "Make me a video ad from this job and add it to Facebook, Instagram, Google, and TikTok.",
+  title = "Ask Ferocity Anything. Tell It What To Do.",
+  description = "Ask a question about the business or describe the outcome you want in normal words. Ferocity reads the Business Brain, routes the request to the right AI employees and systems, prepares safe work, and tells you what needs approval or more information.",
+  initialCommand = "Show me what needs attention today, follow up with estimates losing momentum, and tell me what needs my approval.",
   submitLabel = "Prepare work in Ferocity"
 }: {
   title?: string;
@@ -237,7 +237,7 @@ export function AiCommandPanel({
       </div>
       <form action={executeAction} className="two-col">
         <label>
-          Owner command
+          Your question or command
           <textarea name="command" value={command} onChange={(event) => setCommand(event.target.value)} rows={5} />
         </label>
         <div className="panel form-stack">

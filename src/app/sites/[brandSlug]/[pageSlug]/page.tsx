@@ -24,7 +24,7 @@ export async function generateMetadata({
     title: `${page.title} | ${page.brandName}`,
     description: page.subheadline,
     robots: page.noindex ? { index: false, follow: false } : { index: true, follow: true },
-    alternates: page.canonicalUrl ? { canonical: page.canonicalUrl } : undefined
+    alternates: { canonical: page.canonicalUrl ?? `/sites/${brandSlug}/${pageSlug}` }
   };
 }
 
@@ -49,9 +49,23 @@ export default async function HostedGrowthPage({
     content: typeof query.utm_content === "string" ? query.utm_content : ""
   };
   const serviceInterest = page.primaryKeyword ?? page.services[0]?.name ?? page.industry ?? "";
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: page.brandName,
+    url: page.canonicalUrl ?? `https://ferocity.live/sites/${brandSlug}/${pageSlug}`,
+    telephone: page.brandPhone ?? undefined,
+    email: page.brandEmail ?? undefined,
+    areaServed: page.locations.map((location) => location.label),
+    makesOffer: page.services.map((service) => ({
+      "@type": "Offer",
+      itemOffered: { "@type": "Service", name: service.name, description: service.description ?? undefined }
+    }))
+  };
 
   return (
     <main className="public-page growth-site-page">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />
       <section className="public-shell growth-site-shell">
         <header className="growth-site-header">
           <div>

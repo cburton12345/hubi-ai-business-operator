@@ -171,6 +171,7 @@ export async function getFieldVisit(visitId: string) {
 
   return {
     tenantId,
+    workerName: access.workerName,
     visit: {
       id: visit.id,
       title: visit.title,

@@ -57,6 +57,24 @@ try {
   }
 
   if (!email) {
+    const existingTenantAdmin = await client.query(
+      `
+      select u.email
+      from public.tenant_users tu
+      join public.users u on u.id = tu.user_id
+      where tu.tenant_id = $1
+        and tu.role in ('owner', 'admin')
+        and tu.status = 'active'
+        and u.auth_user_id is not null
+      order by case when tu.role = 'owner' then 0 else 1 end, tu.created_at
+      limit 1
+      `,
+      [tenantId]
+    );
+    email = existingTenantAdmin.rows[0]?.email;
+  }
+
+  if (!email) {
     throw new Error("ADMIN_EMAIL is required, or ADMIN_AUTH_USER_ID must already belong to a user.");
   }
 

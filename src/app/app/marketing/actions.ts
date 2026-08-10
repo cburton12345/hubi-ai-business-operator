@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { generateWeeklyMarketingPlans } from "@/lib/ai/phase2-marketing-operator";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
+import { analyzeProviderPromotion, resolvePromotionSafetyBoundaries } from "@/lib/marketing-os/provider-promotions";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const calendarUpdateSchema = z.object({
@@ -27,6 +29,33 @@ const managedServiceSchema = z.object({
   serviceKey: z.enum(["managed_local_seo", "managed_ads", "managed_creative", "managed_video_ads", "managed_review_growth", "managed_content", "managed_email_followup"]),
   monthlyBudgetCents: z.number().int().min(0).max(100000000),
   notes: z.string().max(1000).optional()
+});
+
+const promotionSchema = z.object({
+  providerKey: z.string().trim().min(2).max(80).regex(/^[a-z0-9_:-]+$/),
+  laneKey: z.enum(["customer_owned", "ferocity_managed"]),
+  title: z.string().trim().min(3).max(160),
+  offerSource: z.enum(["business_profile", "provider_dashboard", "email", "representative", "other"]),
+  offerUrl: z.union([z.literal(""), z.string().url().refine((value) => new URL(value).protocol === "https:")]),
+  creditAmount: z.coerce.number().positive().max(1_000_000),
+  requiredSpendAmount: z.coerce.number().positive().max(5_000_000),
+  plannedSpendAmount: z.coerce.number().min(0).max(5_000_000),
+  claimDeadline: z.union([z.literal(""), z.string().date()]),
+  qualifyingPeriodEndsAt: z.union([z.literal(""), z.string().date()]),
+  creditExpiresAt: z.union([z.literal(""), z.string().date()]),
+  newAccountOnly: z.boolean(),
+  termsSummary: z.string().trim().max(3000)
+});
+
+const promotionApprovalSchema = z.object({
+  promotionId: z.string().uuid(),
+  customBudgetAmount: z.union([z.literal(""), z.coerce.number().positive().max(5_000_000)]),
+  customDailyLimitAmount: z.union([z.literal(""), z.coerce.number().positive().max(1_000_000)])
+});
+
+const promotionProgressSchema = z.object({
+  promotionId: z.string().uuid(),
+  qualifyingSpendAmount: z.coerce.number().min(0).max(5_000_000)
 });
 
 const managedServiceMeta: Record<
@@ -133,6 +162,257 @@ export async function requestManagedMarketingServiceAction(formData: FormData) {
   revalidatePath("/app/marketing");
   revalidatePath("/app/integrations");
   revalidatePath("/app/billing");
+}
+
+export async function captureProviderPromotionAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = promotionSchema.safeParse({
+    providerKey: formData.get("providerKey"),
+    laneKey: formData.get("laneKey"),
+    title: formData.get("title"),
+    offerSource: formData.get("offerSource"),
+    offerUrl: String(formData.get("offerUrl") ?? "").trim(),
+    creditAmount: formData.get("creditAmount"),
+    requiredSpendAmount: formData.get("requiredSpendAmount"),
+    plannedSpendAmount: formData.get("plannedSpendAmount"),
+    claimDeadline: formData.get("claimDeadline") ?? "",
+    qualifyingPeriodEndsAt: formData.get("qualifyingPeriodEndsAt") ?? "",
+    creditExpiresAt: formData.get("creditExpiresAt") ?? "",
+    newAccountOnly: formData.get("newAccountOnly") === "on",
+    termsSummary: formData.get("termsSummary") ?? ""
+  });
+  if (!parsed.success) redirect("/app/marketing?promotion=invalid");
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const value = parsed.data;
+  const creditCents = Math.round(value.creditAmount * 100);
+  const requiredSpendCents = Math.round(value.requiredSpendAmount * 100);
+  const plannedSpendCents = Math.round(value.plannedSpendAmount * 100);
+  const analysis = analyzeProviderPromotion({
+    creditCents,
+    requiredSpendCents,
+    plannedSpendWithoutOfferCents: plannedSpendCents,
+    claimDeadline: value.claimDeadline || null,
+    qualifyingPeriodEndsAt: value.qualifyingPeriodEndsAt || null
+  });
+  const actorUserId = actor.userId === "admin-token" ? null : actor.userId;
+
+  const result = await queryPostgres<{ id: string }>(
+    `
+    insert into public.provider_promotion_opportunities (
+      tenant_id, provider_key, lane_key, title, offer_source, offer_url,
+      credit_cents, required_spend_cents, planned_spend_without_offer_cents,
+      claim_deadline, qualifying_period_ends_at, credit_expires_at, new_account_only,
+      terms_summary, status, recommendation, recommendation_reason,
+      incremental_spend_cents, conservative_net_value_cents, required_daily_spend_cents,
+      metadata_json
+    ) values (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::timestamptz,$11::timestamptz,$12::timestamptz,$13,
+      $14,'recommended',$15,$16,$17,$18,$19,$20::jsonb
+    ) returning id
+    `,
+    [
+      workspaceId,
+      value.providerKey,
+      value.laneKey,
+      value.title,
+      value.offerSource,
+      value.offerUrl || null,
+      creditCents,
+      requiredSpendCents,
+      plannedSpendCents,
+      value.claimDeadline || null,
+      value.qualifyingPeriodEndsAt || null,
+      value.creditExpiresAt || null,
+      value.newAccountOnly,
+      value.termsSummary,
+      analysis.recommendation,
+      analysis.reason,
+      analysis.incrementalSpendCents,
+      analysis.conservativeNetValueCents,
+      analysis.requiredDailySpendCents,
+      JSON.stringify({ analyzedAt: new Date().toISOString(), capturedBy: actor.email, noProviderAction: true })
+    ]
+  );
+  const promotionId = result?.rows[0]?.id;
+  if (promotionId) {
+    await queryPostgres(
+      `
+      insert into public.provider_promotion_events (tenant_id, promotion_id, event_type, actor_user_id, metadata_json)
+      values
+        ($1,$2,'captured',$3,$4::jsonb),
+        ($1,$2,'analyzed',$3,$5::jsonb)
+      `,
+      [
+        workspaceId,
+        promotionId,
+        actorUserId,
+        JSON.stringify({ source: value.offerSource, noProviderAction: true }),
+        JSON.stringify({ recommendation: analysis.recommendation, reason: analysis.reason })
+      ]
+    );
+  }
+  revalidatePath("/app/marketing");
+  redirect("/app/marketing?promotion=saved");
+}
+
+export async function approveProviderPromotionAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = promotionApprovalSchema.safeParse({
+    promotionId: formData.get("promotionId"),
+    customBudgetAmount: String(formData.get("customBudgetAmount") ?? "").trim(),
+    customDailyLimitAmount: String(formData.get("customDailyLimitAmount") ?? "").trim()
+  });
+  if (!parsed.success) redirect("/app/marketing?promotion=invalid_approval");
+  const workspaceId = await getCurrentWorkspaceId();
+  const promotion = await queryPostgres<{
+    provider_key: string;
+    lane_key: "customer_owned" | "ferocity_managed";
+    required_spend_cents: number;
+    required_daily_spend_cents: number;
+  }>(
+    `select provider_key, lane_key, required_spend_cents, required_daily_spend_cents
+     from public.provider_promotion_opportunities
+     where id=$1 and tenant_id=$2 and status='recommended' and recommendation <> 'skip'
+     limit 1`,
+    [parsed.data.promotionId, workspaceId]
+  );
+  const row = promotion?.rows[0];
+  if (!row) redirect("/app/marketing?promotion=invalid_approval");
+  const requiredSpendCents = Number(row.required_spend_cents);
+  let approvedBudgetCents: number;
+  let approvedDailyCapCents: number;
+  try {
+    const boundaries = resolvePromotionSafetyBoundaries({
+      requiredSpendCents,
+      requiredDailySpendCents: Number(row.required_daily_spend_cents),
+      customBudgetCents: parsed.data.customBudgetAmount === "" ? null : parsed.data.customBudgetAmount * 100,
+      customDailyLimitCents: parsed.data.customDailyLimitAmount === "" ? null : parsed.data.customDailyLimitAmount * 100
+    });
+    approvedBudgetCents = boundaries.budgetCents;
+    approvedDailyCapCents = boundaries.dailyCents;
+  } catch {
+    redirect("/app/marketing?promotion=invalid_approval");
+  }
+
+  const control = await queryPostgres<{ id: string; daily_cap_cents: number; monthly_cap_cents: number }>(
+    `
+    insert into public.managed_ad_budget_controls (
+      tenant_id, provider_key, lane_key, status, prepaid_required, approved_by_customer,
+      live_spend_enabled, daily_cap_cents, monthly_cap_cents, stop_loss_cents, notes, metadata_json
+    ) values (
+      $1,$2,$3,'not_ready',$4,false,false,$5,$6,$6,
+      'Promotion budget captured. Live spend remains off until provider readiness and final campaign authorization pass.',
+      jsonb_build_object('promotionId',$7::text,'promotionApproved',true,'liveSpendEnabled',false)
+    )
+    on conflict (tenant_id, provider_key, lane_key) do update
+    set metadata_json = public.managed_ad_budget_controls.metadata_json || excluded.metadata_json,
+        notes = excluded.notes,
+        updated_at = now()
+    returning id, daily_cap_cents, monthly_cap_cents
+    `,
+    [workspaceId, row.provider_key, row.lane_key, row.lane_key === "ferocity_managed", approvedDailyCapCents, approvedBudgetCents, parsed.data.promotionId]
+  );
+  const controlRow = control?.rows[0];
+  if (!controlRow) redirect("/app/marketing?promotion=save_failed");
+  const controlId = controlRow.id;
+  const effectiveBudgetCents = Math.min(approvedBudgetCents, Number(controlRow.monthly_cap_cents));
+  const effectiveDailyCapCents = Math.min(approvedDailyCapCents, Number(controlRow.daily_cap_cents));
+  if (effectiveBudgetCents < Number(row.required_spend_cents) || effectiveDailyCapCents <= 0) {
+    redirect("/app/marketing?promotion=budget_conflict");
+  }
+  const actorUserId = actor.userId === "admin-token" ? null : actor.userId;
+
+  await queryPostgres(
+    `
+    update public.provider_promotion_opportunities
+    set status='approved', budget_control_id=$3, approved_budget_cents=$4,
+        approved_daily_cap_cents=$5, approved_by_user_id=$6, approved_at=now(), updated_at=now(),
+        metadata_json = metadata_json || $7::jsonb
+    where id=$1 and tenant_id=$2
+    `,
+    [
+      parsed.data.promotionId,
+      workspaceId,
+      controlId,
+      effectiveBudgetCents,
+      effectiveDailyCapCents,
+      actorUserId,
+      JSON.stringify({
+        liveSpendEnabled: false,
+        campaignCreated: false,
+        customerCustomBudget: parsed.data.customBudgetAmount !== "",
+        customerCustomDailyLimit: parsed.data.customDailyLimitAmount !== ""
+      })
+    ]
+  );
+  await queryPostgres(
+    `insert into public.provider_promotion_events (tenant_id,promotion_id,event_type,actor_user_id,amount_cents,metadata_json)
+     values ($1,$2,'approved',$3,$4,$5::jsonb)`,
+    [workspaceId, parsed.data.promotionId, actorUserId, effectiveBudgetCents, JSON.stringify({ dailyCapCents: effectiveDailyCapCents, liveSpendEnabled: false })]
+  );
+  revalidatePath("/app/marketing");
+  revalidatePath("/app/billing");
+  redirect("/app/marketing?promotion=approved");
+}
+
+export async function recordProviderPromotionProgressAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = promotionProgressSchema.safeParse({
+    promotionId: formData.get("promotionId"),
+    qualifyingSpendAmount: formData.get("qualifyingSpendAmount")
+  });
+  if (!parsed.success) redirect("/app/marketing?promotion=invalid_progress");
+  const workspaceId = await getCurrentWorkspaceId();
+  const amountCents = Math.round(parsed.data.qualifyingSpendAmount * 100);
+  const actorUserId = actor.userId === "admin-token" ? null : actor.userId;
+  const updated = await queryPostgres<{ status: string }>(
+    `
+    update public.provider_promotion_opportunities
+    set qualifying_spend_recorded_cents=$3,
+        status=case when $3 >= required_spend_cents then 'qualified' else case when status='approved' then 'activated' else status end end,
+        activated_at=case when $3 > 0 then coalesce(activated_at,now()) else activated_at end,
+        qualified_at=case when $3 >= required_spend_cents then coalesce(qualified_at,now()) else qualified_at end,
+        updated_at=now()
+    where id=$1 and tenant_id=$2 and status in ('approved','activated','qualified')
+    returning status
+    `,
+    [parsed.data.promotionId, workspaceId, amountCents]
+  );
+  if (!updated?.rows[0]) redirect("/app/marketing?promotion=invalid_progress");
+  await queryPostgres(
+    `insert into public.provider_promotion_events (tenant_id,promotion_id,event_type,actor_user_id,amount_cents,metadata_json)
+     values ($1,$2,$3,$4,$5,$6::jsonb)`,
+    [
+      workspaceId,
+      parsed.data.promotionId,
+      updated.rows[0].status === "qualified" ? "qualified" : "progress_recorded",
+      actorUserId,
+      amountCents,
+      JSON.stringify({ cumulativeQualifyingSpend: true, providerReported: false })
+    ]
+  );
+  revalidatePath("/app/marketing");
+  redirect("/app/marketing?promotion=progress_saved");
+}
+
+export async function declineProviderPromotionAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  const parsed = z.object({ promotionId: z.string().uuid() }).safeParse({ promotionId: formData.get("promotionId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const actorUserId = actor.userId === "admin-token" ? null : actor.userId;
+  const updated = await queryPostgres(
+    `update public.provider_promotion_opportunities set status='declined', updated_at=now() where id=$1 and tenant_id=$2 and status in ('captured','recommended')`,
+    [parsed.data.promotionId, workspaceId]
+  );
+  if (updated?.rowCount) {
+    await queryPostgres(
+      `insert into public.provider_promotion_events (tenant_id,promotion_id,event_type,actor_user_id,metadata_json) values ($1,$2,'declined',$3,'{"providerAction":false}'::jsonb)`,
+      [workspaceId, parsed.data.promotionId, actorUserId]
+    );
+  }
+  revalidatePath("/app/marketing");
 }
 
 export async function updateCalendarItemAction(formData: FormData) {

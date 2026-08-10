@@ -33,6 +33,7 @@ export type MessagingSendInput = {
     source: string;
     humanApproved?: boolean;
     policyAllowsAuto?: boolean;
+    consentBasis?: "stored_contact_consent" | "authenticated_owner_verification";
   };
   metadata?: Record<string, unknown>;
 };
@@ -61,6 +62,22 @@ export type MessagingProviderStatus = {
   status: "ready" | "not_configured" | "planned" | "disabled";
 };
 
+export type ProviderDeliveryReceiptInput = {
+  status: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type ProviderDeliveryReceiptNormalization = {
+  normalizedStatus: "accepted" | "queued" | "sending" | "sent" | "delivered" | "failed" | "rejected" | "undelivered" | "suspected_filtered" | "unknown";
+  rawStatus: string;
+  errorCode: string | null;
+  safeReason: string | null;
+  suspectedFiltered: boolean;
+  isFinal: boolean;
+};
+
 export interface MessagingProvider {
   providerKey: string;
   displayName: string;
@@ -71,6 +88,7 @@ export interface MessagingProvider {
   sendMediaMessage(input: MessagingSendInput): Promise<MessagingSendResult>;
   receiveMessage?(input: unknown): Promise<unknown>;
   getMessageStatus?(providerMessageId: string): Promise<unknown>;
+  normalizeDeliveryReceipt?(input: ProviderDeliveryReceiptInput): ProviderDeliveryReceiptNormalization;
   handleInboundWebhook?(request: Request): Promise<Response>;
   handleDeliveryWebhook?(request: Request): Promise<Response>;
   provisionPhoneNumber?(input: unknown): Promise<unknown>;

@@ -4,19 +4,131 @@ import { getReviewDraftRows } from "@/lib/marketing/get-phase2-dashboard";
 import { getReviewFirstExportQueue } from "@/lib/marketing-os/review-first-export-queue";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { updateDraftReviewAction } from "@/app/app/marketing/actions";
-import { approveExportQueueItemAction, runExportQueueItemAction } from "./actions";
+import { getReviewDestinationAdminData, reviewRequestPublicUrl } from "@/lib/reviews/review-destinations";
+import {
+  approveExportQueueItemAction,
+  archiveReviewDestinationAction,
+  runExportQueueItemAction,
+  saveReviewDestinationAction
+} from "./actions";
+
+const providerLabels = {
+  google_business_profile: "Google Business Profile",
+  facebook: "Facebook",
+  yelp: "Yelp",
+  bbb: "Better Business Bureau",
+  industry_directory: "Industry directory",
+  custom: "Other review site"
+};
 
 export default async function MarketingReviewPage() {
   const workspaceId = await getCurrentWorkspaceId();
   const drafts = await getReviewDraftRows();
   const exportQueue = await getReviewFirstExportQueue(workspaceId);
+  const reviewData = await getReviewDestinationAdminData(workspaceId);
 
   return (
     <QueuePageShell
-      eyebrow="Admin Review"
-      title="AI Generated Item Review"
-      description="Review, edit, approve, reject, publish, or archive generated content before it reaches customers or public channels."
+      eyebrow="Reviews & Reputation"
+      title="Get more honest customer reviews"
+      description="Send one simple feedback link after a job. Customers can choose any review site you support, while private feedback helps your team recover service issues quickly."
     >
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Where customers can review you</h2>
+            <p className="muted">
+              Add the exact Google “Get more reviews” link for the fastest experience. If the business is not on Google, use Facebook, Yelp, BBB, an industry directory, or another review page. Every customer sees the same choices.
+            </p>
+          </div>
+          <span className="pill">{reviewData.destinations.length} connected</span>
+        </div>
+
+        <form action={saveReviewDestinationAction} className="form-stack">
+          <div className="form-grid">
+            <label>
+              Applies to
+              <select name="brandId" defaultValue="">
+                <option value="">Every brand in this workspace</option>
+                {reviewData.brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Review site
+              <select name="provider" defaultValue="google_business_profile">
+                {Object.entries(providerLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label>
+              Button label
+              <input name="displayName" defaultValue="Review us on Google" maxLength={100} required />
+            </label>
+            <label>
+              Direct review link
+              <input name="reviewUrl" type="url" placeholder="https://g.page/r/.../review" maxLength={2000} required />
+            </label>
+            <label>
+              Display order
+              <input name="priority" type="number" min={1} max={999} defaultValue={100} />
+            </label>
+          </div>
+          <div className="inline-actions">
+            <button className="button" type="submit">Save review destination</button>
+            <a className="button secondary-button" href="https://support.google.com/business/answer/16816815" target="_blank" rel="noreferrer">Find your Google review link</a>
+          </div>
+        </form>
+
+        <ul className="list">
+          {reviewData.destinations.map((destination) => (
+            <li className="list-row" key={destination.id}>
+              <div>
+                <h3>{destination.displayName}</h3>
+                <p className="muted">
+                  {providerLabels[destination.provider]} / {destination.brandName ?? "Every brand"} / order {destination.priority}
+                </p>
+              </div>
+              <div className="inline-actions">
+                <a className="mini-button" href={destination.reviewUrl} target="_blank" rel="noreferrer">Test link</a>
+                <form action={archiveReviewDestinationAction}>
+                  <input name="destinationId" type="hidden" value={destination.id} />
+                  <button className="mini-button" type="submit">Remove</button>
+                </form>
+              </div>
+            </li>
+          ))}
+          {reviewData.destinations.length === 0 ? (
+            <li className="list-row">
+              <span className="muted">No public review site is connected yet. Private customer feedback will still work until you add one.</span>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Recent review requests</h2>
+            <p className="muted">Each request uses one stable Ferocity link, so destinations can be updated later without rewriting old messages.</p>
+          </div>
+          <span className="pill">{reviewData.recentRequests.length} recent</span>
+        </div>
+        <ul className="list">
+          {reviewData.recentRequests.map((request) => (
+            <li className="list-row" key={request.id}>
+              <div>
+                <h3>{request.customerName}</h3>
+                <p className="muted">
+                  {request.brandName ?? "Workspace"} / {request.channel} / {request.status}
+                  {request.scheduledFor ? ` / ${new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(request.scheduledFor))}` : ""}
+                </p>
+              </div>
+              <a className="mini-button" href={reviewRequestPublicUrl(request.publicToken)} target="_blank" rel="noreferrer">Preview</a>
+            </li>
+          ))}
+          {reviewData.recentRequests.length === 0 ? <li className="list-row"><span className="muted">No review requests have been prepared yet.</span></li> : null}
+        </ul>
+      </section>
+
       <div className="button-row section-actions">
         <Link className="button" href="/app/marketing-os">
           Have AI Set This Up
@@ -73,7 +185,7 @@ export default async function MarketingReviewPage() {
         </ul>
       </section>
 
-      <h2 className="section-title">Generated Drafts</h2>
+      <h2 className="section-title">Marketing content awaiting review</h2>
       <ul className="review-list">
         {drafts.map((draft) => (
           <li className="panel" key={draft.id}>

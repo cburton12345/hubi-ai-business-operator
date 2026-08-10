@@ -45,6 +45,44 @@ describe("managed Twilio tenant isolation", () => {
     resolveTenantProviderSecretsMock.mockReset();
   });
 
+  it("uses an active customer's own Twilio credentials before any managed route", async () => {
+    queryPostgresMock
+      .mockResolvedValueOnce({
+        rows: [{
+        ownership_mode: "customer_owned",
+        connection_status: "active",
+        credentials_status: "configured",
+        live_sending_enabled: true,
+        outbound_enabled: true,
+        provider_account_ref: "AC_CUSTOMER",
+        metadata_json: {}
+        }]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    resolveTenantProviderSecretsMock.mockImplementation((_tenantId: string, providerKey: string) =>
+      Promise.resolve(providerKey === "twilio_sms"
+        ? [
+            { label: "account_sid", kind: "account_sid", value: "AC_CUSTOMER" },
+            { label: "api_key_sid", kind: "api_key_sid", value: "SK_CUSTOMER" },
+            { label: "api_key_secret", kind: "api_key_secret", value: "customer-secret" },
+            { label: "auth_token", kind: "auth_token", value: "customer-webhook-token" },
+            { label: "messaging_service_sid", kind: "messaging_service_sid", value: "MG_CUSTOMER" }
+          ]
+        : [])
+    );
+
+    await expect(resolveTwilioSmsConfiguration("tenant-customer")).resolves.toEqual({
+      ownershipMode: "customer_owned",
+      accountSid: "AC_CUSTOMER",
+      authUsername: "SK_CUSTOMER",
+      authPassword: "customer-secret",
+      webhookAuthToken: "customer-webhook-token",
+      fromNumber: null,
+      messagingServiceSid: "MG_CUSTOMER"
+    });
+    expect(queryPostgresMock.mock.calls.some(([sql]) => String(sql).includes("twilio_isv_customer_routes"))).toBe(false);
+  });
+
   it("uses the tenant's active subaccount route, sender, and webhook token", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [managedAccount] })
@@ -81,4 +119,3 @@ describe("managed Twilio tenant isolation", () => {
     await expect(resolveTwilioSmsConfiguration("tenant-2")).resolves.toBeNull();
   });
 });
-

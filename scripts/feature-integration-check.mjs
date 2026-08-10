@@ -172,6 +172,46 @@ const checks = [
     name: "service reporting consumes canonical delivery, workforce, membership, and inbox state",
     file: "src/lib/reports/get-service-performance-dashboard.ts",
     terms: ["service_visits", "service_visit_assignments", "recurring_service_plans", "messaging_conversations"]
+  },
+  {
+    name: "featured public demo is admin-controlled, versioned, and deployless",
+    file: "src/app/app/settings/actions.ts",
+    terms: ["platform:manage", "platform_public_content", "platform_public_content_versions", "normalizeDemoEmbedUrl", "revalidatePath(\"/demo\")"]
+  },
+  {
+    name: "provider promotions feed guarded ad budgets without enabling spend",
+    file: "src/app/app/marketing/actions.ts",
+    terms: ["provider_promotion_opportunities", "analyzeProviderPromotion", "managed_ad_budget_controls", "live_spend_enabled", "provider_promotion_events"]
+  },
+  {
+    name: "native calendars use one provider-independent sync ledger",
+    file: "src/lib/integrations/calendar/sync.ts",
+    terms: ["integration_sync_cursors", "external_calendar_events", "integration_object_mappings", "integration_dead_letters", "createCalendarProvider"]
+  },
+  {
+    name: "Google Business Profile reads tenant-owned locations and reviews without enabling public writes",
+    file: "src/lib/integrations/google-business-profile/sync.ts",
+    terms: ["business_profile_locations", "business_profile_reviews", "getFreshProviderAccessToken", "reviewSyncMode: \"read_only\""]
+  },
+  {
+    name: "invoice delivery and payment enroll eligible customers into the existing review lifecycle",
+    file: "src/lib/reviews/invoice-review-enrollment.ts",
+    terms: ["review_request_workflows", "invoice_sent", "invoice_paid", "work_not_complete", "already_enrolled"]
+  },
+  {
+    name: "incumbent service platforms coexist through tenant-scoped idempotent mappings",
+    file: "src/lib/integrations/service-platform-bridge.ts",
+    terms: ["integration_object_mappings", "ownership_mode", "provider", "contact", "lead", "job", "provider_deleted_at"]
+  },
+  {
+    name: "the golden business loop proves every native handoff without bypassing live-action gates",
+    file: "src/lib/business-loop/sync-golden-loop.ts",
+    terms: ["demand_source_recorded", "margin_recorded", "review_requested", "proof_repurposed", "growth_restarted", "livePublishing", "liveAdSpend"]
+  },
+  {
+    name: "manual and autonomous proof preparation share one consent-aware implementation",
+    file: "src/lib/ugc/prepare-proof-content.ts",
+    terms: ["permission_marketing", "permission_use_name", "permission_use_location", "livePublishing", "ugc_content_outputs"]
   }
 ];
 

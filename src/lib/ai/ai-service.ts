@@ -5,12 +5,15 @@ import {
   resolveAiExecutionConfiguration,
   type AiExecutionConfiguration
 } from "@/lib/ai/byo-ai";
+import { resilientFetch } from "@/lib/http/resilient-fetch";
+import { estimateTextCostCents, type TextTokenUsage } from "@/lib/ai/model-pricing";
+import { ensureJsonInstruction } from "@/lib/ai/json-response";
 
 type AiCategory = "core" | "premium_media";
 type AiRequestType = "json" | "vision_json";
 type AiStatus = "completed" | "fallback" | "failed";
 
-type OpenAiUsage = {
+type OpenAiUsage = TextTokenUsage & {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
@@ -58,8 +61,16 @@ export type AiJsonRequest<T> = {
   aiCategory?: AiCategory;
   requestType?: AiRequestType;
   temperature?: number;
+  timeoutMs?: number;
   metadata?: Record<string, unknown>;
 };
+
+let activeAiRequests = 0;
+
+function maxConcurrentAiRequests() {
+  const configured = Number(process.env.AI_MAX_CONCURRENT_REQUESTS ?? 6);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(Math.floor(configured), 25)) : 6;
+}
 
 export type AiVisionJsonRequest<T> = Omit<AiJsonRequest<T>, "user" | "requestType"> & {
   userText: string;
@@ -67,8 +78,8 @@ export type AiVisionJsonRequest<T> = Omit<AiJsonRequest<T>, "user" | "requestTyp
   mimeType?: string | null;
 };
 
-function providerConfig(input?: { requestType?: AiRequestType; aiCategory?: AiCategory }) {
-  const managed = managedAiConfiguration(input?.requestType ?? "json");
+function providerConfig(input?: { requestType?: AiRequestType; runType?: string }) {
+  const managed = managedAiConfiguration(input?.requestType ?? "json", input?.runType);
   return {
     provider: managed.providerKey,
     model: managed.model,
@@ -95,22 +106,6 @@ function safeErrorCategory(error: unknown) {
   if (message.includes("unauthorized") || message.includes("401")) return "provider_auth";
   if (message.includes("json")) return "invalid_provider_json";
   return "provider_error";
-}
-
-function estimateCostCents(usage?: OpenAiUsage, category: AiCategory = "core") {
-  const promptTokens = usage?.prompt_tokens ?? 0;
-  const completionTokens = usage?.completion_tokens ?? 0;
-  if (!promptTokens && !completionTokens) return 0;
-
-  // gpt-4.1-mini defaults as of 2026-07. These can be overridden without a
-  // deploy when provider pricing changes.
-  const defaultInputUsdPerMillion = category === "premium_media" ? 2 : 0.4;
-  const defaultOutputUsdPerMillion = category === "premium_media" ? 8 : 1.6;
-  const inputUsdPerMillion = Number(process.env.AI_INPUT_USD_PER_MILLION ?? defaultInputUsdPerMillion);
-  const outputUsdPerMillion = Number(process.env.AI_OUTPUT_USD_PER_MILLION ?? defaultOutputUsdPerMillion);
-  const inputCents = (promptTokens / 1_000_000) * inputUsdPerMillion * 100;
-  const outputCents = (completionTokens / 1_000_000) * outputUsdPerMillion * 100;
-  return Number((inputCents + outputCents).toFixed(4));
 }
 
 async function getAiBudgetDecision(tenantId: string, aiCategory: AiCategory): Promise<AiBudgetDecision> {
@@ -237,6 +232,7 @@ async function recordAiUsageEvent(input: {
       ai_category,
       status,
       prompt_tokens,
+      cached_prompt_tokens,
       completion_tokens,
       total_tokens,
       media_units,
@@ -246,7 +242,7 @@ async function recordAiUsageEvent(input: {
       error_category,
       metadata_json
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb)
     `,
     [
       input.tenantId,
@@ -260,10 +256,11 @@ async function recordAiUsageEvent(input: {
       input.aiCategory,
       input.status,
       input.usage?.prompt_tokens ?? 0,
+      input.usage?.prompt_tokens_details?.cached_tokens ?? 0,
       input.usage?.completion_tokens ?? 0,
       input.usage?.total_tokens ?? 0,
       input.mediaUnits ?? 0,
-      input.ownershipMode === "workspace" ? 0 : estimateCostCents(input.usage, input.aiCategory),
+      input.ownershipMode === "workspace" ? 0 : estimateTextCostCents(input.modelName, input.usage),
       input.latencyMs ?? null,
       input.fallbackUsed,
       input.errorCategory ?? null,
@@ -284,7 +281,7 @@ export async function recordAiGenerationRun(input: {
   providerKey?: string;
   modelName?: string;
 }) {
-  const config = providerConfig();
+  const config = providerConfig({ runType: input.runType });
   await queryPostgres(
     `
     insert into public.ai_generation_runs (
@@ -323,7 +320,7 @@ async function handleFallback<T extends Record<string, unknown>>(
   metadata?: Record<string, unknown>,
   executionConfig?: AiExecutionConfiguration
 ) {
-  const config = executionConfig ?? managedAiConfiguration(input.requestType ?? "json");
+  const config = executionConfig ?? managedAiConfiguration(input.requestType ?? "json", input.runType);
   await Promise.all([
     recordAiGenerationRun({
       tenantId: input.tenantId,
@@ -393,7 +390,18 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
     );
   }
 
+  if (activeAiRequests >= maxConcurrentAiRequests()) {
+    return handleFallback(
+      input,
+      "fallback",
+      "AI provider capacity is busy; Ferocity returned the safe workflow fallback instead of delaying the customer.",
+      { errorCategory: "local_capacity_limit" },
+      config
+    );
+  }
+
   const startedAt = Date.now();
+  activeAiRequests += 1;
 
   try {
     const userContent =
@@ -404,7 +412,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
           ]
         : input.user;
 
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    const response = await resilientFetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -415,11 +423,11 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
         temperature: input.temperature ?? 0.4,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: input.system },
+          { role: "system", content: ensureJsonInstruction(input.system) },
           { role: "user", content: userContent }
         ]
       })
-    });
+    }, { timeoutMs: input.timeoutMs ?? 18_000 });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -477,6 +485,8 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
       errorCategory: safeErrorCategory(error),
       latencyMs: Date.now() - startedAt
     }, config);
+  } finally {
+    activeAiRequests = Math.max(0, activeAiRequests - 1);
   }
 }
 

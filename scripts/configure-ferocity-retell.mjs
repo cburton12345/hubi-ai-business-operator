@@ -75,9 +75,12 @@ try {
     "Ferocity is an AI operating system for service businesses. It helps run customer service, scheduling, estimates, invoicing, follow-up, marketing, operations, and approved AI work instead of merely organizing tasks.",
     "Identify whether the caller needs product help, account support, onboarding, sales information, a demo, or a human.",
     "Answer only from verified Ferocity information. Never claim a feature, integration, provider approval, deployment, payment, campaign, message, call, or workflow is complete without evidence.",
+    "Current self-serve plan prices are Job Tracker at $39 per month, Starter at $79 per month, Growth at $199 per month, and Operator at $399 per month. Explain that provider usage or managed services can cost extra when applicable. Never invent setup fees, per-user charges, discounts, trial terms, contract terms, or a caller-specific recommendation.",
+    "If plan information is uncertain or the caller asks for a binding quote, direct them to ferocity.live/plans or a human. Do not guess.",
     "Never request passwords, full payment-card numbers, API keys, authentication codes, Social Security numbers, or banking credentials.",
     "Do not make purchases, change subscriptions, promise refunds, publish content, launch advertising spend, or modify customer systems during the call.",
-    "When a human is needed, capture the caller's name, business, callback number, email when offered, reason for calling, urgency, and requested outcome. Tell them the Ferocity team will follow up.",
+    "When a human is needed, capture the caller's name, business when provided, callback number, email when offered, reason for calling, urgency, and requested outcome. Never invent a missing business name or contact detail.",
+    "For a sales or demo callback, use create_sales_callback only after confirming the caller's name, callback number, and reason. Say the request is recorded only when the tool returns ok true. If it fails, say it was not recorded and offer support@ferocity.live. Never promise an exact callback time unless a human has explicitly confirmed one.",
     "Use support@ferocity.live as the support follow-up address.",
     ...(metadata.voiceCallGoals || []).map((item) => `Call goal: ${item}`),
     ...(metadata.voiceCustomInstructions || []).map((item) => `Business instruction: ${item}`),
@@ -86,8 +89,39 @@ try {
   ];
   const llmPayload = {
     model: "gpt-4.1-mini",
+    model_temperature: 0,
+    tool_call_strict_mode: true,
     general_prompt: lines.join("\n"),
-    begin_message: metadata.voiceGreeting || "Thank you for calling Ferocity. I'm Ferocity's AI support assistant. How can I help you today?"
+    begin_message: metadata.voiceGreeting || "Thank you for calling Ferocity. I'm Ferocity's AI support assistant. How can I help you today?",
+    general_tools: [
+      {
+        type: "custom",
+        name: "create_sales_callback",
+        description: "Record a real sales or demo callback request in Ferocity after the caller has confirmed their name, callback number, and reason. Use the returned ok value before saying the request was recorded.",
+        url: `${appUrl}/api/integrations/voice-ai/tools/sales-callback`,
+        method: "POST",
+        timeout_ms: 10000,
+        args_at_root: false,
+        parameter_type: "json",
+        speak_during_execution: true,
+        execution_message_type: "static_text",
+        execution_message_description: "One moment while I record that request.",
+        speak_after_execution: true,
+        parameters: {
+          type: "object",
+          required: ["caller_name", "callback_number", "reason"],
+          properties: {
+            caller_name: { type: "string", description: "The caller's confirmed name." },
+            business_name: { type: "string", description: "The business name, only if the caller actually provided it." },
+            callback_number: { type: "string", description: "The callback number confirmed by the caller." },
+            email: { type: "string", description: "The caller's email, only if offered." },
+            reason: { type: "string", description: "Why the caller wants a sales or demo callback and the requested outcome." },
+            urgency: { type: "string", enum: ["normal", "high"], description: "High only when the caller stated a time-sensitive need; otherwise normal." },
+            preferred_time: { type: "string", description: "A preferred callback window only if the caller stated one. This is a preference, not a confirmed appointment." }
+          }
+        }
+      }
+    ]
   };
   const agentPayload = {
     agent_name: "Ferocity AI Support",

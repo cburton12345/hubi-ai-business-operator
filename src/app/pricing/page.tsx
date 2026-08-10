@@ -2,7 +2,11 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 import { jobTrackerPlan, primaryPublicPlans } from "@/lib/billing/public-plans";
+import { getPublicCopy } from "@/lib/public-site/featured-demo";
+
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Ferocity Pricing | AI Operating System for Businesses",
@@ -34,7 +38,7 @@ const connectedServices = [
   ["Online invoice payments", "Connect Stripe", "Customers receive a secure online checkout. Direct charges enter the business Stripe balance, and Stripe pays out to its connected bank account."],
   ["Advertising", "Create + export now", "Create campaigns and platform-specific creative now. Direct ad-platform execution is enabled only for an activated adapter; manual export remains available."],
   ["Video ads", "Briefs now; rendering connected", "Scripts, hooks, scenes, voiceover drafts, and briefs work without a renderer. Premium rendering requires an activated provider and may use credits."],
-  ["AI receptionist", "Connect a supported provider", "With Retell or Vapi connected, the AI receptionist can answer, qualify, book, follow up, and transfer with business context. Provider usage remains on the selected provider path."],
+  ["AI receptionist", "Connect a supported provider", "Retell outbound calling is certified. Inbound answering, transfers, booking, and alternate voice engines are enabled only after that exact provider path and phone route pass setup and certification."],
   ["Email and SMS", "Supported adapters", "Resend email and Twilio texting can execute after connection. Manual drafts and copy-to-send fallbacks remain available."],
   ["Web publishing", "Prepare + review", "Prepare publish-ready content, use hosted Ferocity pages, or export it. Direct external publishing requires an activated adapter."],
   ["Another provider", "Request an adapter", "Request a reviewed BYO adapter for a niche provider without changing Ferocity’s core business workflows."]
@@ -75,24 +79,22 @@ const capabilityComparison = [
   ["Owner control", "Priorities and attention alerts", "Monitoring queues and persisted growth decisions", "Command Center, daily operating brief, escalation, and cross-business decisions"]
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const hero = await getPublicCopy("pricing_hero");
   return (
     <main className="public-page">
       <section className="public-shell">
         <PublicNav />
 
         <section className="public-hero">
-          <p className="eyebrow">Simple paid plans</p>
-          <h1>Choose how much work you want taken off your plate.</h1>
-          <p className="muted">
-            Every plan includes Ferocity’s real AI engine. Higher tiers handle more of the customer journey,
-            connect more of the business, and watch for more problems before they cost you.
-          </p>
+          <p className="eyebrow">{hero.eyebrow}</p>
+          <h1>{hero.headline}</h1>
+          <p className="muted">{hero.body}</p>
           <div className="button-row">
-            <Link className="button" href="/subscribe?plan=growth">
-              Start Growth <ArrowRight size={16} />
+            <Link className="button" href={hero.ctaHref}>
+              {hero.ctaLabel} <ArrowRight size={16} />
             </Link>
-            <Link className="button secondary-button" href="#plans">Compare plans</Link>
+            <Link className="button secondary-button" href={hero.secondaryCtaHref}>{hero.secondaryCtaLabel}</Link>
           </div>
         </section>
 
@@ -127,9 +129,6 @@ export default function PricingPage() {
                   ))}
                 </ul>
               </details>
-              <Link className="button" href={`/subscribe?plan=${plan.key}`}>
-                Start {plan.name}
-              </Link>
             </article>
           ))}
         </section>
@@ -282,6 +281,7 @@ export default function PricingPage() {
             <Link className="button secondary-button" href="/business-health-score">Use the free grader</Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

@@ -21,6 +21,7 @@ export type VideoAdBrief = {
   errorMessage: string | null;
   metadata: JsonRecord;
   brandName: string | null;
+  brandDomain: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -53,6 +54,7 @@ export async function getVideoAdBrief(videoJobId: string): Promise<VideoAdBrief 
     error_message: string | null;
     metadata_json: unknown;
     brand_name: string | null;
+    brand_domain: string | null;
     created_at: Date;
     updated_at: Date;
   }>(
@@ -75,6 +77,7 @@ export async function getVideoAdBrief(videoJobId: string): Promise<VideoAdBrief 
       v.error_message,
       v.metadata_json,
       b.name as brand_name,
+      b.domain as brand_domain,
       v.created_at,
       v.updated_at
     from public.marketing_video_jobs v
@@ -109,6 +112,7 @@ export async function getVideoAdBrief(videoJobId: string): Promise<VideoAdBrief 
     errorMessage: row.error_message,
     metadata: asRecord(row.metadata_json),
     brandName: row.brand_name,
+    brandDomain: row.brand_domain,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

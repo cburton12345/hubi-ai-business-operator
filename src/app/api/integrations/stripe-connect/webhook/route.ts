@@ -191,7 +191,7 @@ export async function POST(request: Request) {
     await queryPostgres(
       `
       update public.provider_webhook_events
-      set processing_status = 'processed', processed_at = now(), updated_at = now()
+      set processing_status = 'processed', processed_at = now()
       where id = $1
       `,
       [receiptId]
@@ -203,8 +203,7 @@ export async function POST(request: Request) {
       update public.provider_webhook_events
       set processing_status = 'failed',
           error_category = 'provider_sync',
-          safe_error_message = $2,
-          updated_at = now()
+          safe_error_message = $2
       where id = $1
       `,
       [receiptId, error instanceof Error ? error.message.slice(0, 500) : "Stripe v2 sync failed."]

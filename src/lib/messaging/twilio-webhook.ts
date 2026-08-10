@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { recordMessageDeliveryReceipt } from "@/lib/messaging/message-health";
+import { twilioSmsProvider } from "@/lib/messaging/providers/twilio";
 import { resolveTwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
 
 function constantTimeEqual(left: string, right: string) {
@@ -47,13 +49,6 @@ function xmlResponse(status = 200) {
       "Cache-Control": "no-store"
     }
   });
-}
-
-function deliveryStatus(value: string | null) {
-  if (value === "delivered") return "delivered";
-  if (value === "failed" || value === "undelivered") return "failed";
-  if (value === "sent" || value === "sending") return "sent";
-  return "queued";
 }
 
 export async function handleTwilioMessagingWebhook(request: Request) {
@@ -126,38 +121,20 @@ export async function handleTwilioMessagingWebhook(request: Request) {
   if (!insertedEvent?.rows[0]) return xmlResponse();
 
   if (!isInboundMessage) {
-    const updated = await queryPostgres<{ id: string }>(
-      `
-      update public.messages
-      set status = $3,
-          metadata_json = metadata_json || $4::jsonb
-      where tenant_id = $1 and provider_message_ref = $2
-      returning id
-      `,
-      [
-        tenantId,
-        providerMessageId,
-        deliveryStatus(messageStatus),
-        JSON.stringify({ twilioStatus: messageStatus, twilioErrorCode: params.get("ErrorCode") })
-      ]
-    );
-    await queryPostgres(
-      `
-      insert into public.message_delivery_events (
-        tenant_id, message_id, provider_key, event_type, provider_event_ref,
-        status, safe_error_message, metadata_json
-      )
-      values ($1, $2, 'twilio_sms', $3, $4, 'logged', $5, $6::jsonb)
-      `,
-      [
-        tenantId,
-        updated?.rows[0]?.id ?? null,
-        messageStatus,
-        providerMessageId,
-        params.get("ErrorMessage"),
-        JSON.stringify({ errorCode: params.get("ErrorCode") })
-      ]
-    );
+    const normalized = twilioSmsProvider.normalizeDeliveryReceipt?.({
+      status: messageStatus,
+      errorCode: params.get("ErrorCode"),
+      errorMessage: params.get("ErrorMessage")
+    });
+    if (!normalized) return xmlResponse(503);
+    await recordMessageDeliveryReceipt({
+      tenantId,
+      providerKey: "twilio_sms",
+      providerMessageId,
+      providerEventId: `${providerMessageId}:${normalized.rawStatus}:${normalized.errorCode ?? "none"}`,
+      ...normalized,
+      metadata: { source: "twilio_status_callback" }
+    });
   } else {
     const messageBody = params.get("Body") ?? "";
     const conversationRef = `sms:${from ?? "unknown"}:${to ?? "unknown"}`;

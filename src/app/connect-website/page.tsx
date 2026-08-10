@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, Code2, FileText, Globe2, MousePointerClick, ShieldCheck } from "lucide-react";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Connect Your Website and Marketing Platforms to Ferocity",
@@ -180,6 +181,7 @@ export default function ConnectWebsitePage() {
             </Link>
           </div>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

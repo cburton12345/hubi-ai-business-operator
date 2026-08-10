@@ -5,6 +5,7 @@ import { provisionPaidWorkspace } from "@/lib/billing/provision-paid-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
 import { verifyStripeWebhookSignature } from "@/lib/payments/stripe-webhook-signature";
+import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
 
 type StripeEvent = {
   id: string;
@@ -40,6 +41,69 @@ function mapStripeSubscriptionStatus(status: string, eventType: string) {
 
 async function handleCheckoutCompleted(event: StripeEvent, object: Record<string, unknown>) {
   const meta = metadata(object);
+  if (textValue(meta, "ferocity_kind") === "managed_ad_wallet_credit") {
+    const paymentStatus = textValue(object, "payment_status");
+    if (paymentStatus !== "paid" && paymentStatus !== "no_payment_required") return;
+
+    const tenantId = textValue(meta, "tenant_id");
+    const providerKey = textValue(meta, "provider_key");
+    const amountCents = numberValue(object, "amount_total") ?? Number(textValue(meta, "amount_cents") ?? 0);
+    const checkoutSessionId = textValue(object, "id");
+    if (!tenantId || !providerKey || !checkoutSessionId || !Number.isFinite(amountCents) || amountCents <= 0) {
+      throw new Error("Managed-ad wallet payment is missing tenant, provider, or amount metadata.");
+    }
+    const walletIdempotencyKey = `stripe:checkout:${checkoutSessionId}:managed-ad-wallet`;
+
+    const credited = await queryPostgres<{ id: string }>(
+      `
+      with control as (
+        select id
+        from public.managed_ad_budget_controls
+        where tenant_id = $1::uuid
+          and provider_key = $2
+          and lane_key = 'ferocity_managed'
+        for update
+      ), credit as (
+        insert into public.managed_ad_spend_events (
+          tenant_id, budget_control_id, provider_key, event_type, amount_cents,
+          idempotency_key, description, metadata_json
+        )
+        select $1::uuid, control.id, $2, 'prepaid_credit', $3::integer,
+               $4, 'Customer prepaid managed advertising funds through Stripe.', $5::jsonb
+        from control
+        on conflict (tenant_id, idempotency_key) do nothing
+        returning budget_control_id, amount_cents
+      )
+      update public.managed_ad_budget_controls c
+      set prepaid_balance_cents = c.prepaid_balance_cents + credit.amount_cents,
+          status = case when c.status = 'needs_payment' then 'ready' else c.status end,
+          updated_at = now()
+      from credit
+      where c.id = credit.budget_control_id
+      returning c.id
+      `,
+      [
+        tenantId,
+        providerKey,
+        Math.round(amountCents),
+        walletIdempotencyKey,
+        JSON.stringify({
+          stripeEventId: event.id,
+          checkoutSessionId,
+          paymentIntentId: textValue(object, "payment_intent")
+        })
+      ]
+    );
+    if (!credited?.rows[0]) {
+      const existingCredit = await queryPostgres<{ id: string }>(
+        `select id from public.managed_ad_spend_events where tenant_id = $1 and idempotency_key = $2 limit 1`,
+        [tenantId, walletIdempotencyKey]
+      );
+      if (!existingCredit?.rows[0]) throw new Error("Managed-ad wallet credit could not be verified.");
+    }
+    return;
+  }
+
   if (textValue(meta, "ferocity_kind") === "service_invoice_payment") {
     const paymentStatus = textValue(object, "payment_status");
     if (event.type === "checkout.session.completed" && paymentStatus !== "paid" && paymentStatus !== "no_payment_required") {
@@ -314,6 +378,7 @@ async function handleServiceInvoicePayment(event: StripeEvent, object: Record<st
       Number.isFinite(platformFeeCents) ? platformFeeCents : 0
     ]
   );
+  await ensureInvoiceReviewEnrollment({ tenantId, invoiceId, event: "invoice_paid" });
 }
 
 async function recordStripePaymentException(event: StripeEvent, object: Record<string, unknown>, status: "failed" | "refunded" | "partially_refunded") {
@@ -507,7 +572,7 @@ export async function POST(request: Request) {
       'verified', 'processing', $6, $7::jsonb, $8::jsonb
     )
     on conflict (provider_key, provider_event_id) do update
-    set processing_status = 'processing', updated_at = now()
+    set processing_status = 'processing'
     where public.provider_webhook_events.processing_status in ('failed', 'retrying')
        or (
          public.provider_webhook_events.processing_status = 'processing'
@@ -572,7 +637,7 @@ export async function POST(request: Request) {
     await queryPostgres(
       `
       update public.provider_webhook_events
-      set processing_status = 'processed', processed_at = now(), updated_at = now()
+      set processing_status = 'processed', processed_at = now()
       where id = $1
       `,
       [receiptId]
@@ -586,8 +651,7 @@ export async function POST(request: Request) {
       update public.provider_webhook_events
       set processing_status = 'failed',
           error_category = 'provider_processing',
-          safe_error_message = $2,
-          updated_at = now()
+          safe_error_message = $2
       where id = $1
       `,
       [receiptId, safeMessage]

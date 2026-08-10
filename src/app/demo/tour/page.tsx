@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BellRing, Bot, CalendarClock, ChartNoAxesCombined, FileCheck2, Megaphone, MessageSquareText, Star } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "How Ferocity Moves Work Forward",
+  description: "Follow a service-business workflow from growth and lead capture through follow-up, jobs, payments, reviews, and measurable results.",
+  alternates: { canonical: "/demo/tour" }
+};
 
 const tour = [
   {

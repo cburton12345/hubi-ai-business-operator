@@ -5,7 +5,8 @@ import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { generateJsonWithAiService } from "@/lib/ai/ai-service";
-import { planVideoMarketingAsset } from "@/lib/ai/video-service";
+import { normalizeFunnelStrategy, type FunnelStrategyPlan } from "@/lib/ai/funnel-strategy";
+import { directVideoMarketingAsset } from "@/lib/ai/video-service";
 import { queryPostgres } from "@/lib/db/postgres";
 import { processWebsiteImport } from "@/lib/marketing-os/website-import-processor";
 import { activateFunnelOperations } from "@/lib/revenue-growth/activate-funnel-operations";
@@ -132,26 +133,6 @@ type MarketingPlatformPlaybook = {
 };
 
 type AdAutopilotPackageInput = z.infer<typeof adAutopilotPackageSchema>;
-
-type FunnelCreativeAngle = {
-  angle: string;
-  hook: string;
-  cta: string;
-};
-
-type FunnelStrategyPlan = {
-  funnelName: string;
-  positioning: string;
-  headline: string;
-  shortDemoHook: string;
-  qualificationQuestions: string[];
-  followUpPlan: string[];
-  trackingPlan: string[];
-  creativeAngles: FunnelCreativeAngle[];
-  safetyChecks: string[];
-  recommendedNextAction: string;
-  [key: string]: unknown;
-};
 
 function videoPlatformFromAdPlatforms(platforms: AdPlatform[]) {
   if (platforms.length !== 1) return "multi_platform";
@@ -1173,7 +1154,8 @@ export async function createAdAutopilotPackageAction(formData: FormData) {
       return playbook ? `${platformLabel(platform)}: ${playbook.strategy_summary}` : `${platformLabel(platform)}: create native, proof-led creative and review before launch.`;
     })
     .join("\n");
-  const funnelStrategy = await generateJsonWithAiService<FunnelStrategyPlan>({
+  const fallbackStrategy = fallbackFunnelStrategy(parsed.data);
+  const generatedFunnelStrategy = await generateJsonWithAiService<Record<string, unknown>>({
     tenantId: workspaceId,
     brandId,
     userId: session?.userId ?? null,
@@ -1223,7 +1205,7 @@ export async function createAdAutopilotPackageAction(formData: FormData) {
         recommendedNextAction: "one next action"
       }
     }),
-    fallback: fallbackFunnelStrategy(parsed.data),
+    fallback: fallbackStrategy,
     metadata: {
       source: "ad_autopilot_package",
       platforms: parsed.data.platforms,
@@ -1231,6 +1213,7 @@ export async function createAdAutopilotPackageAction(formData: FormData) {
       durationSeconds: parsed.data.durationSeconds
     }
   });
+  const funnelStrategy = normalizeFunnelStrategy(generatedFunnelStrategy, fallbackStrategy);
   const prompt = [
     `Owner request: ${parsed.data.businessThought}`,
     parsed.data.serviceLabel ? `Service/product: ${parsed.data.serviceLabel}` : null,
@@ -1629,7 +1612,7 @@ export async function createGraphicJobAction(formData: FormData) {
 
 export async function createVideoJobAction(formData: FormData) {
   await requirePermission("ai:queue");
-  const workspaceId = await getCurrentWorkspaceId();
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
   const parsed = videoJobSchema.safeParse({
     brandId: formData.get("brandId")?.toString() || undefined,
     serviceLabel: formData.get("serviceLabel")?.toString() || undefined,
@@ -1644,7 +1627,10 @@ export async function createVideoJobAction(formData: FormData) {
   if (!parsed.success) return;
 
   const brandId = await firstBrandId(workspaceId, parsed.data.brandId);
-  const videoPlan = planVideoMarketingAsset({
+  const videoPlan = await directVideoMarketingAsset({
+    tenantId: workspaceId,
+    brandId,
+    userId: session?.userId ?? null,
     goal: parsed.data.goal,
     serviceLabel: parsed.data.serviceLabel,
     offerLabel: parsed.data.offerLabel,

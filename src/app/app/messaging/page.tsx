@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { Mail, MessageSquareText, PhoneCall, ShieldCheck } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { manualSmsHref } from "@/lib/communication/manual-sms";
 import { getMessagingDashboard } from "@/lib/messaging/get-messaging-dashboard";
 import {
+  messageHealthLabel,
+  messageHealthTone,
+  messageNeedsAttention,
+  safeDeliveryExplanation
+} from "@/lib/messaging/message-health-view";
+import {
   clearMessagingEmergencyPauseAction,
-  emergencyPauseMessagingAccountAction
+  emergencyPauseMessagingAccountAction,
+  retryMessageAction
 } from "./actions";
 
 function statusTone(status: string) {
@@ -46,6 +54,7 @@ export default async function MessagingPage() {
         <Metric label="Response overdue" value={dashboard.metrics.overdueResponses} />
         <Metric label="Messages this month" value={dashboard.metrics.messagesThisMonth} />
         <Metric label="Opt-outs" value={dashboard.metrics.optOuts} />
+        <Metric label="Delivery problems" value={dashboard.metrics.deliveryProblems} />
       </div>
 
       <section className="panel section-actions">
@@ -63,6 +72,53 @@ export default async function MessagingPage() {
                 <h3>{conversation.contactName} — {conversation.subject}</h3>
                 <p>{conversation.lastMessage}</p>
                 <p className="muted">{conversation.channel} / last activity {conversation.lastMessageAt} / response due {conversation.responseDue}</p>
+                {conversation.messages.length ? (
+                  <details className="section-actions">
+                    <summary>View conversation ({conversation.messages.length} recent messages)</summary>
+                    <ul className="list">
+                      {conversation.messages.map((message) => {
+                        const explanation = safeDeliveryExplanation(message);
+                        return (
+                          <li className="list-row" key={message.id}>
+                            <div>
+                              <p>{message.body}</p>
+                              <p className="muted">
+                                {message.direction} / {message.channel} / {message.createdAt}
+                                {message.direction === "outbound" ? ` / ${message.providerKey}` : ""}
+                              </p>
+                              {explanation ? <p className="muted">{explanation}</p> : null}
+                              {message.events.length ? (
+                                <details>
+                                  <summary>Delivery history ({message.events.length})</summary>
+                                  <ul className="list">
+                                    {message.events.map((event, index) => (
+                                      <li key={`${message.id}-${event.at}-${index}`}>
+                                        {(event.status || "unknown").replaceAll("_", " ")}
+                                        {event.rawStatus ? ` (${event.rawStatus})` : ""}
+                                        {event.reason ? ` — ${event.reason}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              ) : null}
+                            </div>
+                            <div className="inline-actions">
+                              <span className={`pill ${messageHealthTone(message.deliveryStatus)}`}>
+                                {messageHealthLabel(message)}
+                              </span>
+                              {message.direction === "outbound" && message.deliveryUpdatedAt ? (
+                                <span className="muted">Updated {message.deliveryUpdatedAt}</span>
+                              ) : null}
+                              {messageNeedsAttention(message.deliveryStatus) ? (
+                                <a className="mini-button secondary-button" href="#message-health">Review options</a>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </details>
+                ) : null}
               </div>
               <div className="inline-actions">
                 {conversation.unreadCount ? <span className="pill high">{conversation.unreadCount} unread</span> : null}
@@ -71,6 +127,83 @@ export default async function MessagingPage() {
             </li>
           ))}
           {dashboard.conversations.length === 0 ? <li className="list-row"><span className="muted">No open customer conversations yet.</span></li> : null}
+        </ul>
+      </section>
+
+      <section className="panel section-actions" id="message-health">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Message health</h2>
+            <p className="muted">Provider receipts show what happened after a send. Failed attempts stay in history when you retry.</p>
+          </div>
+          <span className={`pill ${dashboard.metrics.deliveryProblems ? "high" : ""}`}>
+            {dashboard.metrics.deliveryProblems} need attention
+          </span>
+        </div>
+        <ul className="list">
+          {dashboard.messageHealth.map((message) => {
+            const unhealthy = messageNeedsAttention(message.deliveryStatus);
+            const smsLike = ["sms", "mms", "manual_sms"].includes(message.channel);
+            const configuredProviders = dashboard.providers.filter((provider) => {
+              const capability = message.channel === "email" ? "Email" : message.channel === "mms" ? "MMS" : "SMS";
+              const accountReady = dashboard.accounts.some((account) =>
+                account.providerKey === provider.providerKey
+                && account.connectionStatus === "active"
+                && account.liveSendingEnabled
+                && account.outboundEnabled
+                && !account.emergencyPaused
+              );
+              return provider.capabilities.includes(capability) && (provider.providerKey === "manual_sms" || accountReady);
+            });
+            return (
+              <li className="list-row" key={message.id}>
+                <div>
+                  <h3>{message.destination}</h3>
+                  <p>{message.body}</p>
+                  <p className="muted">
+                    {message.providerKey} / {message.deliveryUpdatedAt}
+                    {message.retryAttempt ? ` / retry ${message.retryAttempt}` : ""}
+                  </p>
+                  {message.safeReason ? <p className="muted">{message.safeReason}</p> : null}
+                  {message.errorCode ? <p className="muted">Provider code: {message.errorCode}</p> : null}
+                  {message.events.length > 1 ? (
+                    <details>
+                      <summary>Delivery history ({message.events.length})</summary>
+                      <ul className="list">
+                        {message.events.map((event, index) => (
+                          <li key={`${message.id}-${event.at}-${index}`}>
+                            {event.status?.replaceAll("_", " ") || "unknown"}
+                            {event.rawStatus ? ` (${event.rawStatus})` : ""}
+                            {event.reason ? ` — ${event.reason}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </div>
+                <div className="inline-actions">
+                  <span className={`pill ${unhealthy ? "high" : message.deliveryStatus === "delivered" ? "" : "medium"}`}>
+                    {message.deliveryStatus.replaceAll("_", " ")}
+                  </span>
+                  {unhealthy && message.retryAttempt < 3 ? configuredProviders.map((provider) => (
+                    <form action={retryMessageAction} key={`${message.id}-${provider.providerKey}`}>
+                      <input name="messageId" type="hidden" value={message.id} />
+                      <input name="providerKey" type="hidden" value={provider.providerKey} />
+                      <button className="mini-button secondary-button" type="submit">
+                        {provider.providerKey === message.providerKey ? "Retry" : `Try ${provider.displayName}`}
+                      </button>
+                    </form>
+                  )) : null}
+                  {unhealthy && smsLike ? (
+                    <a className="mini-button secondary-button" href={manualSmsHref(message.destination, message.body)}>
+                      Send from my device
+                    </a>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+          {dashboard.messageHealth.length === 0 ? <li className="list-row"><span className="muted">No outbound messages yet.</span></li> : null}
         </ul>
       </section>
 

@@ -25,7 +25,7 @@ vi.mock("@/lib/env", () => ({
   }
 }));
 
-import { resolveRetellConfiguration } from "./retell-config";
+import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "./retell-config";
 
 describe("resolveRetellConfiguration", () => {
   beforeEach(() => {
@@ -82,5 +82,14 @@ describe("resolveRetellConfiguration", () => {
     });
 
     await expect(resolveRetellConfiguration("tenant-2")).resolves.toBeNull();
+  });
+
+  it("maps public, customer-outbound, and private-owner agents to the same trusted workspace", async () => {
+    queryPostgresMock.mockResolvedValue({ rows: [{ tenant_id: "tenant-1" }] });
+
+    await expect(resolveRetellWebhookTenant("customer-outbound-agent", "+15550001111"))
+      .resolves.toBe("tenant-1");
+    expect(queryPostgresMock.mock.calls[0]?.[0]).toContain("outboundAssistantId");
+    expect(queryPostgresMock.mock.calls[0]?.[0]).toContain("ownerVoiceAssistantId");
   });
 });

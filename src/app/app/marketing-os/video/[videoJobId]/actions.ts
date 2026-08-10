@@ -88,6 +88,17 @@ export async function submitVideoRenderAction(formData: FormData) {
   const [tenantId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
   const job = await loadVideoJob(tenantId, parsed.data.videoJobId);
   if (!job || !["needs_review", "provider_ready", "failed"].includes(job.status)) return;
+  const metadata = safeRecord(job.metadata_json);
+  const preflight = safeRecord(metadata.creativePreflight);
+  if (preflight.decision === "blocked") {
+    await recordVideoError(
+      tenantId,
+      job.id,
+      "Creative preflight found a blocking issue. Repair the concept or claim before paying for a render."
+    );
+    revalidatePath(`/app/marketing-os/video/${job.id}`);
+    return;
+  }
 
   const [gate, configuration] = await Promise.all([
     getServiceGate(tenantId, "ai_video_generation"),
@@ -135,7 +146,6 @@ export async function submitVideoRenderAction(formData: FormData) {
   }
 
   const request = safeRecord(job.provider_request_json);
-  const metadata = safeRecord(job.metadata_json);
   const seconds = normalizeVideoDuration(
     configuration.providerKey,
     Number(metadata.durationSeconds ?? request.durationSeconds)
@@ -210,6 +220,8 @@ export async function submitVideoRenderAction(formData: FormData) {
     job.goal,
     job.script_text,
     `Scene plan: ${JSON.stringify(job.scenes_json ?? []).slice(0, 3500)}`,
+    `Creative direction: ${JSON.stringify(request.creativeDirection ?? {}).slice(0, 1800)}`,
+    "Create source footage only. Leave exact captions, logos, URLs, phone numbers, and the final CTA card for Ferocity post-production so they cannot be misspelled.",
     "Keep all visible claims truthful. Do not invent logos, reviews, credentials, prices, or results."
   ].filter(Boolean).join("\n\n").slice(0, 9000);
   const result = await provider.createVideo(
@@ -346,6 +358,7 @@ export async function refreshVideoRenderAction(formData: FormData) {
         error_message = case when $6 then 'The provider reported that video generation failed.' else null end,
         provider_response_json = provider_response_json || $7::jsonb,
         history_json = history_json || $8::jsonb,
+        metadata_json = case when $4 then metadata_json || $9::jsonb else metadata_json end,
         updated_at = now()
     where tenant_id = $1 and id = $2
     `,
@@ -360,8 +373,17 @@ export async function refreshVideoRenderAction(formData: FormData) {
       JSON.stringify([{
         status: result.data.status,
         at: new Date().toISOString(),
-        note: completed ? "Rendered video is ready inside Ferocity." : `Provider status: ${result.data.status}.`
-      }])
+        note: completed ? "Source footage is rendered. Ferocity is inspecting it before finishing or publishing." : `Provider status: ${result.data.status}.`
+      }]),
+      JSON.stringify(completed ? {
+        productionStatus: "source_render_complete",
+        qualityReview: { status: "queued", score: null, inspectedFrames: 0 },
+        finishing: {
+          status: "waiting_for_quality_review",
+          noAdditionalPremiumRender: true,
+          note: "Ferocity will try post-production repairs before recommending another paid generation."
+        }
+      } : {})
     ]
   );
   revalidatePath(`/app/marketing-os/video/${job.id}`);

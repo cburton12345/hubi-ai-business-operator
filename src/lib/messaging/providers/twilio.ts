@@ -1,5 +1,6 @@
 import { getTwilioSmsReadiness, sendSmsWithTwilio } from "@/lib/sms/twilio";
 import { resolveTwilioSmsConfiguration } from "@/lib/messaging/twilio-tenant-config";
+import { normalizeTwilioDeliveryReceipt } from "@/lib/messaging/message-health";
 import type { MessagingCapability, MessagingProvider, MessagingSendInput, MessagingSendResult } from "../types";
 
 const capabilities: MessagingCapability[] = ["sms", "mms", "inbound_webhook", "delivery_webhook", "phone_number_provisioning", "business_registration"];
@@ -20,6 +21,9 @@ export const twilioSmsProvider: MessagingProvider = {
       missing: readiness.missing,
       status: readiness.ready ? "ready" : "not_configured"
     };
+  },
+  normalizeDeliveryReceipt(input) {
+    return normalizeTwilioDeliveryReceipt(input);
   },
   async sendMessage(input: MessagingSendInput): Promise<MessagingSendResult> {
     const configuration = await resolveTwilioSmsConfiguration(input.tenantId);

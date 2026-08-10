@@ -28,7 +28,7 @@ const checks = [
   {
     file: "src/components/admin/AppShell.tsx",
     needles: [
-      "Tell Ferocity what to do",
+      "Ask Ferocity anything. Tell it what to do.",
       "executeAiWorkforceCommandSimpleAction"
     ]
   },

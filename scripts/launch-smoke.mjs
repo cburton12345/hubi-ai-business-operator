@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import pg from "pg";
 
-const baseUrl = (process.env.FEROCITY_SMOKE_URL ?? process.env.FEROCITY_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-
 const checks = [
   { path: "/", label: "public landing page", statuses: [200] },
   { path: "/features", label: "features page", statuses: [200] },
@@ -32,6 +30,9 @@ function loadLocalEnv() {
     process.env[key] = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
   }
 }
+
+loadLocalEnv();
+const baseUrl = (process.env.FEROCITY_SMOKE_URL ?? process.env.FEROCITY_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
 async function getPublicWorkerRoute() {
   loadLocalEnv();

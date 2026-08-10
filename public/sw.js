@@ -66,7 +66,7 @@ self.addEventListener("push", (event) => {
     badge: data.badge || "/icon.svg",
     tag: data.tag || "ferocity-alert",
     data: {
-      url: data.url || "/app/attention-command"
+      url: data.url || "/app/ferocity"
     }
   };
 
@@ -75,7 +75,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || "/app/attention-command", self.location.origin).href;
+  const targetUrl = new URL(event.notification.data?.url || "/app/ferocity", self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {

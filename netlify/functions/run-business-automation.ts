@@ -1,6 +1,6 @@
-import type { Config, Context } from "@netlify/functions";
+import type { Config } from "@netlify/functions";
 
-export default async function runBusinessAutomation(_request: Request, context: Context) {
+export default async function runBusinessAutomation() {
   const siteUrl = Netlify.env.get("URL");
   const token = Netlify.env.get("AI_WORKFORCE_CRON_TOKEN");
   if (!siteUrl || !token) {
@@ -8,28 +8,23 @@ export default async function runBusinessAutomation(_request: Request, context: 
     return new Response("Business automation is not configured.", { status: 503 });
   }
 
-  const runUrl = new URL("/api/business-automation/run", siteUrl);
-  runUrl.searchParams.set("tenantLimit", "100");
-  runUrl.searchParams.set("agentLimit", "100");
+  const runUrl = new URL("/.netlify/functions/run-business-automation-background", siteUrl);
 
-  const run = fetch(runUrl, {
+  const response = await fetch(runUrl, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json"
     },
-    body: "{}"
-  }).then(async (response) => {
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Business automation request failed (${response.status}): ${body.slice(0, 500)}`);
-    }
+    body: JSON.stringify({ source: "scheduled_business_automation" })
   });
-
-  context.waitUntil(run);
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Business automation background dispatch failed (${response.status}): ${body.slice(0, 500)}`);
+  }
   return new Response("Business automation started.", { status: 202 });
 }
 
 export const config: Config = {
-  schedule: "*/15 * * * *"
+  schedule: "*/5 * * * *"
 };

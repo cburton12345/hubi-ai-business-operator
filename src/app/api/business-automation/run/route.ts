@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
   const result = await runBusinessAutomationLoop({
     tenantId,
     tenantLimit: intParam(request, "tenantLimit", 100),
-    agentLimit: intParam(request, "agentLimit", 25)
+    agentLimit: intParam(request, "agentLimit", 25),
+    tenantConcurrency: intParam(request, "tenantConcurrency", 2)
   });
 
   return NextResponse.json(

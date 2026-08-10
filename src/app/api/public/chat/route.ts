@@ -220,7 +220,8 @@ export async function POST(request: NextRequest) {
       "Recent conversation:",
       ...(recent?.rows ?? []).reverse().map((turn) => `${turn.direction}: ${turn.body}`)
     ].join("\n"),
-    fallback
+    fallback,
+    timeoutMs: 6_000
   });
   const reply = safeReply(ai.reply, fallback.reply);
   const needsHuman = Boolean(ai.needsHuman) || ai.urgency === "urgent";

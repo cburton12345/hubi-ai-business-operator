@@ -2,7 +2,7 @@ import { AlertTriangle, BatteryCharging, Gauge, ReceiptText, ShieldCheck } from 
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getProviderFundingDashboard, type ProviderFundingAccount } from "@/lib/usage/provider-funding";
-import { reconcileProviderCostAction, saveProviderFundingAccountAction } from "./actions";
+import { approveRecommendedProviderCapAction, reconcileProviderCostAction, saveProviderFundingAccountAction } from "./actions";
 
 function money(cents: number | null) {
   if (cents === null) return "not synced";
@@ -68,7 +68,15 @@ export default async function ProviderCostsPage() {
                 <h3><AlertTriangle size={16} /> {alert.title}</h3>
                 <p className="muted">{alert.summary}</p>
               </div>
-              <span className={`pill ${alert.severity === "high" ? "high" : "medium"}`}>{alert.severity}</span>
+              <div className="inline-actions">
+                <span className={`pill ${alert.severity === "high" ? "high" : "medium"}`}>{alert.severity}</span>
+                {typeof alert.metadata.recommendedCapCents === "number" ? (
+                  <form action={approveRecommendedProviderCapAction}>
+                    <input name="accountId" type="hidden" value={alert.accountId} />
+                    <button className="mini-button" type="submit">Approve {money(alert.metadata.recommendedCapCents)}</button>
+                  </form>
+                ) : null}
+              </div>
             </li>
           ))}
           {dashboard.activeAlerts.length === 0 ? <li className="list-row"><span className="muted">No funding alert is active.</span></li> : null}

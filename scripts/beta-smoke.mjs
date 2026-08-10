@@ -1,4 +1,13 @@
+import fs from "node:fs";
 import pg from "pg";
+
+if (fs.existsSync(".env.local")) {
+  for (const rawLine of fs.readFileSync(".env.local", "utf8").split(/\r?\n/)) {
+    const match = rawLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match || process.env[match[1]]) continue;
+    process.env[match[1]] = match[2].trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "");
+  }
+}
 
 const { Client } = pg;
 const tenantSlug = process.env.BETA_TENANT_SLUG ?? "beta-roofing-co";

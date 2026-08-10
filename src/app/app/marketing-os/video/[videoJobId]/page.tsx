@@ -5,6 +5,8 @@ import { env } from "@/lib/env";
 import { getVideoAdBrief, type JsonRecord } from "@/lib/marketing-os/get-video-ad-brief";
 import { getManagedVideoConfiguration } from "@/lib/providers/video-adapters";
 import { refreshVideoRenderAction, submitVideoRenderAction } from "./actions";
+import { VideoQualityController } from "./VideoQualityController";
+import { VideoFinishExporter } from "./VideoFinishExporter";
 
 function textValue(value: unknown, fallback = "Not set") {
   return typeof value === "string" && value.trim() ? value : fallback;
@@ -16,6 +18,16 @@ function numberValue(value: unknown, fallback = "Not set") {
 
 function listValue(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function recordValue(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
+
+function recordList(value: unknown): JsonRecord[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is JsonRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
 }
 
 function boolLabel(value: unknown) {
@@ -64,13 +76,21 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
   const exportFormats = listValue(brief.providerRequest.exportFormats);
   const supportedProviders = listValue(brief.providerRequest.supportedProviders ?? brief.providerRequest.futureProviders);
   const sourceAssets = listValue(brief.providerRequest.sourceAssets);
-  const variants = listValue(brief.metadata.variantPrompts);
+  const variants = recordList(brief.metadata.variantPrompts);
+  const preflight = recordValue(brief.metadata.creativePreflight ?? brief.providerRequest.preflight);
+  const preflightIssues = recordList(preflight.issues);
+  const qualityReview = recordValue(brief.metadata.qualityReview);
+  const qualityIssues = recordList(qualityReview.issues);
+  const finishing = recordValue(brief.metadata.finishing);
+  const finishingSteps = listValue(finishing.automaticSteps ?? finishing.included);
+  const deliverables = recordList(finishing.deliverables ?? brief.metadata.deliverables);
+  const finishedAssets = recordList(brief.metadata.finishedAssets);
   const videoConfiguration = getManagedVideoConfiguration();
   const seconds = renderSeconds(brief.metadata.durationSeconds ?? brief.providerRequest.durationSeconds);
   const estimatedCustomerCharge = videoConfiguration
     ? seconds * videoConfiguration.customerPriceCentsPerSecond
     : null;
-  const canSubmit = ["needs_review", "provider_ready", "failed"].includes(brief.status);
+  const canSubmit = ["needs_review", "provider_ready", "failed"].includes(brief.status) && preflight.decision !== "blocked";
   const canRefresh = ["submitted", "processing"].includes(brief.status);
 
   return (
@@ -84,7 +104,7 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
           <div>
             <h2>Brief Status</h2>
             <p className="muted">
-              This is a production brief. It does not mean a finished AI video has been rendered or published.
+              Ferocity directs and scores the concept before spending, then inspects and finishes the source before anything can publish.
             </p>
           </div>
           <div className="button-row">
@@ -111,7 +131,7 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
             </p>
           </div>
           <span className={`pill ${videoConfiguration ? "" : "medium"}`}>
-            {videoConfiguration ? "OpenAI Video configured" : "rendering safely paused"}
+            {videoConfiguration ? "Premium rendering connected" : "Rendering safely paused"}
           </span>
         </div>
         {canSubmit ? (
@@ -126,13 +146,13 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
                 </strong>
                 <p className="muted">
                   OpenAI accepts 4, 8, or 12 second clips. Longer briefs render as a 12-second first cut.
-                  Rendering does not publish the video.
+                  This charge creates the source footage. Quality inspection, finishing guidance, captions, branding, and channel reframes do not trigger another premium video render.
                 </p>
               </div>
             </div>
             <label className="checkbox-row">
               <input name="costApproval" type="checkbox" value="true" required />
-              <span>I approve this estimated provider-backed render charge and understand that the result still requires review before publishing.</span>
+              <span>I approve this source-render charge. Ferocity will inspect it and attempt lower-cost finishing before recommending any additional paid generation.</span>
             </label>
             <button className="button" type="submit" disabled={!videoConfiguration || env.FEROCITY_USAGE_BILLING_ENABLED?.toLowerCase() !== "true"}>
               Submit approved render
@@ -146,6 +166,48 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
           </form>
         ) : null}
       </section>
+
+      <div className="grid section-actions">
+        <section className="panel span-6 form-stack">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Creative Preflight</h2>
+              <p className="muted">Ferocity checks the concept before using premium generation credits.</p>
+            </div>
+            <span className={`pill ${preflight.decision === "blocked" ? "medium" : ""}`}>
+              {numberValue(preflight.score, "—")}/100 · {textValue(preflight.decision, "not scored")}
+            </span>
+          </div>
+          <ul className="list">
+            {preflightIssues.map((issue, index) => (
+              <li className="list-row" key={`preflight-${index}`}>
+                <div>
+                  <h3>{textValue(issue.message, "Creative note")}</h3>
+                  <p className="muted">{textValue(issue.repair, "Ferocity will improve this before publishing.")}</p>
+                </div>
+                <span className="pill">{textValue(issue.severity, "note")}</span>
+              </li>
+            ))}
+            {preflightIssues.length === 0 ? <li className="list-row"><span>No blocking creative issues detected.</span></li> : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6 form-stack">
+          <h2>Finished Deliverables</h2>
+          <p className="muted">One approved source can become multiple channel cuts without paying to regenerate the same idea.</p>
+          <ul className="list">
+            {deliverables.map((deliverable, index) => (
+              <li className="list-row" key={`deliverable-${index}`}>
+                <div>
+                  <h3>{textValue(deliverable.label, "Channel cut")}</h3>
+                  <p className="muted">{textValue(deliverable.use, "Approved campaign placement")}</p>
+                </div>
+                <span className="pill">{textValue(deliverable.aspectRatio, "adaptive")}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <div className="grid section-actions">
         <section className="panel span-7 form-stack">
@@ -222,7 +284,10 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
           <ul className="list">
             {variants.map((variant, index) => (
               <li className="list-row" key={`${brief.id}-variant-${index}`}>
-                <span>{variant}</span>
+                <div>
+                  <h3>{textValue(variant.hookAngle, `Hook ${index + 1}`)}</h3>
+                  <p className="muted">{textValue(variant.instruction, "Use a distinct opening while preserving approved facts.")}</p>
+                </div>
                 <span className="pill">variant {index + 1}</span>
               </li>
             ))}
@@ -248,17 +313,68 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
         </section>
 
         <section className="panel span-6 form-stack">
-          <h2>Output</h2>
+          <h2>Source And Quality</h2>
+          {brief.outputUrl ? (
+            <VideoQualityController
+              videoJobId={brief.id}
+              sourceUrl={brief.outputUrl}
+              shouldInspect={brief.status === "completed" && !["complete", "unavailable"].includes(textValue(qualityReview.status, "queued"))}
+              initialStatus={textValue(qualityReview.status, "queued")}
+              initialScore={typeof qualityReview.score === "number" ? qualityReview.score : null}
+            />
+          ) : null}
           <DetailList
             rows={[
-              ["Output URL", brief.outputUrl ?? "No rendered video yet"],
+              ["Production stage", textValue(brief.metadata.productionStatus, "Waiting for source footage")],
+              ["Quality score", typeof qualityReview.score === "number" ? `${qualityReview.score}/100` : "Not inspected"],
               ["Error", brief.errorMessage ?? "No error recorded"],
               ["Created", formatDate(brief.createdAt)],
               ["Updated", formatDate(brief.updatedAt)]
             ]}
           />
+          {qualityIssues.length ? (
+            <ul className="list">
+              {qualityIssues.map((issue, index) => (
+                <li className="list-row" key={`quality-${index}`}>
+                  <div><strong>{textValue(issue.message, "Quality concern")}</strong><p className="muted">{textValue(issue.repair, "Review before publishing.")}</p></div>
+                  <span className="pill">{textValue(issue.severity, "note")}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {finishingSteps.length ? (
+            <>
+              <h3>Automatic Finishing Plan</h3>
+              <ul className="list">{finishingSteps.map((step) => <li className="list-row" key={step}>{step}</li>)}</ul>
+            </>
+          ) : null}
+          {brief.outputUrl && qualityReview.status === "complete" && qualityReview.decision !== "rerender_recommended" && deliverables.length ? (
+            <VideoFinishExporter
+              videoJobId={brief.id}
+              sourceUrl={brief.outputUrl}
+              brandName={brief.brandName ?? "Your business"}
+              domain={brief.brandDomain ?? "Use approved destination"}
+              goal={brief.goal ?? "Move the work forward"}
+              service={brief.serviceLabel ?? "A better customer experience"}
+              cta={brief.ctaText ?? "Learn more"}
+              voiceover={brief.voiceoverText ?? brief.scriptText ?? brief.goal ?? ""}
+              deliverables={deliverables.map((item) => ({
+                label: textValue(item.label, "Channel cut"),
+                aspectRatio: textValue(item.aspectRatio, "16:9"),
+                use: textValue(item.use, "Approved campaign placement")
+              }))}
+              existingAssets={finishedAssets.map((item) => ({
+                label: textValue(item.label, "Finished cut"),
+                aspectRatio: textValue(item.aspectRatio, "16:9"),
+                use: "Stored private deliverable",
+                url: textValue(item.url, "#"),
+                mimeType: textValue(item.mimeType, "video/webm"),
+                extension: textValue(item.mimeType, "video/webm").includes("mp4") ? "mp4" : "webm"
+              }))}
+            />
+          ) : null}
           <div className="button-row">
-            {brief.outputUrl ? <Link className="button" href={brief.outputUrl}>Open rendered video</Link> : null}
+            {brief.outputUrl ? <Link className="button" href={brief.outputUrl}>Open source footage</Link> : null}
             <Link className="button secondary-button" href="/app/integrations">Connect providers</Link>
             <Link className="button secondary-button" href="/pricing">Check video pricing</Link>
           </div>

@@ -1,5 +1,6 @@
 import { resolveTenantProviderSecrets, secretByAliases } from "@/lib/credentials/resolve-tenant-provider-secrets";
 import { queryPostgres } from "@/lib/db/postgres";
+import { managedModelForRunType } from "@/lib/ai/model-routing";
 
 export type AiExecutionConfiguration = {
   providerKey: "openai" | "openai_byok";
@@ -27,13 +28,13 @@ export function isByoAiEligibleRunType(runType: string) {
   return byoEligibleRunTypes.has(runType);
 }
 
-export function managedAiConfiguration(requestType: "json" | "vision_json"): AiExecutionConfiguration {
+export function managedAiConfiguration(
+  requestType: "json" | "vision_json",
+  runType = "default"
+): AiExecutionConfiguration {
   return {
     providerKey: "openai",
-    model:
-      requestType === "vision_json"
-        ? process.env.AI_VISION_MODEL || process.env.AI_MODEL || "gpt-4.1-mini"
-        : process.env.AI_MODEL || "gpt-4.1-mini",
+    model: managedModelForRunType({ runType, requestType }),
     apiKey: process.env.OPENAI_API_KEY ?? null,
     baseUrl: "https://api.openai.com/v1",
     ownershipMode: "ferocity_managed"
@@ -45,7 +46,7 @@ export async function resolveAiExecutionConfiguration(input: {
   runType: string;
   requestType: "json" | "vision_json";
 }) {
-  const managed = managedAiConfiguration(input.requestType);
+  const managed = managedAiConfiguration(input.requestType, input.runType);
   if (!isByoAiEligibleRunType(input.runType)) return managed;
 
   const accountResult = await queryPostgres<{

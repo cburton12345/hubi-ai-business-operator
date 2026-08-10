@@ -1,7 +1,9 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type OfficeManagerDashboard = {
+  workspaceTimezone: string;
   metrics: {
     profiles: number;
     channels: number;
@@ -75,6 +77,30 @@ export type OfficeManagerDashboard = {
     plainLanguageStatus: string;
     liveActionsEnabled: boolean;
   }>;
+  ownerBriefings: Array<{
+    id: string;
+    userName: string;
+    status: string;
+    channels: string[];
+    maximumCallsPerDay: number;
+    destinationVerified: boolean;
+    destinationPreview: string | null;
+    timezone: string;
+    quietHoursStart: string | null;
+    quietHoursEnd: string | null;
+    voicemailAllowed: boolean;
+    retryAllowed: boolean;
+    textSummaryAfterCall: boolean;
+    isCurrentUser: boolean;
+  }>;
+  conversationalActions: Array<{
+    id: string;
+    actionType: string;
+    instruction: string;
+    status: string;
+    riskLevel: string;
+    createdAt: string;
+  }>;
 };
 
 function count(value: unknown) {
@@ -97,8 +123,8 @@ function record(value: unknown) {
 }
 
 export async function getOfficeManagerDashboard(): Promise<OfficeManagerDashboard> {
-  const workspaceId = await getCurrentWorkspaceId();
-  const [metricResult, profileResult, channelResult, actionResult, memoryResult, sessionResult, voiceRouteResult] = await Promise.all([
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  const [metricResult, profileResult, channelResult, actionResult, memoryResult, sessionResult, voiceRouteResult, ownerBriefingResult, conversationalActionResult, workspaceSettingsResult] = await Promise.all([
     queryPostgres<Record<string, string>>(
       `
       select
@@ -233,6 +259,51 @@ export async function getOfficeManagerDashboard(): Promise<OfficeManagerDashboar
       end
       `,
       [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      user_name: string | null;
+      status: string;
+      voice_enabled: boolean;
+      sms_enabled: boolean;
+      email_enabled: boolean;
+      push_enabled: boolean;
+      maximum_proactive_calls_per_day: number;
+      destination_verified_at: Date | string | null;
+      timezone: string;
+      quiet_hours_start: string | null;
+      quiet_hours_end: string | null;
+      voicemail_allowed: boolean;
+      retry_allowed: boolean;
+      text_summary_after_call: boolean;
+      metadata_json: Record<string, unknown>;
+      user_id: string;
+    }>(
+      `select p.id,p.user_id,u.name as user_name,p.status,p.voice_enabled,p.sms_enabled,
+         p.email_enabled,p.push_enabled,p.maximum_proactive_calls_per_day,p.destination_verified_at,
+         p.timezone,p.quiet_hours_start::text,p.quiet_hours_end::text,p.voicemail_allowed,
+         p.retry_allowed,p.text_summary_after_call,p.metadata_json
+       from public.owner_conversation_preferences p
+       join public.users u on u.id=p.user_id
+       where p.tenant_id=$1 order by p.updated_at desc limit 8`,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      action_type: string;
+      original_instruction: string;
+      status: string;
+      risk_level: string;
+      created_at: Date | string;
+    }>(
+      `select id,action_type,original_instruction,status,risk_level,created_at
+       from public.conversational_action_events
+      where tenant_id=$1 order by created_at desc limit 10`,
+      [workspaceId]
+    ),
+    queryPostgres<{ timezone: string }>(
+      `select timezone from public.workspace_settings where tenant_id=$1 limit 1`,
+      [workspaceId]
     )
   ]);
 
@@ -241,6 +312,7 @@ export async function getOfficeManagerDashboard(): Promise<OfficeManagerDashboar
   const profileMetadata = record(profile?.metadata_json);
 
   return {
+    workspaceTimezone: workspaceSettingsResult?.rows[0]?.timezone ?? "UTC",
     metrics: {
       profiles: count(metric.profiles),
       channels: count(metric.channels),
@@ -319,6 +391,37 @@ export async function getOfficeManagerDashboard(): Promise<OfficeManagerDashboar
       status: row.status,
       plainLanguageStatus: row.plain_language_status,
       liveActionsEnabled: row.live_actions_enabled
+    })),
+    ownerBriefings: (ownerBriefingResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      userName: row.user_name ?? "Workspace owner",
+      status: row.status,
+      channels: [
+        row.voice_enabled ? "voice" : null,
+        row.sms_enabled ? "text" : null,
+        row.email_enabled ? "email" : null,
+        row.push_enabled ? "app" : null
+      ].filter((value): value is string => Boolean(value)),
+      maximumCallsPerDay: Number(row.maximum_proactive_calls_per_day),
+      destinationVerified: Boolean(row.destination_verified_at),
+      destinationPreview: typeof record(row.metadata_json).destinationPreview === "string"
+        ? String(record(row.metadata_json).destinationPreview)
+        : null,
+      timezone: row.timezone,
+      quietHoursStart: row.quiet_hours_start?.slice(0, 5) ?? null,
+      quietHoursEnd: row.quiet_hours_end?.slice(0, 5) ?? null,
+      voicemailAllowed: row.voicemail_allowed,
+      retryAllowed: row.retry_allowed,
+      textSummaryAfterCall: row.text_summary_after_call,
+      isCurrentUser: row.user_id === session?.userId
+    })),
+    conversationalActions: (conversationalActionResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      actionType: row.action_type,
+      instruction: row.original_instruction,
+      status: row.status,
+      riskLevel: row.risk_level,
+      createdAt: iso(row.created_at) ?? new Date().toISOString()
     }))
   };
 }

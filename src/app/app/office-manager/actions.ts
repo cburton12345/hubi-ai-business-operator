@@ -6,6 +6,12 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
 import { callHandlingStrategies, callPriorityClasses } from "@/lib/office-manager/call-management";
+import {
+  requestOwnerDestinationVerification,
+  saveOwnerConversationPreference,
+  updateOwnerConversationSettings,
+  verifyOwnerDestination
+} from "@/lib/office-manager/owner-briefings";
 import { saveScopedPreference } from "@/lib/preferences/saved-preferences";
 import { linesFromText } from "@/lib/phone/voice-agent-profile";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -15,10 +21,121 @@ export type VoiceCustomizationState = {
   message: string;
 };
 
+export type OwnerBriefingSetupState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 const attentionStateSchema = z.enum([
   "available", "busy", "driving", "on_job", "focus", "meeting",
   "lunch", "vacation", "emergency_only"
 ]);
+
+const ownerBriefingSetupSchema = z.object({
+  phoneNumber: z.string().trim().max(32),
+  voiceEnabled: z.boolean(),
+  smsEnabled: z.boolean(),
+  maximumProactiveCallsPerDay: z.coerce.number().int().min(0).max(20),
+  timezone: z.string().trim().min(1).max(80),
+  quietHoursStart: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")),
+  quietHoursEnd: z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")),
+  voicemailAllowed: z.boolean(),
+  retryAllowed: z.boolean(),
+  textSummaryAfterCall: z.boolean()
+}).refine((value) => value.voiceEnabled || value.smsEnabled, {
+  message: "Choose voice calls, text briefings, or both."
+});
+
+async function currentOwnerBriefingActor() {
+  await requirePermission("tenant:manage");
+  const [tenantId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  if (!session?.userId) {
+    throw new Error("Sign in with your personal Ferocity account to configure private owner briefings.");
+  }
+  return { tenantId, userId: session.userId };
+}
+
+export async function saveOwnerBriefingSetupAction(
+  _previousState: OwnerBriefingSetupState,
+  formData: FormData
+): Promise<OwnerBriefingSetupState> {
+  const parsed = ownerBriefingSetupSchema.safeParse({
+    phoneNumber: formData.get("phoneNumber"),
+    voiceEnabled: formData.get("voiceEnabled") === "on",
+    smsEnabled: formData.get("smsEnabled") === "on",
+    maximumProactiveCallsPerDay: formData.get("maximumProactiveCallsPerDay") ?? 2,
+    timezone: formData.get("timezone") ?? "America/Los_Angeles",
+    quietHoursStart: formData.get("quietHoursStart") ?? "",
+    quietHoursEnd: formData.get("quietHoursEnd") ?? "",
+    voicemailAllowed: formData.get("voicemailAllowed") === "on",
+    retryAllowed: formData.get("retryAllowed") === "on",
+    textSummaryAfterCall: formData.get("textSummaryAfterCall") === "on"
+  });
+  if (!parsed.success) {
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Review the owner briefing settings." };
+  }
+
+  try {
+    const actor = await currentOwnerBriefingActor();
+    const settings = {
+      ...actor,
+      ...parsed.data,
+      quietHoursStart: parsed.data.quietHoursStart || null,
+      quietHoursEnd: parsed.data.quietHoursEnd || null
+    };
+    if (parsed.data.phoneNumber) {
+      if (parsed.data.phoneNumber.replace(/\D/g, "").length < 10) {
+        return { status: "error", message: "Enter a valid phone number." };
+      }
+      await saveOwnerConversationPreference(settings);
+    } else {
+      await updateOwnerConversationSettings(settings);
+    }
+    const verificationStatus = await queryPostgres<{ status: string }>(
+      `select status from public.owner_conversation_preferences where tenant_id=$1 and user_id=$2 limit 1`,
+      [actor.tenantId, actor.userId]
+    );
+    const delivery = verificationStatus?.rows[0]?.status === "pending_verification"
+      ? await requestOwnerDestinationVerification(actor)
+      : { ok: true as const, message: "Your verified phone remains active." };
+    revalidatePath("/app/office-manager");
+    return delivery.ok
+      ? { status: "success", message: "Settings saved. " + delivery.message }
+      : { status: "error", message: "Settings saved, but " + delivery.message.toLowerCase() };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Owner briefing setup could not be saved." };
+  }
+}
+
+export async function resendOwnerVerificationAction(
+  _previousState: OwnerBriefingSetupState,
+  _formData: FormData
+): Promise<OwnerBriefingSetupState> {
+  try {
+    const actor = await currentOwnerBriefingActor();
+    const result = await requestOwnerDestinationVerification(actor);
+    return { status: result.ok ? "success" : "error", message: result.message };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "A new code could not be sent." };
+  }
+}
+
+export async function verifyOwnerDestinationAction(
+  _previousState: OwnerBriefingSetupState,
+  formData: FormData
+): Promise<OwnerBriefingSetupState> {
+  const parsed = z.object({ code: z.string().trim().regex(/^\d{6}$/, "Enter the six-digit code.") })
+    .safeParse({ code: formData.get("code") });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Enter the code." };
+  try {
+    const actor = await currentOwnerBriefingActor();
+    const result = await verifyOwnerDestination({ ...actor, code: parsed.data.code });
+    revalidatePath("/app/office-manager");
+    return { status: result.ok ? "success" : "error", message: result.message };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The code could not be verified." };
+  }
+}
 
 export async function setOwnerAttentionStateAction(formData: FormData) {
   await requirePermission("ai:queue");
@@ -281,7 +398,7 @@ export async function prepareOfficeManagerAction() {
     ["phone", "connected_phone_provider", "not_connected", false, false, "Connect a business number and preferred voice service when ready."],
     ["sms", "connected_messaging_provider", "not_connected", false, false, "Connect any supported messaging service, or use assisted sending."],
     ["email", "connected_email_provider", "not_connected", false, false, "Connect the business email service used for customer conversations."],
-    ["website_chat", "ferocity_web_chat", "not_connected", false, false, "Website chat can use Ferocity forms and future embedded chat."],
+    ["website_chat", "ferocity_web_chat", "ready", true, true, "Ferocity website chat is available through an active public form. Install and test it on each website before calling that site connected."],
     ["owner_command", "ferocity_ai_workforce", "ready", true, true, "Owner commands already route through AI Workforce and existing tools."],
     ["app_push", "ferocity_push", "ready", true, false, "Push/app alerts are available when device subscriptions are enabled."]
   ] as const;
@@ -296,6 +413,10 @@ export async function prepareOfficeManagerAction() {
       values ($1, $2, $3, $4, $5, $6, $7, $8, false, 'approval_required', $9, '{"source":"office_manager_setup"}'::jsonb)
       on conflict (tenant_id, brand_id, channel_key) do update
       set profile_id = excluded.profile_id,
+          status = case when excluded.provider_key in ('ferocity_web_chat','ferocity_ai_workforce','ferocity_push') then excluded.status else public.office_manager_channel_configs.status end,
+          inbound_enabled = case when excluded.provider_key in ('ferocity_web_chat','ferocity_ai_workforce','ferocity_push') then excluded.inbound_enabled else public.office_manager_channel_configs.inbound_enabled end,
+          outbound_enabled = case when excluded.provider_key in ('ferocity_web_chat','ferocity_ai_workforce','ferocity_push') then excluded.outbound_enabled else public.office_manager_channel_configs.outbound_enabled end,
+          setup_notes = case when excluded.provider_key in ('ferocity_web_chat','ferocity_ai_workforce','ferocity_push') then excluded.setup_notes else public.office_manager_channel_configs.setup_notes end,
           metadata_json = public.office_manager_channel_configs.metadata_json || excluded.metadata_json,
           updated_at = now()
       `,

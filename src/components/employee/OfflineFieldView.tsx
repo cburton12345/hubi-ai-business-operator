@@ -131,6 +131,9 @@ function OfflineVisitCard({
 }) {
   const [status, setStatus] = useState(visit.status);
   const [note, setNote] = useState("");
+  const onMyWayHref = visit.customer_phone
+    ? `sms:${visit.customer_phone}?body=${encodeURIComponent(`Hi ${visit.customer_name.split(" ")[0] || "there"}, your service professional is on the way for ${visit.title}. We will see you soon.`)}`
+    : null;
 
   return (
     <article className="panel span-6">
@@ -144,6 +147,7 @@ function OfflineVisitCard({
       {visit.dispatch_notes ? <p><strong>Office:</strong> {visit.dispatch_notes}</p> : null}
       <div className="button-row">
         {visit.customer_phone ? <a className="mini-button" href={`tel:${visit.customer_phone}`}>Call</a> : null}
+        {onMyWayHref ? <a className="mini-button" href={onMyWayHref}>Text I&apos;m on my way</a> : null}
         {visit.address ? <a className="mini-button secondary-button" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.address)}`}>Directions</a> : null}
       </div>
 
