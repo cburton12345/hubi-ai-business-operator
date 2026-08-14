@@ -56,7 +56,12 @@ const checks = [
   {
     name: "voice receptionist creates connected operating records",
     file: "src/app/api/integrations/voice-ai/webhook/route.ts",
-    terms: ["office_manager_conversation_sessions", "receptionist_calls", "revenue_appointments", "syncCustomerLifecycleForTenant"]
+    terms: ["office_manager_conversation_sessions", "receptionist_calls", "createVoiceAppointment", "syncCustomerLifecycleForTenant"]
+  },
+  {
+    name: "voice appointment booking is idempotent and conflict-aware",
+    file: "src/lib/phone/voice-scheduling.ts",
+    terms: ["revenue_appointments", "service_visits", "pg_advisory_xact_lock", "providerCallId", "availabilityConflictDetected"]
   },
   {
     name: "premium video rendering is provider-backed, cost-capped, and billable",

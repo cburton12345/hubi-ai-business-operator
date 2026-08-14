@@ -7,7 +7,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getIndustryKnowledgeContext } from "@/lib/industry-knowledge/get-industry-context";
 import { listPhoneProviders } from "@/lib/phone/provider-registry";
-import { savePhoneConnection } from "@/lib/phone/phone-connections";
+import { getPhoneConnection, savePhoneConnection } from "@/lib/phone/phone-connections";
 import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
 import {
   buildVoiceAgentSystemPrompt,
@@ -195,11 +195,13 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     guardrails_json: unknown;
     metadata_json: unknown;
     assistant_id: string | null;
+    outbound_assistant_id: string | null;
   }>(
     `
     select p.brand_id, p.display_name, p.role_summary, p.default_tone,
            p.escalation_rules_json, p.guardrails_json, p.metadata_json,
-           nullif(a.metadata_json->>'assistantId', '') as assistant_id
+           nullif(a.metadata_json->>'assistantId', '') as assistant_id,
+           nullif(a.metadata_json->>'outboundAssistantId', '') as outbound_assistant_id
     from public.office_manager_profiles p
     left join public.provider_accounts a
       on a.tenant_id = p.tenant_id and a.provider_key = $2
@@ -229,6 +231,19 @@ export async function syncVoiceAssistantAction(formData: FormData) {
   const systemPrompt = buildVoiceAgentSystemPrompt(businessProfile, industryContext);
   const maxDurationSeconds = await getVoiceMaxDurationSeconds(tenantId, provider.data);
 
+  const phoneConnection = await getPhoneConnection(tenantId);
+  const sharedConfig = {
+    model: {
+      provider: "openai",
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: systemPrompt }]
+    },
+    server: { url: `${appUrl}/api/integrations/voice-ai/webhook` },
+    serverMessages: ["status-update", "end-of-call-report", "transcript"],
+    maxDurationSeconds,
+    transferNumber: phoneConnection?.humanTransferNumber ?? null,
+    metadata: { profileSource: "ferocity_office_manager", industryModule: industryContext?.moduleKey ?? null }
+  };
   const result = await adapter.createOrUpdateAssistant(
     {
       tenantId,
@@ -241,20 +256,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
       assistantId: profile.assistant_id,
       name: businessProfile.displayName,
       firstMessage: businessProfile.greeting,
-      model: {
-        provider: "openai",
-        model: "gpt-4o-mini",
-        messages: [{ role: "system", content: systemPrompt }]
-      },
-      server: {
-        url: `${appUrl}/api/integrations/voice-ai/webhook`
-      },
-      serverMessages: ["status-update", "end-of-call-report", "transcript"],
-      maxDurationSeconds,
-      metadata: {
-        profileSource: "ferocity_office_manager",
-        industryModule: industryContext?.moduleKey ?? null
-      }
+      ...sharedConfig
     }
   );
 
@@ -276,6 +278,30 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     return;
   }
 
+  const outboundResult = await adapter.createOrUpdateAssistant(
+    {
+      tenantId, brandId: profile.brand_id,
+      correlationId: `voice-outbound-assistant:${provider.data}:${tenantId}`,
+      idempotencyKey: `voice-outbound-assistant:${provider.data}:${tenantId}:${profile.brand_id ?? "workspace"}`,
+      liveActionsEnabled: false
+    },
+    {
+      assistantId: profile.outbound_assistant_id,
+      name: `${businessProfile.displayName} Outbound`,
+      firstMessage: "Hello, this is the business calling through Ferocity. Is now an okay time to talk?",
+      ...sharedConfig
+    }
+  );
+  if (!outboundResult.ok) {
+    await queryPostgres(
+      `update public.provider_accounts set status='error',live_actions_enabled=false,
+       metadata_json=metadata_json || $2::jsonb,updated_at=now() where tenant_id=$1 and provider_key=$3`,
+      [tenantId, JSON.stringify({ outboundAssistantSyncError: outboundResult.safeMessage, assistantSyncAt: new Date().toISOString() }), provider.data]
+    );
+    revalidatePath("/app/receptionist-setup");
+    return;
+  }
+
   await queryPostgres(
     `
     update public.provider_accounts
@@ -286,6 +312,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
       tenantId,
       JSON.stringify({
         assistantId: result.data.assistantId,
+        outboundAssistantId: outboundResult.data.assistantId,
         assistantStatus: result.data.status,
         assistantSyncedAt: new Date().toISOString()
       }),

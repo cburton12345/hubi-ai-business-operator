@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { minimumPlanForFeature, planMeetsMinimum, usesCountBasedLimit } from "./service-gates";
+import { minimumPlanForFeature, planAllowsFeature, planMeetsMinimum, usesCountBasedLimit } from "./service-gates";
 
 describe("Ferocity core AI plan boundaries", () => {
   it("includes the Authority Engine in Starter", () => {
@@ -34,5 +34,13 @@ describe("Ferocity core AI plan boundaries", () => {
     expect(usesCountBasedLimit("ai_generation")).toBe(false);
     expect(usesCountBasedLimit("sms_send")).toBe(true);
     expect(usesCountBasedLimit("ai_video_generation")).toBe(true);
+  });
+
+  it("gives the Calls plan phone-to-opportunity capabilities without unlocking the full platform", () => {
+    expect(planAllowsFeature("calls", "voice_ai")).toBe(true);
+    expect(planAllowsFeature("calls", "calendar_sync")).toBe(true);
+    expect(planAllowsFeature("calls", "follow_up_recovery")).toBe(true);
+    expect(planAllowsFeature("calls", "seo_autopilot")).toBe(false);
+    expect(planAllowsFeature("calls", "payment_collection")).toBe(false);
   });
 });

@@ -19,6 +19,7 @@ export default async function SubscribePage({
   const params = await searchParams;
   const plan = getPublicPlan(params.plan ?? "");
   const planGuidance = {
+    calls: "A complete AI phone team with simple usage-based voice billing.",
     job_tracker: "Focused job and money control with basic AI guidance.",
     starter: "The shared business memory and everyday control layer.",
     growth: "The connected revenue, reputation, and marketing engine.",

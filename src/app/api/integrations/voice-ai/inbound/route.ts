@@ -3,6 +3,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/providers/retell-config";
 import { verifyRetellSignature } from "@/lib/providers/voice-adapters";
 import { evaluateVoiceAccess } from "@/lib/usage/managed-voice";
+import { prepareInboundCallContext } from "@/lib/phone/inbound-call-context";
 
 export const dynamic = "force-dynamic";
 
@@ -64,13 +65,26 @@ export async function POST(request: NextRequest) {
   const access = await evaluateVoiceAccess({
     tenantId,
     providerKey: "retell_voice",
-    purpose: "production"
+    purpose: "production",
+    callDirection: "inbound"
   });
   if (!access.allowed) return rejectCall(access.errorCategory);
+  const callContext = await prepareInboundCallContext({
+    tenantId,
+    callerNumber: payload.call_inbound.from_number,
+    brandId: account.brand_id
+  });
 
   return NextResponse.json({
     call_inbound: {
       override_agent_id: account.assistant_id,
+      retell_llm_dynamic_variables: {
+        ...(callContext?.variables ?? {}),
+        ferocity_call_mode: access.restrictedMode ?? "full_service",
+        ferocity_call_mode_instruction: access.restrictedMode === "take_message_only"
+          ? "Take a concise message and callback details only. Do not transfer, book, send, purchase, or promise follow-up timing."
+          : "Use the authorized Ferocity tools and business rules for this call."
+      },
       agent_override: {
         agent: {
           max_call_duration_ms: access.maxDurationSeconds * 1000
@@ -78,7 +92,9 @@ export async function POST(request: NextRequest) {
       },
       metadata: {
         ferocityTenantId: tenantId,
-        ferocityBrandId: account.brand_id,
+        ferocityBrandId: callContext?.brandId ?? account.brand_id,
+        ferocityCustomerId: callContext?.customerId ?? null,
+        ferocityLeadId: callContext?.leadId ?? null,
         ferocityOwnershipMode: access.ownershipMode,
         ferocityAccepted: true
       }

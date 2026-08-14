@@ -40,6 +40,7 @@ try {
   const provider = providerResult.rows[0];
   const number = numberResult.rows[0];
   const assistantId = provider?.metadata_json?.assistantId;
+  const outboundAssistantId = provider?.metadata_json?.outboundAssistantId;
   if (!assistantId || !number?.phone_number) throw new Error("Retell assistant or phone number is missing from the tenant record.");
   const [agent, remoteNumber] = await Promise.all([
     retell(`/get-agent/${encodeURIComponent(assistantId)}`),
@@ -54,7 +55,8 @@ try {
     agentName: agent.agent_name ?? null,
     phoneExists: remoteNumber.phone_number === number.phone_number,
     inboundAgentAssigned: inboundAgentId === assistantId,
-    outboundAgentAssigned: outboundAgentId === assistantId,
+    inboundRoutingReady: inboundAgentId === assistantId || remoteNumber.inbound_webhook_url === `${appUrl}/api/integrations/voice-ai/inbound`,
+    outboundAgentAssigned: outboundAgentId === (outboundAssistantId ?? assistantId),
     inboundWebhookConfigured: remoteNumber.inbound_webhook_url === `${appUrl}/api/integrations/voice-ai/inbound`,
     databaseProviderStatus: provider.status,
     databaseCredentialsStatus: provider.credentials_status,

@@ -2,7 +2,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 
 export type ServiceMode = "off" | "draft_only" | "review_required" | "enabled";
 export type OveragePolicy = "block" | "allow_with_review" | "allow";
-export type PlanKey = "free" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
+export type PlanKey = "free" | "calls" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
 
 export type ServiceGate = {
   featureKey: string;
@@ -21,6 +21,7 @@ export type ServiceGate = {
 
 const planRank: Record<PlanKey, number> = {
   free: 0,
+  calls: 4,
   job_tracker: 5,
   starter: 10,
   growth: 20,
@@ -31,6 +32,7 @@ const planRank: Record<PlanKey, number> = {
 
 const planLabel: Record<PlanKey, string> = {
   free: "Free",
+  calls: "Ferocity Calls",
   job_tracker: "Job Tracker",
   starter: "Starter",
   growth: "Growth",
@@ -80,11 +82,29 @@ const featureMinimumPlan: Record<string, PlanKey> = {
 };
 
 function normalizePlanKey(planKey: string | null | undefined): PlanKey {
+  if (planKey === "calls") return planKey;
   if (planKey === "job_tracker") return planKey;
   if (planKey === "managed_operator") return planKey;
   if (planKey === "starter" || planKey === "growth" || planKey === "operator" || planKey === "pro_agency") return planKey;
   if (planKey === "internal" || planKey === "enterprise" || planKey === "agency") return "pro_agency";
   return "free";
+}
+
+const callsFeatures = new Set([
+  "voice_ai",
+  "ai_office_manager",
+  "follow_up_recovery",
+  "sms_send",
+  "email_send",
+  "calendar_sync",
+  "byo_credential_vault",
+  "intelligent_call_management"
+]);
+
+export function planAllowsFeature(planKey: string | null | undefined, featureKey: string) {
+  const normalized = normalizePlanKey(planKey);
+  if (normalized === "calls") return callsFeatures.has(featureKey);
+  return planMeetsMinimum(normalized, minimumPlanForFeature(featureKey));
 }
 
 export function minimumPlanForFeature(featureKey: string): PlanKey {
@@ -210,7 +230,7 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   const row = result?.rows[0];
   const planKey = await getWorkspacePlanKey(tenantId);
   const minimumPlanKey = minimumPlanForFeature(featureKey);
-  const planAllowed = planMeetsMinimum(planKey, minimumPlanKey);
+  const planAllowed = planAllowsFeature(planKey, featureKey);
 
   if (!row) {
     return {

@@ -50,6 +50,15 @@ export type CallInboxDashboard = {
   filter: CallInboxFilter;
 };
 
+export type CallDetail = CallInboxRow & {
+  transcriptText: string | null;
+  redactedTranscriptText: string | null;
+  transcriptConsentStatus: string | null;
+  recordingConsentStatus: string | null;
+  events: Array<{ id: string; type: string; status: string; occurredAt: string }>;
+  turns: Array<{ id: string; speaker: string; content: string; occurredAt: string }>;
+};
+
 const filters = new Set<CallInboxFilter>([
   "all",
   "new_lead",
@@ -247,5 +256,67 @@ export async function getCallInboxDashboard(filter: CallInboxFilter): Promise<Ca
       ownerResponse: row.owner_response
     })),
     filter
+  };
+}
+
+export async function getCallDetail(callId: string): Promise<CallDetail | null> {
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{
+    id: string; caller_number: string | null; called_number: string | null; provider_key: string;
+    status: string; direction: string; outcome: string | null; sentiment: string | null;
+    lead_qualification: string | null; duration_seconds: number; started_at: Date | string;
+    summary: string | null; action_items_json: unknown; follow_up_status: string;
+    customer_id: string | null; lead_id: string | null; service_job_id: string | null;
+    transcript_status: string | null; recording_status: string | null; usage_units: string;
+    billable_customer_amount_cents: string; priority_class: string | null; call_decision: string | null;
+    should_interrupt_owner: boolean | null; caller_context: string | null; screening_summary: string | null;
+    decision_reason: string | null; decision_status: string | null; owner_response: string | null;
+    transcript_text: string | null; redacted_transcript_text: string | null;
+    transcript_consent_status: string | null; recording_consent_status: string | null;
+  }>(
+    `select c.id,c.caller_number,c.called_number,c.provider_key,c.status,c.direction,c.outcome,c.sentiment,
+       c.lead_qualification,c.duration_seconds,c.started_at,c.summary,c.action_items_json,c.follow_up_status,
+       c.customer_id,c.lead_id,c.service_job_id,c.usage_units::text,c.billable_customer_amount_cents::text,
+       t.status as transcript_status,t.transcript_text,t.redacted_transcript_text,
+       t.consent_status as transcript_consent_status,r.status as recording_status,
+       r.consent_status as recording_consent_status,d.priority_class,d.decision as call_decision,
+       d.should_interrupt_owner,d.caller_context,d.screening_summary,d.decision_reason,
+       d.status as decision_status,d.owner_response
+     from public.receptionist_calls c
+     left join public.receptionist_call_transcripts t on t.tenant_id=c.tenant_id and t.call_id=c.id
+     left join public.receptionist_call_recordings r on r.tenant_id=c.tenant_id and r.call_id=c.id
+     left join public.call_management_decisions d on d.tenant_id=c.tenant_id and d.call_id=c.id
+     where c.tenant_id=$1 and c.id=$2 limit 1`,
+    [workspaceId, callId]
+  );
+  const row = result?.rows[0];
+  if (!row) return null;
+  const [eventResult, turnResult] = await Promise.all([
+    queryPostgres<{ id: string; event_type: string; event_status: string; occurred_at: Date | string }>(
+      `select id,event_type,event_status,occurred_at from public.receptionist_call_events
+       where tenant_id=$1 and call_id=$2 order by occurred_at asc`, [workspaceId, callId]
+    ),
+    queryPostgres<{ id: string; speaker_type: string; content: string; occurred_at: Date | string }>(
+      `select t.id,t.speaker_type,t.content,t.occurred_at
+       from public.office_manager_conversation_turns t
+       join public.receptionist_calls c on c.tenant_id=t.tenant_id and c.office_manager_session_id=t.session_id
+       where c.tenant_id=$1 and c.id=$2 order by t.occurred_at asc`, [workspaceId, callId]
+    )
+  ]);
+  return {
+    id: row.id, callerNumber: row.caller_number ?? "Unknown caller", calledNumber: row.called_number ?? "Unknown number",
+    providerKey: row.provider_key, status: row.status, direction: row.direction, outcome: row.outcome ?? "unresolved",
+    sentiment: row.sentiment ?? "unknown", leadQualification: row.lead_qualification ?? "unknown",
+    durationSeconds: Number(row.duration_seconds ?? 0), startedAt: iso(row.started_at), summary: row.summary ?? "No summary yet.",
+    actionItems: asActionItems(row.action_items_json), followUpStatus: row.follow_up_status, customerId: row.customer_id,
+    leadId: row.lead_id, jobId: row.service_job_id, transcriptStatus: row.transcript_status,
+    recordingStatus: row.recording_status, usageUnits: Number(row.usage_units ?? 0),
+    billableCustomerAmountCents: Number(row.billable_customer_amount_cents ?? 0), priorityClass: row.priority_class,
+    callDecision: row.call_decision, shouldInterruptOwner: Boolean(row.should_interrupt_owner), callerContext: row.caller_context,
+    screeningSummary: row.screening_summary, decisionReason: row.decision_reason, decisionStatus: row.decision_status,
+    ownerResponse: row.owner_response, transcriptText: row.transcript_text, redactedTranscriptText: row.redacted_transcript_text,
+    transcriptConsentStatus: row.transcript_consent_status, recordingConsentStatus: row.recording_consent_status,
+    events: (eventResult?.rows ?? []).map((event) => ({ id: event.id, type: event.event_type, status: event.event_status, occurredAt: iso(event.occurred_at) })),
+    turns: (turnResult?.rows ?? []).map((turn) => ({ id: turn.id, speaker: turn.speaker_type, content: turn.content, occurredAt: iso(turn.occurred_at) }))
   };
 }

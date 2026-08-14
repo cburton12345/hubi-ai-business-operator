@@ -9,6 +9,7 @@ import type {
 import { resolveVapiConfiguration, resolveVapiWebhookTenant } from "@/lib/providers/vapi-config";
 import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/providers/retell-config";
 import { resilientFetch } from "@/lib/http/resilient-fetch";
+import { retellBusinessTools } from "@/lib/phone/retell-tool-definitions";
 
 function notConfigured(providerKey: string): ProviderResult<never> {
   return {
@@ -560,10 +561,14 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     if (!credentials) return notConfigured(this.providerKey) as ProviderResult<{ assistantId: string; status: string }>;
     const assistantId = text(config.assistantId);
     const server = record(config.server);
+    let toolOrigin: string | null = null;
+    try { toolOrigin = text(server.url) ? new URL(text(server.url)!).origin : null; } catch { toolOrigin = null; }
     const llmPayload = {
       model: "gpt-4.1-mini",
       general_prompt: retellSystemPrompt(config),
-      begin_message: text(config.firstMessage) ?? "Thank you for calling. How can I help you today?"
+      begin_message: text(config.firstMessage) ?? "Thank you for calling. How can I help you today?",
+      tool_call_strict_mode: true,
+      ...(toolOrigin ? { general_tools: retellBusinessTools(toolOrigin, text(config.transferNumber)) } : {})
     };
     const agentPayload: Record<string, unknown> = {
       agent_name: text(config.name) ?? "Ferocity AI Receptionist",
@@ -575,7 +580,6 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       data_storage_setting: "everything_except_pii",
       opt_in_signed_url: true,
       handbook_config: {
-        default_personality: true,
         conversational_personality: true,
         natural_filler_words: true,
         high_empathy: true,
@@ -606,10 +610,12 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       ]);
       if (!llmUpdate.response.ok || !agentUpdate.response.ok) {
         const status = !llmUpdate.response.ok ? llmUpdate.response.status : agentUpdate.response.status;
+        const failedBody = !llmUpdate.response.ok ? llmUpdate.body : agentUpdate.body;
+        const providerDetail = text(failedBody?.message ?? failedBody?.error)?.slice(0, 240);
         return {
           ok: false,
           errorCategory: status === 401 ? "provider_authentication" : "provider_error",
-          safeMessage: `Retell assistant update failed with HTTP ${status}.`,
+          safeMessage: `Retell assistant update failed with HTTP ${status}${providerDetail ? `: ${providerDetail}` : "."}`,
           retryable: status === 429 || status >= 500
         };
       }
@@ -722,6 +728,20 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     const analysis = record(call.call_analysis);
     const callCost = record(call.call_cost);
     const customAnalysis = record(analysis.custom_analysis_data);
+    const transcriptTurns = Array.isArray(call.transcript_object)
+      ? call.transcript_object
+          .map((turn) => {
+            const item = record(turn);
+            const role = text(item.role);
+            const content = text(item.content);
+            if (!content) return null;
+            return {
+              role: role === "agent" ? "agent" as const : role === "user" ? "customer" as const : "unknown" as const,
+              content
+            };
+          })
+          .filter((turn): turn is { role: "agent" | "customer" | "unknown"; content: string } => Boolean(turn))
+      : undefined;
     const startTimestamp = number(call.start_timestamp);
     const endTimestamp = number(call.end_timestamp);
     const durationSeconds = number(call.duration_ms) !== null
@@ -742,14 +762,19 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
         durationSeconds: Math.max(0, durationSeconds),
         recordingUrl: text(call.scrubbed_recording_url ?? call.recording_url),
         transcriptText: text(call.transcript),
+        transcriptTurns,
         metadata: {
           tenantId,
           brandId: text(metadata.ferocityBrandId),
+          customerId: text(metadata.ferocityCustomerId),
+          leadId: text(metadata.ferocityLeadId),
           eventType: event,
           direction: text(call.direction) === "outbound" ? "outbound" : "inbound",
           endedReason: text(call.disconnection_reason),
           summary: text(analysis.call_summary),
           providerCostCents: Math.round(number(callCost.combined_cost) ?? 0),
+          providerCostRaw: number(callCost.combined_cost) ?? 0,
+          providerRecordingId: callId,
           structuredData: {
             ...customAnalysis,
             sentiment: text(analysis.user_sentiment)?.toLowerCase() ?? "unknown"

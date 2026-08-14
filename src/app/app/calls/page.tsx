@@ -97,6 +97,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
                   <p className="muted">Action items: {call.actionItems.join("; ")}</p>
                 ) : null}
                 <div className="button-row">
+                  <Link className="button secondary-button" href={`/app/calls/${call.id}`}>Call details</Link>
                   {call.customerId ? <Link className="button secondary-button" href={`/app/service/customers/${call.customerId}`}>Customer</Link> : null}
                   {call.leadId ? <Link className="button secondary-button" href={`/app/leads/${call.leadId}`}>Lead</Link> : null}
                   {call.jobId ? <Link className="button secondary-button" href={`/app/service/jobs/${call.jobId}`}>Job</Link> : null}

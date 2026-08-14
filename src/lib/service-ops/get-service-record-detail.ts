@@ -44,6 +44,8 @@ export type ServiceEstimateDetail = {
     sentAt: string;
     acceptedAt: string;
     expiresAt: string;
+    deliveryStatus: string;
+    deliveryError: string;
   } | null;
   linkedJobs: { id: string; title: string; status: string; schedule: string }[];
   pricebookItems: { id: string; name: string; category: string; price: string }[];
@@ -91,6 +93,9 @@ export type ServiceInvoiceDetail = {
     paymentUrl: string;
     paymentMode: string;
     createdAt: string;
+    emailTo: string;
+    deliveryStatus: string;
+    deliveryError: string;
   }[];
   payments: { id: string; provider: string; status: string; amount: string; receivedAt: string; note: string }[];
   ledgerEntries: { id: string; entryType: string; direction: string; amount: string; description: string; occurredAt: string }[];
@@ -187,9 +192,10 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       sent_at: Date | null;
       accepted_at: Date | null;
       expires_at: Date | null;
+      metadata_json: { emailStatus?: string; emailError?: string } | null;
     }>(
       `
-      select id, public_token, status, email_to, sent_at, accepted_at, expires_at
+      select id, public_token, status, email_to, sent_at, accepted_at, expires_at, metadata_json
       from public.estimate_share_links
       where tenant_id = $1 and estimate_id = $2
       order by created_at desc
@@ -257,7 +263,9 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
           emailTo: shareLinkResult.rows[0].email_to ?? "",
           sentAt: shareLinkResult.rows[0].sent_at ? formatDateTime(shareLinkResult.rows[0].sent_at, null) : "",
           acceptedAt: shareLinkResult.rows[0].accepted_at ? formatDateTime(shareLinkResult.rows[0].accepted_at, null) : "",
-          expiresAt: shareLinkResult.rows[0].expires_at ? formatDateTime(shareLinkResult.rows[0].expires_at, null) : ""
+          expiresAt: shareLinkResult.rows[0].expires_at ? formatDateTime(shareLinkResult.rows[0].expires_at, null) : "",
+          deliveryStatus: shareLinkResult.rows[0].metadata_json?.emailStatus ?? "not sent",
+          deliveryError: shareLinkResult.rows[0].metadata_json?.emailError ?? ""
         }
       : null,
     linkedJobs: (jobsResult?.rows ?? []).map((job) => ({
@@ -465,9 +473,10 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       payment_url: string | null;
       payment_mode: string;
       created_at: Date;
+      metadata_json: { emailTo?: string; emailStatus?: string; emailError?: string } | null;
     }>(
       `
-      select id, provider, status, amount_cents, payment_url, payment_mode, created_at
+      select id, provider, status, amount_cents, payment_url, payment_mode, created_at, metadata_json
       from public.service_invoice_payment_links
       where tenant_id = $1 and invoice_id = $2
       order by created_at desc
@@ -541,7 +550,10 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       amount: formatMoney(link.amount_cents),
       paymentUrl: link.payment_url ?? "",
       paymentMode: link.payment_mode,
-      createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(link.created_at)
+      createdAt: new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(link.created_at),
+      emailTo: link.metadata_json?.emailTo ?? "",
+      deliveryStatus: link.metadata_json?.emailStatus ?? "not sent",
+      deliveryError: link.metadata_json?.emailError ?? ""
     })),
     payments: (paymentsResult?.rows ?? []).map((payment) => ({
       id: payment.id,

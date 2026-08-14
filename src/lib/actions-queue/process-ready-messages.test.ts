@@ -33,6 +33,7 @@ const readyEmail = {
   ,fallback_method: "native_sms"
   ,contact_email: "lead@example.com"
   ,contact_phone: "5550101"
+  ,workflow_type: null
 };
 
 describe("processReadyMessagesForTenant", () => {
@@ -44,7 +45,7 @@ describe("processReadyMessagesForTenant", () => {
   it("sends an authorized, consented message through the guarded messaging engine", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [readyEmail] })
-      .mockResolvedValueOnce({ rows: [{ id: "consent-1" }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
       .mockResolvedValue({ rows: [], rowCount: 1 });
     sendMessageMock.mockResolvedValue({
       ok: true,
@@ -73,7 +74,7 @@ describe("processReadyMessagesForTenant", () => {
   it("blocks an automatic message when contact consent is missing", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [readyEmail] })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ status: "unknown", suppressed: false }] })
       .mockResolvedValue({ rows: [], rowCount: 1 });
 
     const result = await processReadyMessagesForTenant("tenant-1");
@@ -89,7 +90,7 @@ describe("processReadyMessagesForTenant", () => {
   it("uses a new idempotency key after an approved retry", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [{ ...readyEmail, retry_count: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ id: "consent-1" }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
       .mockResolvedValue({ rows: [], rowCount: 1 });
     sendMessageMock.mockResolvedValue({
       ok: true,
@@ -108,7 +109,7 @@ describe("processReadyMessagesForTenant", () => {
   it("records explicit alternatives when a provider fails", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [readyEmail] })
-      .mockResolvedValueOnce({ rows: [{ id: "consent-1" }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
       .mockResolvedValue({ rows: [], rowCount: 1 });
     sendMessageMock.mockResolvedValue({
       ok: false,
@@ -125,5 +126,41 @@ describe("processReadyMessagesForTenant", () => {
       expect.stringContaining("communication_failover_events"),
       expect.arrayContaining(["Provider unavailable", "ask", "pending"])
     );
+  });
+
+  it("allows a transactional invoice reminder without marketing consent but still honors suppression", async () => {
+    queryPostgresMock
+      .mockResolvedValueOnce({ rows: [{
+        ...readyEmail,
+        target_type: "follow_up_workflow",
+        target_id: "followup-1",
+        workflow_type: "invoice_followup",
+        subject: "Invoice reminder"
+      }] })
+      .mockResolvedValueOnce({ rows: [{ status: "unknown", suppressed: false }] })
+      .mockResolvedValue({ rows: [], rowCount: 1 });
+    sendMessageMock.mockResolvedValue({
+      ok: true,
+      providerKey: "resend_email",
+      providerMessageId: "provider-invoice-1",
+      status: "sent"
+    });
+
+    const result = await processReadyMessagesForTenant("tenant-1");
+
+    expect(result).toEqual({ checked: 1, sent: 1, blocked: 0, failed: 0 });
+    expect(sendMessageMock).toHaveBeenCalledOnce();
+  });
+
+  it("blocks a transactional invoice reminder for a suppressed address", async () => {
+    queryPostgresMock
+      .mockResolvedValueOnce({ rows: [{ ...readyEmail, workflow_type: "invoice_followup" }] })
+      .mockResolvedValueOnce({ rows: [{ status: "unknown", suppressed: true }] })
+      .mockResolvedValue({ rows: [], rowCount: 1 });
+
+    const result = await processReadyMessagesForTenant("tenant-1");
+
+    expect(result.blocked).toBe(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 });

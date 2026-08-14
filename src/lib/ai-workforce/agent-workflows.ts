@@ -850,24 +850,52 @@ async function runInvoiceReminderAgent(tenantId: string, workflowId: string, run
   const result = await queryPostgres<{ id: string }>(
     `
     insert into public.follow_up_workflows (
-      tenant_id, brand_id, lead_id, customer_id, estimate_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
+      tenant_id, brand_id, lead_id, customer_id, estimate_id, invoice_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
     )
-    select i.tenant_id, i.brand_id, j.source_lead_id, i.customer_id, i.estimate_id, 'invoice_followup', 'email', 'open', now(),
-      'Invoice is unpaid or overdue. Review payment history, then send an approved reminder.',
-      jsonb_build_object('createdByAgent', 'invoice_reminder_agent', 'invoiceId', i.id, 'liveCustomerSend', false)
+    select i.tenant_id, i.brand_id, j.source_lead_id, i.customer_id, i.estimate_id, i.id,
+      'invoice_followup', 'email', 'open', now(),
+      concat(
+        'Hi ', c.name, ', this is a friendly reminder that ', i.title, ' has a balance of $',
+        to_char(greatest(i.total_cents - i.amount_paid_cents, 0) / 100.0, 'FM999999990.00'),
+        case
+          when i.due_date is null then ' due upon receipt.'
+          when i.due_date < current_date then concat(' and was due ', to_char(i.due_date, 'Mon FMDD, YYYY'), '.')
+          when i.due_date = current_date then ' and is due today.'
+          else concat(' and is due ', to_char(i.due_date, 'Mon FMDD, YYYY'), '.')
+        end,
+        case when payment.payment_url is not null then concat(' Pay securely: ', payment.payment_url) else '' end,
+        ' If you already paid, please disregard this reminder or reply so we can confirm it.'
+      ),
+      jsonb_build_object(
+        'createdByAgent', 'invoice_reminder_agent',
+        'invoiceId', i.id,
+        'liveCustomerSend', coalesce(policy.status = 'live' and policy.requires_human_approval = false, false),
+        'paymentUrlIncluded', payment.payment_url is not null,
+        'reminderCadenceDays', 3
+      )
     from public.service_invoices i
     left join public.service_jobs j on j.id = i.job_id
+    join public.customers c on c.id = i.customer_id and c.tenant_id = i.tenant_id
+    left join lateral (
+      select l.payment_url
+      from public.service_invoice_payment_links l
+      where l.tenant_id=i.tenant_id and l.invoice_id=i.id
+        and l.status in ('ready','sent') and l.payment_url is not null
+      order by l.created_at desc limit 1
+    ) payment on true
+    left join public.live_action_policies policy on policy.tenant_id=i.tenant_id and policy.action_key='email_send'
     where i.tenant_id = $1
       and i.status in ('sent_manually', 'partially_paid', 'overdue')
-      and coalesce(i.due_date, current_date - 1) <= current_date
-      and j.source_lead_id is not null
+      and greatest(i.total_cents - i.amount_paid_cents, 0) > 0
+      and coalesce(i.due_date, current_date) <= current_date + 3
+      and c.email is not null
       and not exists (
         select 1
         from public.follow_up_workflows f
         where f.tenant_id = i.tenant_id
           and f.workflow_type = 'invoice_followup'
           and f.metadata_json->>'invoiceId' = i.id::text
-          and f.status in ('open', 'scheduled')
+          and (f.status in ('open', 'scheduled') or f.created_at >= now() - interval '3 days')
       )
     order by i.due_date asc nulls first
     limit 20

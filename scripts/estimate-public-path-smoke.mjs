@@ -120,7 +120,17 @@ try {
       tenant_id, estimate_share_link_id, estimate_id, customer_id,
       accepted_name, accepted_email, acceptance_note, metadata_json
     )
-    values ($1, $2, $3, $4, 'Estimate Smoke', $5, 'Looks good.', '{"source":"estimate_public_path_smoke"}'::jsonb)
+    values ($1, $2, $3, $4, 'Estimate Smoke', $5, 'Looks good.',
+      jsonb_build_object(
+        'source', 'estimate_public_path_smoke',
+        'signatureMethod', 'typed_name',
+        'signatureText', 'Estimate Smoke',
+        'electronicSignatureConsent', true,
+        'consentVersion', '2026-08-11',
+        'signedAt', now(),
+        'documentSha256', repeat('a', 64),
+        'documentSnapshot', jsonb_build_object('estimateId', $3::uuid, 'totalCents', 420000)
+      ))
     on conflict (estimate_share_link_id) do nothing
     `,
     [tenantId, shareLinkId, estimateId, customerId, `estimate-smoke-${id}@example.com`]
@@ -211,6 +221,9 @@ try {
       (select status from public.service_estimates where id = $1) as estimate_status,
       (select status from public.estimate_share_links where id = $2) as share_status,
       (select count(*)::int from public.estimate_acceptances where estimate_share_link_id = $2) as acceptances,
+      (select count(*)::int from public.estimate_acceptances where estimate_share_link_id = $2
+        and metadata_json->>'electronicSignatureConsent'='true'
+        and length(metadata_json->>'documentSha256')=64) as signed_acceptances,
       (select count(*)::int from public.service_jobs where estimate_id = $1 and status = 'unscheduled') as jobs,
       (select count(*)::int from public.service_invoices where estimate_id = $1 and title like 'Deposit - %') as deposit_invoices,
       (select count(*)::int from public.service_invoice_payment_links l join public.service_invoices i on i.id = l.invoice_id where i.estimate_id = $1) as payment_links,
@@ -222,12 +235,13 @@ try {
   assert(row.estimate_status === "approved", `estimate status expected approved, got ${row.estimate_status}`);
   assert(row.share_status === "accepted", `share status expected accepted, got ${row.share_status}`);
   assert(row.acceptances === 1, `expected 1 acceptance, got ${row.acceptances}`);
+  assert(row.signed_acceptances === 1, `expected 1 signed acceptance receipt, got ${row.signed_acceptances}`);
   assert(row.jobs === 1, `expected 1 draft job, got ${row.jobs}`);
   assert(row.deposit_invoices === 1, `expected 1 deposit invoice, got ${row.deposit_invoices}`);
   assert(row.payment_links === 1, `expected 1 payment link, got ${row.payment_links}`);
   assert(row.line_items === 2, `expected 2 estimate line items, got ${row.line_items}`);
 
-  line("Acceptance flow", "estimate approved; public link accepted; job draft prepared");
+  line("Acceptance flow", "estimate electronically signed; receipt evidence saved; job draft prepared");
   line("Deposit flow", "deposit invoice and draft payment link prepared");
   line("Cleanup", "transaction rolled back; no smoke records saved");
   console.log("Estimate public path smoke passed.");

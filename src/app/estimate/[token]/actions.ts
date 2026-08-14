@@ -1,10 +1,11 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
-import { sendFerocityNotificationEmail } from "@/lib/email/transactional";
+import { sendFerocityNotificationEmail, sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import {
   calculatePlatformFeeCents,
@@ -18,7 +19,8 @@ const acceptEstimateSchema = z.object({
   token: z.string().min(8).max(120),
   acceptedName: z.string().min(1).max(180),
   acceptedEmail: z.string().email().optional().or(z.literal("")),
-  acceptanceNote: z.string().max(1200).optional()
+  acceptanceNote: z.string().max(1200).optional(),
+  electronicSignatureConsent: z.literal("on")
 });
 
 const estimateOptionsSchema = z.object({
@@ -74,7 +76,8 @@ export async function acceptEstimateAction(formData: FormData) {
     token: formData.get("token"),
     acceptedName: formData.get("acceptedName"),
     acceptedEmail: formData.get("acceptedEmail"),
-    acceptanceNote: formData.get("acceptanceNote")
+    acceptanceNote: formData.get("acceptanceNote"),
+    electronicSignatureConsent: formData.get("electronicSignatureConsent")
   });
   if (!parsed.success) return;
 
@@ -87,8 +90,13 @@ export async function acceptEstimateAction(formData: FormData) {
     title: string;
     brand_id: string | null;
     customer_name: string;
+    customer_email: string | null;
     total_cents: number;
     deposit_required_cents: number;
+    payment_terms: string | null;
+    acceptance_notes: string | null;
+    customer_scope_summary: string | null;
+    customer_exclusions: string | null;
   }>(
     `
     select
@@ -100,8 +108,13 @@ export async function acceptEstimateAction(formData: FormData) {
       e.title,
       e.brand_id,
       c.name as customer_name,
+      c.email as customer_email,
       e.total_cents,
-      coalesce(e.deposit_required_cents, 0) as deposit_required_cents
+      coalesce(e.deposit_required_cents, 0) as deposit_required_cents,
+      e.payment_terms,
+      e.acceptance_notes,
+      e.customer_scope_summary,
+      e.customer_exclusions
     from public.estimate_share_links s
     join public.service_estimates e on e.id = s.estimate_id and e.tenant_id = s.tenant_id
     join public.customers c on c.id = s.customer_id and c.tenant_id = s.tenant_id
@@ -115,29 +128,94 @@ export async function acceptEstimateAction(formData: FormData) {
   const share = shareResult?.rows[0];
   if (!share) return;
 
+  const signedAt = new Date();
+  const signedName = parsed.data.acceptedName.trim();
+  const signedEmail = parsed.data.acceptedEmail?.trim() || share.customer_email?.trim() || null;
+  const lineItemsResult = await queryPostgres<{
+    id: string;
+    name: string;
+    description: string | null;
+    quantity: string;
+    unit_price_cents: number;
+    total_cents: number;
+    optional: boolean;
+    selected: boolean;
+  }>(
+    `select id, coalesce(customer_label, name) as name, description, quantity::text,
+            unit_price_cents, total_cents, optional, selected
+       from public.estimate_line_items
+      where tenant_id=$1 and estimate_id=$2 and customer_visible=true
+      order by position, name`,
+    [share.tenant_id, share.estimate_id]
+  );
+  const documentSnapshot = {
+    estimateId: share.estimate_id,
+    shareLinkId: share.id,
+    title: share.title,
+    totalCents: share.total_cents,
+    depositRequiredCents: share.deposit_required_cents,
+    paymentTerms: share.payment_terms,
+    acceptanceNotes: share.acceptance_notes,
+    customerScopeSummary: share.customer_scope_summary,
+    customerExclusions: share.customer_exclusions,
+    lineItems: (lineItemsResult?.rows ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceCents: item.unit_price_cents,
+      totalCents: item.total_cents,
+      optional: item.optional,
+      selected: item.selected
+    })),
+    signedName,
+    signedEmail,
+    signedAt: signedAt.toISOString()
+  };
+  const documentSha256 = createHash("sha256").update(JSON.stringify(documentSnapshot)).digest("hex");
+  const consentText = "I agree to use an electronic signature and accept this estimate, its scope, price, payment terms, and stated conditions.";
+
   const requestHeaders = await headers();
-  await queryPostgres(
+  const acceptanceResult = await queryPostgres<{
+    id: string;
+    created_at: Date;
+    metadata_json: { documentSha256?: string } | null;
+  }>(
     `
     insert into public.estimate_acceptances (
       tenant_id, estimate_share_link_id, estimate_id, customer_id,
       accepted_name, accepted_email, acceptance_note, ip_address, user_agent, metadata_json
     )
     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-    on conflict (estimate_share_link_id) do nothing
+    on conflict (estimate_share_link_id) do update
+      set metadata_json = public.estimate_acceptances.metadata_json
+    returning id, created_at, metadata_json
     `,
     [
       share.tenant_id,
       share.id,
       share.estimate_id,
       share.customer_id,
-      parsed.data.acceptedName.trim(),
-      parsed.data.acceptedEmail?.trim() || null,
+      signedName,
+      signedEmail,
       parsed.data.acceptanceNote?.trim() || null,
       requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
       requestHeaders.get("user-agent") ?? null,
-      JSON.stringify({ source: "public_estimate_page" })
+      JSON.stringify({
+        source: "public_estimate_page",
+        signatureMethod: "typed_name",
+        signatureText: signedName,
+        electronicSignatureConsent: true,
+        consentText,
+        consentVersion: "2026-08-11",
+        signedAt: signedAt.toISOString(),
+        documentSha256,
+        documentSnapshot
+      })
     ]
   );
+  const acceptance = acceptanceResult?.rows[0];
+  const receiptDocumentSha256 = acceptance?.metadata_json?.documentSha256 ?? documentSha256;
 
   await queryPostgres(
     `
@@ -197,6 +275,31 @@ export async function acceptEstimateAction(formData: FormData) {
         customerEmail: parsed.data.acceptedEmail?.trim() || null
       })
     : null;
+
+  if (signedEmail) {
+    const receiptId = acceptance?.id ?? share.id;
+    await sendTransactionalEmail({
+      to: signedEmail,
+      subject: `Signed estimate confirmation: ${share.title}`,
+      text: [
+        `Hi ${signedName},`,
+        "",
+        `Your electronic signature and acceptance of ${share.title} were recorded successfully.`,
+        `Accepted total: $${(share.total_cents / 100).toFixed(2)}`,
+        share.deposit_required_cents > 0 ? `Deposit due: $${(share.deposit_required_cents / 100).toFixed(2)}` : "Deposit due: none",
+        `Signed: ${(acceptance?.created_at ?? signedAt).toISOString()}`,
+        `Receipt: ${receiptId}`,
+        `Document verification: ${receiptDocumentSha256.slice(0, 16)}`,
+        "",
+        depositLink?.paymentUrl ? `Pay the deposit securely: ${depositLink.paymentUrl}` : "The business will confirm scheduling and any remaining payment steps.",
+        "",
+        `Review the accepted estimate: ${(env.FEROCITY_APP_URL ?? "https://ferocity.live").replace(/\/$/, "")}/estimate/${parsed.data.token}`
+      ].join("\n"),
+      tenantId: share.tenant_id,
+      eventKey: `estimate-acceptance-receipt-${share.id}`,
+      metadata: { estimateId: share.estimate_id, shareLinkId: share.id, acceptanceId: receiptId }
+    });
+  }
 
   const now = new Date();
   const dueAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();

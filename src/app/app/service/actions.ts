@@ -130,7 +130,8 @@ const deleteInvoiceLineItemSchema = z.object({
 });
 
 const paymentRequestSchema = z.object({
-  invoiceId: z.string().uuid()
+  invoiceId: z.string().uuid(),
+  sendEmail: z.boolean().default(true)
 });
 
 const manualPaymentSchema = z.object({
@@ -1080,14 +1081,17 @@ export async function prepareEstimateShareLinkAction(formData: FormData) {
     customer_id: string;
     customer_name: string;
     customer_email: string | null;
+    organization_name: string;
     title: string;
     status: string;
     total_cents: number;
   }>(
     `
-    select e.id, e.customer_id, c.name as customer_name, c.email as customer_email, e.title, e.status, e.total_cents
+    select e.id, e.customer_id, c.name as customer_name, c.email as customer_email,
+      t.name as organization_name, e.title, e.status, e.total_cents
     from public.service_estimates e
     join public.customers c on c.id = e.customer_id and c.tenant_id = e.tenant_id
+    join public.tenants t on t.id = e.tenant_id
     where e.tenant_id = $1 and e.id = $2
     limit 1
     `,
@@ -1132,11 +1136,12 @@ export async function prepareEstimateShareLinkAction(formData: FormData) {
   const publicUrl = `${appUrl.replace(/\/$/, "")}/estimate/${share.public_token}`;
   let emailStatus: "not_requested" | "sent" | "skipped" | "failed" = parsed.data.sendEmail ? "skipped" : "not_requested";
   let providerMessageId: string | null = null;
+  let emailError: string | null = null;
 
   if (parsed.data.sendEmail && emailTo) {
     const result = await sendTransactionalEmail({
       to: emailTo,
-      subject: `Estimate from ${estimate.customer_name}`,
+      subject: `${estimate.title} from ${estimate.organization_name}`,
       text: [
         `Hi ${estimate.customer_name},`,
         "",
@@ -1152,6 +1157,7 @@ export async function prepareEstimateShareLinkAction(formData: FormData) {
     });
     emailStatus = result.ok ? "sent" : result.skipped ? "skipped" : "failed";
     providerMessageId = result.ok ? result.providerMessageId : null;
+    emailError = result.ok ? null : result.error;
   }
 
   await queryPostgres(
@@ -1170,7 +1176,7 @@ export async function prepareEstimateShareLinkAction(formData: FormData) {
       estimate.id,
       emailStatus,
       providerMessageId,
-      JSON.stringify({ publicUrl, emailStatus, emailTo })
+      JSON.stringify({ publicUrl, emailStatus, emailTo, emailError })
     ]
   );
 
@@ -1420,7 +1426,8 @@ export async function updateInvoiceAction(formData: FormData) {
 export async function prepareInvoicePaymentRequestAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = paymentRequestSchema.safeParse({
-    invoiceId: formData.get("invoiceId")
+    invoiceId: formData.get("invoiceId"),
+    sendEmail: formData.get("sendEmail") !== "false"
   });
   if (!parsed.success) return;
 
@@ -1431,14 +1438,20 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
     brand_id: string | null;
     customer_id: string;
     customer_email: string | null;
+    customer_name: string;
+    organization_name: string;
     title: string;
     total_cents: number;
     amount_paid_cents: number;
+    due_date: Date | null;
   }>(
     `
-    select i.id, i.tenant_id, i.brand_id, i.customer_id, c.email as customer_email, i.title, i.total_cents, i.amount_paid_cents
+    select i.id, i.tenant_id, i.brand_id, i.customer_id, c.email as customer_email,
+      c.name as customer_name, t.name as organization_name, i.title, i.total_cents,
+      i.amount_paid_cents, i.due_date
     from public.service_invoices i
     join public.customers c on c.id = i.customer_id
+    join public.tenants t on t.id = i.tenant_id
     where i.tenant_id = $1 and i.id = $2
     limit 1
     `,
@@ -1458,9 +1471,9 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
   const connectedAccountId = canUseConnectDirect ? managedAccount?.providerAccountId ?? null : null;
   const netToBusinessCents = Math.max(balanceDue - platformFeeCents, 0);
 
-  const existingRequest = await queryPostgres<{ id: string }>(
+  const existingRequest = await queryPostgres<{ id: string; payment_url: string | null; status: string }>(
     `
-    select id
+    select id, payment_url, status
     from public.service_invoice_payment_links
     where tenant_id = $1
       and invoice_id = $2
@@ -1472,12 +1485,8 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
     `,
     [workspaceId, invoice.id, balanceDue, paymentMode]
   );
-  if (existingRequest?.rows[0]) {
-    revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);
-    return;
-  }
-
-  const requestResult = await queryPostgres<{ id: string }>(
+  const existingLink = existingRequest?.rows[0] ?? null;
+  const requestResult = existingLink ? null : await queryPostgres<{ id: string }>(
     `
     insert into public.service_invoice_payment_links (
       tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, currency,
@@ -1512,13 +1521,13 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
         : "Connect the business payout account before preparing an online checkout link."
     ]
   );
-  const paymentLinkId = requestResult?.rows[0]?.id;
+  const paymentLinkId = existingLink?.id ?? requestResult?.rows[0]?.id;
   if (!paymentLinkId) return;
 
-  let paymentUrl = "";
-  let requestStatus = "draft";
+  let paymentUrl = existingLink?.payment_url ?? "";
+  let requestStatus = existingLink?.status ?? "draft";
 
-  if (env.STRIPE_SECRET_KEY && canUseConnectDirect && connectedAccountId) {
+  if (!paymentUrl && env.STRIPE_SECRET_KEY && canUseConnectDirect && connectedAccountId) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
     const body = new URLSearchParams({
       mode: "payment",
@@ -1611,12 +1620,16 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
     insert into public.service_ledger_entries (
       tenant_id, brand_id, customer_id, invoice_id, entry_type, direction, amount_cents, currency, description, provider, metadata_json
     )
-    values (
+    select
       $1, $2, $3, $4, 'payment_requested', 'debit', $5, 'usd',
       $6,
       'stripe',
       jsonb_build_object('paymentLinkId', $7::uuid, 'status', $8::text, 'paymentUrlReady', $9::boolean)
         || jsonb_build_object('paymentMode', $10::text, 'connectedAccountId', nullif($11::text, ''), 'platformFeeCents', $12::integer)
+    where not exists (
+      select 1 from public.service_ledger_entries
+      where tenant_id=$1 and invoice_id=$4 and entry_type='payment_requested'
+        and metadata_json->>'paymentLinkId'=$7::text
     )
     `,
     [
@@ -1636,6 +1649,55 @@ export async function prepareInvoicePaymentRequestAction(formData: FormData) {
       platformFeeCents
     ]
   );
+
+  if (parsed.data.sendEmail && invoice.customer_email && paymentUrl) {
+    const dueLabel = invoice.due_date
+      ? new Intl.DateTimeFormat("en", { dateStyle: "long" }).format(invoice.due_date)
+      : "upon receipt";
+    const emailResult = await sendTransactionalEmail({
+      to: invoice.customer_email,
+      subject: `${invoice.title} from ${invoice.organization_name}`,
+      text: [
+        `Hi ${invoice.customer_name},`,
+        "",
+        `${invoice.organization_name} sent you ${invoice.title}.`,
+        `Balance due: $${(balanceDue / 100).toFixed(2)}`,
+        `Due: ${dueLabel}`,
+        "",
+        `Review and pay securely: ${paymentUrl}`,
+        "",
+        "If you already paid, please disregard this message or reply so the business can confirm it."
+      ].join("\n"),
+      tenantId: workspaceId,
+      eventKey: `invoice-payment-request-${paymentLinkId}`,
+      metadata: { invoiceId: invoice.id, paymentLinkId }
+    });
+    const deliveryStatus = emailResult.ok ? "sent" : emailResult.skipped ? "skipped" : "failed";
+    const providerMessageId = emailResult.ok ? emailResult.providerMessageId : null;
+    await queryPostgres(
+      `update public.service_invoice_payment_links
+          set status=case when $3='sent' then 'sent' else status end,
+              metadata_json=metadata_json || $4::jsonb,
+              updated_at=now()
+        where tenant_id=$1 and id=$2`,
+      [workspaceId, paymentLinkId, deliveryStatus, JSON.stringify({
+        emailTo: invoice.customer_email,
+        emailStatus: deliveryStatus,
+        providerMessageId,
+        emailSentAt: emailResult.ok ? new Date().toISOString() : null,
+        emailError: emailResult.ok ? null : emailResult.error
+      })]
+    );
+    if (emailResult.ok) {
+      await queryPostgres(
+        `update public.service_invoices
+            set status=case when status='draft' then 'sent_manually' else status end, updated_at=now()
+          where tenant_id=$1 and id=$2`,
+        [workspaceId, invoice.id]
+      );
+      await ensureInvoiceReviewEnrollment({ tenantId: workspaceId, invoiceId: invoice.id, event: "invoice_sent" });
+    }
+  }
 
   revalidatePath("/app/service");
   revalidatePath(`/app/service/invoices/${parsed.data.invoiceId}`);

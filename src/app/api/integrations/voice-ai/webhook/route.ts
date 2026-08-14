@@ -5,6 +5,10 @@ import { syncCustomerLifecycleForTenant } from "@/lib/customer-lifecycle/sync-cu
 import { safelyEvaluateAndStoreCallManagementDecision } from "@/lib/office-manager/call-management";
 import { findVoiceAgentProviderForWebhook, verifyRetellSignature } from "@/lib/providers/voice-adapters";
 import { recordVoiceUsage } from "@/lib/usage/managed-voice";
+import { voiceWebhookBodyFromEvent } from "@/lib/phone/voice-webhook-event";
+import { canonicalizeVoiceDisposition, reconcileCallContact } from "@/lib/phone/call-contact-reconciliation";
+import { orchestrateCompletedCall } from "@/lib/phone/post-call-orchestration";
+import { createVoiceAppointment } from "@/lib/phone/voice-scheduling";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -12,6 +16,10 @@ function unauthorized() {
 
 function safeString(value: unknown) {
   return typeof value === "string" ? value.slice(0, 500) : null;
+}
+
+function safeLongString(value: unknown, max = 100_000) {
+  return typeof value === "string" ? value.slice(0, max) : null;
 }
 
 function safeNumber(value: unknown) {
@@ -42,14 +50,7 @@ function cleanDirection(value: unknown) {
 }
 
 function cleanOutcome(value: unknown) {
-  const outcome = safeString(value);
-  if (
-    outcome &&
-    ["new_lead", "existing_customer", "scheduled", "message_taken", "transferred", "followup_needed", "spam", "unresolved", "failed"].includes(outcome)
-  ) {
-    return outcome;
-  }
-  return null;
+  return canonicalizeVoiceDisposition(value);
 }
 
 function cleanSentiment(value: unknown) {
@@ -58,14 +59,32 @@ function cleanSentiment(value: unknown) {
   return "unknown";
 }
 
-function cleanQualification(value: unknown) {
+function cleanQualification(value: unknown): "hot" | "warm" | "cold" | "not_a_fit" | "spam" | "unknown" {
   const qualification = safeString(value);
-  if (qualification && ["hot", "warm", "cold", "not_a_fit", "spam", "unknown"].includes(qualification)) return qualification;
+  if (qualification === "hot" || qualification === "warm" || qualification === "cold"
+    || qualification === "not_a_fit" || qualification === "spam" || qualification === "unknown") {
+    return qualification;
+  }
   return "unknown";
 }
 
 function safeArray(value: unknown) {
   return Array.isArray(value) ? value.slice(0, 20) : [];
+}
+
+function safeTranscriptTurns(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 200).flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const item = entry as Record<string, unknown>;
+    const content = safeLongString(item.content, 10_000);
+    if (!content) return [];
+    const role = safeString(item.role);
+    return [{
+      speakerType: role === "agent" ? "assistant" : role === "customer" ? "customer" : "system",
+      content
+    }];
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -93,36 +112,7 @@ export async function POST(request: NextRequest) {
       }
       return unauthorized();
     }
-    const event = normalized.data;
-    const metadata = event.metadata ?? {};
-    const structuredData =
-      metadata.structuredData && typeof metadata.structuredData === "object"
-        ? metadata.structuredData as Record<string, unknown>
-        : {};
-    body = {
-      tenantId: metadata.tenantId,
-      brandId: metadata.brandId,
-      provider: event.providerKey,
-      providerEventId: event.providerEventId,
-      providerCallId: event.providerCallId,
-      eventType: metadata.eventType,
-      callerNumber: event.callerNumber,
-      calledNumber: event.calledNumber,
-      status: event.status,
-      durationSeconds: event.durationSeconds,
-      recordingUrl: event.recordingUrl,
-      transcriptText: event.transcriptText,
-      summary: metadata.summary,
-      providerCostCents: metadata.providerCostCents,
-      direction: metadata.direction,
-      outcome: structuredData.outcome,
-      sentiment: structuredData.sentiment,
-      leadQualification: structuredData.leadQualification,
-      callerName: structuredData.callerName,
-      callerEmail: structuredData.callerEmail,
-      consentToContact: structuredData.consentToContact === true,
-      actionItems: Array.isArray(structuredData.actionItems) ? structuredData.actionItems : []
-    };
+    body = voiceWebhookBodyFromEvent(normalized.data);
   } else {
     if (!env.VOICE_WEBHOOK_SECRET) {
       return NextResponse.json(
@@ -161,52 +151,28 @@ export async function POST(request: NextRequest) {
     [tenantId, safeUuid(body?.brandId)]
   );
   const brandId = brandResult?.rows[0]?.id ?? null;
-  let leadId = safeUuid(body?.leadId);
-  if (leadId) {
-    const existingLead = await queryPostgres<{ id: string }>(
-      `select id from public.leads where tenant_id = $1 and id = $2 limit 1`,
-      [tenantId, leadId]
-    );
-    if (!existingLead?.rows[0]) leadId = null;
-  }
   const outcome = cleanOutcome(body?.outcome);
   const callerNumber = safeString(body?.callerNumber ?? body?.from);
-  if (!leadId && brandId && callerNumber && outcome === "new_lead") {
-    const createdLead = await queryPostgres<{ id: string }>(
-      `
-      with inserted as (
-        insert into public.leads (
-          tenant_id, brand_id, source, source_detail, name, email, phone, message,
-          lead_type, status, qualification_status, priority, consent_to_contact, metadata_json
-        )
-        select $1,$2,'ai_phone_receptionist',$3,$4,$5,$6,$7,'appointment','new',$8,$9,$10,$11::jsonb
-        where not exists (
-          select 1 from public.leads
-          where tenant_id = $1 and metadata_json->>'providerCallId' = $3
-        )
-        returning id
-      )
-      select id from inserted
-      union all
-      select id from public.leads where tenant_id = $1 and metadata_json->>'providerCallId' = $3
-      limit 1
-      `,
-      [
-        tenantId,
-        brandId,
-        providerCallId,
-        safeString(body?.callerName),
-        safeString(body?.callerEmail),
-        callerNumber,
-        summary,
-        cleanQualification(body?.leadQualification) === "hot" ? "qualified" : "needs_review",
-        ["hot", "warm"].includes(cleanQualification(body?.leadQualification)) ? "high" : "normal",
-        body?.consentToContact === true,
-        JSON.stringify({ provider, providerCallId, source: "voice_ai_webhook", eventType })
-      ]
-    );
-    leadId = createdLead?.rows[0]?.id ?? null;
-  }
+  const finalEvent = ["completed", "missed", "transferred", "failed", "spam", "blocked"].includes(status)
+    || eventType === "call_analyzed";
+  const contact = await reconcileCallContact({
+    tenantId,
+    brandId,
+    customerId: safeUuid(body?.customerId),
+    leadId: safeUuid(body?.leadId),
+    callerNumber,
+    callerName: body?.callerName,
+    callerEmail: body?.callerEmail,
+    summary,
+    outcome,
+    qualification: cleanQualification(body?.leadQualification),
+    consentToContact: body?.consentToContact === true,
+    provider,
+    providerCallId,
+    finalEvent
+  });
+  const customerId = contact.customerId;
+  const leadId = contact.leadId;
   const session = await queryPostgres<{ id: string }>(
     `
     insert into public.office_manager_conversation_sessions (
@@ -272,20 +238,21 @@ export async function POST(request: NextRequest) {
   const call = await queryPostgres<{ id: string }>(
     `
     insert into public.receptionist_calls (
-      tenant_id, brand_id, office_manager_session_id, lead_id,
+      tenant_id, brand_id, office_manager_session_id, customer_id, lead_id,
       provider_key, provider_call_id, direction, caller_number, called_number,
       status, outcome, sentiment, lead_qualification, duration_seconds, transfer_result,
       summary, action_items_json, follow_up_status, usage_units, idempotency_key, metadata_json
     )
     values (
-      $1, $2, $3, $4,
-      $5, $6, $7, $8, $9,
-      $10, $11, $12, $13, $14, $15,
-      $16, $17::jsonb, $18, $19, $20, $21::jsonb
+      $1, $2, $3, $4, $5,
+      $6, $7, $8, $9, $10,
+      $11, $12, $13, $14, $15, $16,
+      $17, $18::jsonb, $19, $20, $21, $22::jsonb
     )
     on conflict (provider_key, provider_call_id) do update
     set brand_id = coalesce(public.receptionist_calls.brand_id, excluded.brand_id),
         office_manager_session_id = coalesce(public.receptionist_calls.office_manager_session_id, excluded.office_manager_session_id),
+        customer_id = coalesce(public.receptionist_calls.customer_id, excluded.customer_id),
         lead_id = coalesce(public.receptionist_calls.lead_id, excluded.lead_id),
         status = excluded.status,
         outcome = coalesce(excluded.outcome, public.receptionist_calls.outcome),
@@ -311,6 +278,7 @@ export async function POST(request: NextRequest) {
       tenantId,
       brandId,
       officeManagerSessionId,
+      customerId,
       leadId,
       provider,
       providerCallId,
@@ -365,33 +333,38 @@ export async function POST(request: NextRequest) {
       [tenantId, callId, provider, providerEventId, eventType, JSON.stringify({ source: "voice_ai_webhook", status })]
     );
 
-    const transcriptText = safeString(body?.transcriptText ?? body?.transcript);
+    const transcriptText = safeLongString(body?.transcriptText ?? body?.transcript);
     if (transcriptText) {
       if (officeManagerSessionId) {
-        await queryPostgres(
-          `
-          insert into public.office_manager_conversation_turns (
-            tenant_id, brand_id, session_id, speaker_type, channel_key, transcript,
-            redacted_transcript, confidence_score, sentiment, metadata_json
-          )
-          select $1,$2,$3,'customer','phone',$4,$5,$6,$7,$8::jsonb
-          where not exists (
-            select 1 from public.office_manager_conversation_turns
-            where tenant_id = $1 and session_id = $3 and metadata_json->>'providerEventId' = $9
-          )
-          `,
-          [
-            tenantId,
-            brandId,
-            officeManagerSessionId,
-            transcriptText,
-            safeString(body?.redactedTranscriptText) ?? transcriptText,
-            Math.min(100, Math.round(safeNumber(body?.confidenceScore))),
-            cleanSentiment(body?.sentiment),
-            JSON.stringify({ source: "voice_ai_webhook", providerEventId }),
-            providerEventId
-          ]
-        );
+        const turns = safeTranscriptTurns(body?.transcriptTurns);
+        const storedTurns = turns.length > 0
+          ? turns
+          : [{ speakerType: "customer", content: transcriptText }];
+        for (const [turnIndex, turn] of storedTurns.entries()) {
+          await queryPostgres(
+            `insert into public.office_manager_conversation_turns (
+               tenant_id,brand_id,session_id,speaker_type,channel_key,transcript,
+               redacted_transcript,confidence_score,sentiment,metadata_json
+             )
+             select $1,$2,$3,$4,'phone',$5,$5,$6,$7,$8::jsonb
+             where not exists (
+               select 1 from public.office_manager_conversation_turns
+                where tenant_id=$1 and session_id=$3
+                  and metadata_json->>'providerTurnKey'=$9
+             )`,
+            [
+              tenantId,
+              brandId,
+              officeManagerSessionId,
+              turn.speakerType,
+              turn.content,
+              Math.min(100, Math.round(safeNumber(body?.confidenceScore))),
+              cleanSentiment(body?.sentiment),
+              JSON.stringify({ source: "voice_ai_webhook", providerEventId, turnIndex, providerTurnKey: `${providerEventId}:${turnIndex}` }),
+              `${providerEventId}:${turnIndex}`
+            ]
+          );
+        }
       }
       await queryPostgres(
         `
@@ -411,7 +384,7 @@ export async function POST(request: NextRequest) {
           callId,
           provider,
           transcriptText,
-          safeString(body?.redactedTranscriptText) ?? transcriptText,
+          safeLongString(body?.redactedTranscriptText) ?? transcriptText,
           safeString(body?.language),
           safeString(body?.consentStatus) === "granted" ? "granted" : "unknown",
           Math.min(100, Math.round(safeNumber(body?.confidenceScore)))
@@ -419,36 +392,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const requestedStart = safeString(body?.appointmentStart ?? body?.scheduledStart);
-    const appointmentStart = requestedStart ? new Date(requestedStart) : null;
-    if (leadId && appointmentStart && Number.isFinite(appointmentStart.getTime()) && appointmentStart.getTime() > Date.now()) {
+    const recordingUrl = safeLongString(body?.recordingUrl, 2_000);
+    if (recordingUrl) {
+      const consentStatus = safeString(body?.consentStatus);
+      const recordingAllowed = body?.recordingConsentGranted === true
+        || consentStatus === "granted"
+        || consentStatus === "not_required";
       await queryPostgres(
-        `
-        insert into public.revenue_appointments (
-          tenant_id, brand_id, lead_id, appointment_type, status, scheduled_start,
-          scheduled_end, booking_source, show_sequence_key, metadata_json
-        )
-        select $1,$2,$3,'estimate',$4,$5,$6,'ai_phone_receptionist',
-          'qualified_appointment_show_rate',$7::jsonb
-        where not exists (
-          select 1 from public.revenue_appointments
-          where tenant_id = $1 and metadata_json->>'providerCallId' = $8
-        )
-        `,
+        `insert into public.receptionist_call_recordings (
+           tenant_id,call_id,provider_key,status,storage_provider,storage_key,
+           provider_recording_id,duration_seconds,consent_status,metadata_json
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+         on conflict (tenant_id,call_id,provider_recording_id) do update
+         set status=excluded.status,
+             storage_provider=excluded.storage_provider,
+             storage_key=excluded.storage_key,
+             duration_seconds=greatest(public.receptionist_call_recordings.duration_seconds,excluded.duration_seconds),
+             consent_status=excluded.consent_status,
+             metadata_json=public.receptionist_call_recordings.metadata_json || excluded.metadata_json,
+             updated_at=now()`,
         [
           tenantId,
-          brandId,
-          leadId,
-          body?.appointmentConfirmed === true ? "booked" : "requested",
-          appointmentStart.toISOString(),
-          new Date(appointmentStart.getTime() + 60 * 60 * 1000).toISOString(),
-          JSON.stringify({ providerCallId, requiresAvailabilityConfirmation: body?.appointmentConfirmed !== true }),
-          providerCallId
+          callId,
+          provider,
+          recordingAllowed ? "available" : "withheld",
+          recordingAllowed ? "provider_signed_url" : null,
+          recordingAllowed ? recordingUrl : null,
+          safeString(body?.providerRecordingId) ?? providerCallId,
+          durationSeconds,
+          recordingAllowed ? (consentStatus === "not_required" ? "not_required" : "granted") : "withheld",
+          JSON.stringify({ source: "voice_ai_webhook", providerEventId, retainedByProvider: true })
         ]
       );
     }
 
-    if (status === "completed" && durationSeconds > 0) {
+    const requestedStart = safeString(body?.appointmentStart ?? body?.scheduledStart);
+    const appointmentStart = requestedStart ? new Date(requestedStart) : null;
+    if ((leadId || customerId) && appointmentStart && Number.isFinite(appointmentStart.getTime()) && appointmentStart.getTime() > Date.now()) {
+      await createVoiceAppointment({
+        tenantId,
+        brandId,
+        leadId,
+        customerId,
+        providerCallId,
+        startsAt: appointmentStart.toISOString(),
+        durationMinutes: safeNumber(body?.appointmentDurationMinutes) || 60,
+        // Provider analysis alone is not authority to reserve a real slot. A signed
+        // Ferocity scheduling tool may set this independently when it executes.
+        confirmedBySignedTool: body?.appointmentConfirmedBySignedTool === true,
+        service: safeString(body?.serviceRequested)
+      });
+    }
+
+    if (["completed", "transferred", "missed", "failed"].includes(status) && durationSeconds > 0) {
       await recordVoiceUsage({
         tenantId,
         providerKey: provider,
@@ -472,6 +468,21 @@ export async function POST(request: NextRequest) {
         vipCustomer: body?.vipCustomer === true
       }
     });
+    if (finalEvent) {
+      await orchestrateCompletedCall({
+        tenantId,
+        callId,
+        providerCallId,
+        callerNumber,
+        summary,
+        status,
+        outcome,
+        qualification: cleanQualification(body?.leadQualification),
+        actionItems: safeArray(body?.actionItems),
+        shouldInterruptOwner: callDecision?.shouldInterruptOwner ?? false,
+        estimatedValueCents: Math.round(safeNumber(body?.estimatedValueCents))
+      });
+    }
   }
 
   await queryPostgres(

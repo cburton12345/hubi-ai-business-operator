@@ -23,6 +23,7 @@ type VoiceAccessRow = {
   concurrent_call_limit: number | null;
   max_call_duration_seconds: number | null;
   emergency_paused: boolean;
+  failed_payment_behavior: string | null;
   global_emergency_paused: boolean;
   global_active_calls: string | number;
   global_monthly_provider_cost_cents: string | number;
@@ -36,6 +37,7 @@ export type VoiceAccessDecision = {
   errorCategory: string;
   maxDurationSeconds: number;
   ownershipMode: "ferocity_managed" | "workspace" | "unknown";
+  restrictedMode?: "take_message_only";
 };
 
 export type VoiceUsageCharge = {
@@ -185,6 +187,7 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
       l.concurrent_call_limit,
       l.max_call_duration_seconds,
       coalesce(l.emergency_paused, false) as emergency_paused,
+      l.failed_payment_behavior,
       coalesce(g.emergency_paused, false) as global_emergency_paused,
       gu.global_active_calls,
       gu.global_monthly_provider_cost_cents,
@@ -209,6 +212,7 @@ export async function evaluateVoiceAccess(input: {
   tenantId: string;
   providerKey: string;
   purpose?: "production" | "authorized_test";
+  callDirection?: "inbound" | "outbound";
 }): Promise<VoiceAccessDecision> {
   const row = await loadVoiceAccessRow(input.tenantId, input.providerKey);
   const testCall = input.purpose === "authorized_test";
@@ -258,6 +262,16 @@ export async function evaluateVoiceAccess(input: {
     && row.subscription_status !== "trialing"
     && row.subscription_status !== "manual"
   ) {
+    if (input.callDirection === "inbound" && row.failed_payment_behavior === "take_message_only") {
+      return {
+        allowed: true,
+        reason: "Billing needs attention; inbound calls are limited to taking a message.",
+        errorCategory: "billing_restricted",
+        maxDurationSeconds: Math.min(180, row.max_call_duration_seconds ?? 180),
+        ownershipMode,
+        restrictedMode: "take_message_only"
+      };
+    }
     return { allowed: false, reason: "Managed voice is paused until billing is current.", errorCategory: "billing_not_current", maxDurationSeconds: 0, ownershipMode };
   }
 
@@ -325,9 +339,9 @@ export async function recordVoiceUsage(input: {
   const minutes = Math.ceil(Math.max(0, input.durationSeconds) / 60);
   if (minutes <= 0) return { recorded: false, customerChargeCents: 0 };
 
-  const existing = await queryPostgres<{ id: string; customer_charge_cents: string | number }>(
+  const existing = await queryPostgres<{ id: string; quantity: string | number; customer_charge_cents: string | number }>(
     `
-    select id, customer_charge_cents
+    select id, quantity, customer_charge_cents
     from public.usage_meter_events
     where tenant_id = $1 and idempotency_key = $2
     limit 1
@@ -335,30 +349,84 @@ export async function recordVoiceUsage(input: {
     [input.tenantId, `${input.tenantId}:${input.providerKey}:call:${input.providerCallId}:minute`]
   );
   if (existing?.rows[0]) {
+    const pricing = await queryPostgres<{
+      ownership_mode: string; plan_key: string | null; included_quantity: string | number | null;
+      overage_unit_price_cents: string | number | null; metadata_json: Record<string, unknown> | null;
+      other_minutes: string | number;
+    }>(
+      `with tenant_plan as (
+         select coalesce(s.plan_key,t.plan_key,'free') as plan_key from public.tenants t
+         left join public.billing_subscriptions s on s.tenant_id=t.id where t.id=$1
+       ), policy as (
+         select p.* from public.usage_allowance_policies p,tenant_plan tp
+         where p.feature_key='ai_receptionist' and p.unit_type='minute' and p.status='active'
+           and (p.tenant_id=$1 or (p.tenant_id is null and p.plan_key=tp.plan_key))
+         order by (p.tenant_id is not null) desc limit 1
+       )
+       select a.ownership_mode,tp.plan_key,p.included_quantity,p.overage_unit_price_cents,p.metadata_json,
+         (select coalesce(sum(u.quantity),0) from public.usage_meter_events u
+          where u.tenant_id=$1 and u.feature_key='ai_receptionist'
+            and u.billing_period_start=date_trunc('month',now())::date
+            and u.status not in ('void','failed') and u.id<>$3) as other_minutes
+       from public.provider_accounts a cross join tenant_plan tp left join policy p on true
+       where a.tenant_id=$1 and a.provider_key=$2 limit 1`,
+      [input.tenantId, input.providerKey, existing.rows[0].id]
+    );
+    const price = pricing?.rows[0];
+    const managed = managedOwnership(price?.ownership_mode);
+    const revisedCharge = managed && price
+      ? calculateManagedVoiceCharge({
+          priorMinutes: numeric(price.other_minutes), callMinutes: minutes,
+          includedMinutes: numeric(price.included_quantity), unitPriceCents: numeric(price.overage_unit_price_cents)
+        }).customerChargeCents
+      : 0;
+    const previousCharge = numeric(existing.rows[0].customer_charge_cents);
+    const chargeDelta = revisedCharge - previousCharge;
+    const autoApproved = managed && revisedCharge > 0
+      && price?.metadata_json?.disclosedOverage === true
+      && price?.metadata_json?.autoBillDisclosedOverage === true;
+    const meterStatus = revisedCharge <= 0 ? "included" : autoApproved ? "approved" : "pending_review";
     await queryPostgres(
       `
       update public.usage_meter_events
       set provider_cost_cents = greatest(provider_cost_cents, $3),
-          metadata_json = metadata_json || $4::jsonb
+          quantity = greatest(quantity, $4),
+          customer_charge_cents = $5,
+          status = $6,
+          metadata_json = metadata_json || $7::jsonb
       where tenant_id = $1 and id = $2
       `,
       [
         input.tenantId,
         existing.rows[0].id,
         input.providerCostCents,
-        JSON.stringify({ providerCostFinalized: input.providerCostCents > 0 })
+        minutes,
+        revisedCharge,
+        meterStatus,
+        JSON.stringify({ providerCostFinalized: input.providerCostCents > 0, usageReconciledAt: new Date().toISOString() })
       ]
     );
     await queryPostgres(
       `
       update public.receptionist_calls
       set estimated_provider_cost_cents = greatest(estimated_provider_cost_cents, $3),
+          billable_customer_amount_cents = $4,
+          usage_units = greatest(usage_units,$5),
           updated_at = now()
       where tenant_id = $1 and id = $2
       `,
-      [input.tenantId, input.callId, input.providerCostCents]
+      [input.tenantId, input.callId, input.providerCostCents, revisedCharge, minutes]
     );
-    return { recorded: false, customerChargeCents: numeric(existing.rows[0].customer_charge_cents) };
+    if (managed && price && chargeDelta !== 0) {
+      const monthKey = new Date().toISOString().slice(0, 7);
+      await queryPostgres(
+        `update public.billing_usage_charges
+         set amount_cents=greatest(0,amount_cents+$3),updated_at=now()
+         where tenant_id=$1 and charge_key=$2 and source_table='usage_meter_events' and source_id=$2`,
+        [input.tenantId, `managed_voice:${monthKey}`, chargeDelta]
+      );
+    }
+    return { recorded: false, customerChargeCents: revisedCharge };
   }
 
   const contextResult = await queryPostgres<{

@@ -184,6 +184,8 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 <p className="muted">{estimate.shareLink.url}</p>
                 {estimate.shareLink.emailTo ? <p className="muted">Email: {estimate.shareLink.emailTo}</p> : null}
                 {estimate.shareLink.sentAt ? <p className="muted">Sent: {estimate.shareLink.sentAt}</p> : null}
+                <p className="muted">Delivery: {estimate.shareLink.deliveryStatus.replaceAll("_", " ")}</p>
+                {estimate.shareLink.deliveryError ? <p className="form-error">{estimate.shareLink.deliveryError}</p> : null}
                 {estimate.shareLink.acceptedAt ? <p className="muted">Accepted: {estimate.shareLink.acceptedAt}</p> : null}
               </div>
               <Link className="mini-button" href={estimate.shareLink.url}>Open public estimate</Link>

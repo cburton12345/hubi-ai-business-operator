@@ -3,6 +3,9 @@ import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { buildCommunicationFailoverOffers, recordCommunicationFailover } from "@/lib/preferences/communication-failover";
 import type { CommunicationFallbackMode, CommunicationMethod } from "@/lib/preferences/communication-preferences";
 import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
+import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
+import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
+import { composeOutboundCallVariables, prepareOutboundCallVariables } from "@/lib/phone/outbound-call-context";
 
 export type ReadyMessageProcessingResult = {
   checked: number;
@@ -13,7 +16,7 @@ export type ReadyMessageProcessingResult = {
 
 type ReadyMessageRow = {
   id: string;
-  action_type: "email_send" | "sms_send";
+  action_type: "email_send" | "sms_send" | "voice_call";
   provider_key: string;
   recipient_label: string | null;
   subject: string | null;
@@ -29,9 +32,10 @@ type ReadyMessageRow = {
   fallback_method: CommunicationMethod | null;
   contact_email: string | null;
   contact_phone: string | null;
+  workflow_type: string | null;
 };
 
-function engineProviderKey(actionType: ReadyMessageRow["action_type"], providerKey: string) {
+function engineProviderKey(actionType: "email_send" | "sms_send", providerKey: string) {
   if (providerKey === "resend_shared") return "resend_email";
   if (providerKey === "twilio_shared") return "twilio_sms";
   return actionType === "email_send" ? "resend_email" : providerKey === "manual_sms" ? "manual_sms" : "twilio_sms";
@@ -174,13 +178,15 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       ,q.metadata_json#>>'{communicationPreference,fallbackMethods,0}' as fallback_method
       ,coalesce(l.email, c.email, case when q.recipient_label like '%@%' then q.recipient_label end) as contact_email
       ,coalesce(l.phone, c.phone, case when q.recipient_label not like '%@%' then q.recipient_label end) as contact_phone
+      ,f.workflow_type
     from public.outbound_action_queue q
     left join public.live_action_policies p on p.id = q.policy_id and p.tenant_id = q.tenant_id
     left join public.leads l on l.tenant_id = q.tenant_id and q.target_type = 'lead' and l.id = q.target_id
     left join public.service_invoices i on i.tenant_id = q.tenant_id and q.target_type = 'service_invoice' and i.id = q.target_id
+    left join public.follow_up_workflows f on f.tenant_id=q.tenant_id and q.target_type='follow_up_workflow' and f.id=q.target_id
     left join public.customers c on c.tenant_id = q.tenant_id and c.id = i.customer_id
     where q.tenant_id = $1
-      and q.action_type in ('email_send', 'sms_send')
+      and q.action_type in ('email_send', 'sms_send', 'voice_call')
       and coalesce(q.scheduled_for, now()) <= now()
       and (
         q.status = 'approved'
@@ -203,34 +209,95 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
   for (const row of rows) {
     const recipient = row.recipient_label?.trim() ?? "";
     const body = row.body?.trim() ?? "";
-    const channel = row.action_type === "email_send" ? "email" : "sms";
+    const channel = row.action_type === "email_send" ? "email" : row.action_type === "voice_call" ? "phone" : "sms";
     if (!recipient || !body) {
       blocked += 1;
       await updateQueueResult({ tenantId, row, status: "blocked", message: "Missing recipient or message body." });
       continue;
     }
 
-    const consent = await queryPostgres<{ id: string }>(
+    const consent = await queryPostgres<{ status: string; suppressed: boolean }>(
       `
-      select id
-      from public.contact_consent_records
-      where tenant_id = $1
-        and channel = $2
-        and lower(contact_value) = lower($3)
-        and status = 'granted'
-      limit 1
+      select
+        coalesce((select status from public.contact_consent_records
+          where tenant_id=$1 and channel=$2 and lower(contact_value)=lower($3)
+          order by updated_at desc limit 1), 'unknown') as status,
+        exists(select 1 from public.contact_suppression_list
+          where tenant_id=$1 and channel=$2 and lower(contact_value)=lower($3) and active=true) as suppressed
       `,
       [tenantId, channel, recipient]
     );
-    if (!consent?.rows[0]) {
+    const consentState = consent?.rows[0] ?? { status: "unknown", suppressed: false };
+    const transactionalInvoiceEmail = channel === "email" && row.workflow_type === "invoice_followup";
+    const allowed = !consentState.suppressed
+      && consentState.status !== "blocked"
+      && consentState.status !== "revoked"
+      && (consentState.status === "granted" || transactionalInvoiceEmail);
+    if (!allowed) {
       blocked += 1;
-      await updateQueueResult({ tenantId, row, status: "blocked", message: `${channel.toUpperCase()} consent is not granted.` });
+      await updateQueueResult({
+        tenantId,
+        row,
+        status: "blocked",
+        message: consentState.suppressed
+          ? `${channel.toUpperCase()} is suppressed for this contact.`
+          : `${channel.toUpperCase()} consent is not granted.`
+      });
       continue;
     }
 
     const idempotencyKey = row.retry_count > 0
       ? `outbound-action:${row.id}:attempt:${row.retry_count}`
       : `outbound-action:${row.id}`;
+    if (row.action_type === "voice_call") {
+      const route = await queryPostgres<{ provider_key: string; assistant_id: string | null; brand_id: string | null }>(
+        `select coalesce(nullif($2,''),r.primary_provider_key) as provider_key,
+           nullif(a.metadata_json->>'outboundAssistantId','') as assistant_id,
+           nullif(a.metadata_json->>'brandId','') as brand_id
+         from public.voice_provider_routes r
+         join public.provider_accounts a on a.tenant_id=r.tenant_id
+          and a.provider_key=coalesce(nullif($2,''),r.primary_provider_key)
+         where r.tenant_id=$1 and r.route_family='voice_orchestrator' and r.status='active'
+           and r.live_actions_enabled=true and a.status='connected' and a.live_actions_enabled=true limit 1`,
+        [tenantId, row.provider_key]
+      );
+      const voice = route?.rows[0];
+      const adapter = voice ? getVoiceAgentProvider(voice.provider_key) : null;
+      if (!voice?.assistant_id || !adapter || !recipient.startsWith("+")) {
+        blocked += 1;
+        await updateQueueResult({ tenantId, row, status: "blocked", message: "The approved voice route, outbound agent, or E.164 destination is not ready." });
+        continue;
+      }
+      const context = {
+        tenantId, brandId: voice.brand_id, correlationId: `outbound-action:${row.id}`,
+        idempotencyKey, liveActionsEnabled: true, purpose: "production" as const
+      };
+      const connection = await adapter.getConnection(context, true);
+      if (!connection.ok) {
+        failed += 1;
+        await updateQueueResult({ tenantId, row, status: connection.retryable ? "failed" : "blocked", message: connection.safeMessage });
+        continue;
+      }
+      const prepared = row.target_id && (row.target_type === "lead" || row.target_type === "customer")
+        ? await prepareOutboundCallVariables({ tenantId, brandId: voice.brand_id, contactType: row.target_type, contactId: row.target_id, callPurpose: body })
+        : null;
+      const dynamicVariables = prepared ?? composeOutboundCallVariables({
+        contactName: "there", contactType: "lead", callPurpose: body,
+        businessName: "the business", contactFacts: [], businessFacts: []
+      });
+      const call = await new ProviderBackedVoiceAgent(adapter).startConversation(context, {
+        toNumber: recipient, fromNumber: connection.data.phoneNumber,
+        assistantId: voice.assistant_id, dynamicVariables
+      });
+      if (call.ok) {
+        sent += 1;
+        await updateQueueResult({ tenantId, row, status: "sent", message: null, providerMessageId: call.data.providerCallId });
+      } else {
+        failed += 1;
+        await updateQueueResult({ tenantId, row, status: call.retryable ? "failed" : "blocked", message: call.safeMessage });
+      }
+      continue;
+    }
     const sendResult = await sendMessage({
       tenantId,
       channel,

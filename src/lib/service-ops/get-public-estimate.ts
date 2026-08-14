@@ -24,6 +24,12 @@ export type PublicEstimate = {
   showQuantities: boolean;
   depositPaymentUrl: string;
   depositPaymentStatus: string;
+  acceptanceReceipt: {
+    id: string;
+    signedName: string;
+    signedAt: string;
+    documentVerification: string;
+  } | null;
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; total: string; optional: boolean; selected: boolean }[];
 };
 
@@ -118,7 +124,8 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
     `,
     [estimate.tenant_id, estimate.estimate_id]
   );
-  const paymentResult = await queryPostgres<{ payment_url: string | null; status: string }>(
+  const [paymentResult, acceptanceResult] = await Promise.all([
+    queryPostgres<{ payment_url: string | null; status: string }>(
     `
     select l.payment_url, l.status
     from public.service_invoice_payment_links l
@@ -131,8 +138,22 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
     limit 1
     `,
     [estimate.tenant_id, estimate.estimate_id, `Deposit - ${estimate.title}`]
-  );
+    ),
+    queryPostgres<{
+      id: string;
+      accepted_name: string;
+      created_at: Date;
+      metadata_json: { documentSha256?: string } | null;
+    }>(
+      `select id, accepted_name, created_at, metadata_json
+         from public.estimate_acceptances
+        where tenant_id=$1 and estimate_share_link_id=$2
+        order by created_at desc limit 1`,
+      [estimate.tenant_id, estimate.share_link_id]
+    )
+  ]);
   const payment = paymentResult?.rows[0];
+  const acceptance = acceptanceResult?.rows[0];
 
   return {
     shareLinkId: estimate.share_link_id,
@@ -157,6 +178,14 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
     showQuantities: estimate.show_quantities ?? true,
     depositPaymentUrl: payment?.payment_url ?? "",
     depositPaymentStatus: payment?.status ?? "",
+    acceptanceReceipt: acceptance
+      ? {
+          id: acceptance.id,
+          signedName: acceptance.accepted_name,
+          signedAt: acceptance.created_at.toISOString(),
+          documentVerification: acceptance.metadata_json?.documentSha256?.slice(0, 16) ?? ""
+        }
+      : null,
     lineItems: (itemsResult?.rows ?? []).map((item) => ({
       id: item.id,
       name: item.name,

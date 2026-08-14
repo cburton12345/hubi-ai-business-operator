@@ -28,6 +28,13 @@ export default async function PublicEstimatePage({
           <div className="notice-card success-card section-actions">
             <strong>Estimate accepted</strong>
             <p className="muted">The business has been notified. They will confirm scheduling, materials, and any payment details.</p>
+            {estimate.acceptanceReceipt ? (
+              <div className="notice-card section-actions">
+                <strong>Electronic signature receipt</strong>
+                <p className="muted">Signed by {estimate.acceptanceReceipt.signedName} on {new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(estimate.acceptanceReceipt.signedAt))}.</p>
+                <p className="muted">Receipt {estimate.acceptanceReceipt.id}{estimate.acceptanceReceipt.documentVerification ? ` / Document ${estimate.acceptanceReceipt.documentVerification}` : ""}</p>
+              </div>
+            ) : null}
             {estimate.depositPaymentUrl ? (
               <a className="button section-actions" href={estimate.depositPaymentUrl}>
                 Pay deposit
@@ -104,12 +111,12 @@ export default async function PublicEstimatePage({
 
         {!accepted ? (
           <section className="panel section-actions">
-            <h2>Accept Estimate</h2>
+            <h2>Accept And Sign Estimate</h2>
             <form action={acceptEstimateAction} className="stacked-form">
               <input name="token" type="hidden" value={token} />
               <div className="form-grid two">
                 <label>
-                  Your name
+                  Electronic signature (type your full name)
                   <input name="acceptedName" defaultValue={estimate.customerName} required />
                 </label>
                 <label>
@@ -121,7 +128,12 @@ export default async function PublicEstimatePage({
                 Note
                 <textarea name="acceptanceNote" rows={3} placeholder="Optional note or scheduling preference" />
               </label>
-              <button className="button" type="submit">Accept estimate</button>
+              <label className="inline-checkbox">
+                <input name="electronicSignatureConsent" type="checkbox" required />
+                I agree to use an electronic signature and accept this estimate, its scope, price, payment terms, and stated conditions.
+              </label>
+              <p className="muted">Your signed receipt and a verification record will be emailed to you.</p>
+              <button className="button" type="submit">Sign and accept estimate</button>
             </form>
           </section>
         ) : null}

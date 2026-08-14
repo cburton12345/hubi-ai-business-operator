@@ -5,6 +5,7 @@ import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getCurrentWorkspace, getWorkspaceOptions } from "@/lib/workspace/current-workspace";
+import { getWorkspacePlanKey } from "@/lib/controls/service-gates";
 import packageJson from "../../../package.json";
 
 const commandShortcuts = [
@@ -32,6 +33,36 @@ const primaryNavigation = [
   { label: "Insights", href: "/app/reports", paths: ["/app/reports"] }
 ] as const;
 
+const callsToolSections = [
+  {
+    label: "Calls",
+    links: [
+      ["Call inbox", "/app/calls"],
+      ["AI Office Manager", "/app/office-manager"],
+      ["Phone setup", "/app/receptionist-setup"],
+      ["Ask Ferocity", "/app/ferocity"]
+    ]
+  },
+  {
+    label: "Customers",
+    links: [
+      ["Leads & Customers", "/app/lead-command"],
+      ["Conversations", "/app/messaging"],
+      ["Appointments", "/app/schedule"],
+      ["Follow-up queue", "/app/actions"]
+    ]
+  },
+  {
+    label: "Settings",
+    links: [
+      ["Connections", "/app/integrations"],
+      ["Authority", "/app/controls"],
+      ["Plan & usage", "/app/billing"],
+      ["Team access", "/app/access"]
+    ]
+  }
+] as const;
+
 function matchesNavigationPath(currentPath: string, paths: readonly string[]) {
   return paths.some((path) => currentPath === path || (path !== "/app" && currentPath.startsWith(`${path}/`)));
 }
@@ -44,6 +75,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     headers()
   ]);
   const releaseId = (process.env.DEPLOY_ID || process.env.COMMIT_REF || "local").slice(0, 8);
+  const workspacePlan = await getWorkspacePlanKey(workspace.id);
+  const callsOnly = workspacePlan === "calls";
   const currentPath = requestHeaders.get("x-ferocity-app-path")?.split("?")[0] ?? "/app";
   const showCompactCommand = currentPath !== "/app" && currentPath !== "/app/ferocity";
   const isPlatformAdmin = !session || session.platformRole === "super_admin";
@@ -56,7 +89,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             Ferocity
           </Link>
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
-            {primaryNavigation.map((item) => {
+            {(callsOnly ? [
+              { label: "Today", href: "/app", paths: ["/app", "/app/attention-command"] },
+              { label: "Calls", href: "/app/calls", paths: ["/app/calls", "/app/office-manager"] },
+              { label: "Contacts", href: "/app/lead-command", paths: ["/app/lead-command", "/app/leads", "/app/messaging"] },
+              { label: "Schedule", href: "/app/schedule", paths: ["/app/schedule"] }
+            ] : primaryNavigation).map((item) => {
               const active = matchesNavigationPath(currentPath, item.paths);
               return (
                 <Link href={item.href} key={item.href} aria-current={active ? "page" : undefined}>
@@ -67,6 +105,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <details className="nav-menu">
               <summary>All Tools</summary>
               <div className="nav-menu-panel">
+                {callsOnly ? callsToolSections.map((section) => (
+                  <section key={section.label}>
+                    <p>{section.label}</p>
+                    {section.links.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
+                  </section>
+                )) : <>
                 <section>
                   <p>Start & AI</p>
                   <Link href="/app/welcome">Start Here</Link>
@@ -147,6 +191,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                     <Link href="/app/lifeops-connections">Connected Systems</Link>
                   </section>
                 ) : null}
+                </>}
               </div>
             </details>
           </nav>

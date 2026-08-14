@@ -296,13 +296,25 @@ export async function POST(request: Request) {
     const data = asRecord(payload.data);
     const providerMessageId = clean(data.email_id) || clean(data.id) || clean(payload.id);
     if (!providerMessageId) return json(400, { ok: false, error: "Delivery event is missing its email ID." });
-    const messageResult = await queryPostgres<{ tenant_id: string }>(
-      `select tenant_id from public.messages
-       where provider_key='resend_email' and provider_message_ref=$1
+    const messageResult = await queryPostgres<{ tenant_id: string; source: string }>(
+      `select tenant_id, source from (
+         select tenant_id, 'message'::text as source, created_at
+           from public.messages
+          where provider_key='resend_email' and provider_message_ref=$1
+         union all
+         select tenant_id, 'estimate'::text as source, created_at
+           from public.estimate_share_links
+          where provider_message_id=$1
+         union all
+         select tenant_id, 'invoice'::text as source, created_at
+           from public.service_invoice_payment_links
+          where metadata_json->>'providerMessageId'=$1
+       ) delivery_target
        order by created_at desc limit 1`,
       [providerMessageId]
     );
-    const tenantId = messageResult?.rows[0]?.tenant_id;
+    const deliveryTarget = messageResult?.rows[0];
+    const tenantId = deliveryTarget?.tenant_id;
     if (!tenantId) return json(202, { ok: true, recorded: false, reason: "message_not_found" });
     const bounce = asRecord(data.bounce);
     const error = asRecord(data.error);
@@ -321,6 +333,32 @@ export async function POST(request: Request) {
     if (!normalized) return json(503, { ok: false, error: "Delivery normalization is unavailable." });
     const eventDate = new Date(clean(payload.created_at));
     const receiptAt = Number.isFinite(eventDate.getTime()) ? eventDate : new Date();
+    const documentStatus = normalized.normalizedStatus;
+    await Promise.all([
+      queryPostgres(
+        `update public.estimate_share_links
+            set metadata_json=metadata_json || $3::jsonb, updated_at=now()
+          where tenant_id=$1 and provider_message_id=$2`,
+        [tenantId, providerMessageId, JSON.stringify({
+          emailStatus: documentStatus,
+          emailError: normalized.safeReason,
+          emailDeliveryUpdatedAt: receiptAt.toISOString()
+        })]
+      ),
+      queryPostgres(
+        `update public.service_invoice_payment_links
+            set metadata_json=metadata_json || $3::jsonb, updated_at=now()
+          where tenant_id=$1 and metadata_json->>'providerMessageId'=$2`,
+        [tenantId, providerMessageId, JSON.stringify({
+          emailStatus: documentStatus,
+          emailError: normalized.safeReason,
+          emailDeliveryUpdatedAt: receiptAt.toISOString()
+        })]
+      )
+    ]);
+    if (deliveryTarget?.source !== "message") {
+      return json(200, { ok: true, recorded: true, documentDelivery: deliveryTarget?.source });
+    }
     const recorded = await recordMessageDeliveryReceipt({
       tenantId,
       providerKey: "resend_email",

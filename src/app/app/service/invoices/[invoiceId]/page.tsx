@@ -77,15 +77,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </section>
 
         <section className="panel span-6 form-stack">
-          <h2>Collect Payment</h2>
+          <h2>Send Invoice And Collect Payment</h2>
           <p className="muted">
             Online checkout charges the customer through the business&apos;s connected Stripe account and pays out through the bank saved with
             Stripe. If that connection is not ready, Ferocity keeps the request in manual tracking and does not collect the money itself.
           </p>
           <form action={prepareInvoicePaymentRequestAction}>
             <input name="invoiceId" type="hidden" value={invoice.id} />
-            <button className="button" type="submit">Prepare Stripe payment request</button>
+            <input name="sendEmail" type="hidden" value="true" />
+            <button className="button" type="submit">Email invoice and secure payment link</button>
           </form>
+          <p className="muted">One click prepares checkout, emails the customer, records delivery status, and keeps future reminders connected to this invoice.</p>
+          <p className="muted">Payment reminders follow the workspace&apos;s approval setting: keep review on, or let Ferocity send eligible reminders automatically. <Link href="/app/ai-workforce">Review automation authority</Link>.</p>
           <form action={recordManualInvoicePaymentAction} className="form-stack">
             <input name="invoiceId" type="hidden" value={invoice.id} />
             <label>
@@ -111,6 +114,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <p className="muted">
                     {link.paymentMode === "stripe_connect_direct" ? "Direct to the business Stripe balance" : "Manual tracking until business payouts are connected"}
                   </p>
+                  <p className="muted">Email: {link.emailTo || "not sent"} / Delivery: {link.deliveryStatus.replaceAll("_", " ")}</p>
+                  {link.deliveryError ? <p className="form-error">{link.deliveryError}</p> : null}
                   {link.paymentUrl ? (
                     <a className="mini-button" href={link.paymentUrl} rel="noreferrer" target="_blank">Open secure checkout</a>
                   ) : (

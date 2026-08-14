@@ -1,4 +1,4 @@
-export type SelfServePlanKey = "job_tracker" | "starter" | "growth" | "operator";
+export type SelfServePlanKey = "calls" | "job_tracker" | "starter" | "growth" | "operator";
 
 export type PublicPlan = {
   key: SelfServePlanKey;
@@ -13,6 +13,34 @@ export type PublicPlan = {
 };
 
 export const publicPlans: PublicPlan[] = [
+  {
+    key: "calls",
+    name: "Ferocity Calls",
+    price: "$49/mo + 25 cents/min",
+    priceCents: 4900,
+    fit: "Your AI phone and lead-handling department.",
+    bestFor: "Businesses that want every call answered, understood, recorded, and moved to the right next step without replacing the systems they already use.",
+    bullets: [
+      "24/7 AI phone answering with your Business Brain",
+      "Recognize customers and qualify new leads",
+      "Book allowed appointments and handle urgent transfers",
+      "Transcripts, summaries, outcomes, and complete call history",
+      "Missed-call recovery and provider-aware follow-up",
+      "Upgrade into full Ferocity without migrating data"
+    ],
+    moreFeatures: [
+      "Inbound and approved outbound AI calling",
+      "Business hours and after-hours behavior",
+      "Service-area, qualification, scheduling, and transfer rules",
+      "Customer and lead creation or updating from calls",
+      "Configurable recording and transcription",
+      "Owner alerts for calls that need judgment",
+      "Bring-your-own or Ferocity-managed Retell connection",
+      "SMS through a configured provider, email, and manual-device fallback",
+      "Usage controls and clear per-minute billing",
+      "Shared Ferocity contacts, scheduling, memory, and communications"
+    ]
+  },
   {
     key: "starter",
     name: "Starter",

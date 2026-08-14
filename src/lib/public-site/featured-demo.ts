@@ -16,17 +16,17 @@ export type PublicCopySlot = {
 export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
   home_hero: {
     eyebrow: "Meet your AI operations department",
-    headline: "Imagine hiring an entire AI operations department—all sharing the same Business Brain.",
-    body: "They answer phones, follow up with leads, prepare estimates, coordinate jobs, dispatch crews, manage customer communication, collect payments, keep marketing moving, monitor operations, and only bring you the decisions that actually require human judgment. And that’s just the beginning. That’s Ferocity.",
-    ctaLabel: "See how Ferocity works",
+    headline: "Your business shouldn't stop when you stop looking at it.",
+    body: "Ferocity answers the phone. Chases leads. Follows up on estimates. Schedules work. Coordinates crews. Talks to customers. Collects money. Keeps marketing moving. Watches for problems—and handles hundreds of other things it takes to keep a business running. And when something actually needs you, Ferocity brings you the decision.",
+    ctaLabel: "See Ferocity work",
     ctaHref: "/demo",
     secondaryCtaLabel: "See plans & pricing",
     secondaryCtaHref: "/pricing"
   },
   home_final_cta: {
-    eyebrow: "One Business Brain for the entire company",
-    headline: "Give the whole organization one system for what happens next.",
-    body: "Start with one department or connect the full operating loop. Ferocity learns the business, coordinates human and AI work, remembers the rules, and keeps unfinished work moving until it is complete or needs a real decision.",
+    eyebrow: "Build without becoming the bottleneck",
+    headline: "Build the business without making yourself the bottleneck.",
+    body: "More customers shouldn't mean more things for you to chase. More employees shouldn't mean more things for you to coordinate. More work shouldn't mean more things for you to remember. More software shouldn't mean more dashboards for you to watch. Your business keeps moving—even when you're not watching it.",
     ctaLabel: "Start Ferocity",
     ctaHref: "/subscribe",
     secondaryCtaLabel: "Compare plans",
@@ -119,6 +119,7 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
 
   const result = await queryPostgres<{
     enabled: boolean;
+    updated_by: string | null;
     eyebrow: string;
     headline: string;
     body: string;
@@ -128,7 +129,7 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
     secondary_cta_href: string | null;
   }>(
     `
-    select enabled, eyebrow, headline, body, cta_label, cta_href, secondary_cta_label, secondary_cta_href
+    select enabled, updated_by, eyebrow, headline, body, cta_label, cta_href, secondary_cta_label, secondary_cta_href
     from public.platform_public_content
     where content_key = $1
     limit 1
@@ -137,6 +138,10 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
   );
   const row = result?.rows[0];
   if (!row?.enabled) return fallback;
+  const isFinalHomepageSlot = key === "home_hero" || key === "home_final_cta";
+  const isOlderSeededHomepageCopy = isFinalHomepageSlot &&
+    (!row.updated_by || (row.updated_by.startsWith("migration:") && row.updated_by !== "migration:182_final_homepage_positioning"));
+  if (isOlderSeededHomepageCopy) return fallback;
   return {
     eyebrow: row.eyebrow,
     headline: row.headline,

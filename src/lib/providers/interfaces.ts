@@ -68,6 +68,7 @@ export type InboundCallEvent = {
   durationSeconds?: number;
   recordingUrl?: string | null;
   transcriptText?: string | null;
+  transcriptTurns?: Array<{ role: "agent" | "customer" | "unknown"; content: string }>;
   metadata?: Record<string, unknown>;
 };
 

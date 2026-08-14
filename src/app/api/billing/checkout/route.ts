@@ -18,6 +18,7 @@ const checkoutSchema = z.object({
 });
 
 const priceEnvByPlan = {
+  calls: "STRIPE_PRICE_ID_CALLS",
   job_tracker: "STRIPE_PRICE_ID_JOB_TRACKER",
   starter: "STRIPE_PRICE_ID_STARTER",
   growth: "STRIPE_PRICE_ID_GROWTH",
@@ -35,6 +36,40 @@ function startFallback(request: NextRequest, plan: string, reason: string) {
     billing: reason
   });
   return redirectTo(request, `/start?${params.toString()}`);
+}
+
+async function updateExistingSubscription(input: {
+  subscriptionId: string;
+  priceId: string;
+  plan: string;
+  tenantId: string;
+}) {
+  const currentResponse = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, {
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    cache: "no-store"
+  });
+  const current = await currentResponse.json() as { items?: { data?: Array<{ id?: string }> }; status?: string; metadata?: Record<string, string> };
+  const itemId = current.items?.data?.[0]?.id;
+  if (!currentResponse.ok || !itemId || current.status === "canceled") return { ok: false, status: currentResponse.status };
+
+  const body = new URLSearchParams({
+    "items[0][id]": itemId,
+    "items[0][price]": input.priceId,
+    proration_behavior: "always_invoice",
+    payment_behavior: "pending_if_incomplete",
+    "metadata[plan_key]": input.plan,
+    "metadata[tenant_id]": input.tenantId,
+    "metadata[purchase_flow]": "plan_change"
+  });
+  const response = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body
+  });
+  return { ok: response.ok, status: response.status };
 }
 
 export async function POST(request: NextRequest) {
@@ -83,6 +118,36 @@ export async function POST(request: NextRequest) {
 
   const origin = request.nextUrl.origin;
   let accessRequestId: string | null = null;
+
+  if (workspace && workspace.accountType !== "internal") {
+    const existing = await queryPostgres<{ external_subscription_ref: string | null; plan_key: string; status: string }>(
+      `select external_subscription_ref,plan_key,status from public.billing_subscriptions
+        where tenant_id=$1 limit 1`,
+      [workspace.id]
+    );
+    const subscription = existing?.rows[0];
+    if (subscription?.external_subscription_ref && ["active", "trialing", "past_due", "incomplete"].includes(subscription.status)) {
+      if (subscription.plan_key === parsed.data.plan) {
+        return redirectTo(request, "/app/billing?plan=already_active");
+      }
+      const updated = await updateExistingSubscription({
+        subscriptionId: subscription.external_subscription_ref,
+        priceId,
+        plan: parsed.data.plan,
+        tenantId: workspace.id
+      });
+      if (!updated.ok) {
+        await logAppError({
+          source: "api.billing.checkout",
+          message: "Stripe could not safely update the existing Ferocity subscription.",
+          severity: "warning",
+          metadata: { tenantId: workspace.id, plan: parsed.data.plan, stripeStatus: updated.status }
+        });
+        return startFallback(request, parsed.data.plan, "plan_change_failed");
+      }
+      return redirectTo(request, `/app/billing?plan_change=${encodeURIComponent(parsed.data.plan)}`);
+    }
+  }
 
   if (publicSignup) {
     const accessRequest = await queryPostgres<{ id: string }>(

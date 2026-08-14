@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
 import { verifyStripeWebhookSignature } from "@/lib/payments/stripe-webhook-signature";
 import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
+import { applyPlanEntitlements } from "@/lib/billing/apply-plan-entitlements";
 
 type StripeEvent = {
   id: string;
@@ -499,6 +500,7 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
         JSON.stringify({ stripeEventId: event.id, stripeStatus: status })
       ]
     );
+    await applyPlanEntitlements({ tenantId, planKey, billingStatus: mappedStatus });
     return;
   }
 
