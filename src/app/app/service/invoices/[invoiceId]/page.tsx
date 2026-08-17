@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getServiceInvoiceDetail } from "@/lib/service-ops/get-service-record-detail";
@@ -91,6 +92,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <p className="muted">Payment reminders follow the workspace&apos;s approval setting: keep review on, or let Ferocity send eligible reminders automatically. <Link href="/app/ai-workforce">Review automation authority</Link>.</p>
           <form action={recordManualInvoicePaymentAction} className="form-stack">
             <input name="invoiceId" type="hidden" value={invoice.id} />
+            <input name="idempotencyKey" type="hidden" value={randomUUID()} />
             <label>
               Record manual payment
               <input name="amount" inputMode="decimal" placeholder={invoice.balanceDue} />

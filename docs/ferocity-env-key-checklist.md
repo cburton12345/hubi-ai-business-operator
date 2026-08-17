@@ -44,6 +44,7 @@ A code change is needed when Ferocity does not yet have:
 - `STRIPE_PRICE_ID_OPERATOR`
 - `STRIPE_PRICE_ID_AI_GROWTH_REPORT`
 - `FEROCITY_MANAGED_PAYMENTS_ENABLED`
+- `FEROCITY_EARN_SETTLEMENT_ENABLED` (leave `false` until controlled Stripe Earn settlement certification passes)
 - `FEROCITY_MANAGED_PAYMENT_FEE_BPS`
 
 ## Email

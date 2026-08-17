@@ -10,6 +10,7 @@ import {
 import { PushNotificationSetup } from "@/components/PushNotificationSetup";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getPushNotificationDashboard } from "@/lib/push/get-push-notification-dashboard";
+import { updateInAppNotificationStateAction } from "./state-actions";
 
 function dateLabel(value: string | null) {
   if (!value) return "Never";
@@ -17,9 +18,17 @@ function dateLabel(value: string | null) {
 }
 
 function tone(value: string) {
-  if (["failed", "expired", "revoked", "denied", "blocked"].includes(value)) return "high";
-  if (["skipped", "paused", "default"].includes(value)) return "medium";
+  if (["critical", "high", "failed", "expired", "revoked", "denied", "blocked", "needs_owner", "pending", "active"].includes(value)) return "high";
+  if (["medium", "skipped", "paused", "default", "requested", "researching", "building"].includes(value)) return "medium";
   return "";
+}
+
+function notificationSource(value: string) {
+  if (value === "ai_work") return "AI employee";
+  if (value === "approval") return "Approval";
+  if (value === "provider_request") return "Provider request";
+  if (value === "funding_alert") return "Provider spending";
+  return "Ferocity";
 }
 
 function inputDateTimeValue() {
@@ -34,8 +43,20 @@ function dateTimeLocalValue(value: string | Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ priority?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
   const dashboard = await getPushNotificationDashboard();
+  const priority = params.priority === "urgent" || params.priority === "unread" ? params.priority : "all";
+  const visibleNotifications = dashboard.inAppNotifications.filter((notification) => {
+    if (priority === "unread") return notification.readState === "unread";
+    if (priority === "urgent") return ["high", "critical"].includes(notification.severity)
+      || ["needs_owner", "critical", "pending", "active"].includes(notification.status);
+    return true;
+  });
 
   return (
     <QueuePageShell
@@ -83,6 +104,7 @@ export default async function NotificationsPage() {
       </section>
 
       <section className="grid section-actions">
+        <Metric label="Needs attention" value={dashboard.metrics.inAppAttention} icon={<CircleAlert size={16} />} tone={dashboard.metrics.inAppAttention ? "high" : ""} />
         <Metric label="Active devices" value={dashboard.metrics.activeSubscriptions} icon={<BellRing size={16} />} />
         <Metric label="Failed devices" value={dashboard.metrics.failedSubscriptions} icon={<CircleAlert size={16} />} tone={dashboard.metrics.failedSubscriptions ? "high" : ""} />
         <Metric label="Sent" value={dashboard.metrics.sentEvents} icon={<Send size={16} />} />
@@ -92,6 +114,71 @@ export default async function NotificationsPage() {
         <Metric label="Active reminders" value={dashboard.metrics.activeReminders} icon={<CalendarClock size={16} />} />
         <Metric label="Due now" value={dashboard.metrics.dueReminders} icon={<BellRing size={16} />} tone={dashboard.metrics.dueReminders ? "high" : ""} />
         <Metric label="Daily goals" value={dashboard.metrics.dailyGoals} icon={<CheckCircle2 size={16} />} />
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">In-app notification center</p>
+            <h2>Everything important stays here—even without SMS.</h2>
+            <p className="muted">
+              AI work, approvals, failures, urgent customer issues, provider requests, and spending warnings use their existing Ferocity records. This feed brings them together without duplicating them.
+            </p>
+          </div>
+          <div className="button-row">
+            <Link className={`mini-button ${priority === "all" ? "active" : ""}`} href="/app/notifications">All</Link>
+            <Link className={`mini-button ${priority === "unread" ? "active" : ""}`} href="/app/notifications?priority=unread">Unread</Link>
+            <Link className={`mini-button ${priority === "urgent" ? "active" : ""}`} href="/app/notifications?priority=urgent">Urgent</Link>
+            <Link className="button secondary-button" href="/app/owner-command-center">Full command center</Link>
+          </div>
+        </div>
+        <ul className="list">
+          {visibleNotifications.map((notification) => (
+            <li className="list-row" key={`${notification.source}:${notification.id}`}>
+              <div>
+                <div className="inline-actions">
+                  <span className="pill">{notificationSource(notification.source)}</span>
+                  <span className={`pill ${tone(notification.severity)}`}>{notification.severity}</span>
+                </div>
+                <h3>{notification.title}</h3>
+                <p>{notification.body}</p>
+                <p className="muted">{notification.status.replaceAll("_", " ")} / {dateLabel(notification.createdAt)}</p>
+              </div>
+              <div className="inline-actions">
+                <span className={`pill ${notification.readState === "unread" ? "high" : ""}`}>{notification.readState}</span>
+                <Link className="mini-button" href={notification.actionUrl}>Open</Link>
+                {notification.readState === "unread" ? (
+                  <form action={updateInAppNotificationStateAction}>
+                    <input type="hidden" name="source" value={notification.source} />
+                    <input type="hidden" name="sourceId" value={notification.id} />
+                    <input type="hidden" name="status" value="read" />
+                    <button className="mini-button" type="submit">Mark read</button>
+                  </form>
+                ) : null}
+                {notification.readState !== "acknowledged" && (
+                  ["high", "critical"].includes(notification.severity)
+                  || ["needs_owner", "critical", "pending", "active"].includes(notification.status)
+                ) ? (
+                  <form action={updateInAppNotificationStateAction}>
+                    <input type="hidden" name="source" value={notification.source} />
+                    <input type="hidden" name="sourceId" value={notification.id} />
+                    <input type="hidden" name="status" value="acknowledged" />
+                    <button className="mini-button" type="submit">Acknowledge</button>
+                  </form>
+                ) : null}
+                <form action={updateInAppNotificationStateAction}>
+                  <input type="hidden" name="source" value={notification.source} />
+                  <input type="hidden" name="sourceId" value={notification.id} />
+                  <input type="hidden" name="status" value="dismissed" />
+                  <button className="mini-button" type="submit">Dismiss</button>
+                </form>
+              </div>
+            </li>
+          ))}
+          {visibleNotifications.length === 0 ? (
+            <li className="list-row"><span className="muted">Nothing needs attention. Ferocity will place new work and exceptions here automatically.</span></li>
+          ) : null}
+        </ul>
       </section>
 
       <PushNotificationSetup />

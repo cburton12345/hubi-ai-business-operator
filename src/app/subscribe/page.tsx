@@ -18,6 +18,7 @@ export default async function SubscribePage({
 }) {
   const params = await searchParams;
   const plan = getPublicPlan(params.plan ?? "");
+  const isCallsPlan = plan?.key === "calls";
   const planGuidance = {
     calls: "A complete AI phone team with simple usage-based voice billing.",
     job_tracker: "Focused job and money control with basic AI guidance.",
@@ -33,9 +34,11 @@ export default async function SubscribePage({
 
         <section className="public-hero">
           <p className="eyebrow">{plan ? `Start ${plan.name}` : "Choose your operating level"}</p>
-          <h1>{plan ? "Give your team and AI workforce one operating system." : "Choose how much of the organization Ferocity should coordinate."}</h1>
+          <h1>{isCallsPlan ? "Give every caller an intelligent next step." : plan ? "Give your team and AI workforce one operating system." : "Choose how much of the organization Ferocity should coordinate."}</h1>
           <p className="muted">
-            {plan
+            {isCallsPlan
+              ? "Start with a 24/7 AI phone department that understands the business, recognizes callers, qualifies opportunities, books approved appointments, transfers urgent calls, and keeps the complete call history in Ferocity."
+              : plan
               ? "Create the account, teach the shared Business Brain how the company works, and choose which work belongs to people, AI employees, approval, or authorized automation."
               : "Every plan starts with connected business memory and real AI guidance. Higher levels coordinate more people, AI employees, departments, providers, and operating loops."}
           </p>
@@ -118,7 +121,9 @@ export default async function SubscribePage({
                 Continue to secure checkout <ArrowRight size={16} />
               </button>
               <p className="muted">
-                During setup, assign work to a person or choose Draft only, Ask first, or Run automatically for an AI employee. Ferocity remembers the rules and shows what happened.
+                {isCallsPlan
+                  ? "The subscription is $49 per month plus $0.25 per completed voice minute. During setup, choose the phone route, business rules, recording settings, transfers, scheduling authority, and follow-up behavior."
+                  : "During setup, assign work to a person or choose Draft only, Ask first, or Run automatically for an AI employee. Ferocity remembers the rules and shows what happened."}
               </p>
             </form>
 

@@ -310,12 +310,74 @@ export async function saveVoiceCustomizationAction(
     return { status: "error", message: "That phone-agent profile was not found in this workspace." };
   }
 
+  const session = await getCurrentAppSession();
+  const snapshot = await queryPostgres<{
+    display_name: string; role_summary: string; default_tone: string;
+    escalation_rules_json: unknown; guardrails_json: unknown; metadata_json: unknown;
+  }>(
+    `select display_name,role_summary,default_tone,escalation_rules_json,guardrails_json,metadata_json
+     from public.office_manager_profiles where tenant_id=$1 and id=$2 limit 1`,
+    [workspaceId, parsed.data.profileId]
+  );
+  if (snapshot?.rows[0]) {
+    await queryPostgres(
+      `insert into public.voice_agent_profile_versions (
+         tenant_id,profile_id,version_number,snapshot_json,change_source,created_by_user_id
+       ) values (
+         $1,$2,(select coalesce(max(version_number),0)+1 from public.voice_agent_profile_versions where profile_id=$2),$3::jsonb,'owner_edit',$4
+       )`,
+      [workspaceId, parsed.data.profileId, JSON.stringify(snapshot.rows[0]), session?.userId ?? null]
+    );
+  }
+
   revalidatePath("/app/office-manager");
   revalidatePath("/app/receptionist-setup");
   return {
     status: "success",
-    message: "Phone-agent behavior saved. These instructions will be applied to any connected voice provider."
+    message: "Phone-agent behavior saved as a new version. Open Phone Setup to publish it to the connected provider and run a test call."
   };
+}
+
+const rollbackVoiceVersionSchema = z.object({ versionId: z.string().uuid() });
+
+export async function rollbackVoiceVersionAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = rollbackVoiceVersionSchema.safeParse({ versionId: formData.get("versionId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const version = await queryPostgres<{ profile_id: string; snapshot_json: Record<string, unknown> }>(
+    `select profile_id,snapshot_json from public.voice_agent_profile_versions where tenant_id=$1 and id=$2 limit 1`,
+    [workspaceId, parsed.data.versionId]
+  );
+  const row = version?.rows[0];
+  if (!row) return;
+  const snapshot = row.snapshot_json;
+  await queryPostgres(
+    `update public.office_manager_profiles set
+       display_name=$3,role_summary=$4,default_tone=$5,
+       escalation_rules_json=$6::jsonb,guardrails_json=$7::jsonb,metadata_json=$8::jsonb,updated_at=now()
+     where tenant_id=$1 and id=$2`,
+    [
+      workspaceId, row.profile_id,
+      String(snapshot.display_name ?? "Ferocity Office Manager"),
+      String(snapshot.role_summary ?? "AI office manager"),
+      String(snapshot.default_tone ?? "warm, confident, direct, and natural"),
+      JSON.stringify(snapshot.escalation_rules_json ?? []),
+      JSON.stringify(snapshot.guardrails_json ?? []),
+      JSON.stringify(snapshot.metadata_json ?? {})
+    ]
+  );
+  const session = await getCurrentAppSession();
+  await queryPostgres(
+    `insert into public.voice_agent_profile_versions (
+       tenant_id,profile_id,version_number,snapshot_json,change_source,created_by_user_id
+     ) values (
+       $1,$2,(select coalesce(max(version_number),0)+1 from public.voice_agent_profile_versions where profile_id=$2),$3::jsonb,'rollback',$4
+     )`,
+    [workspaceId, row.profile_id, JSON.stringify(snapshot), session?.userId ?? null]
+  );
+  revalidatePath("/app/office-manager");
+  revalidatePath("/app/receptionist-setup");
 }
 
 export async function prepareOfficeManagerAction() {

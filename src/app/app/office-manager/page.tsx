@@ -3,7 +3,9 @@ import { Bot, Headphones, MessageSquareText, ShieldCheck, Sparkles, Timer, Workf
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getCallManagementDashboard } from "@/lib/office-manager/get-call-management";
 import { getOfficeManagerDashboard } from "@/lib/office-manager/get-office-manager-dashboard";
-import { prepareOfficeManagerAction } from "./actions";
+import { queryPostgres } from "@/lib/db/postgres";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { prepareOfficeManagerAction, rollbackVoiceVersionAction } from "./actions";
 import { CallManagementPanel } from "./CallManagementPanel";
 import { OwnerBriefingSetup } from "./OwnerBriefingSetup";
 import { VoiceAgentCustomizationForm } from "./VoiceAgentCustomizationForm";
@@ -13,9 +15,15 @@ function label(value: string) {
 }
 
 export default async function OfficeManagerPage() {
-  const [dashboard, callManagement] = await Promise.all([
+  const workspaceId = await getCurrentWorkspaceId();
+  const [dashboard, callManagement, versionResult] = await Promise.all([
     getOfficeManagerDashboard(),
-    getCallManagementDashboard()
+    getCallManagementDashboard(),
+    queryPostgres<{ id: string; version_number: number; change_source: string; created_at: string }>(
+      `select id,version_number,change_source,created_at from public.voice_agent_profile_versions
+       where tenant_id=$1 order by version_number desc limit 8`,
+      [workspaceId]
+    )
   ]);
   const currentOwnerBriefing = dashboard.ownerBriefings.find((item) => item.isCurrentUser);
 
@@ -78,6 +86,24 @@ export default async function OfficeManagerPage() {
                 escalationRules: dashboard.profile.escalationRules
               }}
             />
+            <details className="panel subtle-panel section-actions">
+              <summary>Previous phone-agent versions</summary>
+              <ul className="list">
+                {(versionResult?.rows ?? []).map((version) => (
+                  <li className="list-row" key={version.id}>
+                    <div>
+                      <strong>Version {version.version_number}</strong>
+                      <p className="muted">{version.change_source.replaceAll("_", " ")} / {new Date(version.created_at).toLocaleString()}</p>
+                    </div>
+                    <form action={rollbackVoiceVersionAction}>
+                      <input type="hidden" name="versionId" value={version.id} />
+                      <button className="mini-button" type="submit">Restore this version</button>
+                    </form>
+                  </li>
+                ))}
+                {(versionResult?.rows ?? []).length === 0 ? <li className="list-row"><span className="muted">The first saved change will create version history.</span></li> : null}
+              </ul>
+            </details>
           </>
         ) : (
           <p className="muted">Prepare the office manager first, then customize how it handles phone calls.</p>

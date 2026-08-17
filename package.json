@@ -45,6 +45,7 @@
     "retell:call:preflight": "node scripts/retell-call-certification-preflight.mjs",
     "jobber:oauth:readiness": "node scripts/jobber-oauth-readiness.mjs",
     "jobber:sync:read-only": "npx --yes tsx scripts/sync-jobber-read-model.ts",
+    "call-log:readiness": "node scripts/call-log-bridge-readiness.mjs",
     "credentials:health": "node scripts/provider-credential-health.mjs",
     "tiktok:oauth:readiness": "npx --yes tsx scripts/tiktok-oauth-refresh-readiness.ts",
     "qa:login:rotate": "node scripts/rotate-qa-demo-login.mjs",

@@ -394,6 +394,54 @@ export default async function AiWorkforcePage({
               <p className="muted">Next run: {dateLabel(workflow.nextRunAt)}</p>
               <form action={updateAiAgentWorkflowAction} className="form-stack compact-form">
                 <input name="workflowId" type="hidden" value={workflow.id} />
+                <details>
+                  <summary>Customize this AI employee</summary>
+                  <div className="form-stack section-actions">
+                    <label>
+                      Employee name
+                      <input name="agentName" defaultValue={workflow.agentName} required maxLength={100} />
+                    </label>
+                    <label>
+                      Main responsibility
+                      <textarea name="plainGoal" defaultValue={workflow.plainGoal} required rows={3} maxLength={1200} />
+                    </label>
+                    <label>
+                      Communication style
+                      <input name="tone" defaultValue={workflow.tone} required maxLength={300} />
+                    </label>
+                    <label>
+                      Business knowledge to prioritize
+                      <textarea name="knowledgeFocus" defaultValue={workflow.knowledgeFocus} rows={3} maxLength={1800} />
+                    </label>
+                    <label>
+                      Special instructions
+                      <textarea name="customInstructions" defaultValue={workflow.customInstructions} rows={4} maxLength={3000} />
+                    </label>
+                    <label>
+                      Bring in a person when
+                      <textarea name="escalationRules" defaultValue={workflow.escalationRules} rows={3} maxLength={1800} />
+                    </label>
+                    <label>
+                      How success should be measured
+                      <textarea name="successMeasures" defaultValue={workflow.successMeasures} rows={3} maxLength={1800} />
+                    </label>
+                    <label>
+                      Authority boundaries
+                      <textarea name="authoritySummary" defaultValue={workflow.authoritySummary} rows={3} maxLength={1800} />
+                    </label>
+                    <fieldset>
+                      <legend>Allowed channels</legend>
+                      <div className="inline-actions">
+                        {[["in_app", "In-app"], ["voice", "Phone"], ["website_chat", "Website chat"], ["sms", "Text"], ["email", "Email"]].map(([key, label]) => (
+                          <label className="checkbox-row" key={key}>
+                            <input name={`channel:${key}`} type="checkbox" defaultChecked={workflow.enabledChannels.includes(key)} />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                </details>
                 <div className="two-col">
                   <label>
                     Status

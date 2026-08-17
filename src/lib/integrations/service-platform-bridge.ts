@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 
-export const servicePlatformProviders = ["jobber", "housecall_pro", "highlevel"] as const;
+export const servicePlatformProviders = ["jobber", "housecall_pro", "highlevel", "hubspot", "servicetitan"] as const;
 export type ServicePlatformProvider = typeof servicePlatformProviders[number];
 
 const dataSchema = z.object({

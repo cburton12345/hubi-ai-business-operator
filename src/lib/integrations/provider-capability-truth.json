@@ -143,6 +143,34 @@
       "capabilities": ["connect_account", "read_sync"],
       "fallback": "Use Ferocity independently or import/export records."
     },
+    "highlevel": {
+      "label": "HighLevel",
+      "state": "connect_account",
+      "summary": "A customer-owned location token can write concise Ferocity call notes to mapped contacts; broader coexistence uses the signed bridge.",
+      "capabilities": ["connect_account", "external_call_log"],
+      "fallback": "Use Ferocity independently or configure the signed service-platform bridge."
+    },
+    "housecall_pro": {
+      "label": "Housecall Pro",
+      "state": "limited",
+      "summary": "The signed coexistence bridge is available; native multi-customer write access remains partner-gated.",
+      "capabilities": ["signed_bridge", "external_call_log"],
+      "fallback": "Use Ferocity independently or send the concise call event through approved middleware."
+    },
+    "hubspot": {
+      "label": "HubSpot",
+      "state": "connect_account",
+      "summary": "A customer-owned private-app or OAuth token can create native HubSpot call engagements on mapped contacts.",
+      "capabilities": ["connect_account", "external_call_log"],
+      "fallback": "Use Ferocity independently or configure the signed service-platform bridge."
+    },
+    "servicetitan": {
+      "label": "ServiceTitan",
+      "state": "limited",
+      "summary": "The signed coexistence bridge is available; a native enterprise adapter requires approved customer and provider access.",
+      "capabilities": ["signed_bridge", "external_call_log"],
+      "fallback": "Use Ferocity independently or send approved events through the signed bridge."
+    },
     "quickbooks": {
       "label": "QuickBooks",
       "state": "fallback_only",

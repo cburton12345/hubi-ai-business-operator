@@ -7,6 +7,7 @@ import { logAppError } from "@/lib/observability/log-error";
 import { verifyStripeWebhookSignature } from "@/lib/payments/stripe-webhook-signature";
 import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
 import { applyPlanEntitlements } from "@/lib/billing/apply-plan-entitlements";
+import { recordEarnSettlementStripeEvent } from "@/lib/billing/earn-settlement";
 
 type StripeEvent = {
   id: string;
@@ -387,7 +388,9 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
   const tenantId = textValue(meta, "tenant_id");
   const invoiceId = textValue(meta, "invoice_id");
   const paymentIntentId = textValue(object, "payment_intent") ?? textValue(object, "id");
-  const amountCents = numberValue(object, "amount") ?? numberValue(object, "amount_refunded") ?? Number(textValue(meta, "amount_cents") ?? 0);
+  const amountCents = status === "failed"
+    ? numberValue(object, "amount") ?? Number(textValue(meta, "amount_cents") ?? 0)
+    : numberValue(object, "amount_refunded") ?? numberValue(object, "amount") ?? Number(textValue(meta, "amount_cents") ?? 0);
 
   if (!tenantId || !invoiceId) {
     await queryPostgres(
@@ -400,18 +403,34 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
     return;
   }
 
-  await queryPostgres(
+  const affectedPayments = await queryPostgres<{ id: string; refund_delta_cents: number }>(
     `
-    update public.service_invoice_payments
-    set status = $4,
-        metadata_json = metadata_json || $5::jsonb
-    where tenant_id = $1
-      and invoice_id = $2
-      and provider = 'stripe'
-      and ($3::text is null or provider_payment_id = $3)
+    with prior as materialized (
+      select id,refunded_amount_cents from public.service_invoice_payments
+      where tenant_id=$1 and invoice_id=$2 and provider='stripe'
+        and ($3::text is null or provider_payment_id=$3)
+      for update
+    ), updated as (
+      update public.service_invoice_payments p
+      set status=$4,
+          refunded_amount_cents=case when $4 in ('refunded','partially_refunded') then greatest(p.refunded_amount_cents,$6::integer) else p.refunded_amount_cents end,
+          metadata_json=p.metadata_json || $5::jsonb
+      from prior where p.id=prior.id
+      returning p.id,case when $4 in ('refunded','partially_refunded') then greatest($6::integer-prior.refunded_amount_cents,0) else 0 end refund_delta_cents
+    ) select id,refund_delta_cents from updated
     `,
-    [tenantId, invoiceId, paymentIntentId, status, JSON.stringify({ stripeEventId: event.id, eventType: event.type })]
+    [tenantId, invoiceId, paymentIntentId, status, JSON.stringify({ stripeEventId: event.id, eventType: event.type }), Math.round(amountCents)]
   );
+
+  if (status !== "failed") {
+    for (const payment of affectedPayments?.rows ?? []) {
+      if (payment.refund_delta_cents <= 0) continue;
+      await queryPostgres(
+        `select public.adjust_earn_for_refund($1,$2,$3,'refund')`,
+        [payment.id, payment.refund_delta_cents, `stripe:${event.id}`]
+      );
+    }
+  }
 
   await queryPostgres(
     `
@@ -501,6 +520,26 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
       ]
     );
     await applyPlanEntitlements({ tenantId, planKey, billingStatus: mappedStatus });
+    if (planKey !== "earn") {
+      await queryPostgres(
+        `update public.earn_enrollments set status='terminated',terminated_at=now(),updated_at=now()
+         where tenant_id=$1 and status='active'`,
+        [tenantId]
+      );
+    }
+    if (mappedStatus === "cancelled") {
+      await queryPostgres(
+        `with due as (
+           update public.earn_enrollments set status='active',updated_at=now()
+           where tenant_id=$1 and status='pending' and effective_at<=now()+interval '5 minutes'
+           returning tenant_id,agreement_version,effective_at
+         )
+         update public.billing_subscriptions s set plan_key='earn',status='manual',external_subscription_ref=null,
+           metadata_json=s.metadata_json || jsonb_build_object('earnAgreementVersion',d.agreement_version,'earnEffectiveAt',d.effective_at),updated_at=now()
+         from due d where s.tenant_id=d.tenant_id`,
+        [tenantId]
+      );
+    }
     return;
   }
 
@@ -516,6 +555,20 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
       `,
       [customerId, mappedStatus, subscriptionId, JSON.stringify({ stripeEventId: event.id, stripeStatus: status })]
     );
+    if (mappedStatus === "cancelled") {
+      await queryPostgres(
+        `with due as (
+           update public.earn_enrollments e set status='active',updated_at=now()
+           from public.billing_subscriptions s
+           where s.external_customer_ref=$1 and e.tenant_id=s.tenant_id and e.status='pending' and e.effective_at<=now()+interval '5 minutes'
+           returning e.tenant_id,e.agreement_version,e.effective_at
+         )
+         update public.billing_subscriptions s set plan_key='earn',status='manual',external_subscription_ref=null,
+           metadata_json=s.metadata_json || jsonb_build_object('earnAgreementVersion',d.agreement_version,'earnEffectiveAt',d.effective_at),updated_at=now()
+         from due d where s.tenant_id=d.tenant_id`,
+        [customerId]
+      );
+    }
   }
 }
 
@@ -599,6 +652,24 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (
+      textValue(eventMeta, "ferocity_kind") === "earn_settlement" &&
+      ["invoice.paid", "invoice.payment_failed", "invoice.voided"].includes(event.type)
+    ) {
+      const tenantId = textValue(eventMeta, "tenant_id");
+      const settlementId = textValue(eventMeta, "settlement_id");
+      const invoiceId = textValue(object, "id");
+      if (!tenantId || !settlementId || !invoiceId) throw new Error("Earn settlement webhook metadata is incomplete.");
+      await recordEarnSettlementStripeEvent({
+        eventId: event.id,
+        eventType: event.type as "invoice.paid" | "invoice.payment_failed" | "invoice.voided",
+        invoiceId,
+        tenantId,
+        settlementId,
+        amountPaidCents: numberValue(object, "amount_paid") ?? 0
+      });
+    }
+
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       await handleCheckoutCompleted(event, object);
     }

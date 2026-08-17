@@ -6,6 +6,7 @@ import { listVoiceAgentProviders } from "@/lib/providers/voice-adapters";
 import { PhoneSetupChooser } from "./PhoneSetupChooser";
 import type { PhoneConnection } from "@/lib/phone/phone-connections";
 import {
+  activateVoiceAssistantAction,
   placeVoiceTestCallAction,
   selectVoiceProviderRouteAction,
   syncVoiceAssistantAction
@@ -248,6 +249,13 @@ export default async function ReceptionistSetupPage() {
           <Link className="button secondary-button" href="/app/ai-usage">Usage and limits</Link>
           <Link className="button secondary-button" href="/app/safety-readiness">Safety</Link>
         </div>
+        <div className="setup-step-grid">
+          {[["1", "Save", "Customize the phone agent and save a version."], ["2", "Publish", "Connect the provider to publish the current version."], ["3", "Test", "Complete a consented call; Ferocity verifies the final webhook, duration, and transcript."], ["4", "Activate", "Turn on live answering only after the certified test passes."]].map(([number, title, body]) => (
+            <div className="setup-step-card" key={number}>
+              <span className="step-dot">{number}</span><h3>{title}</h3><p className="muted">{body}</p>
+            </div>
+          ))}
+        </div>
         {liveAdapters.map((provider) => (
         <details className="panel subtle-panel section-actions" key={provider.providerKey}>
           <summary>Place an authorized test call through {provider.displayName}</summary>
@@ -265,6 +273,14 @@ export default async function ReceptionistSetupPage() {
           </form>
         </details>
         ))}
+        <div className="inline-actions">
+          {liveAdapters.map((provider) => (
+            <form action={activateVoiceAssistantAction} key={`activate:${provider.providerKey}`}>
+              <input name="providerKey" type="hidden" value={provider.providerKey} />
+              <button className="button" type="submit">Activate {provider.displayName}</button>
+            </form>
+          ))}
+        </div>
       </section>
     </QueuePageShell>
   );

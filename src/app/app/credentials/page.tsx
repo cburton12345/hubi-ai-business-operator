@@ -23,6 +23,11 @@ export default async function CredentialsPage() {
   const voiceProviders = listVoiceAgentProviders();
   const credentialProviderOptions = [
     { provider: "twilio", displayName: "Customer Twilio SMS" },
+    { provider: "highlevel", displayName: "Customer GoHighLevel" },
+    { provider: "hubspot", displayName: "Customer HubSpot" },
+    { provider: "jobber", displayName: "Customer Jobber" },
+    { provider: "housecall_pro", displayName: "Customer Housecall Pro" },
+    { provider: "servicetitan", displayName: "Customer ServiceTitan" },
     { provider: "openai_byok", displayName: "Customer OpenAI (Advanced)" },
     ...voiceProviders.map((provider) => ({
       provider: provider.providerKey,
@@ -202,6 +207,30 @@ export default async function CredentialsPage() {
                 Save <strong>api_key</strong>, <strong>phone_number</strong>, <strong>phone_number_id</strong>, and <strong>webhook_secret</strong>.
                 Create a Vapi Custom Credential that sends that secret as a Bearer token or X-Vapi-Secret, then save its
                 ID as <strong>webhook_credential_id</strong>.
+              </p>
+            </section>
+            <section className="span-6">
+              <h3>Customer GoHighLevel</h3>
+              <p className="muted">
+                Save a location-level token using the label <strong>private_integration_token</strong> (recommended for one sub-account)
+                or <strong>oauth_access_token</strong>. The token needs <strong>contacts.readonly</strong> and <strong>contacts.write</strong>
+                so Ferocity can attach the approved call summary to an already-mapped contact. Call handoff remains off until enabled in Service Platforms.
+              </p>
+            </section>
+            <section className="span-6">
+              <h3>Jobber / Housecall Pro / ServiceTitan call-log bridge</h3>
+              <p className="muted">
+                When a provider does not expose an approved native call-note API, create a receiving Zapier, Make, or approved middleware webhook.
+                Save its URL as <strong>call_log_webhook_url</strong> and a shared secret as <strong>call_log_webhook_secret</strong>
+                under that provider. Ferocity signs every event and keeps retries isolated from the phone call.
+              </p>
+            </section>
+            <section className="span-6">
+              <h3>Customer HubSpot</h3>
+              <p className="muted">
+                Save a HubSpot private-app token as <strong>private_app_token</strong>, or an OAuth token as <strong>oauth_access_token</strong>.
+                Grant the narrow contact read/write access required by HubSpot&apos;s call-engagement API. Ferocity creates a real call on the
+                already-mapped contact; transcripts and recordings remain in Ferocity by default.
               </p>
             </section>
             <section className="span-6">

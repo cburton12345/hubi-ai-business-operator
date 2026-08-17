@@ -28,7 +28,7 @@ describe("service action workspace safety", () => {
   });
 
   it("does not double-count fast duplicate payment submissions", () => {
-    expect(actionBody("recordManualInvoicePaymentAction")).toContain("existing.created_at >= now() - interval '45 seconds'");
+    expect(actionBody("recordManualInvoicePaymentAction")).toContain("on conflict (tenant_id,idempotency_key)");
     expect(stripeWebhookSource).toContain("on conflict (provider, provider_payment_id) where provider_payment_id is not null do nothing");
     expect(stripeWebhookSource).toContain("from payment p");
   });

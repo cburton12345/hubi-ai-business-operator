@@ -123,10 +123,12 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 ## Phase 8 — P2 incumbent platforms and long-tail adapters
 
 - [x] Jobber read-only OAuth/analysis exists; writes remain off.
-- [ ] Define explicit conflict ownership before any Jobber write-back.
-- [ ] Treat HighLevel and Housecall Pro signed bridges as bridges, not native sync.
+- [x] Define Jobber call-handoff ownership: Ferocity owns the call record, transcript, recording, disposition, and retry state; Jobber receives only the tenant-approved summary/link and must never block call completion.
+- [ ] Certify and implement the narrow optional Jobber call-log write-back surface. Do not use removed note mutations or manufacture fake jobs/leads; require explicit tenant opt-in, narrow scopes, idempotency, retry/dead-letter handling, and reauthorization.
+- [x] Implement the shared `external_call_log` handoff contract once, with asynchronous idempotent delivery, retry/dead-letter handling, explicit tenant opt-in, contact mapping, and transcript-off defaults. HighLevel has the first native contact-note adapter; Jobber and Housecall Pro can use an owner-configured signed bridge while native provider access remains gated.
+- [x] Treat HighLevel and Housecall Pro signed bridges as bridges, not native sync; HighLevel can alternatively use its separately configured native contact-note adapter.
 - [ ] Obtain Housecall Pro partner access before multi-customer OAuth work.
-- [ ] Treat ServiceTitan as enterprise/design-partner work.
+- [x] Expose ServiceTitan as an optional signed coexistence bridge while keeping native ServiceTitan work gated to an approved enterprise/design partner.
 - [ ] Publish Zapier/Make apps only after Ferocity's public action contract is stable and narrowly scoped.
 - [ ] Build requested SMS/voice/AI/CMS providers through the guarded adapter process after demand and official API access are verified.
 
@@ -178,3 +180,8 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 - 2026-08-04: corrected the Office Manager website-chat seed and existing rows; added hosted-page self-canonicals, LocalBusiness/Service JSON-LD, and dynamic indexable sitemap entries; migration 178 applied.
 - 2026-08-04: complete verification passed: 86 test files / 301 tests, production build (69 static pages generated), TypeScript, lint, public-company guard, UI guard (232 routes), feature integration guard (41 workflows), public-claim guard, and provider-truth guard.
 - Frontend production deployment: not performed during this work.
+- 2026-08-16: completed predeploy items 6–10 locally. External call-log delivery/retry/dead-letter tests pass; no customer bridge is enabled yet, so real-provider write-back remains unclaimed.
+- 2026-08-16: Stripe Connect is active with payouts enabled and the prior $1 certification payment is paid. Earn V1 is implemented and security-hardened locally; external Earn settlement remains gated behind controlled live certification.
+- 2026-08-16: the isolated QA business loop is certified across all 13 stages with zero handoff gaps and no live provider actions.
+- 2026-08-16: local load, provider-failure isolation, RLS, dependency, claims, UI, integration, migration, and production-build checks pass. Current production routes also pass read-only smoke testing.
+- 2026-08-16: frontend production deployment was still not performed; explicit owner approval remains required.

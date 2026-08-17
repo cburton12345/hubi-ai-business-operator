@@ -16,15 +16,15 @@ export const publicPlans: PublicPlan[] = [
   {
     key: "calls",
     name: "Ferocity Calls",
-    price: "$49/mo + 25 cents/min",
+    price: "$49/mo + $0.25/completed voice minute",
     priceCents: 4900,
-    fit: "Your AI phone and lead-handling department.",
-    bestFor: "Businesses that want every call answered, understood, recorded, and moved to the right next step without replacing the systems they already use.",
+    fit: "A complete AI phone department without replacing your CRM.",
+    bestFor: "Businesses that want every call answered, understood, and moved to the right next step while keeping the systems they already use.",
     bullets: [
-      "24/7 AI phone answering with your Business Brain",
-      "Recognize customers and qualify new leads",
-      "Book allowed appointments and handle urgent transfers",
-      "Transcripts, summaries, outcomes, and complete call history",
+      "Answer inbound calls around the clock with your Business Brain",
+      "Recognize existing customers and qualify new leads",
+      "Book approved appointments and transfer urgent calls",
+      "Keep transcripts, summaries, outcomes, and call history together",
       "Missed-call recovery and provider-aware follow-up",
       "Upgrade into full Ferocity without migrating data"
     ],
@@ -37,7 +37,8 @@ export const publicPlans: PublicPlan[] = [
       "Owner alerts for calls that need judgment",
       "Bring-your-own or Ferocity-managed Retell connection",
       "SMS through a configured provider, email, and manual-device fallback",
-      "Usage controls and clear per-minute billing",
+      "Usage controls and $0.25 billing per completed voice minute",
+      "Optional CRM and service-platform call handoff as each adapter is connected and certified",
       "Shared Ferocity contacts, scheduling, memory, and communications"
     ]
   },

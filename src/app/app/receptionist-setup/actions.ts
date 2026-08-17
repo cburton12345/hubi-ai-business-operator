@@ -18,6 +18,7 @@ import { getVoiceMaxDurationSeconds } from "@/lib/usage/managed-voice";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const voiceProviderSchema = z.string().trim().min(2).max(120);
+const activateVoiceSchema = z.object({ providerKey: voiceProviderSchema });
 
 const testCallSchema = z.object({
   providerKey: voiceProviderSchema,
@@ -314,7 +315,8 @@ export async function syncVoiceAssistantAction(formData: FormData) {
         assistantId: result.data.assistantId,
         outboundAssistantId: outboundResult.data.assistantId,
         assistantStatus: result.data.status,
-        assistantSyncedAt: new Date().toISOString()
+        assistantSyncedAt: new Date().toISOString(),
+        publishedProfileVersion: await latestVoiceProfileVersion(tenantId, profile.brand_id)
       }),
       provider.data
     ]
@@ -443,11 +445,63 @@ export async function placeVoiceTestCallAction(formData: FormData) {
   await queryPostgres(
     `
     update public.receptionist_setup_checklists
-    set test_status = 'complete', updated_at = now()
+    set test_status = 'in_progress', activation_status = 'not_started', updated_at = now()
     where tenant_id = $1
     `,
     [tenantId]
   );
   revalidatePath("/app/receptionist-setup");
   revalidatePath("/app/calls");
+}
+
+async function latestVoiceProfileVersion(tenantId: string, brandId: string | null) {
+  const result = await queryPostgres<{ version_number: number }>(
+    `select v.version_number from public.voice_agent_profile_versions v
+     join public.office_manager_profiles p on p.id=v.profile_id
+     where v.tenant_id=$1 and ($2::uuid is null or p.brand_id=$2)
+     order by v.version_number desc limit 1`,
+    [tenantId, brandId]
+  );
+  return result?.rows[0]?.version_number ?? null;
+}
+
+export async function activateVoiceAssistantAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = activateVoiceSchema.safeParse({ providerKey: formData.get("providerKey") });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  const readiness = await queryPostgres<{ ready: boolean }>(
+    `select (
+       exists(select 1 from public.receptionist_setup_checklists where tenant_id=$1 and test_status='complete')
+       and exists(select 1 from public.provider_accounts where tenant_id=$1 and provider_key=$2 and status <> 'error'
+         and nullif(metadata_json->>'assistantId','') is not null
+         and nullif(metadata_json->>'lastSuccessfulTestCallAt','') is not null)
+       and exists(select 1 from public.telephony_numbers where tenant_id=$1 and provider_key=$2 and status='active' and inbound_enabled)
+     ) as ready`,
+    [tenantId, parsed.data.providerKey]
+  );
+  if (!readiness?.rows[0]?.ready) return;
+  await queryPostgres(
+    `update public.provider_accounts set live_actions_enabled=true,status='connected',updated_at=now()
+     where tenant_id=$1 and provider_key=$2`,
+    [tenantId, parsed.data.providerKey]
+  );
+  await queryPostgres(
+    `update public.voice_provider_routes set live_actions_enabled=true,status='active',updated_at=now()
+     where tenant_id=$1 and route_family='voice_orchestrator' and primary_provider_key=$2`,
+    [tenantId, parsed.data.providerKey]
+  );
+  await queryPostgres(
+    `update public.office_manager_channel_configs set status='active',live_actions_enabled=true,
+       setup_notes='Voice is active after a successful certified test call.',updated_at=now()
+     where tenant_id=$1 and channel_key='phone' and provider_key=$2`,
+    [tenantId, parsed.data.providerKey]
+  );
+  await queryPostgres(
+    `update public.receptionist_setup_checklists set status='active',activation_status='complete',updated_at=now()
+     where tenant_id=$1`,
+    [tenantId]
+  );
+  revalidatePath("/app/receptionist-setup");
+  revalidatePath("/app/office-manager");
 }

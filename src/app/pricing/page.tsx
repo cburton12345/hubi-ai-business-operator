@@ -11,7 +11,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "Ferocity Pricing | AI Operating System for Businesses",
   description:
-    "Simple paid Ferocity plans for follow-up, jobs, growth, payments, operations, and daily business control.",
+    "Compare Ferocity Calls and complete AI operating-system plans for phone answering, follow-up, jobs, growth, payments, operations, and daily business control.",
   alternates: { canonical: "/pricing" }
 };
 
@@ -38,7 +38,7 @@ const connectedServices = [
   ["Online invoice payments", "Connect Stripe", "Customers receive a secure online checkout. Direct charges enter the business Stripe balance, and Stripe pays out to its connected bank account."],
   ["Advertising", "Create + export now", "Create campaigns and platform-specific creative now. Direct ad-platform execution is enabled only for an activated adapter; manual export remains available."],
   ["Video ads", "Briefs now; rendering connected", "Scripts, hooks, scenes, voiceover drafts, and briefs work without a renderer. Premium rendering requires an activated provider and may use credits."],
-  ["AI receptionist", "Connect a supported provider", "Retell outbound calling is certified. Inbound answering, transfers, booking, and alternate voice engines are enabled only after that exact provider path and phone route pass setup and certification."],
+  ["AI receptionist", "Available with Ferocity Calls", "Retell inbound and approved outbound calling are supported after the workspace, agent, phone route, consent, and billing setup pass verification. Alternate voice engines remain available only through certified adapters."],
   ["Email and SMS", "Supported adapters", "Resend email and Twilio texting can execute after connection. Manual drafts and copy-to-send fallbacks remain available."],
   ["Web publishing", "Prepare + review", "Prepare publish-ready content, use hosted Ferocity pages, or export it. Direct external publishing requires an activated adapter."],
   ["Another provider", "Request an adapter", "Request a reviewed BYO adapter for a niche provider without changing Ferocity’s core business workflows."]
@@ -98,6 +98,19 @@ export default async function PricingPage() {
           </div>
         </section>
 
+        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
+          <div>
+            <p className="eyebrow">Pay when the business gets paid</p>
+            <strong className="price-line">$0/month base</strong>
+            <h2>Ferocity Earn</h2>
+            <p className="muted">0.9% when your business brings an opportunity to Ferocity to manage. 6% when Ferocity creates the opportunity. The two rates never stack.</p>
+          </div>
+          <div>
+            <p className="muted">Earn applies to eligible revenue actually collected—not leads, estimates, contracts, completed jobs, or unpaid invoices. Provider usage, payment processing, and third-party costs remain separate.</p>
+            <Link className="button" href="/start?source=pricing&plan=earn">Ask about Ferocity Earn</Link>
+          </div>
+        </section>
+
         <section className="pricing-grid" id="plans" aria-label="Primary Ferocity plans">
           {primaryPublicPlans.map((plan) => (
             <article className={`panel pricing-card${plan.featured ? " featured-pricing-card" : ""}`} key={plan.key}>
@@ -131,6 +144,24 @@ export default async function PricingPage() {
               </details>
             </article>
           ))}
+        </section>
+
+        <section className="panel feature-split" aria-label="Ferocity Calls plan guidance">
+          <div>
+            <p className="eyebrow">Start with the phone department</p>
+            <h2>Ferocity Calls works on its own—and it is already part of the larger operating system.</h2>
+            <p className="muted">
+              Start with AI phone coverage for $49 per month plus $0.25 per completed voice minute. Calls use the same
+              contacts, Business Brain, scheduling, communications history, and authority controls as full Ferocity.
+            </p>
+          </div>
+          <div>
+            <p className="muted">
+              If the business later adds Starter, Growth, or Operator, its call history and setup stay in place. Connected
+              CRM and field-service handoffs are optional and only turn on after the selected provider adapter and permissions are ready.
+            </p>
+            <Link className="button secondary-button" href="/subscribe?plan=calls">Start Ferocity Calls</Link>
+          </div>
         </section>
 
         <section className="section-actions">

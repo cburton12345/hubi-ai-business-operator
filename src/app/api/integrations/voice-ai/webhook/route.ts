@@ -9,6 +9,7 @@ import { voiceWebhookBodyFromEvent } from "@/lib/phone/voice-webhook-event";
 import { canonicalizeVoiceDisposition, reconcileCallContact } from "@/lib/phone/call-contact-reconciliation";
 import { orchestrateCompletedCall } from "@/lib/phone/post-call-orchestration";
 import { createVoiceAppointment } from "@/lib/phone/voice-scheduling";
+import { safelyEnqueueExternalCallLogHandoffs } from "@/lib/integrations/call-log/enqueue";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest) {
   const providerEventId = safeString(body?.providerEventId ?? body?.eventId) ?? `${provider}:${eventType}:${Date.now()}`;
   const providerCallId = safeString(body?.providerCallId ?? body?.callId ?? body?.externalSessionId) ?? providerEventId;
   const status = cleanStatus(body?.status);
+  const direction = cleanDirection(body?.direction);
   const durationSeconds = Math.round(safeNumber(body?.durationSeconds ?? body?.duration_seconds));
   const providerCostCents = Math.round(safeNumber(body?.providerCostCents ?? body?.provider_cost_cents));
   const title = safeString(body?.title) ?? "Voice provider event received";
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest) {
     ]
   );
 
-  const call = await queryPostgres<{ id: string }>(
+  const call = await queryPostgres<{ id: string; metadata_json: Record<string, unknown> }>(
     `
     insert into public.receptionist_calls (
       tenant_id, brand_id, office_manager_session_id, customer_id, lead_id,
@@ -272,7 +274,7 @@ export async function POST(request: NextRequest) {
         end,
         usage_units = greatest(public.receptionist_calls.usage_units, excluded.usage_units),
         updated_at = now()
-    returning id
+    returning id, metadata_json
     `,
     [
       tenantId,
@@ -282,7 +284,7 @@ export async function POST(request: NextRequest) {
       leadId,
       provider,
       providerCallId,
-      cleanDirection(body?.direction),
+      direction,
       callerNumber,
       safeString(body?.calledNumber ?? body?.to),
       status,
@@ -301,6 +303,7 @@ export async function POST(request: NextRequest) {
   );
 
   const callId = call?.rows[0]?.id ?? null;
+  const isCertifiedTestCall = call?.rows[0]?.metadata_json?.source === "receptionist_setup_test";
   let callDecision: Awaited<ReturnType<typeof safelyEvaluateAndStoreCallManagementDecision>> = null;
 
   if (callId) {
@@ -482,6 +485,37 @@ export async function POST(request: NextRequest) {
         shouldInterruptOwner: callDecision?.shouldInterruptOwner ?? false,
         estimatedValueCents: Math.round(safeNumber(body?.estimatedValueCents))
       });
+      await safelyEnqueueExternalCallLogHandoffs({
+        tenantId,
+        callId,
+        providerCallId,
+        direction,
+        status,
+        outcome,
+        summary,
+        durationSeconds,
+        callerNumber,
+        qualification: cleanQualification(body?.leadQualification),
+        actionItems: safeArray(body?.actionItems),
+        customerId,
+        leadId
+      });
+      if (isCertifiedTestCall) {
+        const testPassed = ["completed", "transferred"].includes(status) && durationSeconds > 0 && Boolean(transcriptText);
+        await queryPostgres(
+          `update public.receptionist_setup_checklists
+           set test_status=$2,activation_status='not_started',updated_at=now()
+           where tenant_id=$1`,
+          [tenantId, testPassed ? "complete" : "needs_attention"]
+        );
+        await queryPostgres(
+          `update public.provider_accounts set metadata_json=metadata_json || $3::jsonb,updated_at=now()
+           where tenant_id=$1 and provider_key=$2`,
+          [tenantId, provider, JSON.stringify(testPassed
+            ? { lastSuccessfulTestCallAt: new Date().toISOString(), lastSuccessfulTestCallId: callId }
+            : { lastTestCallFailedAt: new Date().toISOString(), lastTestCallId: callId })]
+        );
+      }
     }
   }
 

@@ -17,6 +17,13 @@ export type AgentWorkflowRow = {
   nextRunAt: string | null;
   lastRunStatus: string | null;
   metadata: Record<string, unknown>;
+  tone: string;
+  customInstructions: string;
+  knowledgeFocus: string;
+  escalationRules: string;
+  successMeasures: string;
+  enabledChannels: string[];
+  authoritySummary: string;
   openOutputs: number;
 };
 
@@ -291,6 +298,13 @@ export async function getAgentWorkflowDashboard(): Promise<AgentWorkflowDashboar
       nextRunAt: row.next_run_at,
       lastRunStatus: row.last_run_status,
       metadata: row.metadata_json ?? {},
+      tone: typeof row.metadata_json?.tone === "string" ? row.metadata_json.tone : "Clear, practical, helpful, and professional",
+      customInstructions: typeof row.metadata_json?.customInstructions === "string" ? row.metadata_json.customInstructions : "",
+      knowledgeFocus: typeof row.metadata_json?.knowledgeFocus === "string" ? row.metadata_json.knowledgeFocus : "Use the Business Brain, current records, approved SOPs, and industry knowledge.",
+      escalationRules: typeof row.metadata_json?.escalationRules === "string" ? row.metadata_json.escalationRules : "Escalate low-confidence, legal, safety, angry-customer, unusual pricing, and money-movement decisions.",
+      successMeasures: typeof row.metadata_json?.successMeasures === "string" ? row.metadata_json.successMeasures : "Complete useful work accurately, avoid duplicate actions, and surface exceptions promptly.",
+      enabledChannels: Array.isArray(row.metadata_json?.enabledChannels) ? row.metadata_json.enabledChannels.map(String) : ["in_app"],
+      authoritySummary: typeof row.metadata_json?.authoritySummary === "string" ? row.metadata_json.authoritySummary : "Prepare work under the selected approval mode. Never bypass provider, consent, spending, or safety controls.",
       openOutputs: Number(row.open_outputs ?? 0)
     })),
     runs: (runResult?.rows ?? []).map((row) => ({
@@ -1526,7 +1540,21 @@ export async function runDueAgentWorkflows(input: { limit?: number; tenantId?: s
   };
 }
 
-export async function updateAgentWorkflow(input: { workflowId: string; status: string; runMode: string; cadenceKey: string }) {
+export async function updateAgentWorkflow(input: {
+  workflowId: string;
+  status: string;
+  runMode: string;
+  cadenceKey: string;
+  agentName: string;
+  plainGoal: string;
+  tone: string;
+  customInstructions: string;
+  knowledgeFocus: string;
+  escalationRules: string;
+  successMeasures: string;
+  enabledChannels: string[];
+  authoritySummary: string;
+}) {
   const tenantId = await getCurrentWorkspaceId();
   await queryPostgres(
     `
@@ -1534,10 +1562,26 @@ export async function updateAgentWorkflow(input: { workflowId: string; status: s
     set status = $3,
         run_mode = $4,
         cadence_key = $5,
+        agent_name = $6,
+        plain_goal = $7,
+        metadata_json = metadata_json || $8::jsonb,
         next_run_at = case when $3 = 'active' then now() else null end,
         updated_at = now()
     where tenant_id = $1 and id = $2
     `,
-    [tenantId, input.workflowId, input.status, input.runMode, input.cadenceKey]
+    [
+      tenantId, input.workflowId, input.status, input.runMode, input.cadenceKey,
+      input.agentName, input.plainGoal,
+      JSON.stringify({
+        tone: input.tone,
+        customInstructions: input.customInstructions,
+        knowledgeFocus: input.knowledgeFocus,
+        escalationRules: input.escalationRules,
+        successMeasures: input.successMeasures,
+        enabledChannels: input.enabledChannels,
+        authoritySummary: input.authoritySummary,
+        customizedAt: new Date().toISOString()
+      })
+    ]
   );
 }

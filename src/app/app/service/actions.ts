@@ -136,6 +136,7 @@ const paymentRequestSchema = z.object({
 
 const manualPaymentSchema = z.object({
   invoiceId: z.string().uuid(),
+  idempotencyKey: z.string().uuid(),
   amountCents: z.number().int().min(1),
   note: z.string().max(1200).optional()
 });
@@ -1708,6 +1709,7 @@ export async function recordManualInvoicePaymentAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = manualPaymentSchema.safeParse({
     invoiceId: formData.get("invoiceId"),
+    idempotencyKey: formData.get("idempotencyKey"),
     amountCents: dollarsToCents(formData.get("amount")),
     note: String(formData.get("note") ?? "")
   });
@@ -1730,21 +1732,13 @@ export async function recordManualInvoicePaymentAction(formData: FormData) {
     ),
     payment as (
       insert into public.service_invoice_payments (
-        tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, net_cents, currency, paid_at, metadata_json
+        tenant_id, brand_id, customer_id, invoice_id, provider, status, amount_cents, net_cents, currency, paid_at, idempotency_key, metadata_json
       )
-      select tenant_id, brand_id, customer_id, id, 'manual', 'succeeded', payment_cents, payment_cents, 'usd', now(),
+      select tenant_id, brand_id, customer_id, id, 'manual', 'succeeded', payment_cents, payment_cents, 'usd', now(), $5,
         jsonb_build_object('note', $4::text, 'source', 'manual_record')
       from bounded
       where payment_cents > 0
-        and not exists (
-          select 1
-          from public.service_invoice_payments existing
-          where existing.tenant_id = bounded.tenant_id
-            and existing.invoice_id = bounded.id
-            and existing.provider = 'manual'
-            and existing.amount_cents = bounded.payment_cents
-            and existing.created_at >= now() - interval '45 seconds'
-        )
+      on conflict (tenant_id,idempotency_key) where idempotency_key is not null do nothing
       returning id, tenant_id, brand_id, customer_id, invoice_id, amount_cents
     ),
     ledger as (
@@ -1772,7 +1766,7 @@ export async function recordManualInvoicePaymentAction(formData: FormData) {
     )
     select customer_id from updated
     `,
-    [workspaceId, parsed.data.invoiceId, parsed.data.amountCents, parsed.data.note ?? ""]
+    [workspaceId, parsed.data.invoiceId, parsed.data.amountCents, parsed.data.note ?? "", parsed.data.idempotencyKey]
   );
 
   const row = result?.rows[0];

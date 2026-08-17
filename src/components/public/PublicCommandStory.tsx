@@ -32,7 +32,7 @@ export function PublicCommandStory() {
         <div className="public-command-result">
           <strong>Ferocity coordinated the work</strong>
           <span><CheckCircle2 size={15} /> 12 estimates reviewed</span>
-          <span><CheckCircle2 size={15} /> 8 authorized follow-ups advanced</span>
+          <span><CheckCircle2 size={15} /> 8 approved follow-ups prepared</span>
           <span><CheckCircle2 size={15} /> 2 decisions routed to the owner</span>
         </div>
         <Link className="mini-button" href="/demo">

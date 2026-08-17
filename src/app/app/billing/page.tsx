@@ -88,6 +88,7 @@ export default async function BillingPage() {
           <Metric label="Seats" value={billing.subscription?.seats ?? 1} />
         </div>
         <div className="inline-actions">
+          <Link className="button" href="/app/billing/earn">Open Ferocity Earn</Link>
           <Link className="button" href="/pricing">View public plans</Link>
           <Link className="button secondary-button" href="/start?source=billing_upgrade">Request upgrade help</Link>
           <Link className="button secondary-button" href="/app/ai-usage">AI usage</Link>
@@ -122,6 +123,17 @@ export default async function BillingPage() {
             <p className="muted">No Stripe customer is attached to this workspace yet. Start checkout before portal tools appear.</p>
           )}
         </details>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Optional pricing model</p>
+            <h2>Ferocity Earn</h2>
+            <p className="muted">$0/month base. 0.9% on eligible collected revenue your business brings Ferocity to manage, or 6% when Ferocity creates the opportunity. Existing fixed plans remain available.</p>
+          </div>
+          <Link className="button" href="/app/billing/earn">Review Earn</Link>
+        </div>
       </section>
 
       <div className="grid section-actions">

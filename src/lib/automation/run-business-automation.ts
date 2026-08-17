@@ -9,7 +9,9 @@ import { syncConstructionHealthForTenant } from "@/lib/construction/job-health";
 import { queryPostgres } from "@/lib/db/postgres";
 import { runRevenueLoopAutomationForTenant, type RevenueLoopAutomationResult } from "@/lib/revenue-growth/revenue-loop-automation";
 import { syncMaturedUsageChargesForTenant, type MaturedUsageSyncResult } from "@/lib/billing/sync-matured-usage-charges";
+import { syncDueEarnSettlementForTenant, type EarnSettlementSyncResult } from "@/lib/billing/earn-settlement";
 import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-factory";
+import { processExternalCallLogQueueForTenant } from "@/lib/integrations/call-log/processor";
 import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
 import { evaluatePlatformCapacity } from "@/lib/observability/platform-capacity";
 import { safeLogAppError } from "@/lib/observability/log-error";
@@ -25,7 +27,9 @@ export type BusinessAutomationCompletedResult = {
   linkAuthority: Array<{ tenantId: string } & LinkAuthoritySyncResult>;
   readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
   usageBilling: Array<{ tenantId: string } & MaturedUsageSyncResult>;
+  earnSettlements: Array<{ tenantId: string } & EarnSettlementSyncResult>;
   adapterFactory: Array<{ tenantId: string } & Awaited<ReturnType<typeof processAdapterFactoryQueueForTenant>>>;
+  externalCallLogs: Array<{ tenantId: string } & Awaited<ReturnType<typeof processExternalCallLogQueueForTenant>>>;
   goldenBusinessLoops: Array<{ tenantId: string } & GoldenLoopSyncResult>;
   dailyBriefs: Array<{ tenantId: string; status: "ready" | "blocked"; reason?: string }>;
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
@@ -285,7 +289,9 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
   const linkAuthority: BusinessAutomationCompletedResult["linkAuthority"] = [];
   const readyMessages: BusinessAutomationCompletedResult["readyMessages"] = [];
   const usageBilling: BusinessAutomationCompletedResult["usageBilling"] = [];
+  const earnSettlements: BusinessAutomationCompletedResult["earnSettlements"] = [];
   const adapterFactory: BusinessAutomationCompletedResult["adapterFactory"] = [];
+  const externalCallLogs: BusinessAutomationCompletedResult["externalCallLogs"] = [];
   const goldenBusinessLoops: BusinessAutomationCompletedResult["goldenBusinessLoops"] = [];
   const dailyBriefs: BusinessAutomationCompletedResult["dailyBriefs"] = [];
   const tenantFailures: BusinessAutomationCompletedResult["tenantFailures"] = [];
@@ -302,7 +308,9 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
         actionQueueScans.push(await scanActionQueueForTenant(tenantId));
         readyMessages.push({ tenantId, ...(await processReadyMessagesForTenant(tenantId)) });
         usageBilling.push({ tenantId, ...(await syncMaturedUsageChargesForTenant(tenantId)) });
+        earnSettlements.push({ tenantId, ...(await syncDueEarnSettlementForTenant(tenantId)) });
         adapterFactory.push({ tenantId, ...(await processAdapterFactoryQueueForTenant(tenantId, 1)) });
+        externalCallLogs.push({ tenantId, ...(await processExternalCallLogQueueForTenant(tenantId, 10)) });
         goldenBusinessLoops.push({ tenantId, ...(await syncGoldenBusinessLoopsForTenant(tenantId)) });
         dailyBriefs.push(await generateTenantDailyBrief(tenantId));
       } catch (error) {
@@ -345,7 +353,9 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
         linkAuthority,
         readyMessages,
         usageBilling,
+        earnSettlements,
         adapterFactory,
+        externalCallLogs,
         goldenBusinessLoops,
         dailyBriefs,
         aiWorkforce,
@@ -368,7 +378,9 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
     linkAuthority,
     readyMessages,
     usageBilling,
+    earnSettlements,
     adapterFactory,
+    externalCallLogs,
     goldenBusinessLoops,
     dailyBriefs,
     aiWorkforce,

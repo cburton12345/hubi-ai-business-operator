@@ -93,7 +93,7 @@ export default async function HomePage() {
               <Link className="button secondary-button" href={hero.secondaryCtaHref}>{hero.secondaryCtaLabel}</Link>
             </div>
             <div className="trust-strip" aria-label="Ferocity operating assurances">
-              <span><ShieldCheck size={15} /> Authorized work stays within your rules</span>
+              <span><ShieldCheck size={15} /> You authorize routine actions; protected decisions still require approval</span>
               <span><CheckCircle2 size={15} /> Every action remains traceable</span>
               <span><CircleDollarSign size={15} /> Provider spending stays controlled</span>
             </div>
