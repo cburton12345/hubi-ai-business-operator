@@ -8,6 +8,11 @@ import { verifyStripeWebhookSignature } from "@/lib/payments/stripe-webhook-sign
 import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enrollment";
 import { applyPlanEntitlements } from "@/lib/billing/apply-plan-entitlements";
 import { recordEarnSettlementStripeEvent } from "@/lib/billing/earn-settlement";
+import {
+  mapStripeSubscriptionStatus,
+  reconcileStripeSubscriptionInvoice,
+  type StripeSubscriptionInvoiceEvent
+} from "@/lib/billing/subscription-lifecycle";
 
 type StripeEvent = {
   id: string;
@@ -31,14 +36,6 @@ function numberValue(record: Record<string, unknown>, key: string) {
 function metadata(record: Record<string, unknown>) {
   const value = record.metadata;
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function mapStripeSubscriptionStatus(status: string, eventType: string) {
-  if (status === "canceled" || eventType === "customer.subscription.deleted") return "cancelled";
-  if (status === "active") return "active";
-  if (status === "trialing") return "trialing";
-  if (status === "past_due" || status === "unpaid") return "past_due";
-  return "trialing";
 }
 
 async function handleCheckoutCompleted(event: StripeEvent, object: Record<string, unknown>) {
@@ -140,6 +137,8 @@ async function handleCheckoutCompleted(event: StripeEvent, object: Record<string
   const subscriptionId = textValue(object, "subscription");
 
   if (textValue(meta, "purchase_flow") === "public_signup") {
+    const paymentStatus = textValue(object, "payment_status");
+    if (paymentStatus !== "paid" && paymentStatus !== "no_payment_required") return;
     const accessRequestId = textValue(meta, "access_request_id");
     const companyName = textValue(meta, "company_name");
     if (!email || !accessRequestId || !companyName || !subscriptionId || !isSelfServePlanKey(planKey)) {
@@ -680,6 +679,19 @@ export async function POST(request: Request) {
       event.type === "customer.subscription.deleted"
     ) {
       await handleSubscriptionLifecycle(event, object);
+    }
+
+    if ([
+      "invoice.paid",
+      "invoice.payment_failed",
+      "invoice.payment_action_required",
+      "invoice.finalization_failed"
+    ].includes(event.type)) {
+      await reconcileStripeSubscriptionInvoice({
+        eventId: event.id,
+        eventType: event.type as StripeSubscriptionInvoiceEvent,
+        invoice: object
+      });
     }
 
     if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed" || event.type === "payment_intent.payment_failed") {

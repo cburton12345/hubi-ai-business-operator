@@ -18,12 +18,13 @@ export async function applyPlanEntitlements(input: {
             updated_at=now()
       where e.tenant_id=$1
         and e.metadata_json ? 'provisionedFromPlan'
-        and not exists (
+        and ($3 = 'cancelled' or not exists (
           select 1 from public.plan_feature_matrix m
            where m.plan_key=$2 and m.feature_key=e.feature_key and m.included=true
-        )`,
-    [input.tenantId, input.planKey]
+        ))`,
+    [input.tenantId, input.planKey, input.billingStatus]
   );
+  if (input.billingStatus === "cancelled") return;
   await queryPostgres(
     `insert into public.workspace_feature_entitlements (
        tenant_id,feature_key,status,usage_limit,usage_period,metadata_json,updated_at
