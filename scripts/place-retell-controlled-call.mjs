@@ -38,6 +38,7 @@ if (!['customer_outbound', 'public_receptionist'].includes(agentPurpose)) {
 }
 const correlationId = `retell-certification:${crypto.randomUUID()}`;
 const genericSales = runtimeArgv.includes("--generic-sales");
+const qualityRetest = runtimeArgv.includes("--quality-retest");
 const allowFailedRetry = runtimeArgv.includes("--allow-failed-retry");
 const allowTerminalRetry = runtimeArgv.includes("--allow-terminal-retry");
 const certificationVariables = {
@@ -46,16 +47,22 @@ const certificationVariables = {
   business_name: "Ferocity",
   call_purpose: genericSales
     ? "follow up because you expressed interest in learning about Ferocity"
+    : qualityRetest
+      ? "follow up on your Ferocity voice-agent test and confirm that the outbound introduction now clearly explains why Ferocity called"
     : "follow up on your interest in using Ferocity for a roofing business",
   call_scenario: "lead_follow_up",
   desired_outcome: "Answer questions about Ferocity and record a demo or sales callback only if the person requests one.",
   business_context: "Ferocity is an AI operating system for service businesses. It coordinates customer communication, leads, estimates, scheduling, field work, invoicing, payments, reviews, marketing, and approved AI work through one shared Business Brain.",
   contact_context: genericSales
     ? "The person expressed interest in learning about Ferocity. Their industry and specific needs are not yet known, so ask before tailoring the conversation."
+    : qualityRetest
+      ? "Chris tested this voice agent moments ago. The previous outbound call did not clearly explain its purpose. This call is an authorized quality retest. Briefly acknowledge that reason, ask whether the corrected opening is clear, and do not turn this into a generic sales or support intake call."
     : "The person previously said they operate or are evaluating Ferocity for a roofing business and wants to understand how the platform can help.",
   context_quality: "prepared",
   allowed_next_steps: genericSales
     ? "Answer from supplied Ferocity information; ask what kind of business they run and what needs the most help; record a human callback only through the connected tool; never invent a feature, price, appointment, or completed action."
+    : qualityRetest
+      ? "Ask whether the corrected outbound purpose was clear, answer one brief question if asked, record feedback in the transcript, and end naturally. Do not offer an unsolicited sales callback."
     : "Answer from supplied Ferocity information; ask what part of the roofing business needs the most help; record a human callback only through the connected tool; never invent a feature, price, appointment, or completed action."
 };
 const client = new pg.Client({

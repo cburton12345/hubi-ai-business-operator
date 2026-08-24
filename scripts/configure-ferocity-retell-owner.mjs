@@ -159,6 +159,7 @@ try {
     tool_call_strict_mode: true,
     general_prompt: [
       "You are Ferocity's customer-facing AI service coordinator calling a person who consented to this call.",
+      "This is always an OUTBOUND call. The person did not call you, so never open with or fall back to 'What can I help you with?' before you have clearly explained why you called.",
       "Introduce yourself as Ferocity's AI assistant calling on behalf of {{business_name}}. Never pretend to be human.",
       "You are calling {{contact_name}} for this exact reason: {{call_purpose}}.",
       "The call scenario is {{call_scenario}} and the intended outcome is {{desired_outcome}}.",
@@ -166,6 +167,8 @@ try {
       "Verified contact, job, estimate, invoice, or prior-conversation context: {{contact_context}}.",
       "Allowed next steps: {{allowed_next_steps}}.",
       "Stay within the stated purpose. Be warm, concise, natural, and respectful of interruptions. Use short conversational turns and answer the person's question before asking another one.",
+      "Your first spoken turn must include all five items in this order: the person's name when known, that you are Ferocity's AI assistant, the business you represent, the concrete call_purpose, and a brief permission question such as 'Is now an okay time?'. Do not replace this opening with a generic greeting.",
+      "If the person asks why you called, answer immediately and directly with call_purpose and the relevant supplied contact_context. Do not ask what they need, what you can help with, or make them repeat the question.",
       "Do not make the person explain why Ferocity called. State the supplied reason clearly. When context_quality is limited, acknowledge that you have only a brief note, give the specific call_purpose, and ask one useful clarifying question.",
       "Do not invent prices, appointments, promises, policies, job details, or completed actions. Never use missing context as permission to guess.",
       "Do not promise that someone will call back. If the person actually requests a human callback, confirm their name, callback number, and reason, then use create_sales_callback. Say it is recorded only when the tool returns ok true.",
@@ -173,7 +176,7 @@ try {
       "Never request passwords, verification codes, full payment-card details, Social Security numbers, or banking credentials.",
       "Close with the agreed next step without claiming it is completed unless a connected Ferocity tool confirmed it."
     ].join("\n"),
-    begin_message: "Hi {{contact_name}}. I'm Ferocity's AI service coordinator calling on behalf of {{business_name}} about {{call_purpose}}. Is now an okay time?",
+    begin_message: "Hi {{contact_name}}. I'm Ferocity's AI service coordinator calling on behalf of {{business_name}}. The reason for my call is {{call_purpose}}. Is now an okay time?",
     default_dynamic_variables: {
       contact_name: "there",
       contact_type: "contact",
@@ -223,6 +226,23 @@ try {
     max_call_duration_ms: 900000,
     data_storage_setting: "everything_except_pii",
     opt_in_signed_url: true,
+    post_call_analysis_data: [
+      {
+        type: "system-presets",
+        name: "call_summary",
+        description: "Write a brief, factual summary of this outbound call. State why Ferocity called, whether the agent clearly explained that purpose, what the person actually said or requested, and the agreed next step. Do not describe the person as refusing information merely because they asked why the agent called. If the agent failed to explain the purpose, say that plainly and do not blame the person. Do not invent intent, consent, interest, or a completed follow-up."
+      },
+      {
+        type: "system-presets",
+        name: "call_successful",
+        description: "Mark successful only if the agent clearly explained the supplied outbound call purpose and either answered the person's question, recorded a requested next step through a successful tool, or ended respectfully after the person declined. A connected call is not automatically successful."
+      },
+      {
+        type: "system-presets",
+        name: "user_sentiment",
+        description: "Classify the person's sentiment from their words and tone. Treat reasonable confusion caused by an unclear agent opening as confusion, not hostility or unwillingness to cooperate."
+      }
+    ],
     metadata: { ferocityTenantId: tenantId, ferocityBrandId: profile.brand_id, purpose: "customer_outbound_followup" }
   };
   let outboundAssistantId = typeof providerMetadata.outboundAssistantId === "string"
@@ -245,6 +265,17 @@ try {
     });
     outboundAssistantId = agent?.agent_id;
     if (!outboundAssistantId) throw new Error("Retell did not return a customer outbound agent id.");
+  }
+
+  const verifiedOutboundAgent = await retell(`/get-agent/${encodeURIComponent(outboundAssistantId)}`);
+  const verifiedOutboundLlmId = verifiedOutboundAgent?.response_engine?.llm_id;
+  if (!verifiedOutboundLlmId) throw new Error("The synchronized customer outbound agent has no Retell LLM.");
+  const verifiedOutboundLlm = await retell(`/get-retell-llm/${encodeURIComponent(verifiedOutboundLlmId)}`);
+  if (verifiedOutboundLlm?.begin_message !== outboundLlmPayload.begin_message) {
+    throw new Error("Retell did not retain the required customer outbound opening message.");
+  }
+  if (!String(verifiedOutboundLlm?.general_prompt || "").includes("This is always an OUTBOUND call")) {
+    throw new Error("Retell did not retain the customer outbound purpose contract.");
   }
 
   await client.query("begin");
