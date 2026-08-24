@@ -39,6 +39,7 @@ if (!['customer_outbound', 'public_receptionist'].includes(agentPurpose)) {
 const correlationId = `retell-certification:${crypto.randomUUID()}`;
 const genericSales = runtimeArgv.includes("--generic-sales");
 const allowFailedRetry = runtimeArgv.includes("--allow-failed-retry");
+const allowTerminalRetry = runtimeArgv.includes("--allow-terminal-retry");
 const certificationVariables = {
   contact_name: genericSales ? "there" : "Chris",
   contact_type: "lead",
@@ -103,7 +104,8 @@ try {
       order by created_at desc limit 1`,
     [tenantId, toNumber]
   )).rows[0];
-  if (recent && !(allowFailedRetry && recent.status === "failed")) {
+  const retryableTerminalStatus = recent && ["failed", "missed"].includes(recent.status);
+  if (recent && !((allowFailedRetry && recent.status === "failed") || (allowTerminalRetry && retryableTerminalStatus))) {
     throw new Error(`A recent controlled call already exists with status ${recent.status}; refusing a duplicate.`);
   }
 
