@@ -230,7 +230,8 @@ const paidCheckout = await postForm(baseUrl, "/api/billing/checkout", {
   email: setupEmail,
   name: "Launch Smoke",
   companyName,
-  consentToContact: "on"
+  consentToContact: "on",
+  termsAccepted: "on"
 });
 assert([302, 303, 307, 308].includes(paidCheckout.status), `starter checkout expected redirect, got ${paidCheckout.status}`);
 const paidLocation = paidCheckout.headers.get("location") ?? "";
