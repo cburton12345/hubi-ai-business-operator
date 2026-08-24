@@ -54,29 +54,30 @@ const fees = [
 const engineLevels = [
   {
     name: "Starter",
-    title: "Keep the everyday business under control",
-    body: "See what needs attention, prepare follow-up, organize customers and jobs, track money, and turn finished work into reviews and proof."
+    title: "Put the everyday business on one intelligent dashboard",
+    body: "Everyday monitoring and authorized routine execution across leads, customers, jobs, schedules, estimates, invoices, payments, and follow-up—with a clear attention list when judgment is needed."
   },
   {
     name: "Growth",
     title: "Create and convert more demand",
-    body: "Add persistent follow-up, customer retention, reviews, content, search visibility, campaigns, and clear source-to-revenue tracking."
+    body: "Everything in Starter, plus persistent follow-up, customer retention, reviews, content, search visibility, campaigns, and source-to-revenue tracking."
   },
   {
     name: "Operator",
     title: "Have the operating day watched for you",
-    body: "Add proactive monitoring across jobs, estimates, invoices, scheduling, the team, customer communications, and owner decisions."
+    body: "Everything in Growth, plus proactive coordination across jobs, estimates, invoices, scheduling, the team, customer communications, and owner decisions."
   }
 ];
 
 const capabilityComparison = [
-  ["AI role", "Core AI operator", "AI growth department", "AI operating team"],
-  ["Office work", "Leads, reminders, review drafts, daily queue", "Customer service, proof, reviews, and marketing follow-up", "Scheduling, job coordination, collections, and voice readiness"],
-  ["Authority", "Finished-job proof and review drafts", "Proof-to-content bundles and publishing queue", "Reputation monitoring, reporting, and advanced authority management"],
-  ["Marketing", "Recommendations, SEO plan, graphics, and ad/video briefs", "Content Studio, campaigns, SEO/GEO, AI-search visibility, and marketing memory", "Optimization checks, multi-platform launch kits, and provider-ready media work"],
-  ["Estimating", "Core takeoffs and reviewed bid drafts", "Supplier comparisons, preferences, and margin review", "Advanced takeoffs, order lists, and actual-versus-estimate learning"],
-  ["Connected workflows", "Draft and review first", "SMS, email, reviews, publishing, and revenue attribution", "Payments, calendar, dispatch, voice, video, and deeper integrations"],
-  ["Owner control", "Priorities and attention alerts", "Monitoring queues and persisted growth decisions", "Command Center, daily operating brief, escalation, and cross-business decisions"]
+  ["Core workspace", "Dashboard, Ask Ferocity, Business Brain, customer and job records, schedule, estimates, invoices, and payments", "Everything in Starter", "Everything in Growth"],
+  ["AI role", "Core AI operator for everyday work", "Everything in Starter, plus an AI growth department", "Everything in Growth, plus a proactive AI operating team"],
+  ["Office work", "Lead, reminder, estimate, invoice, review-request, and daily-attention monitoring", "Starter capabilities plus retention, proof, reviews, campaigns, and persistent marketing follow-up", "Growth capabilities plus proactive scheduling, job coordination, collections, team monitoring, and voice readiness"],
+  ["Reputation and authority", "Finished-job proof converted into review requests and drafts", "Proof-to-content bundles, service recovery, publishing queues, and search visibility", "Proactive reputation monitoring, reporting, backlink checks, and advanced authority management"],
+  ["Marketing", "Recommendations, a 30-day SEO plan, graphics, and ad/video briefs prepared from business data", "Content Studio, campaigns, SEO/GEO, AI-search visibility, and marketing memory", "Optimization checks, multi-platform launch kits, and provider-ready media work"],
+  ["Estimating", "Core takeoffs and reviewed bid drafts", "Supplier comparisons, saved preferences, and margin review", "Advanced takeoffs, order lists, and actual-versus-estimate learning"],
+  ["Connected execution", "Routine work prepared or executed when the required provider, consent, and authority are in place", "Connected SMS, email, reviews, publishing, and revenue attribution", "Deeper payment, calendar, dispatch, voice, video, and operations connections"],
+  ["Owner control", "Dashboard, Ask Ferocity, priorities, attention alerts, and approval controls", "Growth monitoring queues and remembered growth decisions", "Full Command Center, scheduled operating briefs, escalation, and cross-business decisions"]
 ];
 
 export default async function PricingPage() {
@@ -166,10 +167,11 @@ export default async function PricingPage() {
 
         <section className="section-actions">
           <p className="eyebrow">One engine, three levels</p>
-          <h2>Every plan does real work. Higher plans take on a larger job.</h2>
+          <h2>Every full plan includes the dashboard and core operating system. Higher plans take on a larger job.</h2>
           <p className="muted">
-            Higher plans do not unlock the idea of AI running the work. They give the same core engine more
-            business context, more specialized workflows, more connected systems, and more permission to operate proactively.
+            Starter is not a stripped-down dashboard. It includes the core workspace, Business Brain, Ask Ferocity,
+            customer and job operations, money tracking, and owner controls. Higher plans give that same system more
+            specialized workflows, connected execution, and permission to operate proactively.
           </p>
           <div className="public-grid">
             {engineLevels.map((level) => (
@@ -184,7 +186,8 @@ export default async function PricingPage() {
 
         <section className="panel section-actions">
           <p className="eyebrow">What the upgrades actually unlock</p>
-          <h2>The upgrade is more responsibility—not arbitrary usage limits.</h2>
+          <h2>Nothing disappears as you move up. Each plan adds more work Ferocity can own.</h2>
+          <p className="muted">Every higher tier includes the capabilities below it. Every entry describes work Ferocity handles or supports—not another task for the owner.</p>
           <div className="table-wrap">
             <table>
               <thead>

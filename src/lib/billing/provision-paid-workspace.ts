@@ -3,6 +3,7 @@ import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
+import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
 import type { SelfServePlanKey } from "@/lib/billing/public-plans";
 
@@ -314,6 +315,24 @@ Start with guided setup. Customer messages, calls, publishing, ad spend, and con
       accessRequestId: input.accessRequestId,
       planKey: input.planKey,
       subscriptionId: input.subscriptionId
+    }
+  });
+
+  await raisePlatformAdminAlert({
+    fingerprint: `paid-subscription:${input.subscriptionId}`,
+    family: "customer_growth",
+    type: "subscription_paid",
+    severity: "high",
+    title: `New paid Ferocity subscriber: ${input.companyName}`,
+    body: `${input.companyName} paid for the ${input.planKey} plan. The workspace is active${inviteToken ? " and the owner invitation was sent" : " on the existing owner account"}.`,
+    tenantId,
+    actionUrl: "/app/access-requests",
+    metadata: {
+      accessRequestId: input.accessRequestId,
+      planKey: input.planKey,
+      subscriptionId: input.subscriptionId,
+      customerEmail: input.email,
+      workspaceSlug
     }
   });
 

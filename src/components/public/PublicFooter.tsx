@@ -1,11 +1,14 @@
 import Link from "next/link";
 
 const complianceLinks = [
+  ["Support", "/support"],
   ["Privacy", "/privacy"],
   ["Terms", "/terms"],
   ["SMS Terms", "/sms-terms"],
   ["SMS Consent", "/sms-consent"],
   ["Acceptable Use", "/acceptable-use"],
+  ["Data Processing", "/data-processing-addendum"],
+  ["Subprocessors", "/subprocessors"],
   ["Contact & Compliance", "/contact-compliance"]
 ] as const;
 

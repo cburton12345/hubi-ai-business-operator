@@ -3,6 +3,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
+import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 
 export type FerocityBillingStatus = "active" | "trialing" | "past_due" | "cancelled";
 export type StripeSubscriptionInvoiceEvent =
@@ -13,6 +14,7 @@ export type StripeSubscriptionInvoiceEvent =
 
 type SubscriptionRow = {
   tenant_id: string;
+  tenant_name: string;
   plan_key: string;
   status: string;
   owner_email: string | null;
@@ -62,11 +64,12 @@ export async function reconcileStripeSubscriptionInvoice(input: {
   if (!subscriptionId && !customerId) return { status: "not_tracked" as const };
 
   const subscription = await queryPostgres<SubscriptionRow>(
-    `select s.tenant_id,s.plan_key,s.status,
+    `select s.tenant_id,t.name tenant_name,s.plan_key,s.status,
             (select u.email from public.tenant_users tu join public.users u on u.id=tu.user_id
               where tu.tenant_id=s.tenant_id and tu.status='active' and tu.role in ('owner','admin')
               order by case when tu.role='owner' then 0 else 1 end,tu.created_at limit 1) owner_email
        from public.billing_subscriptions s
+       join public.tenants t on t.id=s.tenant_id
       where ($1::text is not null and s.external_subscription_ref=$1)
          or ($2::text is not null and s.external_customer_ref=$2)
       order by case when s.external_subscription_ref=$1 then 0 else 1 end
@@ -148,6 +151,22 @@ export async function reconcileStripeSubscriptionInvoice(input: {
         metadata: { stripeEventId: input.eventId, stripeInvoiceId: invoiceId }
       });
     }
+  }
+
+  if (!recovered || billingReason !== "subscription_create") {
+    await raisePlatformAdminAlert({
+      fingerprint: `subscription-invoice:${invoiceId}:${input.eventType}`,
+      family: "customer_revenue",
+      type: recovered ? "subscription_payment_received" : "subscription_payment_failed",
+      severity: recovered ? "info" : "high",
+      title: recovered ? `Subscription payment received: ${row.tenant_name}` : `Subscription payment failed: ${row.tenant_name}`,
+      body: recovered
+        ? `Stripe confirmed ${amountDue > 0 ? `$${(amountDue / 100).toFixed(2)}` : "the recurring payment"} for ${row.tenant_name}.`
+        : `Stripe could not complete ${amountDue > 0 ? `the $${(amountDue / 100).toFixed(2)} payment` : "the subscription payment"} for ${row.tenant_name}. The customer was prompted to update payment details.`,
+      tenantId: row.tenant_id,
+      actionUrl: "/app/platform-activity",
+      metadata: { stripeEventId: input.eventId, stripeInvoiceId: invoiceId, subscriptionId, billingReason, amountDue }
+    });
   }
 
   return { status: recovered ? "active" as const : "past_due" as const, tenantId: row.tenant_id };

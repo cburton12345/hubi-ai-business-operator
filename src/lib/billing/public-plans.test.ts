@@ -5,6 +5,7 @@ describe("public Ferocity plans", () => {
   it("sells the core AI engine as part of Starter", () => {
     const starter = getPublicPlan("starter");
 
+    expect(starter?.bullets.some((item) => item.toLowerCase().includes("dashboard"))).toBe(true);
     expect(starter?.bullets.some((item) => item.includes("Ask Ferocity"))).toBe(true);
     expect(starter?.bestFor).toMatch(/handles routine work/i);
     expect(starter?.bestFor).toMatch(/authority level the owner chooses/i);

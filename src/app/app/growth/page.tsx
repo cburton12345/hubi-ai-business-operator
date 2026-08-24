@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { Activity, BarChart3, CheckCircle2, ClipboardCheck, Radio, RefreshCw } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { FacebookConnectorPairing } from "@/components/growth/FacebookConnectorPairing";
 import { getChannelPlaybooks } from "@/lib/growth/channel-playbook";
 import { getGrowthOperatorDashboard } from "@/lib/growth/get-growth-operator";
+import { getGrowthDistributionDashboard } from "@/lib/growth/get-growth-distribution";
 import {
+  addDistributionIdentityAction,
+  addGrowthCommunityAction,
+  captureGrowthOpportunityAction,
+  convertGrowthOpportunityToLeadAction,
+  createGrowthObjectiveAction,
+  queueGrowthResponseAction,
   scanGrowthLoopAction,
   updateContentQualityReviewAction,
   updateFollowUpWorkflowAction,
@@ -22,7 +30,9 @@ function money(cents: number) {
 }
 
 export default async function GrowthOperatorPage() {
-  const [dashboard, playbooks] = await Promise.all([getGrowthOperatorDashboard(), getChannelPlaybooks()]);
+  const [dashboard, playbooks, distribution] = await Promise.all([
+    getGrowthOperatorDashboard(), getChannelPlaybooks(), getGrowthDistributionDashboard()
+  ]);
 
   return (
     <QueuePageShell
@@ -58,7 +68,119 @@ export default async function GrowthOperatorPage() {
         ))}
       </div>
 
+      <div className="grid section-actions">
+        {[
+          ["Relevant opportunities", distribution.weeklySummary.opportunities], ["Distribution actions", distribution.weeklySummary.actions],
+          ["Conversations started", distribution.weeklySummary.conversations], ["Qualified leads", distribution.weeklySummary.leads],
+          ["Estimates", distribution.weeklySummary.estimates], ["Pipeline", money(distribution.weeklySummary.pipelineCents)],
+          ["Won revenue", money(distribution.weeklySummary.wonRevenueCents)]
+        ].map(([label, value]) => <section className="panel span-2 metric" key={String(label)}><span className="muted">{label}</span><strong>{value}</strong><small className="muted">This week</small></section>)}
+        <section className="panel span-12">
+          <h2>Needs you</h2>
+          <div className="inline-actions">
+            <Link className="mini-button" href="/app/approvals">{distribution.needsAttention.pendingApprovals} growth approvals</Link>
+            <span className={`pill ${distribution.needsAttention.verificationRequired ? "high" : "low"}`}>{distribution.needsAttention.verificationRequired} identities need verification</span>
+            <span className={`pill ${distribution.needsAttention.restrictedIdentities ? "high" : "low"}`}>{distribution.needsAttention.restrictedIdentities} restricted identities</span>
+            <span className={`pill ${distribution.needsAttention.connectorWarnings ? "high" : "low"}`}>{distribution.needsAttention.connectorWarnings} connector warnings</span>
+          </div>
+        </section>
+      </div>
+
       <div className="grid">
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>What should Ferocity grow?</h2>
+              <p className="muted">Set the result in plain English. Ferocity uses it to rank opportunities and coordinate work across connected channels.</p>
+            </div>
+            <span className="pill">configure once · override anytime</span>
+          </div>
+          <form action={createGrowthObjectiveAction} className="form-stack">
+            <div className="grid compact-grid">
+              <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+              <label>Objective<input name="name" required placeholder="Book more metal roofing jobs" /></label>
+              <label>Service<input name="serviceFocus" placeholder="Metal roofing" /></label>
+              <label>Area<input name="geography" placeholder="Within 75 miles of Eau Claire" /></label>
+              <label>Lead target<input name="targetLeads" type="number" min="0" placeholder="30" /></label>
+              <label>Revenue target<input name="targetRevenueDollars" type="number" min="0" placeholder="100000" /></label>
+              <label>Time horizon<input name="timeHorizonDays" type="number" min="1" max="730" defaultValue="30" /></label>
+              <label>Default authority<select name="autonomyLevel" defaultValue="suggest"><option value="suggest">Suggest</option><option value="approve">Ask before acting</option><option value="autopilot">Autopilot where allowed</option></select></label>
+            </div>
+            <button className="button" type="submit">Start objective</button>
+          </form>
+          <ul className="list section-actions">
+            {distribution.objectives.map((objective) => <li className="list-row" key={objective.id}><div><h3>{objective.name}</h3><p className="muted">{objective.brandName} · {objective.serviceFocus ?? "All services"} · {objective.geography} · {objective.timeHorizonDays} days</p></div><div className="inline-actions"><span className="pill">{objective.autonomyLevel}</span><span className="pill">{objective.status}</span>{objective.targetLeads != null ? <span className="pill">{objective.targetLeads} leads</span> : null}{objective.targetRevenueCents != null ? <span className="pill">{money(objective.targetRevenueCents)}</span> : null}</div></li>)}
+            {distribution.objectives.length === 0 ? <li className="list-row"><span className="muted">No growth objective yet. Start with the business result, not a channel.</span></li> : null}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Distribution identities</h2>
+          <p className="muted">Map legitimate customer-owned accounts. Adding an identity never claims it is connected or enables live actions.</p>
+          <form action={addDistributionIdentityAction} className="form-stack compact-form">
+            <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+            <label>Channel<select name="channelKey" required>{distribution.channelCatalog.map((channel) => <option value={channel.key} key={channel.key}>{channel.label}</option>)}</select></label>
+            <label>Account or page name<input name="displayName" required placeholder="Acme Roofing" /></label>
+            <label>Profile URL<input name="profileUrl" type="url" placeholder="https://…" /></label>
+            <label>Identity role<select name="identityRole" defaultValue="distribution"><option value="primary">Primary business identity</option><option value="distribution">Distribution identity</option><option value="personal">Personal profile (suggestions only)</option></select></label>
+            <label>Authority<select name="autonomyLevel" defaultValue="suggest"><option value="suggest">Suggest</option><option value="approve">Approval required</option><option value="autopilot">Autopilot where connected and safe</option></select></label>
+            <button className="mini-button" type="submit">Add identity</button>
+          </form>
+          <ul className="list section-actions">
+            {distribution.identities.map((identity) => <li className="list-row" key={identity.id}><div><h3>{identity.displayName}</h3><p className="muted">{identity.brandName} · {identity.channelKey} · {identity.identityRole} · {identity.connectionMode}</p>{identity.riskState === "verification_required" ? <p><strong>{identity.channelKey} needs your attention.</strong> Activity is paused. Complete verification directly with the platform; never send verification credentials to Ferocity.</p> : null}{identity.channelKey === "facebook" ? <FacebookConnectorPairing identityId={identity.id} /> : null}</div><div className="inline-actions"><span className="pill">{identity.authorizationStatus}</span><span className={`pill ${identity.riskState === "healthy" ? "low" : "high"}`}>{identity.riskState}</span><span className="pill">{identity.recentActions} recent actions</span><span className="pill">{identity.recentWarnings} warnings</span></div></li>)}
+          </ul>
+        </section>
+
+        <section className="panel span-6">
+          <h2>Community intelligence</h2>
+          <p className="muted">Remember where a business belongs, why the community matters, and the freshest known rules before suggesting a post.</p>
+          <form action={addGrowthCommunityAction} className="form-stack compact-form">
+            <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+            <label>Channel<select name="channelKey" required>{distribution.channelCatalog.filter((channel) => ["facebook", "reddit", "nextdoor", "linkedin", "craigslist"].includes(channel.key)).map((channel) => <option value={channel.key} key={channel.key}>{channel.label}</option>)}</select></label>
+            <label>Community<input name="name" required placeholder="Eau Claire homeowners" /></label>
+            <label>URL<input name="url" type="url" placeholder="https://…" /></label>
+            <label>Area<input name="geography" placeholder="Eau Claire County" /></label>
+            <label>Relevance (0–100)<input name="relevanceScore" type="number" min="0" max="100" defaultValue="50" /></label>
+            <label>Known rules<textarea name="rulesText" rows={3} placeholder="Owner-supplied rules or a concise verified summary" /></label>
+            <button className="mini-button" type="submit">Remember community</button>
+          </form>
+          <ul className="list section-actions">
+            {distribution.communities.map((community) => <li className="list-row" key={community.id}><div><h3>{community.name}</h3><p className="muted">{community.brandName} · {community.channelKey} · {community.postingPolicy}</p></div><span className="pill">{community.relevanceScore}% match</span></li>)}
+          </ul>
+        </section>
+
+        <section className="panel span-12">
+          <h2>Demand opportunities</h2>
+          <p className="muted">Capture expressed demand from official feeds, assisted review, or a pasted source. Ferocity scores context, preserves provenance, and moves approved opportunities into the existing lead system.</p>
+          <form action={captureGrowthOpportunityAction} className="form-stack">
+            <div className="grid compact-grid">
+              <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+              <label>Channel<select name="channelKey" required>{distribution.channelCatalog.map((channel) => <option value={channel.key} key={channel.key}>{channel.label}</option>)}</select></label>
+              <label>Source URL<input name="sourceUrl" type="url" placeholder="Optional public source" /></label>
+              <label>Service match<input name="serviceFocus" placeholder="Metal roofing" /></label>
+              <label>Area match<input name="geography" placeholder="Eau Claire" /></label>
+              <label>Person or business name<input name="authorLabel" placeholder="Optional" /></label>
+              <label>Platform identity ID<input name="externalActorId" placeholder="Optional stable provider ID" /></label>
+            </div>
+            <label>What Ferocity noticed<textarea name="bodyExcerpt" required rows={3} placeholder="Paste the relevant request or conversation excerpt" /></label>
+            <label>Suggested response<textarea name="suggestedResponse" rows={3} placeholder="Optional. Unsupported claims are blocked for review." /></label>
+            <label>Verified business claims<textarea name="verifiedClaims" rows={2} placeholder="One proven claim per line, if needed by the response" /></label>
+            <button className="mini-button" type="submit">Analyze opportunity</button>
+          </form>
+          <ul className="list section-actions">
+            {distribution.opportunities.map((opportunity) => <li className="list-row" key={opportunity.id}><div><h3>{opportunity.detectedIntent.replaceAll("_", " ")}</h3><p>{opportunity.bodyExcerpt}</p><p className="muted">{opportunity.brandName} · {opportunity.channelKey} · {[opportunity.serviceFocus, opportunity.geographyText].filter(Boolean).join(" · ")}</p>{opportunity.suggestedResponse ? <p>Prepared: {opportunity.suggestedResponse}</p> : null}</div><div className="inline-actions"><span className="pill high">{opportunity.overallScore}</span><span className="pill">{opportunity.status}</span>{opportunity.suggestedResponse && !["blocked", "queued", "responded"].includes(opportunity.status) ? <form action={queueGrowthResponseAction}><input name="opportunityId" type="hidden" value={opportunity.id} /><button className="mini-button" type="submit">Send to approval</button></form> : null}{opportunity.leadId ? <Link className="mini-button" href={`/app/leads/${opportunity.leadId}`}>Open lead</Link> : <form action={convertGrowthOpportunityToLeadAction}><input name="opportunityId" type="hidden" value={opportunity.id} /><button className="mini-button" type="submit" disabled={opportunity.status === "blocked"}>Move to Leads</button></form>}</div></li>)}
+            {distribution.opportunities.length === 0 ? <li className="list-row"><span className="muted">No demand opportunities captured yet.</span></li> : null}
+          </ul>
+        </section>
+
+        <section className="panel span-12">
+          <h2>Channel capability truth</h2>
+          <p className="muted">Official, assisted, and manual capabilities are shown separately. Ferocity never labels an account or action live merely because a setup screen exists.</p>
+          <div className="playbook-grid">
+            {distribution.channelCatalog.map((channel) => <section className="playbook-card" key={channel.key}><div><h3>{channel.label}</h3><p className="muted">{channel.mode.replaceAll("_", " ")} · {channel.providerKey} · approval: {channel.approval}</p><p>{channel.note}</p></div><PlaybookList title="Available path" items={channel.capabilities.length ? channel.capabilities : ["No executable capability certified"]} /><PlaybookList title="Authentication" items={channel.authentication} /><PlaybookList title="Inbound events" items={channel.inboundEvents.length ? channel.inboundEvents : ["No inbound event certified"]} /><PlaybookList title="Account protection" items={channel.riskConstraints} /><details><summary>Unsupported capabilities</summary><p className="muted">{channel.unsupported.join(", ") || "None"}</p></details></section>)}
+          </div>
+        </section>
+
         <section className="panel span-12">
           <div className="list-row flush-row">
             <div>

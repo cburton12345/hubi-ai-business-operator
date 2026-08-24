@@ -1,9 +1,13 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getEmployeeAccessContext } from "@/lib/employee/employee-access";
 
-function dateTime(value: Date | null) {
-  if (!value) return "Not scheduled";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(value);
+function dateTime(value: Date | null, language: "en" | "es" = "en") {
+  if (!value) return language === "es" ? "Sin horario" : "Not scheduled";
+  return new Intl.DateTimeFormat(language === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(value);
+}
+
+function money(cents: number, language: "en" | "es") {
+  return new Intl.NumberFormat(language === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 export async function getEmployeeWorkday() {
@@ -14,11 +18,14 @@ export async function getEmployeeWorkday() {
       metrics: { workingNow: 0, scheduledToday: 0, openAssignments: 0, needsReview: 0 },
       workers: [],
       assignments: [],
-      openTimeEntry: null
+      openTimeEntry: null,
+      timeEntries: [],
+      cashAdvances: [],
+      language: "en" as const
     };
   }
 
-  const [metricsResult, workerResult, assignmentsResult, timeResult] = await Promise.all([
+  const [metricsResult, workerResult, assignmentsResult, timeResult, recentTimeResult, advancesResult] = await Promise.all([
     queryPostgres<{
       working_now: string;
       scheduled_today: string;
@@ -78,9 +85,10 @@ export async function getEmployeeWorkday() {
       trade: string | null;
       availability_status: string;
       hourly_rate_cents: number;
+      preferred_language: "en" | "es";
     }>(
       `
-      select id, name, role_type, trade, availability_status, hourly_rate_cents
+      select id, name, role_type, trade, availability_status, hourly_rate_cents, preferred_language
       from public.operations_workers
       where tenant_id = $1 and id = $2 and availability_status <> 'inactive'
       limit 1
@@ -135,11 +143,36 @@ export async function getEmployeeWorkday() {
       limit 1
       `,
       [access.tenantId, access.workerId]
+    ),
+    queryPostgres<{
+      id: string; assignment: string | null; clock_in_at: Date; clock_out_at: Date | null;
+      clock_in_location: string | null; clock_out_location: string | null; break_minutes: number;
+      notes: string | null; status: string;
+    }>(
+      `select time.id, assignment.title as assignment, time.clock_in_at, time.clock_out_at,
+              time.clock_in_location, time.clock_out_location, time.break_minutes, time.notes, time.status
+       from public.operations_time_entries time
+       left join public.operations_assignments assignment
+         on assignment.id = time.assignment_id and assignment.tenant_id = time.tenant_id
+       where time.tenant_id = $1 and time.worker_id = $2
+       order by time.clock_in_at desc limit 14`,
+      [access.tenantId, access.workerId]
+    ),
+    queryPostgres<{
+      id: string; amount_cents: number; advanced_at: string; payment_method: string;
+      purpose: string | null; status: string; employee_response_note: string | null;
+    }>(
+      `select id, amount_cents, advanced_at::text, payment_method, purpose, status, employee_response_note
+       from public.employee_cash_advances
+       where tenant_id = $1 and worker_id = $2 and status <> 'void'
+       order by advanced_at desc, created_at desc limit 20`,
+      [access.tenantId, access.workerId]
     )
   ]);
 
   const metric = metricsResult?.rows[0];
   const worker = workerResult?.rows[0];
+  const language = worker?.preferred_language === "es" ? "es" : "en";
   return {
     access,
     metrics: {
@@ -165,7 +198,7 @@ export async function getEmployeeWorkday() {
       worker: row.worker ?? access.workerName ?? "Assigned employee",
       crew: row.crew ?? "No crew",
       jobsite: row.jobsite ?? "No jobsite",
-      schedule: `${dateTime(row.scheduled_start)} - ${row.scheduled_end ? dateTime(row.scheduled_end) : "open"}`,
+      schedule: `${dateTime(row.scheduled_start, language)} - ${row.scheduled_end ? dateTime(row.scheduled_end, language) : language === "es" ? "abierto" : "open"}`,
       status: row.status,
       priority: row.priority,
       tasks: Number(row.task_count ?? 0),
@@ -175,8 +208,33 @@ export async function getEmployeeWorkday() {
       ? {
           id: timeResult.rows[0].id,
           assignmentId: timeResult.rows[0].assignment_id,
-          clockIn: dateTime(timeResult.rows[0].clock_in_at)
+          clockIn: dateTime(timeResult.rows[0].clock_in_at, language)
         }
-      : null
+      : null,
+    timeEntries: (recentTimeResult?.rows ?? []).map((row) => {
+      const end = row.clock_out_at ?? new Date();
+      const hours = Math.max(0, (end.getTime() - row.clock_in_at.getTime()) / 36e5 - row.break_minutes / 60).toFixed(2);
+      return {
+        id: row.id,
+        assignment: row.assignment ?? (language === "es" ? "Sin trabajo seleccionado" : "No job selected"),
+        clockIn: dateTime(row.clock_in_at, language),
+        clockOut: row.clock_out_at ? dateTime(row.clock_out_at, language) : language === "es" ? "Trabajando ahora" : "Working now",
+        startLocation: row.clock_in_location ?? "—",
+        endLocation: row.clock_out_location ?? "—",
+        hours,
+        notes: row.notes ?? (language === "es" ? "Sin nota de trabajo" : "No work note"),
+        status: row.status
+      };
+    }),
+    cashAdvances: (advancesResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      amount: money(row.amount_cents, language),
+      advancedAt: row.advanced_at,
+      paymentMethod: row.payment_method,
+      purpose: row.purpose ?? (language === "es" ? "Sin nota" : "No note"),
+      status: row.status,
+      responseNote: row.employee_response_note ?? ""
+    })),
+    language
   };
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PublicVisitTracker } from "@/components/public/PublicVisitTracker";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -99,6 +100,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
+        <PublicVisitTracker />
         {children}
       </body>
     </html>

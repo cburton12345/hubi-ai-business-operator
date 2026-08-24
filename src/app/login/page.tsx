@@ -18,7 +18,10 @@ export default async function LoginPage({
           <p className="muted">Use your business account. Need access first? Start from the public site.</p>
           <div className="button-row">
             <a className="button secondary-button" href="/start?source=login">
-              Request access
+              Start a business account
+            </a>
+            <a className="button secondary-button" href="/employee/join">
+              Request employee access
             </a>
             <a className="button secondary-button" href="/install">
               Install app

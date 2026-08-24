@@ -17,12 +17,15 @@ const publicRoutes = [
   { path: "/integrations", priority: 0.7 },
   { path: "/about", priority: 0.65 },
   { path: "/start", priority: 0.6 },
+  { path: "/support", priority: 0.4 },
   { path: "/privacy", priority: 0.3 },
   { path: "/terms", priority: 0.3 },
   { path: "/sms-terms", priority: 0.3 },
   { path: "/sms-consent", priority: 0.3 },
   { path: "/sms-opt-in", priority: 0.3 },
   { path: "/acceptable-use", priority: 0.3 },
+  { path: "/data-processing-addendum", priority: 0.3 },
+  { path: "/subprocessors", priority: 0.3 },
   { path: "/contact-compliance", priority: 0.3 }
 ];
 

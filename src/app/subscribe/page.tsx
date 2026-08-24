@@ -116,10 +116,15 @@ export default async function SubscribePage({
                 <input name="consentToContact" type="checkbox" required />
                 <span>I agree Ferocity can email me the receipt, account activation link, and essential service notices.</span>
               </label>
+              <label className="checkbox-row">
+                <input name="termsAccepted" type="checkbox" required />
+                <span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span>
+              </label>
 
               <button className="button" type="submit">
                 Continue to secure checkout <ArrowRight size={16} />
               </button>
+              <p className="muted">Your subscription renews monthly until canceled. Cancel future renewal from the billing portal.</p>
               <p className="muted">
                 {isCallsPlan
                   ? "The subscription is $49 per month plus $0.25 per completed voice minute. During setup, choose the phone route, business rules, recording settings, transfers, scheduling authority, and follow-up behavior."

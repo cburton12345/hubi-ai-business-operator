@@ -10,6 +10,7 @@ function n(value: unknown) {
 }
 
 export type OperationsWorkforceDashboard = {
+  employeeJoin: { companyCode: string; joinPath: string };
   metrics: {
     workingNow: number;
     scheduledToday: number;
@@ -25,7 +26,7 @@ export type OperationsWorkforceDashboard = {
     recurringExpenses: number;
     recurringDue: number;
   };
-  workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string }[];
+  workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string; email: string; language: string; access: string }[];
   assignments: { id: string; serviceVisitId: string | null; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; aiNotes: string }[];
   timeEntries: { id: string; worker: string; assignment: string; clockIn: string; clockOut: string; hours: string; status: string; verified: string }[];
   expenses: { id: string; vendor: string; amount: string; category: string; status: string; worker: string; summary: string }[];
@@ -37,6 +38,8 @@ export type OperationsWorkforceDashboard = {
   customerDrafts: { id: string; channel: string; recipient: string; subject: string; body: string; status: string }[];
   receiptExtractions: { id: string; vendor: string; total: string; confidence: string; status: string }[];
   recurringExpenses: { id: string; vendor: string; amount: string; cadence: string; nextDueDate: string; category: string; mode: string; status: string }[];
+  cashAdvances: { id: string; worker: string; amount: string; date: string; method: string; purpose: string; status: string }[];
+  employeeAccessRequests: { id: string; name: string; email: string; phone: string; language: string; requestedAt: string; status: string }[];
   providers: { id: string; provider: string; type: string; status: string }[];
   aiDispatcher: { title: string; detail: string; priority: "low" | "normal" | "high"; action: string }[];
   roleViews: { role: string; sees: string[] }[];
@@ -54,6 +57,8 @@ function hoursBetween(start: Date, end: Date | null, breaks: number) {
 
 export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkforceDashboard> {
   const tenantId = await getCurrentWorkspaceId();
+  const workspaceResult = await queryPostgres<{ slug: string }>("select slug from public.tenants where id = $1 limit 1", [tenantId]);
+  const companyCode = workspaceResult?.rows[0]?.slug ?? "";
   const [
     metricsResult,
     workersResult,
@@ -68,7 +73,9 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
     customerDraftResult,
     providerResult,
     receiptExtractionResult,
-    recurringExpenseResult
+    recurringExpenseResult,
+    cashAdvanceResult,
+    employeeAccessRequestResult
   ] = await Promise.all([
     queryPostgres<{
       working_now: string;
@@ -110,9 +117,9 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       `,
       [tenantId]
     ),
-    queryPostgres<{ id: string; name: string; role_type: string; trade: string | null; availability_status: string; hourly_rate_cents: number }>(
+    queryPostgres<{ id: string; name: string; role_type: string; trade: string | null; availability_status: string; hourly_rate_cents: number; email: string | null; preferred_language: string; user_id: string | null }>(
       `
-      select id, name, role_type, trade, availability_status, hourly_rate_cents
+      select id, name, role_type, trade, availability_status, hourly_rate_cents, email, preferred_language, user_id
       from public.operations_workers
       where tenant_id = $1 and availability_status <> 'inactive'
       order by name
@@ -286,6 +293,28 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       limit 12
       `,
       [tenantId]
+    ),
+    queryPostgres<{
+      id: string; worker: string; amount_cents: number; advanced_at: string; payment_method: string;
+      purpose: string | null; status: string;
+    }>(
+      `select advance.id, worker.name as worker, advance.amount_cents, advance.advanced_at::text,
+              advance.payment_method, advance.purpose, advance.status
+       from public.employee_cash_advances advance
+       join public.operations_workers worker on worker.id = advance.worker_id and worker.tenant_id = advance.tenant_id
+       where advance.tenant_id = $1 and advance.status <> 'void'
+       order by advance.advanced_at desc, advance.created_at desc limit 20`,
+      [tenantId]
+    ),
+    queryPostgres<{
+      id: string; name: string; email: string; phone: string | null; preferred_language: string;
+      created_at: Date; status: string;
+    }>(
+      `select id, name, email, phone, preferred_language, created_at, status
+       from public.employee_access_requests
+       where tenant_id = $1 and status = 'pending'
+       order by created_at asc limit 30`,
+      [tenantId]
     )
   ]);
   const metrics = metricsResult?.rows[0];
@@ -294,6 +323,10 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
   const workingNow = n(metrics?.working_now);
 
   return {
+    employeeJoin: {
+      companyCode,
+      joinPath: `/employee/join?company=${encodeURIComponent(companyCode)}`
+    },
     metrics: {
       workingNow,
       scheduledToday: n(metrics?.scheduled_today),
@@ -315,7 +348,10 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       roleType: row.role_type,
       trade: row.trade ?? "General",
       status: row.availability_status,
-      hourlyRate: row.hourly_rate_cents ? dollars(row.hourly_rate_cents) : "No rate"
+      hourlyRate: row.hourly_rate_cents ? dollars(row.hourly_rate_cents) : "No rate",
+      email: row.email ?? "No email",
+      language: row.preferred_language === "es" ? "Spanish" : "English",
+      access: row.user_id ? "Linked" : row.email ? "Invite available" : "Email needed"
     })),
     assignments: (assignmentsResult?.rows ?? []).map((row) => ({
       id: row.id,
@@ -413,6 +449,24 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       nextDueDate: row.next_due_date ?? "No due date",
       category: row.category,
       mode: row.autopost_mode,
+      status: row.status
+    })),
+    cashAdvances: (cashAdvanceResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      worker: row.worker,
+      amount: dollars(row.amount_cents),
+      date: row.advanced_at,
+      method: row.payment_method,
+      purpose: row.purpose ?? "No note",
+      status: row.status
+    })),
+    employeeAccessRequests: (employeeAccessRequestResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone ?? "No phone",
+      language: row.preferred_language === "es" ? "Spanish" : "English",
+      requestedAt: dateTime(row.created_at),
       status: row.status
     })),
     providers: (providerResult?.rows ?? []).map((row) => ({

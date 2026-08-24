@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Ferocity Facebook Assistant",
+  "version": "0.1.0",
+  "description": "A review-first connector for legitimate customer-owned Facebook work.",
+  "permissions": ["activeTab", "storage", "tabs", "clipboardWrite"],
+  "host_permissions": ["https://ferocity.live/*", "http://localhost:3000/*", "https://www.facebook.com/*", "https://web.facebook.com/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Ferocity Facebook Assistant" },
+  "content_scripts": [{
+    "matches": ["https://www.facebook.com/*", "https://web.facebook.com/*"],
+    "js": ["content-script.js"],
+    "run_at": "document_idle"
+  }]
+}

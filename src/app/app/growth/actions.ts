@@ -6,6 +6,8 @@ import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { findUnverifiedClaims, getGrowthChannel, scoreGrowthOpportunity, supportedCapabilities } from "@/lib/growth/distribution-engine";
+import { recordGrowthEvent } from "@/lib/growth/growth-events";
 
 const qualityReviewSchema = z.object({
   reviewId: z.string().min(1),
@@ -36,6 +38,48 @@ const insightStatusSchema = z.object({
 const seoOpportunityStatusSchema = z.object({
   opportunityId: z.string().min(1),
   status: z.enum(["open", "planned", "draft_created", "in_review", "published_manually", "paused", "done", "dismissed"])
+});
+
+const objectiveSchema = z.object({
+  brandId: z.string().uuid(),
+  name: z.string().trim().min(3).max(120),
+  serviceFocus: z.string().trim().max(160).optional(),
+  geography: z.string().trim().max(240).optional(),
+  targetLeads: z.coerce.number().int().min(0).max(100000).optional(),
+  targetRevenueDollars: z.coerce.number().min(0).max(100000000).optional(),
+  timeHorizonDays: z.coerce.number().int().min(1).max(730),
+  autonomyLevel: z.enum(["suggest", "approve", "autopilot"])
+});
+
+const identitySchema = z.object({
+  brandId: z.string().uuid(),
+  channelKey: z.string().trim().min(1).max(80),
+  displayName: z.string().trim().min(2).max(160),
+  profileUrl: z.string().trim().url().max(1000).optional().or(z.literal("")),
+  identityRole: z.enum(["primary", "distribution", "personal"]),
+  autonomyLevel: z.enum(["suggest", "approve", "autopilot"])
+});
+
+const communitySchema = z.object({
+  brandId: z.string().uuid(),
+  channelKey: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(2).max(200),
+  url: z.string().trim().url().max(1000).optional().or(z.literal("")),
+  geography: z.string().trim().max(240).optional(),
+  relevanceScore: z.coerce.number().int().min(0).max(100),
+  rulesText: z.string().trim().max(5000).optional()
+});
+
+const opportunitySchema = z.object({
+  brandId: z.string().uuid(),
+  channelKey: z.string().trim().min(1).max(80),
+  sourceUrl: z.string().trim().url().max(1000).optional().or(z.literal("")),
+  bodyExcerpt: z.string().trim().min(8).max(4000),
+  serviceFocus: z.string().trim().max(160).optional(),
+  geography: z.string().trim().max(240).optional(),
+  suggestedResponse: z.string().trim().max(4000).optional(),
+  authorLabel: z.string().trim().max(160).optional(),
+  externalActorId: z.string().trim().max(500).optional()
 });
 
 async function insertTimeline(input: {
@@ -705,4 +749,285 @@ export async function updateSeoOpportunityAction(formData: FormData) {
   }
   revalidatePath("/app/growth");
   revalidatePath("/app/seo");
+}
+
+export async function createGrowthObjectiveAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = objectiveSchema.safeParse({
+    brandId: formData.get("brandId"), name: formData.get("name"), serviceFocus: formData.get("serviceFocus") || undefined,
+    geography: formData.get("geography") || undefined, targetLeads: formData.get("targetLeads") || undefined,
+    targetRevenueDollars: formData.get("targetRevenueDollars") || undefined, timeHorizonDays: formData.get("timeHorizonDays"),
+    autonomyLevel: formData.get("autonomyLevel")
+  });
+  if (!parsed.success) return;
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  const row = await queryPostgres<{ id: string }>(`
+    insert into public.growth_objectives (
+      tenant_id, brand_id, name, service_focus, geography_json, target_leads, target_revenue_cents,
+      time_horizon_days, autonomy_level, status, created_by_user_id
+    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, 'active', $10)
+    returning id
+  `, [workspaceId, parsed.data.brandId, parsed.data.name, parsed.data.serviceFocus ?? null,
+    JSON.stringify(parsed.data.geography ? { description: parsed.data.geography } : {}), parsed.data.targetLeads ?? null,
+    parsed.data.targetRevenueDollars == null ? null : Math.round(parsed.data.targetRevenueDollars * 100),
+    parsed.data.timeHorizonDays, parsed.data.autonomyLevel, session?.userId ?? null]);
+  if (row?.rows[0]) await insertTimeline({
+    tenantId: workspaceId, brandId: parsed.data.brandId, family: "marketing", type: "growth_objective_created",
+    title: `Growth objective started: ${parsed.data.name}`, body: "Ferocity can now rank growth work against this objective.",
+    entityType: "growth_objective", entityId: row.rows[0].id, sourceTable: "growth_objectives", sourceId: row.rows[0].id,
+    metadata: { autonomyLevel: parsed.data.autonomyLevel, timeHorizonDays: parsed.data.timeHorizonDays }
+  });
+  if (row?.rows[0]) await recordGrowthEvent({
+    tenantId: workspaceId, brandId: parsed.data.brandId, objectiveId: row.rows[0].id,
+    eventType: "growth_objective_created", automationMode: parsed.data.autonomyLevel,
+    outcome: "active", dimensions: { timeHorizonDays: parsed.data.timeHorizonDays, serviceFocus: parsed.data.serviceFocus, geography: parsed.data.geography },
+    idempotencyKey: `objective-created:${row.rows[0].id}`
+  });
+  revalidatePath("/app/growth");
+}
+
+export async function addDistributionIdentityAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = identitySchema.safeParse({
+    brandId: formData.get("brandId"), channelKey: formData.get("channelKey"), displayName: formData.get("displayName"),
+    profileUrl: formData.get("profileUrl") || "", identityRole: formData.get("identityRole"), autonomyLevel: formData.get("autonomyLevel")
+  });
+  if (!parsed.success) return;
+  const channel = getGrowthChannel(parsed.data.channelKey);
+  if (!channel) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await queryPostgres(`
+    insert into public.growth_distribution_identities (
+      tenant_id, brand_id, provider_account_id, channel_key, provider_key, display_name, profile_url,
+      connection_mode, capability_keys, authorization_status, identity_role, autonomy_level, risk_state, metadata_json
+    ) values (
+      $1, $2, (select id from public.provider_accounts where tenant_id = $1 and provider_key = $4 limit 1),
+      $3, $4, $5, $6, $7, $8::text[], 'not_connected', $9, $10, 'healthy', $11::jsonb
+    )
+    on conflict (tenant_id, brand_id, channel_key, provider_key, display_name) do update set
+      profile_url = excluded.profile_url, connection_mode = excluded.connection_mode,
+      capability_keys = excluded.capability_keys, identity_role = excluded.identity_role,
+      autonomy_level = excluded.autonomy_level, updated_at = now()
+  `, [workspaceId, parsed.data.brandId, parsed.data.channelKey, channel.providerKey, parsed.data.displayName,
+    parsed.data.profileUrl || null, channel.defaultMode, supportedCapabilities(parsed.data.channelKey), parsed.data.identityRole,
+    parsed.data.identityRole === "personal" ? "suggest" : parsed.data.autonomyLevel,
+    JSON.stringify({ capabilitySource: "ferocity_registry", capabilityNote: channel.note })]);
+  revalidatePath("/app/growth");
+}
+
+export async function addGrowthCommunityAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = communitySchema.safeParse({
+    brandId: formData.get("brandId"), channelKey: formData.get("channelKey"), name: formData.get("name"),
+    url: formData.get("url") || "", geography: formData.get("geography") || undefined,
+    relevanceScore: formData.get("relevanceScore"), rulesText: formData.get("rulesText") || undefined
+  });
+  if (!parsed.success || !getGrowthChannel(parsed.data.channelKey)) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const community = await queryPostgres<{ id: string }>(`
+    insert into public.growth_communities (
+      tenant_id, brand_id, channel_key, name, url, geography_json, relevance_score, rules_text,
+      rules_checked_at, posting_policy, status, metadata_json
+    ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, case when $8 is null then null else now() end,
+      'suggest_only', 'active', '{"provenance":"owner_supplied"}'::jsonb)
+    on conflict (tenant_id, brand_id, channel_key, name) do update set
+      url = excluded.url, geography_json = excluded.geography_json, relevance_score = excluded.relevance_score,
+      rules_text = excluded.rules_text, rules_checked_at = excluded.rules_checked_at, updated_at = now()
+    returning id
+  `, [workspaceId, parsed.data.brandId, parsed.data.channelKey, parsed.data.name, parsed.data.url || null,
+    JSON.stringify(parsed.data.geography ? { description: parsed.data.geography } : {}), parsed.data.relevanceScore,
+    parsed.data.rulesText ?? null]);
+  if (community?.rows[0]) {
+    const communityId = community.rows[0].id;
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: parsed.data.brandId, communityId,
+      eventType: "community_discovered", channelKey: parsed.data.channelKey, outcome: "remembered",
+      dimensions: { relevanceScore: parsed.data.relevanceScore, geography: parsed.data.geography }, idempotencyKey: `community-discovered:${communityId}` });
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: parsed.data.brandId, communityId,
+      eventType: "community_evaluated", channelKey: parsed.data.channelKey, outcome: parsed.data.relevanceScore >= 50 ? "relevant" : "low_relevance",
+      dimensions: { relevanceScore: parsed.data.relevanceScore }, idempotencyKey: `community-evaluated:${communityId}:${parsed.data.relevanceScore}` });
+    if (parsed.data.rulesText) await recordGrowthEvent({ tenantId: workspaceId, brandId: parsed.data.brandId, communityId,
+      eventType: "community_rule_detected", channelKey: parsed.data.channelKey, outcome: "owner_supplied",
+      dimensions: { ruleLength: parsed.data.rulesText.length }, idempotencyKey: `community-rules:${communityId}:${parsed.data.rulesText.length}` });
+  }
+  revalidatePath("/app/growth");
+}
+
+export async function captureGrowthOpportunityAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = opportunitySchema.safeParse({
+    brandId: formData.get("brandId"), channelKey: formData.get("channelKey"), sourceUrl: formData.get("sourceUrl") || "",
+    bodyExcerpt: formData.get("bodyExcerpt"), serviceFocus: formData.get("serviceFocus") || undefined,
+    geography: formData.get("geography") || undefined, suggestedResponse: formData.get("suggestedResponse") || undefined
+    , authorLabel: formData.get("authorLabel") || undefined, externalActorId: formData.get("externalActorId") || undefined
+  });
+  if (!parsed.success || !getGrowthChannel(parsed.data.channelKey)) return;
+  const verifiedClaims = String(formData.get("verifiedClaims") ?? "").split("\n").map((value) => value.trim()).filter(Boolean);
+  const riskFlags = parsed.data.suggestedResponse ? findUnverifiedClaims(parsed.data.suggestedResponse, verifiedClaims).map(() => "unverified_claim") : [];
+  const score = scoreGrowthOpportunity({
+    text: parsed.data.bodyExcerpt,
+    serviceTerms: parsed.data.serviceFocus ? [parsed.data.serviceFocus] : [],
+    geographyTerms: parsed.data.geography ? [parsed.data.geography] : [],
+    objectiveTerms: ["quote", "estimate", "appointment", "available"]
+  });
+  const lower = parsed.data.bodyExcerpt.toLowerCase();
+  const detectedIntent = lower.includes("recommend") ? "recommendation_request" : lower.includes("how much") || lower.includes("price")
+    ? "price_question" : lower.includes("available") ? "availability_question" : score.intentScore >= 40 ? "expressed_demand" : "unknown";
+  const workspaceId = await getCurrentWorkspaceId();
+  const idempotencyKey = parsed.data.sourceUrl ? `opportunity:${parsed.data.channelKey}:${parsed.data.sourceUrl}` : `opportunity:manual:${crypto.randomUUID()}`;
+  const opportunity = await queryPostgres<{ id: string }>(`
+    insert into public.growth_opportunities (
+      tenant_id, brand_id, channel_key, external_reference, external_actor_id, source_url, author_label, body_excerpt, detected_intent,
+      service_focus, geography_text, intent_score, geography_score, objective_score, overall_score,
+      recommended_action, suggested_response, status, risk_flags, idempotency_key, metadata_json
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+      'Review context, community rules, consent, and identity health before responding.', $16,
+      case when cardinality($17::text[]) > 0 then 'blocked' else 'needs_review' end, $17::text[], $18, $19::jsonb)
+    on conflict (tenant_id, idempotency_key) where idempotency_key is not null do update set updated_at = now()
+    returning id
+  `, [workspaceId, parsed.data.brandId, parsed.data.channelKey,
+    parsed.data.sourceUrl ? parsed.data.sourceUrl : `manual:${crypto.randomUUID()}`, parsed.data.externalActorId ?? null,
+    parsed.data.sourceUrl || null, parsed.data.authorLabel ?? null, parsed.data.bodyExcerpt, detectedIntent,
+    parsed.data.serviceFocus ?? null, parsed.data.geography ?? null,
+    score.intentScore, score.geographyScore, score.objectiveScore, score.overallScore,
+    parsed.data.suggestedResponse ?? null, riskFlags, idempotencyKey, JSON.stringify({ captureMode: "manual_or_assisted", verifiedClaims, scoringVersion: "growth-opportunity-v1" })]);
+  if (opportunity?.rows[0]) {
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: parsed.data.brandId, opportunityId: opportunity.rows[0].id,
+      eventType: "opportunity_detected", channelKey: parsed.data.channelKey, outcome: riskFlags.length ? "blocked" : "needs_review",
+      strategyVersion: "growth-distribution-v1", promptVersion: "manual-capture-v1", idempotencyKey: `${idempotencyKey}:detected`,
+      dimensions: { detectedIntent, serviceFocus: parsed.data.serviceFocus, geography: parsed.data.geography }, rawEvent: { sourceUrl: parsed.data.sourceUrl } });
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: parsed.data.brandId, opportunityId: opportunity.rows[0].id,
+      eventType: "opportunity_scored", channelKey: parsed.data.channelKey, outcome: String(score.overallScore),
+      strategyVersion: "growth-distribution-v1", idempotencyKey: `${idempotencyKey}:scored`, dimensions: score });
+  }
+  revalidatePath("/app/growth");
+}
+
+export async function convertGrowthOpportunityToLeadAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const opportunityId = z.string().uuid().safeParse(formData.get("opportunityId"));
+  if (!opportunityId.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ opportunity_id: string; lead_id: string; brand_id: string; objective_id: string | null; identity_id: string | null; community_id: string | null; conversation_id: string | null; external_actor_id: string | null; channel_key: string }>(`
+    with selected as (
+      select * from public.growth_opportunities
+      where tenant_id = $1 and id = $2 and lead_id is null and status in ('detected', 'needs_review', 'approved')
+    ), inserted as (
+      insert into public.leads (
+        tenant_id, brand_id, source, source_detail, name, message, lead_type, status,
+        qualification_status, priority, consent_to_contact, metadata_json
+      )
+      select tenant_id, brand_id, channel_key, source_url, coalesce(author_label, 'Growth opportunity'), body_excerpt,
+        'general', 'new', 'needs_review', case when overall_score >= 70 then 'high' else 'normal' end, false,
+        jsonb_build_object('growthOpportunityId', id, 'detectedIntent', detected_intent, 'overallScore', overall_score)
+      from selected returning id, brand_id
+    )
+    update public.growth_opportunities o set lead_id = i.id, status = 'converted_to_lead', updated_at = now()
+    from inserted i where o.id = $2 returning o.id as opportunity_id, i.id as lead_id, i.brand_id,
+      o.objective_id, o.identity_id, o.community_id, o.conversation_id, o.external_actor_id, o.channel_key
+  `, [workspaceId, opportunityId.data]);
+  const row = result?.rows[0];
+  if (row) {
+    await queryPostgres(`
+      insert into public.growth_attribution_events (tenant_id, brand_id, source_id, event_type, entity_type, entity_id, metadata_json)
+      select tenant_id, brand_id, source_id, 'lead_created', 'lead', lead_id,
+        jsonb_build_object('growthOpportunityId', id, 'channelKey', channel_key)
+      from public.growth_opportunities where tenant_id = $1 and id = $2
+    `, [workspaceId, opportunityId.data]);
+    await queryPostgres(`
+      update public.growth_contact_identities
+      set lead_id = $3, match_confidence = greatest(match_confidence, 100), match_status = 'confirmed',
+        match_method = 'channel_identifier', provenance_json = provenance_json || $4::jsonb, updated_at = now()
+      where tenant_id = $1 and channel_key = $2 and external_actor_id = $5
+    `, [workspaceId, row.channel_key, row.lead_id, JSON.stringify({ linkedFromOpportunityId: row.opportunity_id }), row.external_actor_id ?? ""]);
+    await queryPostgres(`
+      insert into public.growth_attribution_touches (
+        tenant_id, brand_id, objective_id, identity_id, community_id, opportunity_id, conversation_id,
+        lead_id, channel_key, source_name, touch_role, reference_key, metadata_json
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'first',$10,$11::jsonb)
+      on conflict (tenant_id, reference_key) do nothing
+    `, [workspaceId, row.brand_id, row.objective_id, row.identity_id, row.community_id, row.opportunity_id,
+      row.conversation_id, row.lead_id, row.channel_key, `growth-opportunity-lead:${row.opportunity_id}:${row.lead_id}`,
+      JSON.stringify({ provenance: "growth_opportunity_conversion" })]);
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id, objectiveId: row.objective_id,
+      identityId: row.identity_id, communityId: row.community_id, opportunityId: row.opportunity_id,
+      conversationId: row.conversation_id, leadId: row.lead_id, eventType: "lead_created", channelKey: row.channel_key,
+      outcome: "created_in_existing_crm", idempotencyKey: `growth-lead-created:${row.opportunity_id}:${row.lead_id}` });
+    if (row.external_actor_id) await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id,
+      opportunityId: row.opportunity_id, conversationId: row.conversation_id, leadId: row.lead_id,
+      eventType: "lead_linked", channelKey: row.channel_key, outcome: "confirmed_channel_identity",
+      idempotencyKey: `growth-lead-linked:${row.channel_key}:${row.external_actor_id}:${row.lead_id}` });
+    await insertTimeline({ tenantId: workspaceId, brandId: row.brand_id, family: "lead", type: "growth_opportunity_converted",
+      title: "Growth opportunity moved into Leads", body: "The original source and scoring context were preserved for follow-up and attribution.",
+      entityType: "lead", entityId: row.lead_id, sourceTable: "growth_opportunities", sourceId: row.opportunity_id });
+  }
+  revalidatePath("/app/growth");
+  revalidatePath("/app/leads");
+}
+
+export async function queueGrowthResponseAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const opportunityId = z.string().uuid().safeParse(formData.get("opportunityId"));
+  if (!opportunityId.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const opportunity = await queryPostgres<{ brand_id: string; channel_key: string }>(`
+    select brand_id, channel_key from public.growth_opportunities
+    where tenant_id = $1 and id = $2 and status in ('detected', 'needs_review', 'approved')
+      and suggested_response is not null and cardinality(risk_flags) = 0
+  `, [workspaceId, opportunityId.data]);
+  const row = opportunity?.rows[0];
+  const channel = row ? getGrowthChannel(row.channel_key) : null;
+  if (!row || !channel) return;
+
+  const queued = await queryPostgres<{ action_id: string }>(`
+    with selected as (
+      select * from public.growth_opportunities o
+      where o.tenant_id = $1 and o.id = $2
+        and not exists (
+          select 1 from public.growth_action_attempts a
+          where a.tenant_id = o.tenant_id and a.opportunity_id = o.id
+            and a.action_key = 'respond' and a.status in ('needs_approval', 'approved', 'queued', 'running', 'succeeded')
+        )
+    ), queued_action as (
+      insert into public.outbound_action_queue (
+        tenant_id, brand_id, action_type, provider_key, status, risk_level, target_type,
+        target_id, subject, recipient_label, payload_json, metadata_json
+      )
+      select tenant_id, brand_id, 'publish_content', $3, 'needs_review', 'high', 'growth_opportunity', id,
+        'Growth opportunity response', coalesce(source_url, channel_key),
+        jsonb_build_object('channelKey', channel_key, 'body', suggested_response, 'sourceUrl', source_url),
+        jsonb_build_object('growthOpportunityId', id, 'executionMode', $4::text)
+      from selected returning id, tenant_id, brand_id, target_id
+    ), attempt as (
+      insert into public.growth_action_attempts (
+        tenant_id, brand_id, objective_id, identity_id, community_id, opportunity_id, queue_id, channel_key, action_key, execution_mode,
+        status, risk_state, idempotency_key, strategy_version, payload_json
+      )
+      select q.tenant_id, q.brand_id, s.objective_id, s.identity_id, s.community_id, $2, q.id, $5, 'respond', $4, 'needs_approval', 'healthy',
+        concat('growth-response:', $2::text), 'growth-distribution-v1',
+        jsonb_build_object('providerKey', $3)
+      from queued_action q join selected s on s.id = q.target_id returning id, tenant_id, brand_id
+    ), requested as (
+      insert into public.approvals (tenant_id, brand_id, target_type, target_id, status, risk_level, notes)
+      select tenant_id, brand_id, 'growth_action', id, 'pending', 'high',
+        'Review the source context, community rules, identity health, and prepared response before execution.'
+      from attempt returning target_id
+    )
+    update public.growth_opportunities o set status = 'queued', updated_at = now()
+    from requested r where o.tenant_id = $1 and o.id = $2 returning r.target_id as action_id
+  `, [workspaceId, opportunityId.data, channel.providerKey, channel.defaultMode, row.channel_key]);
+  if (queued?.rows[0]) {
+    await insertTimeline({ tenantId: workspaceId, brandId: row.brand_id, family: "marketing", type: "growth_response_queued",
+      title: "Growth response prepared for approval", body: "Nothing was posted. The response is in Ferocity's existing approval and outbound safety flow.",
+      entityType: "growth_action", entityId: queued.rows[0].action_id, sourceTable: "growth_opportunities", sourceId: opportunityId.data });
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id, opportunityId: opportunityId.data,
+      actionAttemptId: queued.rows[0].action_id, eventType: "publish_queued", channelKey: row.channel_key,
+      actionType: "respond", automationMode: "approve", outcome: "needs_approval",
+      idempotencyKey: `growth-publish-queued:${queued.rows[0].action_id}` });
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id, opportunityId: opportunityId.data,
+      actionAttemptId: queued.rows[0].action_id, eventType: "owner_approval_requested", channelKey: row.channel_key,
+      actionType: "respond", automationMode: "approve", outcome: "pending",
+      idempotencyKey: `growth-approval-requested:${queued.rows[0].action_id}` });
+  }
+  revalidatePath("/app/growth");
+  revalidatePath("/app/approvals");
 }

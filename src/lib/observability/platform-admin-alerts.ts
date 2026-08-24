@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendFerocityNotificationEmail } from "@/lib/email/transactional";
+import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 
 export type PlatformAdminAlertSeverity = "info" | "warning" | "high" | "critical";
 
@@ -40,14 +41,29 @@ export async function raisePlatformAdminAlert(input: {
   );
 
   if (shouldNotify) {
-    const result = await sendFerocityNotificationEmail({
-      subject: `[${input.severity.toUpperCase()}] ${input.title}`,
-      text: [input.body, input.tenantId ? `Workspace: ${input.tenantId}` : null, input.actionUrl ? `Open: ${input.actionUrl}` : null].filter(Boolean).join("\n\n"),
-      eventKey: `platform-alert:${input.fingerprint}:${input.severity}`,
-      tenantId: input.tenantId,
-      metadata: input.metadata
-    });
-    if (result.ok) {
+    const admins = await queryPostgres<{ id: string }>(
+      `select id from public.users where platform_role = 'super_admin' limit 10`
+    );
+    const [emailResult, ...pushResults] = await Promise.all([
+      sendFerocityNotificationEmail({
+        subject: `[${input.severity.toUpperCase()}] ${input.title}`,
+        text: [input.body, input.tenantId ? `Workspace: ${input.tenantId}` : null, input.actionUrl ? `Open: ${input.actionUrl}` : null].filter(Boolean).join("\n\n"),
+        eventKey: `platform-alert:${input.fingerprint}:${input.severity}`,
+        tenantId: input.tenantId,
+        metadata: input.metadata
+      }),
+      ...(admins?.rows ?? []).map((admin) => sendWorkspacePushNotifications({
+        tenantId: input.tenantId ?? "11111111-1111-4111-8111-111111111111",
+        recipientUserId: admin.id,
+        eventType: `platform.${input.type}`,
+        title: input.title,
+        body: input.body,
+        url: input.actionUrl ?? "/app/system-health",
+        tag: `platform-${input.fingerprint}`,
+        metadata: { severity: input.severity, ...(input.metadata ?? {}) }
+      }))
+    ]);
+    if (emailResult.ok || pushResults.some((result) => result.sent > 0)) {
       await queryPostgres(`update public.platform_admin_alerts set last_notified_at=now(), updated_at=now() where fingerprint=$1`, [input.fingerprint]);
     }
   }

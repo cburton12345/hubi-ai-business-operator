@@ -122,7 +122,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/autopilot">Autopilot</Link>
                   <Link href="/app/business-brain">Business Info</Link>
                   <Link href="/app/ai-monitoring">Daily Brief</Link>
-                  <Link href="/app/feature-readiness">What Works Now</Link>
                   <Link href="/install">Install App</Link>
                 </section>
                 <section>
@@ -175,6 +174,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/controls">Controls</Link>
                   <Link href="/app/ai-control">AI Cost Controls</Link>
                   <Link href="/app/billing">Billing</Link>
+                  <Link href="/app/support">Get Help</Link>
                   <Link href="/app/access">Team Access</Link>
                   <Link href="/app/credentials">Connected Account Keys</Link>
                   <Link href="/app/exports">Backups / Exports</Link>
@@ -183,10 +183,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <section>
                     <p>Advanced</p>
                     <Link href="/app/safety-readiness">Safety & Readiness</Link>
+                    <Link href="/app/platform-activity">Visitors, Sales & Support</Link>
                     <Link href="/app/system-health">System Health</Link>
                     <Link href="/app/go-live">Go Live</Link>
                     <Link href="/app/qa">Operational QA</Link>
-                    <Link href="/app/operator-depth">Advanced Diagnostics</Link>
                     <Link href="/app/webhooks">Webhooks</Link>
                     <Link href="/app/lifeops-connections">Connected Systems</Link>
                   </section>

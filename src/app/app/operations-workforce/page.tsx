@@ -16,9 +16,12 @@ import {
   createMaterialLogAction,
   createMileageAction,
   createPayrollExportAction,
+  createEmployeeCashAdvanceAction,
+  decideEmployeeAccessRequestAction,
   markPayrollExportReadyAction,
   markPayrollExportedAction,
   sendCustomerUpdateDraftAction,
+  sendEmployeeInviteAction,
   createWorkerAction,
   updateRecurringExpenseStatusAction
 } from "./actions";
@@ -73,6 +76,50 @@ export default async function OperationsWorkforcePage() {
             <span>Prepare exports after time and costs are checked.</span>
           </Link>
         </div>
+      </section>
+
+      <section className="grid section-actions">
+        <section className="panel span-5">
+          <p className="eyebrow">Employee self-service</p>
+          <h2>Let employees request their own access</h2>
+          <p className="muted">Share this company-specific link. Employees enter their information, but see nothing until an authorized user approves them.</p>
+          <p><strong>Company code:</strong> {dashboard.employeeJoin.companyCode}</p>
+          <Link className="button secondary-button" href={dashboard.employeeJoin.joinPath} target="_blank">Open employee join page</Link>
+        </section>
+        <section className="panel span-7">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Employee access requests</h2>
+              <p className="muted">Approval creates or reuses the employee record and emails a private, one-time account link.</p>
+            </div>
+            <span className="pill medium">{dashboard.employeeAccessRequests.length} pending</span>
+          </div>
+          <ul className="list">
+            {dashboard.employeeAccessRequests.map((request) => (
+              <li className="list-row" key={request.id}>
+                <div>
+                  <h3>{request.name}</h3>
+                  <p className="muted">{request.email} / {request.phone} / {request.language} / {request.requestedAt}</p>
+                  <div className="inline-actions">
+                    <form action={decideEmployeeAccessRequestAction}>
+                      <input name="requestId" type="hidden" value={request.id} />
+                      <input name="decision" type="hidden" value="approved" />
+                      <button className="mini-button" type="submit">Approve and send access</button>
+                    </form>
+                    <form action={decideEmployeeAccessRequestAction} className="inline-form">
+                      <input name="requestId" type="hidden" value={request.id} />
+                      <input name="decision" type="hidden" value="declined" />
+                      <input name="ownerNote" placeholder="Optional private review note" />
+                      <button className="mini-button secondary-button" type="submit">Decline</button>
+                    </form>
+                  </div>
+                </div>
+                <span className="pill">{request.status}</span>
+              </li>
+            ))}
+            {dashboard.employeeAccessRequests.length === 0 ? <li className="list-row"><span className="muted">No employee access requests are waiting.</span></li> : null}
+          </ul>
+        </section>
       </section>
 
       <div className="grid section-actions">
@@ -160,6 +207,17 @@ export default async function OperationsWorkforcePage() {
             <input name="email" type="email" placeholder="Email" />
           </div>
           <input name="hourlyRate" inputMode="decimal" placeholder="Hourly rate, e.g. 28" />
+          <label>
+            Employee language
+            <select name="preferredLanguage" defaultValue="en">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </label>
+          <label className="checkbox-row">
+            <input name="sendInvite" type="checkbox" defaultChecked />
+            <span>Email a secure employee-app invitation when an email is provided</span>
+          </label>
           <button className="button" type="submit">Add worker</button>
         </form>
 
@@ -440,6 +498,43 @@ export default async function OperationsWorkforcePage() {
       </section>
 
       <section id="payroll" className="grid section-actions">
+        <form action={createEmployeeCashAdvanceAction} className="panel form-stack span-5">
+          <h2><DollarSign size={18} /> Record money advanced</h2>
+          <p className="muted">Record cash or other money given to an employee. The employee can acknowledge or dispute it. Ferocity never deducts it from wages automatically.</p>
+          <WorkerSelect workers={dashboard.workers} />
+          <AssignmentSelect assignments={dashboard.assignments} />
+          <div className="two-col">
+            <input name="amount" inputMode="decimal" placeholder="Amount" required />
+            <input name="advancedAt" type="date" />
+          </div>
+          <select name="paymentMethod" defaultValue="cash">
+            <option value="cash">Cash</option>
+            <option value="check">Check</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="payroll">Payroll advance</option>
+            <option value="other">Other</option>
+          </select>
+          <textarea name="purpose" rows={3} placeholder="Purpose or note" />
+          <button className="mini-button" type="submit">Record advance</button>
+        </form>
+
+        <section className="panel span-7">
+          <h2>Money advances</h2>
+          <p className="muted">A separate, reviewable ledger keeps advances visible without silently changing payroll.</p>
+          <ul className="list">
+            {dashboard.cashAdvances.map((advance) => (
+              <li className="list-row" key={advance.id}>
+                <div>
+                  <h3>{advance.worker} / {advance.amount}</h3>
+                  <p className="muted">{advance.date} / {advance.method.replaceAll("_", " ")} / {advance.purpose}</p>
+                </div>
+                <span className={`pill ${advance.status === "disputed" ? "high" : ""}`}>{advance.status}</span>
+              </li>
+            ))}
+            {dashboard.cashAdvances.length === 0 ? <li className="list-row"><span className="muted">No advances recorded.</span></li> : null}
+          </ul>
+        </section>
+
         <form action={createPayrollExportAction} className="panel form-stack span-5">
           <h2><DollarSign size={18} /> Payroll Export Draft</h2>
           <p className="muted">Creates a batch for review. Ferocity does not run payroll or send to a provider until the connection and export are approved.</p>
@@ -473,12 +568,27 @@ export default async function OperationsWorkforcePage() {
       </section>
 
       <div className="grid section-actions">
-        <ListPanel title="Workers" icon={<Users size={18} />} rows={dashboard.workers.map((worker) => ({
-          id: worker.id,
-          title: worker.name,
-          meta: `${worker.roleType} / ${worker.trade} / ${worker.hourlyRate}`,
-          pill: worker.status
-        }))} />
+        <section className="panel span-6">
+          <h2><Users size={18} /> Workers</h2>
+          <ul className="list">
+            {dashboard.workers.map((worker) => (
+              <li className="list-row" key={worker.id}>
+                <div>
+                  <h3>{worker.name}</h3>
+                  <p className="muted">{worker.roleType} / {worker.trade} / {worker.hourlyRate} / {worker.email} / {worker.language}</p>
+                  {worker.access === "Invite available" ? (
+                    <form action={sendEmployeeInviteAction}>
+                      <input name="workerId" type="hidden" value={worker.id} />
+                      <button className="mini-button" type="submit">Send secure employee invite</button>
+                    </form>
+                  ) : null}
+                </div>
+                <span className="pill">{worker.access}</span>
+              </li>
+            ))}
+            {dashboard.workers.length === 0 ? <li className="list-row"><span className="muted">No workers yet.</span></li> : null}
+          </ul>
+        </section>
         <ListPanel title="Schedule / Dispatch" icon={<MapPin size={18} />} rows={dashboard.assignments.map((assignment) => ({
           id: assignment.id,
           title: assignment.title,

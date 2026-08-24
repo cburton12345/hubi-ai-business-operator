@@ -50,12 +50,13 @@ export const publicPlans: PublicPlan[] = [
     fit: "Your everyday business control.",
     bestFor: "Ferocity watches the everyday business and handles routine work under the authority level the owner chooses.",
     bullets: [
+      "One dashboard for the Business Brain, customers, jobs, schedule, money, and attention items",
       "Ask Ferocity what needs attention and what to do next",
-      "Keep leads, reminders, estimates, and follow-up from slipping",
-      "Manage customers, jobs, schedules, invoices, and payments",
-      "Give employees a simple field view for time, receipts, and job proof",
-      "Turn finished work into review requests and customer trust",
-      "Prepare reviewed estimates, marketing, graphics, and ad briefs"
+      "Leads, reminders, estimates, and follow-up kept from slipping",
+      "Customers, jobs, schedules, invoices, and payments kept coordinated",
+      "Employees get a simple field view for time, receipts, and job proof",
+      "Finished work turned into review requests and customer trust",
+      "Reviewed estimates, marketing, graphics, and ad briefs prepared for action"
     ],
     moreFeatures: [
       "Business profile and service-area memory",
@@ -91,15 +92,15 @@ export const publicPlans: PublicPlan[] = [
     bestFor: "Ferocity connects follow-up, proof, content, search, campaigns, and revenue so the business can create and measure demand.",
     bullets: [
       "Everything in Starter",
-      "Respond faster and keep following up until the customer answers",
-      "Bring SMS, email, reviews, and recovery work into one customer history",
-      "Build repeat business with memberships, reminders, and retention campaigns",
-      "Turn job proof into content, reviews, and publish-ready marketing",
-      "Qualify leads, improve appointment show-up, and recover old opportunities",
-      "Create search, AI-search, content, and campaign work from real business data",
-      "See which lead sources and campaigns become booked and paid work",
-      "Find legitimate link opportunities and protect valuable backlinks",
-      "Compare supplier pricing and protect estimate margins"
+      "Faster response and persistent follow-up until the customer answers",
+      "SMS, email, reviews, and recovery work unified in one customer history",
+      "Repeat business built through memberships, reminders, and retention campaigns",
+      "Job proof converted into content, reviews, and publish-ready marketing",
+      "Lead qualification, appointment show-up improvement, and old-opportunity recovery",
+      "Search, AI-search, content, and campaign work created from real business data",
+      "Lead sources and campaigns traced through booked and paid work",
+      "Legitimate link opportunities found and valuable backlinks protected",
+      "Supplier pricing compared and estimate margins protected"
     ],
     moreFeatures: [
       "Everything listed in Starter",
@@ -135,12 +136,12 @@ export const publicPlans: PublicPlan[] = [
     bestFor: "Ferocity proactively monitors the operating day and coordinates sales, jobs, money, schedule, team, and connected systems.",
     bullets: [
       "Everything in Growth",
-      "Have Ferocity monitor the operating day and remember important decisions",
-      "Coordinate scheduling, job progress, collections, and customer handoffs",
-      "Watch reputation, backlinks, and growth opportunities",
-      "Start each day with one owner briefing and a clear attention list",
-      "Control inventory, purchasing, workforce, recruiting, and job-cost risks",
-      "Connect payments, accounting, calendars, phone, video, and other providers"
+      "Continuous operating-day monitoring with important decisions remembered",
+      "Scheduling, job progress, collections, and customer handoffs coordinated",
+      "Reputation, backlinks, and growth opportunities watched proactively",
+      "One daily owner briefing with a clear attention list",
+      "Inventory, purchasing, workforce, recruiting, and job-cost risks controlled",
+      "Payments, accounting, calendars, phone, video, and other providers connected"
     ],
     moreFeatures: [
       "Everything listed in Growth",

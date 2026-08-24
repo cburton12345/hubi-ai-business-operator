@@ -7,6 +7,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
+import { TERMS_VERSION } from "@/lib/legal/terms";
 
 const checkoutSchema = z.object({
   plan: z.string().trim(),
@@ -14,7 +15,8 @@ const checkoutSchema = z.object({
   email: z.string().trim().email().optional(),
   companyName: z.string().trim().min(1).max(180).optional(),
   name: z.string().trim().max(160).optional(),
-  consentToContact: z.string().optional()
+  consentToContact: z.string().optional(),
+  termsAccepted: z.string().optional()
 });
 
 const priceEnvByPlan = {
@@ -80,7 +82,8 @@ export async function POST(request: NextRequest) {
     email: String(formData.get("email") ?? "") || undefined,
     companyName: String(formData.get("companyName") ?? "") || undefined,
     name: String(formData.get("name") ?? "") || undefined,
-    consentToContact: String(formData.get("consentToContact") ?? "") || undefined
+    consentToContact: String(formData.get("consentToContact") ?? "") || undefined,
+    termsAccepted: String(formData.get("termsAccepted") ?? "") || undefined
   });
 
   if (!parsed.success || !isSelfServePlanKey(parsed.data.plan)) {
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
   const workspace = appSession ? await getCurrentWorkspace() : null;
   const publicSignup = !workspace;
 
-  if (publicSignup && (!parsed.data.email || !parsed.data.companyName || parsed.data.consentToContact !== "on")) {
+  if (publicSignup && (!parsed.data.email || !parsed.data.companyName || parsed.data.consentToContact !== "on" || parsed.data.termsAccepted !== "on")) {
     return redirectTo(request, `/subscribe?plan=${encodeURIComponent(parsed.data.plan)}&error=details`);
   }
 
@@ -169,10 +172,12 @@ export async function POST(request: NextRequest) {
         parsed.data.plan,
         parsed.data.source || "public_subscribe",
         JSON.stringify({
-          purchaseFlow: "public_signup",
-          checkoutStatus: "creating",
-          consentToContact: true,
-          submittedAt: new Date().toISOString()
+           purchaseFlow: "public_signup",
+           checkoutStatus: "creating",
+           consentToContact: true,
+           termsAccepted: true,
+           termsVersion: TERMS_VERSION,
+           submittedAt: new Date().toISOString()
         }),
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
         request.headers.get("user-agent") || null
@@ -202,6 +207,8 @@ export async function POST(request: NextRequest) {
     metadata.purchase_flow = "public_signup";
     metadata.access_request_id = accessRequestId!;
     metadata.company_name = parsed.data.companyName!;
+    metadata.terms_accepted = "true";
+    metadata.terms_version = TERMS_VERSION;
     if (parsed.data.name) metadata.buyer_name = parsed.data.name;
   }
 

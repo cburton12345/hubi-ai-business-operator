@@ -6,6 +6,17 @@ Local readiness: **100/100 for an authorized release candidate.**
 
 Production cutover is not complete until the deploy-time section is explicitly authorized and performed.
 
+## Verified August 23, 2026 — current held release
+
+- Fixed the current All Tools quality gate at exactly 60 destinations without deleting the support, platform-activity, readiness, or diagnostic pages.
+- Full local predeploy passed: public-copy guard, provider-truth guard, UI guard across 258 routes and 229 component files, 42 connected-workflow checks, TypeScript, full ESLint, and optimized production build.
+- All 402 tests across 112 files pass.
+- Applied migrations 187–191 transactionally to the connected Ferocity database. Migration validation now reports zero pending migrations.
+- Tenant RLS and sensitive-table grant verification passed after the migration.
+- Provider readiness and all 14 provider-lane groups pass for the core release; optional Meta official-login configuration, Yahoo, live voice funding/number, and Twilio SMS remain honestly connection-dependent.
+- Facebook assisted-connector pairing, explicit opportunity capture, approval claim, outcome confirmation, health stops, and device-bound token revocation are implemented. The controlled browser test remains post-deploy because the new routes are not reachable on `ferocity.live` until the held frontend/application deployment.
+- No frontend or Netlify preview deployment was performed.
+
 This file supersedes the overlapping launch checklists as the source of truth for the current release. The older audits remain useful history, but completion is recorded here.
 
 ## Verified July 29, 2026
@@ -36,6 +47,8 @@ This file supersedes the overlapping launch checklists as the source of truth fo
 ## Release Rules
 
 - Do not deploy the frontend or publish a Netlify preview until the owner explicitly authorizes it.
+- Outstanding owner checkpoint: complete Microsoft Advertising advertiser identity verification before treating Microsoft Ads as launch-ready. Authentication, account funding, or OAuth setup alone do not satisfy this verification gate.
+- Deployment boundary reaffirmed 2026-08-23: backend/local preparation may continue, but no frontend production or preview deployment is authorized until the owner explicitly says to deploy the frontend.
 - Do not apply live Supabase migrations until the owner explicitly authorizes it.
 - Preserve working systems and make surgical changes; do not redesign stable workflows for novelty.
 - Core Ferocity must remain useful without every optional provider.

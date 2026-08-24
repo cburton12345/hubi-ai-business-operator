@@ -34,9 +34,11 @@ export async function acceptInviteAction(formData: FormData) {
     tenant_id: string;
     email: string;
     role: "owner" | "admin" | "operator" | "viewer";
+    worker_id: string | null;
+    invite_purpose: "workspace" | "employee";
   }>(
     `
-    select id, tenant_id, email, role
+    select id, tenant_id, email, role, worker_id, invite_purpose
     from public.workspace_invites
     where invite_token_hash = $1
       and status = 'pending'
@@ -83,14 +85,53 @@ export async function acceptInviteAction(formData: FormData) {
     [userId, credential.hash, credential.salt, credential.iterations]
   );
 
+  if (invite.invite_purpose === "employee" && invite.worker_id) {
+    const linked = await queryPostgres<{ id: string; name: string }>(
+      `
+      update public.operations_workers
+      set user_id = $3, email = lower($4), updated_at = now()
+      where tenant_id = $1
+        and id = $2
+        and availability_status <> 'inactive'
+        and (user_id is null or user_id = $3)
+        and not exists (
+          select 1 from public.operations_workers other
+          where other.tenant_id = $1 and other.user_id = $3 and other.id <> $2
+        )
+      returning id, name
+      `,
+      [invite.tenant_id, invite.worker_id, userId, invite.email]
+    );
+    if (!linked?.rows[0]) redirect("/login?error=employee-link");
+    await queryPostgres(
+      `insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
+        action_href, risk_type, confidence_score, metadata_json
+      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.access.connected', $3, $4,
+        'info', 'resolved', false, true, $5, $6, '/app/operations-workforce', 'approval', 100, $7::jsonb)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
+      [
+        invite.tenant_id,
+        `employee-access-${invite.worker_id}-${userId}`,
+        `${linked.rows[0].name} connected employee access`,
+        "The private invitation was accepted and the employee record is now linked to the verified account email.",
+        "Ferocity linked only the employee record named in the one-time invitation.",
+        "No action is needed. You can review access and assignments in Workforce.",
+        JSON.stringify({ inviteId: invite.id, workerId: invite.worker_id, userId, email: invite.email })
+      ]
+    );
+  }
+
   await queryPostgres(
     `
     insert into public.tenant_users (tenant_id, user_id, role, status)
     values ($1, $2, $3, 'active')
     on conflict (tenant_id, user_id) do update
-    set role = excluded.role, status = 'active', updated_at = now()
+    set role = case when $4 = 'employee' then public.tenant_users.role else excluded.role end,
+        status = 'active', updated_at = now()
     `,
-    [invite.tenant_id, userId, invite.role]
+    [invite.tenant_id, userId, invite.role, invite.invite_purpose]
   );
 
   await queryPostgres(
@@ -143,5 +184,5 @@ Start with Autopilot Setup if you want Ferocity to guide setup, or use the dashb
     maxAge: 60 * 60 * 24 * 14
   });
 
-  redirect("/app/welcome");
+  redirect(invite.invite_purpose === "employee" ? "/employee" : "/app/welcome");
 }

@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ferocity Facebook Assistant</title><link rel="stylesheet" href="popup.css"></head>
+<body><main>
+  <header><strong>Ferocity</strong><span>Facebook Assistant</span></header>
+  <p id="status" class="status">Checking connector…</p>
+  <section id="pairing" hidden>
+    <label>Ferocity address<input id="apiBase" value="https://ferocity.live"></label>
+    <label>One-time pairing code<input id="pairingCode" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></label>
+    <button id="pair">Connect</button>
+  </section>
+  <section id="connected" hidden>
+    <button id="capture">Capture selected Facebook text</button>
+    <button id="claim" class="secondary">Check for approved work</button>
+    <div id="action" hidden><p><strong>Approved response</strong></p><textarea id="actionBody" readonly></textarea>
+      <button id="copyOpen">Copy and open destination</button>
+      <div class="split"><button id="success">I completed it</button><button id="failed" class="danger">It failed</button></div>
+    </div>
+    <button id="disconnect" class="link">Disconnect this browser</button>
+  </section>
+  <p class="fine">Ferocity never asks for your Facebook password. Nothing is marked successful until you confirm the actual outcome.</p>
+</main><script src="popup.js"></script></body></html>

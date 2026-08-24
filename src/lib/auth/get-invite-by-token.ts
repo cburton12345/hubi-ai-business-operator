@@ -8,6 +8,7 @@ export type InviteTokenProfile = {
   status: string;
   workspaceName: string;
   expiresAt: string;
+  invitePurpose: "workspace" | "employee";
 };
 
 export async function getInviteByToken(token: string): Promise<InviteTokenProfile | null> {
@@ -18,9 +19,10 @@ export async function getInviteByToken(token: string): Promise<InviteTokenProfil
     status: string;
     workspace_name: string;
     expires_at: Date | null;
+    invite_purpose: "workspace" | "employee";
   }>(
     `
-    select i.id, i.email, i.role, i.status, t.name as workspace_name, i.expires_at
+    select i.id, i.email, i.role, i.status, t.name as workspace_name, i.expires_at, i.invite_purpose
     from public.workspace_invites i
     join public.tenants t on t.id = i.tenant_id
     where i.invite_token_hash = $1
@@ -39,6 +41,7 @@ export async function getInviteByToken(token: string): Promise<InviteTokenProfil
     role: invite.role,
     status: invite.status,
     workspaceName: invite.workspace_name,
-    expiresAt: invite.expires_at ? invite.expires_at.toISOString() : ""
+    expiresAt: invite.expires_at ? invite.expires_at.toISOString() : "",
+    invitePurpose: invite.invite_purpose
   };
 }

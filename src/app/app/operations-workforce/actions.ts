@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getCurrentAppSession } from "@/lib/auth/session";
 import { queryPostgres } from "@/lib/db/postgres";
+import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { canAccessEmployeeAssignment, getEmployeeAccessContext } from "@/lib/employee/employee-access";
+import { env } from "@/lib/env";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { uploadFieldMediaFile } from "@/lib/operations-workforce/field-media-upload";
 import { extractReceiptFieldsWithVision } from "@/lib/operations-workforce/receipt-extraction";
@@ -29,7 +33,34 @@ const workerSchema = z.object({
   phone: z.string().max(80).optional(),
   email: z.string().email().optional(),
   hourlyRate: z.string().optional(),
-  payrollType: z.enum(["hourly", "salary", "piece_rate", "per_job", "subcontractor"])
+  payrollType: z.enum(["hourly", "salary", "piece_rate", "per_job", "subcontractor"]),
+  preferredLanguage: z.enum(["en", "es"]),
+  sendInvite: z.boolean()
+});
+
+const cashAdvanceSchema = z.object({
+  workerId: z.string().uuid(),
+  assignmentId: z.string().uuid().optional(),
+  amount: z.string().min(1),
+  advancedAt: z.string().optional(),
+  paymentMethod: z.enum(["cash", "check", "bank_transfer", "payroll", "other"]),
+  purpose: z.string().max(600).optional()
+});
+
+const cashAdvanceResponseSchema = z.object({
+  advanceId: z.string().uuid(),
+  response: z.enum(["acknowledged", "disputed"]),
+  note: z.string().max(600).optional()
+});
+
+const employeeLanguageSchema = z.object({
+  language: z.enum(["en", "es"])
+});
+
+const employeeAccessDecisionSchema = z.object({
+  requestId: z.string().uuid(),
+  decision: z.enum(["approved", "declined"]),
+  ownerNote: z.string().max(600).optional()
 });
 
 const assignmentSchema = z.object({
@@ -165,6 +196,53 @@ function numeric(value?: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function employeeInviteUrl(token: string) {
+  const baseUrl = env.FEROCITY_APP_URL ?? "https://ferocity.live";
+  return new URL(`/invite/${token}`, baseUrl).toString();
+}
+
+async function createEmployeeInvite(input: {
+  tenantId: string;
+  workerId: string;
+  workerName: string;
+  email: string;
+  invitedByUserId: string | null;
+  language: "en" | "es";
+}) {
+  const token = randomSessionToken();
+  const workspaceResult = await queryPostgres<{ name: string }>(
+    "select name from public.tenants where id = $1 limit 1",
+    [input.tenantId]
+  );
+  const workspaceName = workspaceResult?.rows[0]?.name ?? "your company";
+  await queryPostgres(
+    `
+    insert into public.workspace_invites (
+      tenant_id, email, role, status, invited_by_user_id, invite_token_hash, expires_at,
+      worker_id, invite_purpose, updated_at
+    )
+    values ($1, lower($2), 'viewer', 'pending', $3, $4, now() + interval '14 days', $5, 'employee', now())
+    on conflict (tenant_id, email) do update
+    set role = 'viewer', status = 'pending', invited_by_user_id = excluded.invited_by_user_id,
+        invite_token_hash = excluded.invite_token_hash, expires_at = excluded.expires_at,
+        worker_id = excluded.worker_id, invite_purpose = 'employee', revoked_at = null, updated_at = now()
+    `,
+    [input.tenantId, input.email, input.invitedByUserId, hashSessionToken(token), input.workerId]
+  );
+
+  const spanish = input.language === "es";
+  await sendTransactionalEmail({
+    to: input.email,
+    subject: spanish ? `Tu acceso de empleado a ${workspaceName}` : `Your employee access to ${workspaceName}`,
+    text: spanish
+      ? `Hola ${input.workerName},\n\n${workspaceName} te invitó a la aplicación de empleados de Ferocity. Tu enlace es privado, funciona una sola vez y vence en 14 días.\n\nCrear tu acceso:\n${employeeInviteUrl(token)}\n\nDespués de registrarte podrás ver tu horario, registrar horas, ubicación, trabajo realizado, millas, gastos y comprobantes.`
+      : `Hi ${input.workerName},\n\n${workspaceName} invited you to the Ferocity employee app. Your link is private, works once, and expires in 14 days.\n\nCreate your access:\n${employeeInviteUrl(token)}\n\nAfter signing up, you can see your schedule and record hours, location, work performed, mileage, costs, and proof.`,
+    tenantId: input.tenantId,
+    eventKey: "employee_invite",
+    metadata: { workerId: input.workerId, language: input.language, invitedByUserId: input.invitedByUserId }
+  });
+}
+
 async function resolveWorkerActionTarget(
   formData: FormData,
   requestedWorkerId?: string,
@@ -206,16 +284,19 @@ export async function createWorkerAction(formData: FormData) {
     phone: text(formData, "phone"),
     email: text(formData, "email"),
     hourlyRate: text(formData, "hourlyRate"),
-    payrollType: text(formData, "payrollType") ?? "hourly"
+    payrollType: text(formData, "payrollType") ?? "hourly",
+    preferredLanguage: text(formData, "preferredLanguage") ?? "en",
+    sendInvite: formData.get("sendInvite") === "on"
   });
   if (!parsed.success) return;
   const tenantId = actor.workspace.id;
-  await queryPostgres(
+  const workerResult = await queryPostgres<{ id: string; user_id: string | null }>(
     `
     insert into public.operations_workers (
-      tenant_id, user_id, name, role_type, trade, phone, email, hourly_rate_cents, payroll_type, metadata_json
+      tenant_id, user_id, name, role_type, trade, phone, email, hourly_rate_cents, payroll_type,
+      preferred_language, metadata_json
     )
-    select $1, matched_user.id, $2,$3,$4,$5,$6,$7,$8,$9::jsonb
+    select $1, matched_user.id, $2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb
     from (values (1)) seed(value)
     left join lateral (
       select u.id
@@ -230,6 +311,7 @@ export async function createWorkerAction(formData: FormData) {
         )
       limit 1
     ) matched_user on true
+    returning id, user_id
     `,
     [
       tenantId,
@@ -240,10 +322,167 @@ export async function createWorkerAction(formData: FormData) {
       parsed.data.email ?? null,
       cents(parsed.data.hourlyRate),
       parsed.data.payrollType,
+      parsed.data.preferredLanguage,
       JSON.stringify({ source: "operations_workforce" })
     ]
   );
+  const workerId = workerResult?.rows[0]?.id;
+  if (workerId && !workerResult?.rows[0]?.user_id && parsed.data.email && parsed.data.sendInvite) {
+    const session = await getCurrentAppSession();
+    await createEmployeeInvite({
+      tenantId,
+      workerId,
+      workerName: parsed.data.name,
+      email: parsed.data.email,
+      invitedByUserId: session?.userId ?? null,
+      language: parsed.data.preferredLanguage
+    });
+    await queryPostgres(
+      `insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
+        action_href, risk_type, confidence_score, metadata_json
+      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.invited', $3, $4,
+        'info', 'watching', false, true, $5, $6, '/app/operations-workforce', 'approval', 98, $7::jsonb)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
+      [
+        tenantId,
+        `employee-invite-${workerId}`,
+        `${parsed.data.name} was invited`,
+        `Ferocity sent a secure, employee-bound invitation to ${parsed.data.email}.`,
+        "The invitation is email-bound, single-use, and expires after 14 days.",
+        "No action is needed unless the employee has trouble signing in.",
+        JSON.stringify({ workerId, email: parsed.data.email, language: parsed.data.preferredLanguage })
+      ]
+    );
+  }
   revalidatePath("/app/operations-workforce");
+}
+
+export async function sendEmployeeInviteAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
+  const parsed = z.object({ workerId: z.string().uuid() }).safeParse({ workerId: text(formData, "workerId") });
+  if (!parsed.success) return;
+  const workerResult = await queryPostgres<{
+    id: string; name: string; email: string | null; preferred_language: "en" | "es"; user_id: string | null;
+  }>(
+    `select id, name, email, preferred_language, user_id
+     from public.operations_workers
+     where tenant_id = $1 and id = $2 and availability_status <> 'inactive' limit 1`,
+    [actor.workspace.id, parsed.data.workerId]
+  );
+  const worker = workerResult?.rows[0];
+  if (!worker?.email || worker.user_id) return;
+  const session = await getCurrentAppSession();
+  await createEmployeeInvite({
+    tenantId: actor.workspace.id,
+    workerId: worker.id,
+    workerName: worker.name,
+    email: worker.email,
+    invitedByUserId: session?.userId ?? null,
+    language: worker.preferred_language === "es" ? "es" : "en"
+  });
+  revalidatePath("/app/operations-workforce");
+}
+
+export async function decideEmployeeAccessRequestAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
+  const parsed = employeeAccessDecisionSchema.safeParse({
+    requestId: text(formData, "requestId"),
+    decision: text(formData, "decision"),
+    ownerNote: text(formData, "ownerNote")
+  });
+  if (!parsed.success) return;
+  const tenantId = actor.workspace.id;
+  const requestResult = await queryPostgres<{
+    id: string; name: string; email: string; phone: string | null; preferred_language: "en" | "es";
+  }>(
+    `select id, name, email, phone, preferred_language
+     from public.employee_access_requests
+     where tenant_id = $1 and id = $2 and status = 'pending' limit 1`,
+    [tenantId, parsed.data.requestId]
+  );
+  const accessRequest = requestResult?.rows[0];
+  if (!accessRequest) return;
+  const reviewerUserId = actor.userId === "admin-token" ? null : actor.userId;
+
+  if (parsed.data.decision === "declined") {
+    await queryPostgres(
+      `update public.employee_access_requests
+       set status = 'declined', owner_note = $3, reviewed_by_user_id = $4, reviewed_at = now(), updated_at = now()
+       where tenant_id = $1 and id = $2 and status = 'pending'`,
+      [tenantId, accessRequest.id, parsed.data.ownerNote ?? null, reviewerUserId]
+    );
+    await sendTransactionalEmail({
+      to: accessRequest.email,
+      subject: "Ferocity employee access request update",
+      text: accessRequest.preferred_language === "es"
+        ? `Hola ${accessRequest.name},\n\nLa empresa no aprobó esta solicitud de acceso. Si cree que es un error, comuníquese directamente con su supervisor o dueño.\n\nFerocity no compartió información de la empresa con esta solicitud.`
+        : `Hi ${accessRequest.name},\n\nThe company did not approve this access request. If you think this is a mistake, contact your supervisor or company owner directly.\n\nFerocity did not share any company information through this request.`,
+      tenantId,
+      eventKey: "employee_access_declined",
+      metadata: { accessRequestId: accessRequest.id }
+    });
+  } else {
+    const workerResult = await queryPostgres<{ id: string; user_id: string | null }>(
+      `with existing as (
+         select id, user_id from public.operations_workers
+         where tenant_id = $1 and lower(email) = lower($2) and availability_status <> 'inactive'
+         order by updated_at desc limit 1
+       ), inserted as (
+         insert into public.operations_workers (
+           tenant_id, name, role_type, phone, email, payroll_type, preferred_language, metadata_json
+         )
+         select $1,$3,'employee',$4,lower($2),'hourly',$5,$6::jsonb
+         where not exists (select 1 from existing)
+         returning id, user_id
+       )
+       select id, user_id from existing union all select id, user_id from inserted limit 1`,
+      [
+        tenantId,
+        accessRequest.email,
+        accessRequest.name,
+        accessRequest.phone,
+        accessRequest.preferred_language,
+        JSON.stringify({ source: "employee_self_service", accessRequestId: accessRequest.id })
+      ]
+    );
+    const worker = workerResult?.rows[0];
+    if (!worker) return;
+    if (!worker.user_id) {
+      await createEmployeeInvite({
+        tenantId,
+        workerId: worker.id,
+        workerName: accessRequest.name,
+        email: accessRequest.email,
+        invitedByUserId: reviewerUserId,
+        language: accessRequest.preferred_language === "es" ? "es" : "en"
+      });
+    }
+    await queryPostgres(
+      `update public.employee_access_requests
+       set status = 'approved', owner_note = $3, reviewed_by_user_id = $4, reviewed_at = now(),
+           metadata_json = metadata_json || $5::jsonb, updated_at = now()
+       where tenant_id = $1 and id = $2 and status = 'pending'`,
+      [tenantId, accessRequest.id, parsed.data.ownerNote ?? null, reviewerUserId, JSON.stringify({ workerId: worker.id, alreadyLinked: Boolean(worker.user_id) })]
+    );
+  }
+
+  await queryPostgres(
+    `update public.owner_command_events
+     set status = 'resolved', owner_attention = false, ai_handled = true,
+         ai_summary = $3, metadata_json = metadata_json || $4::jsonb, updated_at = now()
+     where tenant_id = $1 and platform_key = 'ferocity-workforce'
+       and external_event_id = $2`,
+    [
+      tenantId,
+      `employee-access-request-${accessRequest.id}`,
+      parsed.data.decision === "approved" ? "An authorized user approved the request and Ferocity prepared secure employee access." : "An authorized user declined the request; no access was granted.",
+      JSON.stringify({ decision: parsed.data.decision, reviewedByUserId: reviewerUserId })
+    ]
+  );
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/app/notifications");
 }
 
 export async function createAssignmentAction(formData: FormData) {
@@ -786,6 +1025,136 @@ export async function createPayrollExportAction(formData: FormData) {
     [tenantId, parsed.data.provider, periodStart, periodEnd, parsed.data.notes ?? "Draft export. Provider send disabled until connected and approved."]
   );
   revalidatePath("/app/operations-workforce");
+}
+
+export async function createEmployeeCashAdvanceAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
+  const parsed = cashAdvanceSchema.safeParse({
+    workerId: text(formData, "workerId"),
+    assignmentId: text(formData, "assignmentId"),
+    amount: text(formData, "amount"),
+    advancedAt: text(formData, "advancedAt"),
+    paymentMethod: text(formData, "paymentMethod") ?? "cash",
+    purpose: text(formData, "purpose")
+  });
+  if (!parsed.success || cents(parsed.data.amount) <= 0) return;
+  const tenantId = actor.workspace.id;
+  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
+  if (!target?.workerId || target.employeeMode) return;
+  const result = await queryPostgres<{ id: string; worker_name: string; user_id: string | null }>(
+    `
+    with inserted as (
+      insert into public.employee_cash_advances (
+        tenant_id, worker_id, assignment_id, amount_cents, advanced_at, payment_method,
+        purpose, created_by_user_id, metadata_json
+      )
+      values ($1,$2,$3,$4,coalesce($5::date,current_date),$6,$7,$8,$9::jsonb)
+      returning id, worker_id
+    )
+    select inserted.id, worker.name as worker_name, worker.user_id
+    from inserted
+    join public.operations_workers worker on worker.id = inserted.worker_id and worker.tenant_id = $1
+    `,
+    [
+      tenantId,
+      target.workerId,
+      parsed.data.assignmentId ?? null,
+      cents(parsed.data.amount),
+      parsed.data.advancedAt ?? null,
+      parsed.data.paymentMethod,
+      parsed.data.purpose ?? null,
+      actor.userId === "admin-token" ? null : actor.userId,
+      JSON.stringify({ automaticPayrollDeduction: false, employeeReviewRequired: true })
+    ]
+  );
+  const advance = result?.rows[0];
+  if (advance) {
+    await queryPostgres(
+      `insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
+        action_href, money_cents, risk_type, confidence_score, metadata_json
+      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.advance.recorded', $3, $4,
+        'medium', 'watching', false, true, $5, $6, '/app/operations-workforce', $7, 'financial', 98, $8::jsonb)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
+      [
+        tenantId,
+        `employee-advance-${advance.id}`,
+        `Money advanced to ${advance.worker_name}`,
+        `${advance.worker_name} can review and acknowledge the ${parsed.data.paymentMethod.replaceAll("_", " ")} advance in the employee app.`,
+        "Ferocity recorded the advance but will not deduct it from wages automatically.",
+        "Review the record during payroll and resolve any employee dispute before recovery.",
+        cents(parsed.data.amount),
+        JSON.stringify({ advanceId: advance.id, workerId: target.workerId, recipientUserId: advance.user_id })
+      ]
+    );
+  }
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/employee");
+  revalidatePath("/app/notifications");
+}
+
+export async function respondToEmployeeCashAdvanceAction(formData: FormData) {
+  const parsed = cashAdvanceResponseSchema.safeParse({
+    advanceId: text(formData, "advanceId"),
+    response: text(formData, "response"),
+    note: text(formData, "note")
+  });
+  if (!parsed.success) return;
+  const context = await getEmployeeAccessContext();
+  if (!context.workerId) return;
+  const result = await queryPostgres<{ id: string; amount_cents: number }>(
+    `update public.employee_cash_advances
+     set status = $4, employee_response_note = $5, employee_responded_at = now(), updated_at = now()
+     where id = $1 and tenant_id = $2 and worker_id = $3 and status in ('recorded','acknowledged','disputed')
+     returning id, amount_cents`,
+    [parsed.data.advanceId, context.tenantId, context.workerId, parsed.data.response, parsed.data.note ?? null]
+  );
+  const advance = result?.rows[0];
+  if (advance) {
+    await queryPostgres(
+      `insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
+        action_href, money_cents, risk_type, confidence_score, metadata_json
+      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.advance.responded', $3, $4,
+        $5, $6, $7, false, $8, $9, '/app/operations-workforce', $10, 'financial', 99, $11::jsonb)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do update
+      set title = excluded.title, summary = excluded.summary, severity = excluded.severity,
+          status = excluded.status, owner_attention = excluded.owner_attention,
+          recommended_action = excluded.recommended_action, metadata_json = excluded.metadata_json,
+          occurred_at = now(), updated_at = now()`,
+      [
+        context.tenantId,
+        `employee-advance-response-${advance.id}`,
+        parsed.data.response === "disputed" ? "Employee disputed a money advance" : "Employee acknowledged a money advance",
+        parsed.data.note || `${context.workerName ?? "The employee"} selected ${parsed.data.response}.`,
+        parsed.data.response === "disputed" ? "high" : "info",
+        parsed.data.response === "disputed" ? "needs_owner" : "resolved",
+        parsed.data.response === "disputed",
+        parsed.data.response === "disputed" ? "Ferocity stopped recovery and routed the record for owner review." : "The employee acknowledgment is recorded for payroll review.",
+        parsed.data.response === "disputed" ? "Review the advance with the employee before any payroll action." : "No action is needed until payroll review.",
+        advance.amount_cents,
+        JSON.stringify({ advanceId: advance.id, workerId: context.workerId, response: parsed.data.response })
+      ]
+    );
+  }
+  revalidatePath("/employee");
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/app/notifications");
+}
+
+export async function updateEmployeeLanguageAction(formData: FormData) {
+  const parsed = employeeLanguageSchema.safeParse({ language: text(formData, "language") });
+  if (!parsed.success) return;
+  const context = await getEmployeeAccessContext();
+  if (!context.workerId) return;
+  await queryPostgres(
+    `update public.operations_workers set preferred_language = $3, updated_at = now()
+     where tenant_id = $1 and id = $2`,
+    [context.tenantId, context.workerId, parsed.data.language]
+  );
+  revalidatePath("/employee");
 }
 
 export async function createCustomerUpdateDraftAction(formData: FormData) {

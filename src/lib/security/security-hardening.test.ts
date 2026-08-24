@@ -61,9 +61,24 @@ describe("security hardening invariants", () => {
     for (const route of [
       "src/app/api/public/chat/route.ts",
       "src/app/api/public/leads/route.ts",
+      "src/app/api/public/employee-access/route.ts",
+      "src/app/api/public/site-activity/route.ts",
+      "src/app/api/public/support/route.ts",
       "src/app/api/website-grader/route.ts"
     ]) {
       expect(source(route)).toContain("consumePublicRateLimit");
     }
+  });
+
+  it("keeps employee self-service access owner-gated and employee-bound", () => {
+    const requestRoute = source("src/app/api/public/employee-access/route.ts");
+    const approvalActions = source("src/app/app/operations-workforce/actions.ts");
+    const inviteAcceptance = source("src/app/invite/[token]/actions.ts");
+    expect(requestRoute).toContain("approvalRequired: true");
+    expect(requestRoute).not.toContain("insert into public.tenant_users");
+    expect(approvalActions).toContain('decision: z.enum(["approved", "declined"])');
+    expect(approvalActions).toContain("createEmployeeInvite");
+    expect(inviteAcceptance).toContain('invite.invite_purpose === "employee"');
+    expect(inviteAcceptance).toContain("and id = $2");
   });
 });
