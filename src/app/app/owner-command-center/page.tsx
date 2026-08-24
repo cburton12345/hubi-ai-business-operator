@@ -3,7 +3,12 @@ import { AlertTriangle, Bot, BriefcaseBusiness, CheckCircle2, DollarSign, Radar,
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getOwnerCommandCenter, type OwnerCommandEvent } from "@/lib/owner-command-center/get-owner-command-center";
 import type { OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
-import { syncFerocityActivityToOwnerCommandAction, updateOwnerCommandEventAction } from "./actions";
+import {
+  setCapabilityEmergencyPauseAction,
+  syncFerocityActivityToOwnerCommandAction,
+  updateCapabilityTrustAction,
+  updateOwnerCommandEventAction
+} from "./actions";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -67,6 +72,62 @@ export default async function OwnerCommandCenterPage() {
         <Metric label="Money radar" value={money(center.metrics.openMoneyCents)} icon={<DollarSign size={18} />} />
         <Metric label="Open pipeline" value={money(center.metrics.openPipelineCents)} icon={<Radar size={18} />} />
         <Metric label="Collected" value={money(center.metrics.collectedRevenueCents)} icon={<BriefcaseBusiness size={18} />} />
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2><ShieldAlert size={18} /> Operational Trust</h2>
+            <p className="muted">Capability-specific health and trust. A connected provider is not treated as proof that every action completed.</p>
+          </div>
+          <div className="inline-actions">
+            <span className="pill">{center.capabilityTrust.healthy} healthy</span>
+            <span className={`pill ${center.capabilityTrust.needsAttention ? "high" : ""}`}>{center.capabilityTrust.needsAttention} need attention</span>
+            <span className="pill">{center.capabilityTrust.paused} paused</span>
+            <Link className="mini-button" href="/app/automation-timeline">View evidence</Link>
+          </div>
+        </div>
+        <div className="inline-actions">
+          <span className="pill">30 days: {center.capabilityTrust.metrics.actions} actions</span>
+          <span className="pill">{center.capabilityTrust.metrics.successRate}% verified success</span>
+          <span className={`pill ${center.capabilityTrust.metrics.providerFailureRate ? "medium" : ""}`}>{center.capabilityTrust.metrics.providerFailureRate}% failed</span>
+          <span className="pill">{center.capabilityTrust.metrics.retries} retries</span>
+          <span className="pill">{center.capabilityTrust.metrics.fallbacks} fallbacks</span>
+          <span className="pill">{center.capabilityTrust.metrics.ownerCorrections} meaningful corrections</span>
+        </div>
+        <ul className="list">
+          {center.capabilityTrust.items.slice(0, 9).map((item) => (
+            <li className="list-row" key={item.capabilityKey}>
+              <div>
+                <h3>{item.displayName}</h3>
+                <p className="muted">{item.lastRegressionReason ?? (item.blockerCount ? `${item.blockerCount} required dependenc${item.blockerCount === 1 ? "y is" : "ies are"} not healthy.` : "Verification is still in progress.")}</p>
+              </div>
+              <div className="inline-actions">
+                <span className={`pill ${item.healthState === "healthy" ? "" : "high"}`}>{item.healthState.replaceAll("_", " ")}</span>
+                <span className="pill">{item.trustLevel}</span>
+                {item.emergencyPaused ? <span className="pill high">paused</span> : null}
+                {item.recommendedTrustLevel !== item.trustLevel ? (
+                  <form action={updateCapabilityTrustAction}>
+                    <input name="capabilityKey" type="hidden" value={item.capabilityKey} />
+                    <input name="nextLevel" type="hidden" value={item.recommendedTrustLevel} />
+                    <button className="mini-button secondary-button" type="submit">Use {item.recommendedTrustLevel}</button>
+                  </form>
+                ) : null}
+                <form action={setCapabilityEmergencyPauseAction}>
+                  <input name="capabilityKey" type="hidden" value={item.capabilityKey} />
+                  <input name="paused" type="hidden" value={item.emergencyPaused ? "false" : "true"} />
+                  <button className={`mini-button ${item.emergencyPaused ? "" : "secondary-button"}`} type="submit">{item.emergencyPaused ? "Resume" : "Pause"}</button>
+                </form>
+              </div>
+            </li>
+          ))}
+          {center.capabilityTrust.items.length > 0 && center.capabilityTrust.needsAttention === 0 && center.capabilityTrust.paused === 0 ? (
+            <li className="list-row"><span className="muted">All intended capabilities currently report healthy dependencies.</span></li>
+          ) : null}
+          {center.capabilityTrust.items.length === 0 ? (
+            <li className="list-row"><span className="muted">Capability verification has not started for this workspace.</span></li>
+          ) : null}
+        </ul>
       </section>
 
       <section className="panel section-actions">

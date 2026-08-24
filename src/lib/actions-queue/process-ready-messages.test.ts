@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { queryPostgresMock, sendMessageMock } = vi.hoisted(() => ({
+const { queryPostgresMock, sendMessageMock, beginCapabilityExecutionMock, recordCapabilityExecutionStateMock, recordCapabilityProviderResultMock, recordCapabilityCircuitResultMock } = vi.hoisted(() => ({
   queryPostgresMock: vi.fn(),
-  sendMessageMock: vi.fn()
+  sendMessageMock: vi.fn(),
+  beginCapabilityExecutionMock: vi.fn(),
+  recordCapabilityExecutionStateMock: vi.fn(),
+  recordCapabilityProviderResultMock: vi.fn(),
+  recordCapabilityCircuitResultMock: vi.fn()
 }));
 
 vi.mock("@/lib/db/postgres", () => ({
@@ -11,6 +15,14 @@ vi.mock("@/lib/db/postgres", () => ({
 
 vi.mock("@/lib/messaging/messaging-engine", () => ({
   sendMessage: sendMessageMock
+}));
+
+vi.mock("@/lib/reliability/capability-runtime", () => ({
+  capabilityForQueuedAction: ({ actionType }: { actionType: string }) => actionType === "email_send" ? "email_follow_up" : "sms_follow_up",
+  beginCapabilityExecution: beginCapabilityExecutionMock,
+  recordCapabilityExecutionState: recordCapabilityExecutionStateMock,
+  recordCapabilityProviderResult: recordCapabilityProviderResultMock,
+  recordCapabilityCircuitResult: recordCapabilityCircuitResultMock
 }));
 
 import { processReadyMessagesForTenant } from "./process-ready-messages";
@@ -34,12 +46,28 @@ const readyEmail = {
   ,contact_email: "lead@example.com"
   ,contact_phone: "5550101"
   ,workflow_type: null
+  ,approved_by_user_id: null
 };
 
 describe("processReadyMessagesForTenant", () => {
   beforeEach(() => {
     queryPostgresMock.mockReset();
     sendMessageMock.mockReset();
+    beginCapabilityExecutionMock.mockReset();
+    recordCapabilityExecutionStateMock.mockReset();
+    recordCapabilityProviderResultMock.mockReset();
+    recordCapabilityCircuitResultMock.mockReset();
+    beginCapabilityExecutionMock.mockResolvedValue({
+      auditId: "audit-1",
+      shouldProceed: true,
+      enforced: false,
+      authorization: { allowed: true, basis: "automation_policy" },
+      readiness: { ready: true, health: "healthy", blockers: [], warnings: [] },
+      trustLevel: "trusted"
+    });
+    recordCapabilityExecutionStateMock.mockResolvedValue({ updated: true });
+    recordCapabilityProviderResultMock.mockResolvedValue({ updated: true });
+    recordCapabilityCircuitResultMock.mockResolvedValue({ state: "closed" });
   });
 
   it("sends an authorized, consented message through the guarded messaging engine", async () => {

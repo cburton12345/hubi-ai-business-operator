@@ -8,7 +8,8 @@ function dateLabel(value: string) {
 }
 
 function statusClass(status: string) {
-  if (status === "blocked") return "high";
+  if (["blocked", "failed", "unknown", "needs_attention"].includes(status)) return "high";
+  if (status === "delayed") return "medium";
   if (status === "needs_approval") return "medium";
   if (status === "prepared") return "draft";
   return "";
@@ -20,6 +21,9 @@ function actionLabel(event: AutomationTimelineEvent) {
   if (event.status === "prepared") return "Prepared";
   if (event.status === "synced") return "Synced";
   if (event.status === "handled") return "Handled";
+  if (["planned", "queued", "attempted", "provider_accepted", "delivered", "confirmed", "completed", "failed", "delayed", "unknown", "needs_attention"].includes(event.status)) {
+    return event.status.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase());
+  }
   return "Logged";
 }
 

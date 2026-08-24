@@ -10,6 +10,7 @@ import { canonicalizeVoiceDisposition, reconcileCallContact } from "@/lib/phone/
 import { orchestrateCompletedCall } from "@/lib/phone/post-call-orchestration";
 import { createVoiceAppointment } from "@/lib/phone/voice-scheduling";
 import { safelyEnqueueExternalCallLogHandoffs } from "@/lib/integrations/call-log/enqueue";
+import { recordCapabilityDeliveryEvidence } from "@/lib/reliability/capability-runtime";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -472,6 +473,39 @@ export async function POST(request: NextRequest) {
       }
     });
     if (finalEvent) {
+      const capabilityEvidence = {
+        status,
+        outcome,
+        durationSeconds,
+        callId,
+        transcriptPresent: Boolean(transcriptText),
+        providerEventId
+      };
+      if (["completed", "transferred"].includes(status)) {
+        await recordCapabilityDeliveryEvidence({
+          tenantId,
+          providerKey: provider,
+          providerReference: providerCallId,
+          state: "confirmed",
+          evidence: capabilityEvidence
+        });
+        await recordCapabilityDeliveryEvidence({
+          tenantId,
+          providerKey: provider,
+          providerReference: providerCallId,
+          state: "completed",
+          evidence: capabilityEvidence
+        });
+      } else if (["failed", "missed", "spam", "blocked"].includes(status)) {
+        await recordCapabilityDeliveryEvidence({
+          tenantId,
+          providerKey: provider,
+          providerReference: providerCallId,
+          state: "failed",
+          evidence: capabilityEvidence,
+          error: `Voice call ended with status ${status}.`
+        });
+      }
       await orchestrateCompletedCall({
         tenantId,
         callId,

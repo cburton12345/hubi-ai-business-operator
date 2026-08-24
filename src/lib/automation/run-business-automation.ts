@@ -16,6 +16,7 @@ import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
 import { evaluatePlatformCapacity } from "@/lib/observability/platform-capacity";
 import { safeLogAppError } from "@/lib/observability/log-error";
 import { syncGoldenBusinessLoopsForTenant, type GoldenLoopSyncResult } from "@/lib/business-loop/sync-golden-loop";
+import { runCapabilityReliabilityWatchdog, syncCapabilityTrustHealthForTenant } from "@/lib/reliability/capability-runtime";
 
 export type BusinessAutomationCompletedResult = {
   ok: true;
@@ -35,6 +36,8 @@ export type BusinessAutomationCompletedResult = {
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   providerFunding: Awaited<ReturnType<typeof evaluateProviderFundingAlerts>>;
   platformCapacity: Awaited<ReturnType<typeof evaluatePlatformCapacity>>;
+  capabilityWatchdog: Awaited<ReturnType<typeof runCapabilityReliabilityWatchdog>>;
+  capabilityHealth: Array<{ tenantId: string } & Awaited<ReturnType<typeof syncCapabilityTrustHealthForTenant>>>;
   tenantFailures: Array<{ tenantId: string; message: string }>;
   elapsedMs: number;
 };
@@ -295,12 +298,14 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
   const goldenBusinessLoops: BusinessAutomationCompletedResult["goldenBusinessLoops"] = [];
   const dailyBriefs: BusinessAutomationCompletedResult["dailyBriefs"] = [];
   const tenantFailures: BusinessAutomationCompletedResult["tenantFailures"] = [];
+  const capabilityHealth: BusinessAutomationCompletedResult["capabilityHealth"] = [];
 
   let nextTenantIndex = 0;
   const worker = async () => {
     while (nextTenantIndex < tenantIds.length) {
       const tenantId = tenantIds[nextTenantIndex++];
       try {
+        capabilityHealth.push({ tenantId, ...(await syncCapabilityTrustHealthForTenant(tenantId)) });
         await ensureDefaultMonitorSetup(tenantId);
         revenueLoops.push({ tenantId, ...(await runRevenueLoopAutomationForTenant(tenantId)) });
         constructionHealth.push({ tenantId, ...(await syncConstructionHealthForTenant(tenantId)) });
@@ -332,6 +337,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
   const aiWorkforce = await runDueAgentWorkflows({ limit: input.agentLimit ?? 25, tenantId: input.tenantId ?? null });
   const providerFunding = await evaluateProviderFundingAlerts();
   const platformCapacity = await evaluatePlatformCapacity();
+  const capabilityWatchdog = await runCapabilityReliabilityWatchdog({ tenantId: input.tenantId ?? null, limit: 200 });
   await cleanupExpiredRuntimeRows();
 
   await queryPostgres(
@@ -361,6 +367,8 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
         aiWorkforce,
         providerFunding,
         platformCapacity,
+        capabilityWatchdog,
+        capabilityHealth,
         tenantFailures,
         elapsedMs: Date.now() - startedAt,
         liveActionsStillGated: true
@@ -386,6 +394,8 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
     aiWorkforce,
     providerFunding,
     platformCapacity,
+    capabilityWatchdog,
+    capabilityHealth,
     tenantFailures,
     elapsedMs: Date.now() - startedAt
   };

@@ -6,6 +6,14 @@ import { ensureInvoiceReviewEnrollment } from "@/lib/reviews/invoice-review-enro
 import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
 import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
 import { composeOutboundCallVariables, prepareOutboundCallVariables } from "@/lib/phone/outbound-call-context";
+import {
+  beginCapabilityExecution,
+  capabilityForQueuedAction,
+  recordCapabilityCircuitResult,
+  recordCapabilityExecutionState,
+  recordCapabilityProviderResult
+} from "@/lib/reliability/capability-runtime";
+import { classifyProviderFailure, evaluateFallback } from "@/lib/reliability/capability-trust";
 
 export type ReadyMessageProcessingResult = {
   checked: number;
@@ -33,6 +41,7 @@ type ReadyMessageRow = {
   contact_email: string | null;
   contact_phone: string | null;
   workflow_type: string | null;
+  approved_by_user_id: string | null;
 };
 
 function engineProviderKey(actionType: "email_send" | "sms_send", providerKey: string) {
@@ -179,6 +188,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       ,coalesce(l.email, c.email, case when q.recipient_label like '%@%' then q.recipient_label end) as contact_email
       ,coalesce(l.phone, c.phone, case when q.recipient_label not like '%@%' then q.recipient_label end) as contact_phone
       ,f.workflow_type
+      ,q.approved_by_user_id
     from public.outbound_action_queue q
     left join public.live_action_policies p on p.id = q.policy_id and p.tenant_id = q.tenant_id
     left join public.leads l on l.tenant_id = q.tenant_id and q.target_type = 'lead' and l.id = q.target_id
@@ -210,9 +220,37 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
     const recipient = row.recipient_label?.trim() ?? "";
     const body = row.body?.trim() ?? "";
     const channel = row.action_type === "email_send" ? "email" : row.action_type === "voice_call" ? "phone" : "sms";
+    const capabilityKey = capabilityForQueuedAction({ actionType: row.action_type, targetType: row.target_type, workflowType: row.workflow_type });
+    const idempotencyKey = row.retry_count > 0
+      ? `outbound-action:${row.id}:attempt:${row.retry_count}`
+      : `outbound-action:${row.id}`;
+    const trustExecution = await beginCapabilityExecution({
+      tenantId,
+      capabilityKey,
+      idempotencyKey,
+      sourceTable: "outbound_action_queue",
+      sourceId: row.id,
+      providerKey: row.provider_key,
+      humanApproved: row.queue_status === "approved",
+      policyAllowsAutomatic: row.queue_status === "queued" && row.policy_status === "live" && row.requires_human_approval === false,
+      consequential: capabilityKey === "payment_collection",
+      initiatorType: "automation",
+      requestedByUserId: row.approved_by_user_id,
+      confirmationRequired: row.action_type !== "voice_call",
+      retryCount: row.retry_count,
+      expectedEventType: row.action_type === "voice_call" ? "call completion webhook" : "delivery receipt",
+      expectedEventAt: new Date(Date.now() + (row.action_type === "voice_call" ? 20 : 60) * 60_000),
+      metadata: { actionType: row.action_type, targetType: row.target_type, trustEnvelopeVersion: 1 }
+    });
+    if (!trustExecution.shouldProceed) {
+      blocked += 1;
+      await updateQueueResult({ tenantId, row, status: "blocked", message: trustExecution.authorization.allowed ? "Capability execution is blocked." : trustExecution.authorization.reason });
+      continue;
+    }
     if (!recipient || !body) {
       blocked += 1;
       await updateQueueResult({ tenantId, row, status: "blocked", message: "Missing recipient or message body." });
+      await recordCapabilityExecutionState({ tenantId, auditId: trustExecution.auditId, state: "blocked", error: "Missing recipient or message body." });
       continue;
     }
 
@@ -243,12 +281,15 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
           ? `${channel.toUpperCase()} is suppressed for this contact.`
           : `${channel.toUpperCase()} consent is not granted.`
       });
+      await recordCapabilityExecutionState({
+        tenantId,
+        auditId: trustExecution.auditId,
+        state: "blocked",
+        failureCategory: consentState.suppressed ? "opt_out" : "consent",
+        error: consentState.suppressed ? `${channel.toUpperCase()} is suppressed for this contact.` : `${channel.toUpperCase()} consent is not granted.`
+      });
       continue;
     }
-
-    const idempotencyKey = row.retry_count > 0
-      ? `outbound-action:${row.id}:attempt:${row.retry_count}`
-      : `outbound-action:${row.id}`;
     if (row.action_type === "voice_call") {
       const route = await queryPostgres<{ provider_key: string; assistant_id: string | null; brand_id: string | null }>(
         `select coalesce(nullif($2,''),r.primary_provider_key) as provider_key,
@@ -266,6 +307,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       if (!voice?.assistant_id || !adapter || !recipient.startsWith("+")) {
         blocked += 1;
         await updateQueueResult({ tenantId, row, status: "blocked", message: "The approved voice route, outbound agent, or E.164 destination is not ready." });
+        await recordCapabilityExecutionState({ tenantId, auditId: trustExecution.auditId, state: "blocked", failureCategory: "configuration", error: "The approved voice route, outbound agent, or E.164 destination is not ready." });
         continue;
       }
       const context = {
@@ -276,6 +318,8 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       if (!connection.ok) {
         failed += 1;
         await updateQueueResult({ tenantId, row, status: connection.retryable ? "failed" : "blocked", message: connection.safeMessage });
+        await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: false, retryable: connection.retryable, error: connection.safeMessage });
+        await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: false, reason: connection.safeMessage });
         continue;
       }
       const prepared = row.target_id && (row.target_type === "lead" || row.target_type === "customer")
@@ -292,9 +336,13 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       if (call.ok) {
         sent += 1;
         await updateQueueResult({ tenantId, row, status: "sent", message: null, providerMessageId: call.data.providerCallId });
+        await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: true, providerReference: call.data.providerCallId });
+        await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: true });
       } else {
         failed += 1;
         await updateQueueResult({ tenantId, row, status: call.retryable ? "failed" : "blocked", message: call.safeMessage });
+        await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: false, retryable: call.retryable, error: call.safeMessage });
+        await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: false, reason: call.safeMessage });
       }
       continue;
     }
@@ -322,7 +370,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       }
     });
 
-    if (sendResult.ok && sendResult.status === "sent") {
+    if (sendResult.ok && (sendResult.status === "sent" || sendResult.status === "queued")) {
       sent += 1;
       await updateQueueResult({
         tenantId,
@@ -331,6 +379,8 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         message: null,
         providerMessageId: sendResult.providerMessageId
       });
+      await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: sendResult.providerKey, ok: true, providerReference: sendResult.providerMessageId });
+      await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: sendResult.providerKey, success: true });
     } else if (sendResult.ok) {
       blocked += 1;
       await updateQueueResult({
@@ -339,8 +389,28 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         status: "blocked",
         message: "The provider prepared a manual send instead of completing a live send."
       });
+      await recordCapabilityExecutionState({ tenantId, auditId: trustExecution.auditId, state: "needs_attention", error: "A manual send was prepared and still needs a person to complete it." });
     } else {
       failed += 1;
+      await recordCapabilityProviderResult({
+        tenantId,
+        auditId: trustExecution.auditId,
+        providerKey: sendResult.providerKey,
+        ok: false,
+        retryable: sendResult.retryable,
+        status: sendResult.status,
+        blockedBy: typeof sendResult.metadata?.blockedBy === "string" ? sendResult.metadata.blockedBy : null,
+        error: sendResult.error
+      });
+      const failureCategory = classifyProviderFailure({
+        retryable: sendResult.retryable,
+        status: sendResult.status,
+        blockedBy: typeof sendResult.metadata?.blockedBy === "string" ? sendResult.metadata.blockedBy : null,
+        message: sendResult.error
+      });
+      if (!["consent", "opt_out", "compliance", "authorization", "configuration"].includes(failureCategory)) {
+        await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: sendResult.providerKey, success: false, reason: sendResult.error });
+      }
       const offers = buildCommunicationFailoverOffers({
         originalMethod: row.communication_method ?? row.action_type,
         hasPhone: Boolean(row.contact_phone),
@@ -349,6 +419,15 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       const automaticFallback = row.fallback_mode === "automatic"
         ? offers.find((offer) => offer.method === row.fallback_method)
         : null;
+      const fallbackDecision = automaticFallback
+        ? evaluateFallback({
+            reason: failureCategory,
+            alternateConfigured: true,
+            alternateAuthorized: true,
+            alternateHealthy: true,
+            consentStillValid: true
+          })
+        : { allowed: false as const, reason: "No automatic fallback was selected." };
       await recordCommunicationFailover({
         tenantId,
         queueId: row.id,
@@ -357,10 +436,10 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         reason: sendResult.error,
         offers,
         mode: row.fallback_mode ?? "ask",
-        selected: automaticFallback?.method,
-        outcome: automaticFallback ? "selected" : "pending"
+        selected: fallbackDecision.allowed ? automaticFallback?.method : undefined,
+        outcome: fallbackDecision.allowed ? "selected" : "pending"
       });
-      if (automaticFallback) {
+      if (automaticFallback && fallbackDecision.allowed) {
         const next = automaticFallback.method === "email"
           ? { actionType: "email_send", providerKey: "resend_email", recipient: row.contact_email }
           : automaticFallback.method === "human_call"
@@ -377,6 +456,14 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
           [tenantId, row.id, next.actionType, next.providerKey, next.recipient, sendResult.error,
             JSON.stringify({ failoverSelected: automaticFallback.method, failoverReason: sendResult.error })]
         );
+        await recordCapabilityExecutionState({
+          tenantId,
+          auditId: trustExecution.auditId,
+          state: "needs_attention",
+          error: `Provider failed; ${automaticFallback.label} was prepared under the configured fallback policy.`,
+          fallbackIncrement: 1,
+          metadata: { fallbackMethod: automaticFallback.method, failureCategory }
+        });
         continue;
       }
       await updateQueueResult({

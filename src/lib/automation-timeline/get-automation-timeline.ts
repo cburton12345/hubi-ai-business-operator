@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import type { CapabilityActionState } from "@/lib/reliability/capability-trust";
 
 export type AutomationTimelineEvent = {
   id: string;
@@ -13,7 +14,7 @@ export type AutomationTimelineEvent = {
   primaryEntityType: string | null;
   primaryEntityId: string | null;
   metadata: Record<string, unknown>;
-  status: "handled" | "prepared" | "needs_approval" | "blocked" | "synced" | "logged";
+  status: "handled" | "prepared" | "needs_approval" | "synced" | "logged" | CapabilityActionState;
 };
 
 export type AutomationTimelineDashboard = {
@@ -51,7 +52,7 @@ function statusFor(row: {
 
 export async function getAutomationTimelineDashboard(): Promise<AutomationTimelineDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [metricResult, familyResult, eventResult] = await Promise.all([
+  const [metricResult, familyResult, eventResult, executionResult] = await Promise.all([
     queryPostgres<{
       total: string;
       prepared: string;
@@ -106,11 +107,29 @@ export async function getAutomationTimelineDashboard(): Promise<AutomationTimeli
       limit 80
       `,
       [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      capability_key: string;
+      state: CapabilityActionState;
+      provider_key: string | null;
+      source_table: string | null;
+      source_id: string | null;
+      last_error: string | null;
+      authorization_basis: string;
+      updated_at: string;
+      metadata_json: Record<string, unknown> | null;
+    }>(
+      `select id, capability_key, state, provider_key, source_table, source_id,
+         last_error, authorization_basis, updated_at, metadata_json
+       from public.capability_execution_audits
+       where tenant_id=$1 order by updated_at desc limit 80`,
+      [workspaceId]
     )
   ]);
 
   const metrics = metricResult?.rows[0];
-  const events = (eventResult?.rows ?? []).map((event) => ({
+  const timelineEvents: AutomationTimelineEvent[] = (eventResult?.rows ?? []).map((event) => ({
     id: event.id,
     family: event.event_family,
     type: event.event_type,
@@ -124,16 +143,40 @@ export async function getAutomationTimelineDashboard(): Promise<AutomationTimeli
     metadata: event.metadata_json ?? {},
     status: statusFor(event)
   }));
+  const executionEvents: AutomationTimelineEvent[] = (executionResult?.rows ?? []).map((event) => ({
+    id: `capability-${event.id}`,
+    family: "capability_reliability",
+    type: "capability.execution",
+    title: `${event.capability_key.replaceAll("_", " ")} — ${event.state.replaceAll("_", " ")}`,
+    body: event.last_error ?? (event.provider_key ? `Provider: ${event.provider_key}. Authorization: ${event.authorization_basis.replaceAll("_", " ")}.` : `Authorization: ${event.authorization_basis.replaceAll("_", " ")}.`),
+    occurredAt: event.updated_at,
+    sourceTable: event.source_table,
+    sourceId: event.source_id,
+    primaryEntityType: "capability_execution",
+    primaryEntityId: event.id,
+    metadata: { ...(event.metadata_json ?? {}), providerKey: event.provider_key },
+    status: event.state
+  }));
+  const events = [...timelineEvents, ...executionEvents]
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+    .slice(0, 100);
+  const executions = executionEvents.length;
+  const preparedExecutions = executionEvents.filter((event) => ["planned", "queued", "attempted", "provider_accepted"].includes(event.status)).length;
+  const blockedExecutions = executionEvents.filter((event) => ["blocked", "failed", "delayed", "unknown", "needs_attention"].includes(event.status)).length;
+  const handledExecutions = executionEvents.filter((event) => ["delivered", "confirmed", "completed"].includes(event.status)).length;
 
   return {
     metrics: {
-      total: n(metrics?.total),
-      prepared: n(metrics?.prepared),
+      total: n(metrics?.total) + executions,
+      prepared: n(metrics?.prepared) + preparedExecutions,
       needsApproval: n(metrics?.needs_approval),
-      blocked: n(metrics?.blocked),
-      aiHandled: n(metrics?.ai_handled)
+      blocked: n(metrics?.blocked) + blockedExecutions,
+      aiHandled: n(metrics?.ai_handled) + handledExecutions
     },
-    familyCounts: (familyResult?.rows ?? []).map((row) => ({ label: row.event_family, count: n(row.count) })),
+    familyCounts: [
+      ...(executions ? [{ label: "capability_reliability", count: executions }] : []),
+      ...(familyResult?.rows ?? []).map((row) => ({ label: row.event_family, count: n(row.count) }))
+    ].slice(0, 12),
     events
   };
 }

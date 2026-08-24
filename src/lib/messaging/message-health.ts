@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { recordCapabilityDeliveryEvidence } from "@/lib/reliability/capability-runtime";
 
 export const normalizedDeliveryStatuses = [
   "accepted",
@@ -203,6 +204,22 @@ export async function recordMessageDeliveryReceipt(receipt: DeliveryReceipt) {
         JSON.stringify({ latestDeliveryEventId: eventResult.rows[0].id })
       ]
     );
+    if (receipt.normalizedStatus === "delivered" || unhealthyStatuses.has(receipt.normalizedStatus) || receipt.normalizedStatus === "unknown") {
+      await recordCapabilityDeliveryEvidence({
+        tenantId: receipt.tenantId,
+        providerKey: receipt.providerKey,
+        providerReference: receipt.providerMessageId,
+        state: receipt.normalizedStatus === "delivered" ? "delivered" : receipt.normalizedStatus === "unknown" ? "unknown" : "failed",
+        evidence: {
+          normalizedStatus: receipt.normalizedStatus,
+          rawStatus: receipt.rawStatus,
+          errorCode: receipt.errorCode ?? null,
+          receiptAt: receiptAt.toISOString(),
+          providerEventId: receipt.providerEventId ?? null
+        },
+        error: unhealthyStatuses.has(receipt.normalizedStatus) ? receipt.safeReason ?? `Delivery ${receipt.normalizedStatus}.` : null
+      });
+    }
   }
 
   const alertKey = `message-health:${message.id}`;

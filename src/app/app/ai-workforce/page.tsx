@@ -25,6 +25,7 @@ import { getAgentWorkflowDashboard } from "@/lib/ai-workforce/agent-workflows";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { AiCommandPanel } from "./AiCommandPanel";
 import { runAiAgentWorkflowAction, updateAiAgentWorkflowAction } from "./workflow-actions";
+import { getTenantCapabilityTrustOverview } from "@/lib/reliability/capability-runtime";
 
 const employees = [
   {
@@ -218,7 +219,12 @@ export default async function AiWorkforcePage({
   searchParams?: Promise<{ command?: string }>;
 }) {
   const params = (await searchParams) ?? {};
-  const [history, agentDashboard] = await Promise.all([getAiWorkforceHistory(), getAgentWorkflowDashboard()]);
+  const workspaceId = await getCurrentWorkspaceId();
+  const [history, agentDashboard, trustItems] = await Promise.all([
+    getAiWorkforceHistory(),
+    getAgentWorkflowDashboard(),
+    getTenantCapabilityTrustOverview(workspaceId)
+  ]);
   const monitorReady = Boolean(env.AI_WORKFORCE_CRON_TOKEN);
 
   return (
@@ -353,6 +359,24 @@ export default async function AiWorkforcePage({
       </section>
 
       <AiCommandPanel initialCommand={params.command || undefined} submitLabel="Apply reviewed work" />
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2><ShieldCheck size={18} /> What the AI workforce may safely do</h2>
+            <p className="muted">Trust is granted by capability, not to AI as a whole. Unhealthy dependencies automatically narrow what Ferocity may execute.</p>
+          </div>
+          <Link className="button secondary-button" href="/app/owner-command-center">Open operational trust</Link>
+        </div>
+        <div className="inline-actions">
+          {trustItems.slice(0, 9).map((item) => (
+            <span className={`pill ${item.healthState === "healthy" && !item.emergencyPaused ? "" : "high"}`} key={item.capabilityKey}>
+              {item.displayName}: {item.emergencyPaused ? "paused" : `${item.trustLevel} / ${item.healthState.replaceAll("_", " ")}`}
+            </span>
+          ))}
+          {trustItems.length === 0 ? <span className="pill high">Capability verification has not started</span> : null}
+        </div>
+      </section>
 
       <section className="section-actions">
         <div className="list-row flush-row">

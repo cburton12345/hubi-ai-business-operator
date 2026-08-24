@@ -3,6 +3,12 @@ import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
 import { getOwnerNeeds, type OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
+import {
+  getTenantCapabilityReliabilityMetrics,
+  getTenantCapabilityTrustOverview,
+  type CapabilityReliabilityMetrics,
+  type CapabilityTrustOverviewItem
+} from "@/lib/reliability/capability-runtime";
 
 export type OwnerCommandEvent = {
   id: string;
@@ -49,6 +55,13 @@ export type OwnerCommandCenter = {
     valueCents: number;
   }[];
   platformFilters: string[];
+  capabilityTrust: {
+    healthy: number;
+    needsAttention: number;
+    paused: number;
+    items: CapabilityTrustOverviewItem[];
+    metrics: CapabilityReliabilityMetrics;
+  };
 };
 
 function dollars(cents: number) {
@@ -117,7 +130,7 @@ function buildBriefing(input: {
 
 export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
   const workspace = await getCurrentWorkspace();
-  const [snapshot, report, ownerRequests, eventsResult, platformResult] = await Promise.all([
+  const [snapshot, report, ownerRequests, eventsResult, platformResult, capabilityTrustItems, capabilityMetrics] = await Promise.all([
     getDashboardSnapshot(),
     getReportingDashboard(),
     getOwnerNeeds(),
@@ -162,7 +175,9 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
       order by platform_name
       `,
       [workspace.id]
-    )
+    ),
+    getTenantCapabilityTrustOverview(workspace.id),
+    getTenantCapabilityReliabilityMetrics(workspace.id)
   ]);
 
   const events = (eventsResult?.rows ?? []).map(mapEvent);
@@ -211,6 +226,13 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
     aiActions,
     moneyRadar,
     makeMoneyNext,
-    platformFilters: (platformResult?.rows ?? []).map((row) => row.platform_name)
+    platformFilters: (platformResult?.rows ?? []).map((row) => row.platform_name),
+    capabilityTrust: {
+      healthy: capabilityTrustItems.filter((item) => item.healthState === "healthy" && !item.emergencyPaused).length,
+      needsAttention: capabilityTrustItems.filter((item) => item.healthState !== "healthy").length,
+      paused: capabilityTrustItems.filter((item) => item.emergencyPaused).length,
+      items: capabilityTrustItems,
+      metrics: capabilityMetrics
+    }
   };
 }

@@ -13,6 +13,18 @@ const eventActionSchema = z.object({
   nextStatus: z.enum(["watching", "ai_handled", "resolved"])
 });
 
+const capabilityTrustSchema = z.object({
+  capabilityKey: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
+  nextLevel: z.enum(["unverified", "observing", "assisted", "trusted", "autonomous"])
+});
+
+const capabilityPauseSchema = z.object({
+  capabilityKey: z.string().min(1).max(100).regex(/^[a-z0-9_]+$/),
+  paused: z.enum(["true", "false"])
+});
+
+const trustOrder = ["unverified", "observing", "assisted", "trusted", "autonomous"] as const;
+
 function actionCopy(status: string) {
   if (status === "ai_handled") {
     return {
@@ -121,4 +133,75 @@ export async function syncFerocityActivityToOwnerCommandAction() {
   revalidatePath("/app/owner-command-center");
   revalidatePath("/app/operator");
   revalidatePath("/app/reports");
+}
+
+export async function updateCapabilityTrustAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = capabilityTrustSchema.safeParse({ capabilityKey: formData.get("capabilityKey"), nextLevel: formData.get("nextLevel") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  if (!session?.userId) return;
+  const roleResult = await queryPostgres<{ role: string }>(
+    `select role from public.tenant_users where tenant_id=$1 and user_id=$2 and status='active' limit 1`,
+    [workspaceId, session.userId]
+  );
+  if (roleResult?.rows[0]?.role !== "owner" && session.platformRole !== "super_admin") return;
+
+  const currentResult = await queryPostgres<{ trust_level: (typeof trustOrder)[number]; recommended_trust_level: (typeof trustOrder)[number]; health_state: string }>(
+    `select trust_level, recommended_trust_level, health_state from public.capability_trust_profiles
+     where tenant_id=$1 and capability_key=$2 limit 1`,
+    [workspaceId, parsed.data.capabilityKey]
+  );
+  const current = currentResult?.rows[0];
+  if (!current) return;
+  const currentIndex = trustOrder.indexOf(current.trust_level);
+  const nextIndex = trustOrder.indexOf(parsed.data.nextLevel);
+  const recommendedIndex = trustOrder.indexOf(current.recommended_trust_level);
+  const promotion = nextIndex > currentIndex;
+  if (promotion && (nextIndex !== currentIndex + 1 || nextIndex > recommendedIndex || current.health_state !== "healthy")) return;
+
+  await Promise.all([
+    queryPostgres(
+      `update public.capability_trust_profiles set trust_level=$3,
+         promoted_by_user_id=case when $4 then $5 else promoted_by_user_id end,
+         promoted_at=case when $4 then now() else promoted_at end,
+         metadata_json=metadata_json || $6::jsonb, updated_at=now()
+       where tenant_id=$1 and capability_key=$2`,
+      [workspaceId, parsed.data.capabilityKey, parsed.data.nextLevel, promotion, session.userId, JSON.stringify({ lastTrustDecisionBy: session.email, lastTrustDecisionAt: new Date().toISOString() })]
+    ),
+    queryPostgres(
+      `insert into public.operator_timeline_events (
+         tenant_id, event_family, event_type, title, body, metadata_json
+       ) values ($1,'system','capability_trust_changed','Capability trust changed',$2,$3::jsonb)`,
+      [workspaceId, `${parsed.data.capabilityKey.replaceAll("_", " ")} changed from ${current.trust_level} to ${parsed.data.nextLevel}.`, JSON.stringify({ capabilityKey: parsed.data.capabilityKey, from: current.trust_level, to: parsed.data.nextLevel, actorUserId: session.userId })]
+    )
+  ]);
+  revalidatePath("/app/owner-command-center");
+  revalidatePath("/app/ai-workforce");
+}
+
+export async function setCapabilityEmergencyPauseAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = capabilityPauseSchema.safeParse({ capabilityKey: formData.get("capabilityKey"), paused: formData.get("paused") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const paused = parsed.data.paused === "true";
+  await Promise.all([
+    queryPostgres(
+      `update public.capability_trust_profiles set emergency_paused=$3,
+         metadata_json=metadata_json || $4::jsonb, updated_at=now()
+       where tenant_id=$1 and capability_key=$2`,
+      [workspaceId, parsed.data.capabilityKey, paused, JSON.stringify({ emergencyPauseChangedBy: session?.userId ?? null, emergencyPauseChangedAt: new Date().toISOString() })]
+    ),
+    queryPostgres(
+      `insert into public.operator_timeline_events (
+         tenant_id, event_family, event_type, title, body, metadata_json
+       ) values ($1,'system','capability_emergency_pause',$2,$3,$4::jsonb)`,
+      [workspaceId, paused ? "Capability emergency pause enabled" : "Capability emergency pause cleared", `${parsed.data.capabilityKey.replaceAll("_", " ")} was ${paused ? "paused" : "resumed"}.`, JSON.stringify({ capabilityKey: parsed.data.capabilityKey, paused, actorUserId: session?.userId ?? null })]
+    )
+  ]);
+  revalidatePath("/app/owner-command-center");
+  revalidatePath("/app/ai-workforce");
 }

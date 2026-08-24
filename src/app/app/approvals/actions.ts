@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { recordGrowthEvent, type GrowthEventType } from "@/lib/growth/growth-events";
+import { recordCapabilityCorrection } from "@/lib/reliability/capability-runtime";
 
 const approvalDecisionSchema = z.object({
   approvalId: z.string().min(1),
@@ -39,6 +40,14 @@ async function recordGrowthApprovalDecision(tenantId: string, actionId: string, 
     communityId: row.community_id, opportunityId: row.opportunity_id, actionAttemptId: actionId, eventType,
     channelKey: row.channel_key, actionType: row.action_key, automationMode: "approve", outcome: decision,
     ownerIntervention: notes || decision, idempotencyKey: `growth-approval-decision:${actionId}:${decision}` });
+  if (decision === "changes_requested" && notes?.trim()) {
+    await recordCapabilityCorrection({
+      tenantId,
+      capabilityKey: "growth_distribution",
+      meaningful: true,
+      reason: notes.trim()
+    });
+  }
 }
 
 export async function decideApproval(formData: FormData) {
