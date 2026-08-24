@@ -43,14 +43,19 @@ if (
 ) {
   throw new Error("Refusing to reconcile a call outside the founder-authorized certification scope.");
 }
-if (call.call_status !== "ended") {
-  throw new Error(`Call is ${call.call_status}; only ended calls can be reconciled.`);
+if (!["ended", "not_connected", "error"].includes(call.call_status)) {
+  throw new Error(`Call is ${call.call_status}; only terminal calls can be reconciled.`);
 }
 
+const completed = call.call_status === "ended";
+const missed = ["dial_no_answer", "dial_busy", "user_declined"].includes(call.disconnection_reason ?? "");
+const terminalStatus = completed ? "completed" : missed ? "missed" : "failed";
 const durationSeconds = Math.max(0, Math.round(Number(call.duration_ms ?? 0) / 1000));
 const summary = typeof call?.call_analysis?.call_summary === "string"
   ? call.call_analysis.call_summary.slice(0, 500)
-  : "Controlled Retell certification call completed.";
+  : completed
+    ? "Controlled Retell certification call completed."
+    : `Controlled Retell certification call did not connect (${call.disconnection_reason ?? call.call_status}).`;
 const transcript = typeof call.transcript === "string" ? call.transcript.slice(0, 500) : null;
 const sentiment = String(call?.call_analysis?.user_sentiment ?? "unknown").toLowerCase();
 const costCents = Math.max(0, Math.round(Number(call?.call_cost?.combined_cost ?? 0)));
@@ -64,7 +69,7 @@ await client.connect();
 try {
   const updated = await client.query(
     `update public.receptionist_calls
-        set status = 'completed',
+        set status = $8,
             duration_seconds = greatest(duration_seconds, $1),
             summary = $2,
             sentiment = case when $3 = 'positive' then 'positive' else sentiment end,
@@ -85,7 +90,8 @@ try {
         providerCostCents: costCents
       }),
       tenantId,
-      callId
+      callId,
+      terminalStatus
     ]
   );
   const internalCallId = updated.rows[0]?.id;
@@ -107,12 +113,13 @@ try {
   console.log(JSON.stringify({
     ok: true,
     reconciled: true,
-    status: "completed",
+    status: terminalStatus,
     durationSeconds,
     hasTranscript: Boolean(transcript),
     hasSummary: Boolean(summary),
     sentiment,
-    providerCostCents: costCents
+    providerCostCents: costCents,
+    disconnectionReason: call.disconnection_reason ?? null
   }, null, 2));
 } finally {
   await client.end();

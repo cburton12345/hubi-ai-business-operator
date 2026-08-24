@@ -198,7 +198,7 @@ export function verifyRetellSignature(rawBody: string, apiKey: string, signature
 function retellStatus(event: string | null, callStatus: string | null, reason: string | null): InboundCallEvent["status"] {
   if (event?.startsWith("transfer_") || reason === "call_transfer") return "transferred";
   if (["dial_no_answer", "dial_busy", "user_declined"].includes(reason ?? "")) return "missed";
-  if (callStatus === "error" || reason?.startsWith("error_") || reason === "dial_failed") return "failed";
+  if (callStatus === "not_connected" || callStatus === "error" || reason?.startsWith("error_") || reason === "dial_failed") return "failed";
   if (event === "call_ended" || event === "call_analyzed" || callStatus === "ended") return "completed";
   if (event === "call_started" || callStatus === "ongoing") return "in_progress";
   return "received";

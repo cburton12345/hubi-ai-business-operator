@@ -257,6 +257,29 @@ describe("Retell voice adapter", () => {
     }
   });
 
+  it("treats Retell's terminal not_connected status as a failed call", async () => {
+    const body = JSON.stringify({
+      event: "call_ended",
+      call: {
+        call_id: "retell-not-connected",
+        direction: "outbound",
+        from_number: "+15550001111",
+        to_number: "+15550003333",
+        call_status: "not_connected",
+        disconnection_reason: "telephony_provider_unavailable",
+        metadata: { ferocityTenantId: "11111111-1111-4111-8111-111111111111" }
+      }
+    });
+    const timestamp = Date.now().toString();
+    const digest = crypto.createHmac("sha256", "retell-webhook-key").update(`${body}${timestamp}`).digest("hex");
+    const result = await new RetellVoiceAdapter().normalizeWebhook(
+      new Headers({ "X-Retell-Signature": `v=${timestamp},d=${digest}` }),
+      body
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.status).toBe("failed");
+  });
+
   it("creates a Retell response engine and agent behind the common assistant contract", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(
