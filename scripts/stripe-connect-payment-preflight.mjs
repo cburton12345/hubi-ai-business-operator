@@ -46,8 +46,24 @@ try {
      where tenant_id=$1 order by created_at desc limit 5`,
     [tenantId]
   );
+  const completedCertification = await client.query(
+    `select i.id, i.status, i.total_cents, i.amount_paid_cents, i.updated_at,
+            l.status as payment_link_status, l.updated_at as payment_link_updated_at
+       from public.service_invoices i
+       left join lateral (
+         select status, updated_at
+           from public.service_invoice_payment_links
+          where tenant_id=i.tenant_id and invoice_id=i.id
+          order by updated_at desc limit 1
+       ) l on true
+      where i.tenant_id=$1 and i.title='[CERTIFICATION] Stripe Connect $1 payment'
+        and i.status='paid' and i.amount_paid_cents >= i.total_cents and i.total_cents=100
+      order by i.updated_at desc limit 1`,
+    [tenantId]
+  );
   const row = account.rows[0];
   const candidate = invoices.rows[0];
+  const completed = completedCertification.rows[0];
   const connected = Boolean(
     row?.account_status === "connected" && row.charges_enabled && row.payouts_enabled && row.details_submitted
   );
@@ -69,7 +85,16 @@ try {
       dueDate: invoice.due_date
     })),
     recentPaymentLinks: links.rows,
-    certification: connected && candidate
+    certification: connected && completed
+      ? {
+          status: "certified",
+          invoiceId: completed.id,
+          paidCents: completed.amount_paid_cents,
+          paymentLinkStatus: completed.payment_link_status,
+          certifiedAt: completed.payment_link_updated_at ?? completed.updated_at,
+          note: "A controlled $1 Stripe Connect payment completed successfully."
+        }
+      : connected && candidate
       ? {
           status: "ready_for_owner_authorized_low_dollar_test",
           invoiceId: candidate.id,
