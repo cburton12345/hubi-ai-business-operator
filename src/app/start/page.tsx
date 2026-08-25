@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { publicEarnPlan } from "@/lib/billing/public-plans";
 
 export const metadata: Metadata = {
   title: "Start Ferocity",
@@ -57,6 +58,7 @@ const setupPaths = [
   ["Get more booked income", "Free audit, qualified funnel, SEO/GEO drafts, reviews, ads, video briefs, and tracking."],
   ["Organize jobs and money", "Bids, materials, receipts, invoices, payments, worker day plans, and profit view."],
   ["Have Ferocity managed for me", "Managed setup, AI action review, growth tuning, and owner-only escalation."],
+  ["Pay when the business gets paid", "Ferocity Earn has no monthly base fee and applies an agreed percentage only to eligible revenue actually collected."],
   ["Start small", "Use Job Tracker for bids, materials, receipts, payments, reminders, and job profit."]
 ];
 
@@ -66,7 +68,7 @@ export default async function StartPage({
   searchParams: Promise<{ error?: string; source?: string; plan?: string; billing?: string }>;
 }) {
   const params = await searchParams;
-  const plan = ["job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
+  const plan = ["earn", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
   const billingMessage =
     params.billing === "stripe_not_ready"
       ? "Your setup request will save the selected plan. Ferocity will confirm checkout before any billing starts."
@@ -117,8 +119,23 @@ export default async function StartPage({
           </div>
         </section>
 
+        <section className="panel feature-split" aria-label="Ferocity Earn starting option">
+          <div>
+            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+            <strong className="price-line">{publicEarnPlan.price}</strong>
+            <h2>{publicEarnPlan.name}</h2>
+            <p className="muted">{publicEarnPlan.fit} {publicEarnPlan.rates}</p>
+          </div>
+          <div>
+            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
+            <Link className="button" href="/start?source=start_earn&plan=earn#start-request">
+              Choose Ferocity Earn
+            </Link>
+          </div>
+        </section>
+
         <section className="start-grid">
-          <form action="/api/access-requests" method="post" className="panel form-stack span-7">
+          <form action="/api/access-requests" method="post" className="panel form-stack span-7" id="start-request">
             <input name="sourceDetail" type="hidden" value={params.source ?? "start_page"} />
             <label className="hidden-field">
               Website
@@ -221,6 +238,7 @@ export default async function StartPage({
               Plan you think fits
               <select name="requestedPlan" defaultValue={plan}>
                 <option value="not_sure">Not sure yet</option>
+                <option value="earn">Ferocity Earn — $0/month base</option>
                 <option value="job_tracker">Job Tracker</option>
                 <option value="starter">Starter</option>
                 <option value="growth">Growth</option>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPublicPlan } from "./public-plans";
+import { getPublicPlan, publicEarnPlan } from "./public-plans";
 
 describe("public Ferocity plans", () => {
   it("sells the core AI engine as part of Starter", () => {
@@ -23,5 +23,13 @@ describe("public Ferocity plans", () => {
     expect(getPublicPlan("growth")!.moreFeatures.length).toBeGreaterThanOrEqual(15);
     expect(getPublicPlan("operator")!.moreFeatures.length).toBeGreaterThanOrEqual(15);
     expect(getPublicPlan("job_tracker")!.moreFeatures.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("keeps the Earn offer in shared public pricing copy", () => {
+    expect(publicEarnPlan.name).toBe("Ferocity Earn");
+    expect(publicEarnPlan.price).toBe("$0/month base");
+    expect(publicEarnPlan.rates).toContain("0.9%");
+    expect(publicEarnPlan.rates).toContain("6%");
+    expect(publicEarnPlan.eligibility).toMatch(/actually collected/i);
   });
 });

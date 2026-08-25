@@ -12,6 +12,18 @@ export type PublicPlan = {
   featured?: boolean;
 };
 
+export const publicEarnPlan = {
+  key: "earn" as const,
+  name: "Ferocity Earn",
+  eyebrow: "Pay when the business gets paid",
+  price: "$0/month base",
+  fit: "Use Ferocity without a fixed monthly subscription.",
+  rates: "0.9% when your business brings an opportunity to Ferocity to manage. 6% when Ferocity creates the opportunity. The two rates never stack.",
+  eligibility: "Earn applies to eligible revenue actually collected—not leads, estimates, contracts, completed jobs, or unpaid invoices.",
+  costs: "Provider usage, payment processing, advertising spend, and third-party costs remain separate.",
+  cta: "Ask about Ferocity Earn"
+};
+
 export const publicPlans: PublicPlan[] = [
   {
     key: "calls",

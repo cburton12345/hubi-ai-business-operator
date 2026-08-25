@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
-import { jobTrackerPlan, primaryPublicPlans } from "@/lib/billing/public-plans";
+import { jobTrackerPlan, primaryPublicPlans, publicEarnPlan } from "@/lib/billing/public-plans";
 import { getPublicCopy } from "@/lib/public-site/featured-demo";
 
 export const revalidate = 60;
@@ -101,14 +101,14 @@ export default async function PricingPage() {
 
         <section className="panel feature-split" aria-label="Ferocity Earn pricing">
           <div>
-            <p className="eyebrow">Pay when the business gets paid</p>
-            <strong className="price-line">$0/month base</strong>
-            <h2>Ferocity Earn</h2>
-            <p className="muted">0.9% when your business brings an opportunity to Ferocity to manage. 6% when Ferocity creates the opportunity. The two rates never stack.</p>
+            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+            <strong className="price-line">{publicEarnPlan.price}</strong>
+            <h2>{publicEarnPlan.name}</h2>
+            <p className="muted">{publicEarnPlan.rates}</p>
           </div>
           <div>
-            <p className="muted">Earn applies to eligible revenue actually collected—not leads, estimates, contracts, completed jobs, or unpaid invoices. Provider usage, payment processing, and third-party costs remain separate.</p>
-            <Link className="button" href="/start?source=pricing&plan=earn">Ask about Ferocity Earn</Link>
+            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
+            <Link className="button" href="/start?source=pricing&plan=earn">{publicEarnPlan.cta}</Link>
           </div>
         </section>
 
