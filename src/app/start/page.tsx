@@ -57,8 +57,6 @@ const setupPaths = [
   ["Take work off my plate", "Daily briefing, reminders, follow-up, tasks, jobs, and owner decisions."],
   ["Get more booked income", "Free audit, qualified funnel, SEO/GEO drafts, reviews, ads, video briefs, and tracking."],
   ["Organize jobs and money", "Bids, materials, receipts, invoices, payments, worker day plans, and profit view."],
-  ["Have Ferocity managed for me", "Managed setup, AI action review, growth tuning, and owner-only escalation."],
-  ["Pay when the business gets paid", "Ferocity Earn has no monthly base fee and applies an agreed percentage only to eligible revenue actually collected."],
   ["Start small", "Use Job Tracker for bids, materials, receipts, payments, reminders, and job profit."]
 ];
 
@@ -87,8 +85,7 @@ export default async function StartPage({
           <p className="eyebrow">Start simple</p>
           <h1>Choose what you want Ferocity to help with first.</h1>
           <p className="muted">
-            You do not need to understand every integration today. Start with the free grader, job tracking,
-            lead follow-up, growth, or daily owner control. Ferocity can guide the setup in pieces.
+            Pick a starting point. Detailed setup can wait until after your account is created.
           </p>
           <div className="button-row">
             <Link className="button" href="/business-health-score">
@@ -97,18 +94,12 @@ export default async function StartPage({
             <Link className="button secondary-button" href="/pricing">
               Compare plans
             </Link>
-            <Link className="button secondary-button" href="/connect-website">
-              Connect website
-            </Link>
-            <Link className="button secondary-button" href="/install">
-              Install app
-            </Link>
           </div>
         </section>
 
         <section className="panel section-actions">
           <p className="eyebrow">Choose a starting lane</p>
-          <h2>Ferocity can grow with the business. It does not all need to be turned on day one.</h2>
+          <h2>Start with the outcome that matters most.</h2>
           <div className="value-ladder">
             {setupPaths.map(([title, body]) => (
               <div key={title}>
@@ -144,8 +135,8 @@ export default async function StartPage({
 
             <div>
               <p className="eyebrow">AI setup request</p>
-              <h2>Request access and a first setup plan.</h2>
-              <p className="muted">Takes about two minutes. Pick the obvious answers and skip what you are not sure about.</p>
+              <h2>Tell us where to create your workspace.</h2>
+              <p className="muted">Only your email and consent are required.</p>
             </div>
 
             {params.error ? (
@@ -158,20 +149,23 @@ export default async function StartPage({
             {billingMessage ? <p className="success-panel">{billingMessage}</p> : null}
 
             <label>
-              Your name
-              <input name="name" autoComplete="name" />
-            </label>
-            <label>
               Work email
               <input name="email" type="email" autoComplete="email" required />
             </label>
             <label>
-              Phone
-              <input name="phone" type="tel" autoComplete="tel" />
-            </label>
-            <label>
               Company
               <input name="companyName" autoComplete="organization" />
+            </label>
+            <details className="plan-feature-details">
+              <summary>Add business and website details (optional)</summary>
+              <div className="form-stack">
+            <label>
+              Your name
+              <input name="name" autoComplete="name" />
+            </label>
+            <label>
+              Phone
+              <input name="phone" type="tel" autoComplete="tel" />
             </label>
             <label>
               Business type
@@ -191,6 +185,8 @@ export default async function StartPage({
                 ))}
               </select>
             </label>
+              </div>
+            </details>
             <label>
               Biggest outcome wanted first
               <select name="mainGoal" defaultValue="find_gaps">
@@ -201,6 +197,9 @@ export default async function StartPage({
                 ))}
               </select>
             </label>
+            <details className="plan-feature-details">
+              <summary>Personalize automation and lead setup (optional)</summary>
+              <div className="form-stack">
             <fieldset className="form-fieldset">
               <legend>Where do you want relief first?</legend>
               <p className="muted">Pick the areas you want Ferocity to watch, prepare, remind, or help organize.</p>
@@ -234,6 +233,8 @@ export default async function StartPage({
                 ))}
               </div>
             </fieldset>
+              </div>
+            </details>
             <label>
               Plan you think fits
               <select name="requestedPlan" defaultValue={plan}>
@@ -247,20 +248,23 @@ export default async function StartPage({
                 <option value="managed_operator">Managed Operator</option>
               </select>
             </label>
-            <label>
-              Anything else Ferocity needs to know?
-              <textarea
-                name="message"
-                rows={5}
-                placeholder="Example: We are a roofing company in Eau Claire. We want more storm jobs, faster follow-up, more reviews, and better tracking."
-              />
-            </label>
+            <details className="plan-feature-details">
+              <summary>Add a note (optional)</summary>
+              <label>
+                Anything else Ferocity needs to know?
+                <textarea
+                  name="message"
+                  rows={4}
+                  placeholder="What would make Ferocity most useful to your business?"
+                />
+              </label>
+            </details>
             <label className="checkbox-row">
               <input name="consentToContact" type="checkbox" required />
               <span>I agree Ferocity can contact me about setup and access. This form does not turn on customer messaging.</span>
             </label>
             <button className="button" type="submit">
-              Build my first plan <ArrowRight size={16} />
+              Continue <ArrowRight size={16} />
             </button>
           </form>
 
@@ -268,12 +272,9 @@ export default async function StartPage({
             <p className="eyebrow">What happens next</p>
             <div className="stacked-list">
               {[
-                "Ferocity looks for the highest-value next steps first: missed leads, aging estimates, missing reviews, unpaid invoices, unclear lead sources, and work that keeps pulling you back in.",
-                "You choose what AI helps with first. It can recommend, prepare drafts, or help handle approved repeat work.",
-                "The website setup choice tells Ferocity the practical first move: quote link, embedded form, hosted page, approved SEO publishing, or partner source.",
-                "Lead sources are mapped so forms, SEO, ads, reviews, calls, referrals, and partner sources can be tied to jobs and revenue.",
-                "Self-serve plans use secure checkout and automatic workspace activation. Custom requests are reviewed before setup.",
-                "Customer messages, publishing, ad changes, and billing actions stay under your control."
+                "Ferocity creates the right starting plan from the few answers above.",
+                "Self-serve plans continue to secure checkout; custom requests receive a setup review.",
+                "Detailed integrations, AI authority, and provider choices are handled during guided setup."
               ].map((item) => (
                 <div className="list-row flush-row" key={item}>
                   <span>{item}</span>

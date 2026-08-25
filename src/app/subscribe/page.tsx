@@ -33,13 +33,11 @@ export default async function SubscribePage({
         <PublicNav />
 
         <section className="public-hero">
-          <p className="eyebrow">{plan ? `Start ${plan.name}` : "Choose your operating level"}</p>
-          <h1>{isCallsPlan ? "Give every caller an intelligent next step." : plan ? "Give your team and AI workforce one operating system." : "Choose how much of the organization Ferocity should coordinate."}</h1>
+          <p className="eyebrow">{plan ? "Selected plan" : "Choose your operating level"}</p>
+          <h1>{plan ? `Start ${plan.name}.` : "Choose how much of the organization Ferocity should coordinate."}</h1>
           <p className="muted">
-            {isCallsPlan
-              ? "Start with a 24/7 AI phone department that understands the business, recognizes callers, qualifies opportunities, books approved appointments, transfers urgent calls, and keeps the complete call history in Ferocity."
-              : plan
-              ? "Create the account, teach the shared Business Brain how the company works, and choose which work belongs to people, AI employees, approval, or authorized automation."
+            {plan
+              ? `${plan.fit} Enter the account details below, then continue to secure checkout.`
               : "Every plan starts with connected business memory and real AI guidance. Higher levels coordinate more people, AI employees, departments, providers, and operating loops."}
           </p>
           <div className="trust-strip" aria-label="Ferocity activation assurances">
@@ -49,28 +47,20 @@ export default async function SubscribePage({
           </div>
         </section>
 
-        <section className="plan-selector" aria-label="Choose a Ferocity plan">
-          {publicPlans.map((option) => (
-            <Link
-              className={`panel plan-choice${plan?.key === option.key ? " selected-plan-choice" : ""}`}
-              href={`/subscribe?plan=${option.key}`}
-              key={option.key}
-              aria-current={plan?.key === option.key ? "page" : undefined}
-            >
-              <span>
-                <span className="eyebrow">
-                  {option.featured ? "Most popular · " : ""}
-                  {option.name}
+        {!plan ? (
+          <section className="plan-selector" aria-label="Choose a Ferocity plan">
+            {publicPlans.map((option) => (
+              <Link className="panel plan-choice" href={`/subscribe?plan=${option.key}`} key={option.key}>
+                <span>
+                  <span className="eyebrow">{option.featured ? "Most popular · " : ""}{option.name}</span>
+                  <strong>{option.price}</strong>
                 </span>
-                <strong>{option.price}</strong>
-              </span>
-              <small>{planGuidance[option.key]}</small>
-              <span className="plan-choice-action">
-                {plan?.key === option.key ? "Selected" : `Choose ${option.name}`}
-              </span>
-            </Link>
-          ))}
-        </section>
+                <small>{planGuidance[option.key]}</small>
+                <span className="plan-choice-action">Choose {option.name}</span>
+              </Link>
+            ))}
+          </section>
+        ) : null}
 
         {plan ? (
           <section className="start-grid">
@@ -79,20 +69,10 @@ export default async function SubscribePage({
               <input name="source" type="hidden" value="public_subscribe" />
 
               <div>
-                <p className="eyebrow">{plan.name}</p>
-                <strong className="price-line">{plan.price}</strong>
-                <h2>{plan.fit}</h2>
-                <p className="muted">{plan.bestFor}</p>
+                <p className="eyebrow">Account details</p>
+                <h2>Where should Ferocity create the workspace?</h2>
+                <p className="muted">{plan.name} · {plan.price} · <Link href="/pricing#plans">Change plan</Link></p>
               </div>
-
-              <ul className="plain-list">
-                {plan.bullets.slice(0, 4).map((item) => (
-                  <li key={item}>
-                    <CheckCircle2 size={16} />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
 
               {params.error ? (
                 <p className="form-error">
@@ -124,11 +104,10 @@ export default async function SubscribePage({
               <button className="button" type="submit">
                 Continue to secure checkout <ArrowRight size={16} />
               </button>
-              <p className="muted">Your subscription renews monthly until canceled. Cancel future renewal from the billing portal.</p>
               <p className="muted">
                 {isCallsPlan
-                  ? "The subscription is $49 per month plus $0.25 per completed voice minute. During setup, choose the phone route, business rules, recording settings, transfers, scheduling authority, and follow-up behavior."
-                  : "During setup, assign work to a person or choose Draft only, Ask first, or Run automatically for an AI employee. Ferocity remembers the rules and shows what happened."}
+                  ? "Renews monthly until canceled, plus $0.25 per completed voice minute. Phone behavior is configured after checkout."
+                  : "Renews monthly until canceled. Business rules and AI authority are configured after checkout and can be changed later."}
               </p>
             </form>
 
@@ -138,8 +117,7 @@ export default async function SubscribePage({
                 {[
                   "Complete payment securely in Stripe Checkout.",
                   "Activate the workspace from the verified account email.",
-                  "Teach the Business Brain the services, people, customers, rules, and priorities that matter.",
-                  "Choose which work belongs to people, AI employees, approval, or authorized automation."
+                  "Follow the guided setup; detailed choices can wait until then."
                 ].map((item) => (
                   <div className="list-row flush-row" key={item}>
                     <span>{item}</span>

@@ -22,7 +22,7 @@ const customPlans = [
     body: "For multi-business owners, agencies, franchises, advanced integrations, and higher usage.",
     bullets: ["Multi-business command", "Higher limits", "Advanced integrations", "Implementation path"],
     cta: "Talk to Ferocity",
-    href: "/start?source=pricing&plan=pro_agency"
+    href: "/start?source=pricing&plan=pro_agency#start-request"
   },
   {
     name: "Managed Operator",
@@ -30,7 +30,7 @@ const customPlans = [
     body: "For owners who want Ferocity configured, watched, tuned, and reviewed through a managed operating path.",
     bullets: ["Managed setup", "AI action review", "Growth and follow-up tuning", "Owner escalation path"],
     cta: "Request managed help",
-    href: "/start?source=pricing&plan=managed_operator"
+    href: "/start?source=pricing&plan=managed_operator#start-request"
   }
 ];
 
@@ -108,7 +108,7 @@ export default async function PricingPage() {
           </div>
           <div>
             <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
-            <Link className="button" href="/start?source=pricing&plan=earn">{publicEarnPlan.cta}</Link>
+            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
           </div>
         </section>
 
