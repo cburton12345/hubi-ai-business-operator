@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
 
 export type ServiceMode = "off" | "draft_only" | "review_required" | "enabled";
 export type OveragePolicy = "block" | "allow_with_review" | "allow";
@@ -228,6 +229,14 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   );
 
   const row = result?.rows[0];
+  const billingResult = await queryPostgres<{ status: string; metadata_json: Record<string, unknown> | null }>(
+    `select status,metadata_json from public.billing_subscriptions where tenant_id=$1 order by updated_at desc limit 1`,
+    [tenantId]
+  );
+  const billing = billingResult?.rows[0];
+  const billingAccess = billing
+    ? evaluateBillingAccess({ status: billing.status, metadata: billing.metadata_json })
+    : null;
   const planKey = await getWorkspacePlanKey(tenantId);
   const minimumPlanKey = minimumPlanForFeature(featureKey);
   const planAllowed = planAllowsFeature(planKey, featureKey);
@@ -254,7 +263,8 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   const overagePolicy = row.metadata_json?.overagePolicy ?? "block";
   const remaining = row.usage_limit === null ? null : Math.max(row.usage_limit - currentUsage, 0);
   const limitReached = usesCountBasedLimit(featureKey) && row.usage_limit !== null && currentUsage >= row.usage_limit;
-  const enabled = planAllowed && row.status !== "disabled" && mode !== "off" && (!limitReached || overagePolicy !== "block");
+  const billingAllowed = billingAccess?.allowPaidActions ?? true;
+  const enabled = billingAllowed && planAllowed && row.status !== "disabled" && mode !== "off" && (!limitReached || overagePolicy !== "block");
 
   return {
     featureKey,
@@ -266,7 +276,9 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
     remaining,
     overagePolicy,
     reason: !enabled
-      ? !planAllowed
+      ? !billingAllowed
+        ? billingAccess?.reason ?? "Subscription payment needs attention."
+        : !planAllowed
         ? `Requires ${planName(minimumPlanKey)} plan or higher.`
         : limitReached
         ? "Monthly limit reached."

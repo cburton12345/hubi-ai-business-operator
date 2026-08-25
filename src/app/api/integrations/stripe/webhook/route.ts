@@ -506,7 +506,17 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
           status = excluded.status,
           external_customer_ref = excluded.external_customer_ref,
           external_subscription_ref = excluded.external_subscription_ref,
-          metadata_json = public.billing_subscriptions.metadata_json || excluded.metadata_json,
+          metadata_json = (case
+            when excluded.status in ('active','trialing','manual')
+              then public.billing_subscriptions.metadata_json - 'billingPastDueSince'
+            when excluded.status in ('past_due','unpaid','incomplete','incomplete_expired','paused')
+              then public.billing_subscriptions.metadata_json || jsonb_build_object(
+                'billingPastDueSince',coalesce(
+                  public.billing_subscriptions.metadata_json->>'billingPastDueSince',now()::text
+                )
+              )
+            else public.billing_subscriptions.metadata_json
+          end) || (excluded.metadata_json - 'billingPastDueSince'),
           updated_at = now()
       `,
       [
@@ -515,7 +525,11 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
         mappedStatus,
         customerId,
         subscriptionId,
-        JSON.stringify({ stripeEventId: event.id, stripeStatus: status })
+        JSON.stringify({
+          stripeEventId: event.id,
+          stripeStatus: status,
+          ...(mappedStatus === "past_due" ? { billingPastDueSince: new Date().toISOString() } : {})
+        })
       ]
     );
     await applyPlanEntitlements({ tenantId, planKey, billingStatus: mappedStatus });

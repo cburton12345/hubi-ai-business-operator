@@ -18,6 +18,7 @@ type SubscriptionRow = {
   plan_key: string;
   status: string;
   owner_email: string | null;
+  metadata_json: Record<string, unknown> | null;
 };
 
 function text(record: Record<string, unknown>, key: string) {
@@ -64,7 +65,7 @@ export async function reconcileStripeSubscriptionInvoice(input: {
   if (!subscriptionId && !customerId) return { status: "not_tracked" as const };
 
   const subscription = await queryPostgres<SubscriptionRow>(
-    `select s.tenant_id,t.name tenant_name,s.plan_key,s.status,
+    `select s.tenant_id,t.name tenant_name,s.plan_key,s.status,s.metadata_json,
             (select u.email from public.tenant_users tu join public.users u on u.id=tu.user_id
               where tu.tenant_id=s.tenant_id and tu.status='active' and tu.role in ('owner','admin')
               order by case when tu.role='owner' then 0 else 1 end,tu.created_at limit 1) owner_email
@@ -89,14 +90,19 @@ export async function reconcileStripeSubscriptionInvoice(input: {
     `update public.billing_subscriptions
         set status=$2,
             current_period_end=case when $3::bigint is null then current_period_end else to_timestamp($3) end,
-            metadata_json=metadata_json || $4::jsonb,
+            metadata_json=(case
+              when $5::boolean then metadata_json - 'billingPastDueSince'
+              else metadata_json || jsonb_build_object(
+                'billingPastDueSince',coalesce(metadata_json->>'billingPastDueSince',now()::text)
+              )
+            end) || $4::jsonb,
             updated_at=now()
       where tenant_id=$1`,
     [row.tenant_id, nextStatus, periodEnd, JSON.stringify({
       stripeInvoiceEventId: input.eventId,
       stripeInvoiceId: invoiceId,
       stripeInvoiceEventType: input.eventType
-    })]
+    }), recovered]
   );
   await applyPlanEntitlements({ tenantId: row.tenant_id, planKey: row.plan_key, billingStatus: nextStatus });
 

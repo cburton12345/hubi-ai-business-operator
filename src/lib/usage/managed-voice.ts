@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
 
 type VoiceAccessRow = {
   account_status: string;
@@ -10,6 +11,7 @@ type VoiceAccessRow = {
   account_type: string;
   plan_key: string | null;
   subscription_status: string | null;
+  subscription_metadata: Record<string, unknown> | null;
   included_quantity: string | number | null;
   hard_limit_quantity: string | number | null;
   overage_unit_price_cents: string | number | null;
@@ -83,7 +85,8 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
         t.status as tenant_status,
         t.account_type,
         coalesce(s.plan_key, t.plan_key, 'free') as plan_key,
-        s.status as subscription_status
+        s.status as subscription_status,
+        s.metadata_json as subscription_metadata
       from public.tenants t
       left join public.billing_subscriptions s on s.tenant_id = t.id
       where t.id = $1
@@ -258,9 +261,7 @@ export async function evaluateVoiceAccess(input: {
   if (
     ownershipMode === "ferocity_managed"
     && row.account_type !== "internal"
-    && row.subscription_status !== "active"
-    && row.subscription_status !== "trialing"
-    && row.subscription_status !== "manual"
+    && !evaluateBillingAccess({ status: row.subscription_status, metadata: row.subscription_metadata }).allowManagedSpend
   ) {
     if (input.callDirection === "inbound" && row.failed_payment_behavior === "take_message_only") {
       return {
