@@ -18,7 +18,7 @@ export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
     eyebrow: "Meet your AI operations department",
     headline: "Your business shouldn't stop when you stop looking at it.",
     body: "Ferocity answers the phone. Chases leads. Follows up on estimates. Schedules work. Coordinates crews. Talks to customers. Collects money. Keeps marketing moving. Watches for problems—and handles hundreds of other things it takes to keep a business running. And when something actually needs you, Ferocity brings you the decision.",
-    ctaLabel: "See Ferocity work",
+    ctaLabel: "See Ferocity run a business",
     ctaHref: "/demo",
     secondaryCtaLabel: "See plans & pricing",
     secondaryCtaHref: "/pricing"
@@ -33,7 +33,7 @@ export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
     secondaryCtaHref: "/pricing"
   },
   demo_hero: {
-    eyebrow: "See Ferocity think",
+    eyebrow: "See the operating system in motion",
     headline: "Watch the whole business think and act as one.",
     body: "One opportunity moves through people, AI employees, departments, and providers without losing its context. Ferocity decides what should happen next, advances authorized work, verifies the result, and keeps going until a real decision is needed.",
     ctaLabel: "Start Ferocity",
@@ -138,10 +138,8 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
   );
   const row = result?.rows[0];
   if (!row?.enabled) return fallback;
-  const isFinalHomepageSlot = key === "home_hero" || key === "home_final_cta";
-  const isOlderSeededHomepageCopy = isFinalHomepageSlot &&
-    (!row.updated_by || (row.updated_by.startsWith("migration:") && row.updated_by !== "migration:182_final_homepage_positioning"));
-  if (isOlderSeededHomepageCopy) return fallback;
+  const isSeededCopy = !row.updated_by || row.updated_by.startsWith("migration:");
+  if (isSeededCopy) return fallback;
   return {
     eyebrow: row.eyebrow,
     headline: row.headline,

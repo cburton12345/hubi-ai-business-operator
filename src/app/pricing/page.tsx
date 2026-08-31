@@ -123,39 +123,43 @@ export default async function PricingPage() {
         </section>
 
         <section className="pricing-grid" id="plans" aria-label="Primary Ferocity plans">
-          {primaryPublicPlans.map((plan) => (
-            <article className={`panel pricing-card${plan.featured ? " featured-pricing-card" : ""}`} key={plan.key}>
-              <div>
-                <p className="eyebrow">{plan.featured ? "Most popular · " : ""}{plan.name}</p>
-                <strong className="price-line">{plan.price}</strong>
-                <h2>{plan.fit}</h2>
-              </div>
-              <Link className="button plan-primary-cta" href={`/subscribe?plan=${plan.key}`}>
-                Start {plan.name}
-              </Link>
-              <p className="muted">{plan.bestFor}</p>
-              <ul className="plain-list">
-                {plan.bullets.map((item) => (
-                  <li key={item}>
-                    <CheckCircle2 size={16} />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <details className="plan-feature-details">
-                <summary>See {plan.moreFeatures.length} more included capabilities</summary>
+          {primaryPublicPlans.map((plan) => {
+            const visibleCapabilities = plan.bullets.slice(0, 5);
+            const additionalCapabilities = [...plan.bullets.slice(5), ...plan.moreFeatures];
+            return (
+              <article className={`panel pricing-card${plan.featured ? " featured-pricing-card" : ""}`} key={plan.key}>
+                <div>
+                  <p className="eyebrow">{plan.featured ? "Most popular · " : ""}{plan.name}</p>
+                  <strong className="price-line">{plan.price}</strong>
+                  <h2>{plan.fit}</h2>
+                </div>
+                <Link className="button plan-primary-cta" href={`/subscribe?plan=${plan.key}`}>
+                  Start {plan.name}
+                </Link>
+                <p className="muted">{plan.bestFor}</p>
                 <ul className="plain-list">
-                  {plan.moreFeatures.map((item) => (
+                  {visibleCapabilities.map((item) => (
                     <li key={item}>
-                      <CheckCircle2 size={15} />
+                      <CheckCircle2 size={16} />
                       <span>{item}</span>
                     </li>
                   ))}
                 </ul>
-              </details>
-              <p className="muted plan-usage-note"><strong>Managed calling included:</strong> {managedVoiceAllowance[plan.key]}</p>
-            </article>
-          ))}
+                <details className="plan-feature-details">
+                  <summary>See {additionalCapabilities.length} more included capabilities</summary>
+                  <ul className="plain-list">
+                    {additionalCapabilities.map((item) => (
+                      <li key={item}>
+                        <CheckCircle2 size={15} />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+                <p className="muted plan-usage-note"><strong>Managed calling included:</strong> {managedVoiceAllowance[plan.key]}</p>
+              </article>
+            );
+          })}
         </section>
 
         <section className="panel feature-split" id="earn" aria-label="Ferocity Earn pricing">
@@ -281,11 +285,11 @@ export default async function PricingPage() {
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">What the upgrades actually unlock</p>
-          <h2>Nothing disappears as you move up. Each plan adds more work Ferocity can own.</h2>
-          <p className="muted">Every higher tier includes the capabilities below it. Every entry describes work Ferocity handles or supports—not another task for the owner.</p>
-          <div className="table-wrap">
-            <table>
+          <details className="plan-feature-details">
+            <summary>Compare every operating level in detail</summary>
+            <p className="muted">Nothing disappears as you move up. Each plan adds more work Ferocity can own, and every higher tier includes the capabilities below it.</p>
+            <div className="table-wrap">
+              <table>
               <thead>
                 <tr>
                   <th scope="col">Capability</th>
@@ -304,8 +308,9 @@ export default async function PricingPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </details>
         </section>
 
         <section className="section-actions">

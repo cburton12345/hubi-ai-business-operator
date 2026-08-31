@@ -12,12 +12,12 @@ export const metadata: Metadata = {
 };
 
 const goals = [
-  ["find_gaps", "Tell me what is missing"],
-  ["make_more_money", "Grow booked income"],
-  ["seo_reviews", "Get more leads with SEO and reviews"],
-  ["fast_lead_response", "Improve lead response and old-lead follow-up"],
-  ["operations", "Organize jobs, estimates, invoices, and tasks"],
-  ["not_sure", "I am not sure yet"]
+  ["find_gaps", "Find what is costing the business time or money"],
+  ["make_more_money", "Create and convert more opportunities"],
+  ["seo_reviews", "Build visibility, reviews, and local demand"],
+  ["fast_lead_response", "Stop leads and estimates from going cold"],
+  ["operations", "Keep jobs, people, money, and customers coordinated"],
+  ["not_sure", "Let Ferocity help me choose"]
 ];
 
 const autopilotOptions = [
@@ -51,13 +51,6 @@ const websiteConnectionOptions = [
   ["hosted_pages", "Use Ferocity hosted pages"],
   ["publish_to_existing_site", "Prepare approved website/SEO updates"],
   ["marketplace", "Connect marketplace or partner leads"]
-];
-
-const setupPaths = [
-  ["Take work off my plate", "Daily briefing, reminders, follow-up, tasks, jobs, and owner decisions."],
-  ["Get more booked income", "Free audit, qualified funnel, SEO/GEO drafts, reviews, ads, video briefs, and tracking."],
-  ["Organize jobs and money", "Bids, materials, receipts, invoices, payments, worker day plans, and profit view."],
-  ["Start small", "Use Job Tracker for bids, materials, receipts, payments, reminders, and job profit."]
 ];
 
 export default async function StartPage({
@@ -97,27 +90,15 @@ export default async function StartPage({
           </div>
         </section>
 
-        <section className="panel section-actions">
-          <p className="eyebrow">Choose a starting lane</p>
-          <h2>Start with the outcome that matters most.</h2>
-          <div className="value-ladder">
-            {setupPaths.map(([title, body]) => (
-              <div key={title}>
-                <strong>{title}</strong>
-                <p>{body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section className="panel feature-split" aria-label="Ferocity Earn starting option">
           <div>
             <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
             <strong className="price-line">{publicEarnPlan.price}</strong>
-            <h2>{publicEarnPlan.name}</h2>
-            <p className="muted">{publicEarnPlan.fit} {publicEarnPlan.rates}</p>
+            <h2>Prefer no monthly subscription?</h2>
+            <p className="muted">Put Ferocity to work and pay a percentage only when eligible revenue is actually collected.</p>
           </div>
           <div>
+            <p><strong>{publicEarnPlan.rates}</strong></p>
             <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
             <Link className="button" href="/start?source=start_earn&plan=earn#start-request">
               Choose Ferocity Earn
@@ -198,7 +179,7 @@ export default async function StartPage({
               </select>
             </label>
             <details className="plan-feature-details">
-              <summary>Personalize automation and lead setup (optional)</summary>
+              <summary>Tell Ferocity where you want more help (optional)</summary>
               <div className="form-stack">
             <fieldset className="form-fieldset">
               <legend>Where do you want relief first?</legend>

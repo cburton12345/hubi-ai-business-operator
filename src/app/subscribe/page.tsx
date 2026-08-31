@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
-import { getPublicPlan, publicPlans } from "@/lib/billing/public-plans";
+import { getPublicPlan, publicEarnPlan, publicPlans } from "@/lib/billing/public-plans";
 
 const planDisplayOrder = ["starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
 const orderedPublicPlans = [...publicPlans].sort(
@@ -25,12 +25,12 @@ export default async function SubscribePage({
   const plan = getPublicPlan(params.plan ?? "");
   const isCallsPlan = plan?.key === "calls";
   const planGuidance = {
-    ferocity_connect: "Approved Android business texting with Ferocity safety and delivery controls.",
-    calls: "A complete AI phone team with simple usage-based voice billing.",
-    job_tracker: "Focused job and money control with basic AI guidance.",
-    starter: "The shared business memory and everyday control layer.",
-    growth: "The connected revenue, reputation, and marketing engine.",
-    operator: "The proactive operating system across the whole business."
+    ferocity_connect: "Turn an Android business phone into a Ferocity-controlled texting line.",
+    calls: "Never let another valuable call reach a dead end.",
+    job_tracker: "Know what every job costs, owes, and earns.",
+    starter: "Stop running the everyday business from memory.",
+    growth: "Turn today’s leads and completed work into tomorrow’s growth.",
+    operator: "Put a proactive AI operating team behind the entire day."
   } as const;
 
   return (
@@ -52,6 +52,19 @@ export default async function SubscribePage({
             <span><CheckCircle2 size={15} /> Change authority at any time</span>
           </div>
         </section>
+
+        {!plan ? (
+          <section className="panel feature-split" aria-label="Ferocity Earn starting path">
+            <div>
+              <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+              <h2>Prefer no monthly subscription?</h2>
+            </div>
+            <div>
+              <p className="muted">Put Ferocity to work and pay a percentage only when eligible revenue is actually collected.</p>
+              <Link className="button secondary-button" href="/start?source=subscribe&plan=earn#start-request">Explore Ferocity Earn</Link>
+            </div>
+          </section>
+        ) : null}
 
         {!plan ? (
           <section className="plan-selector" aria-label="Choose a Ferocity plan">

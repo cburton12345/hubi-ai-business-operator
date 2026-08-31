@@ -36,7 +36,7 @@ export function PublicCommandStory() {
           <span><CheckCircle2 size={15} /> 2 decisions routed to the owner</span>
         </div>
         <Link className="mini-button" href="/demo">
-          See Ferocity at work <ArrowRight size={14} />
+          See Ferocity run the full loop <ArrowRight size={14} />
         </Link>
       </div>
     </section>
