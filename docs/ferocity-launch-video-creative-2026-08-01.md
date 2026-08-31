@@ -54,23 +54,33 @@ A 25.8-second Sora-assisted cut was previously documented, but its final MP4 is 
 
 ## Replacement Flagship Film
 
-The replacement should be a 35-45 second proof film, not a slideshow and not a montage of generic AI business imagery.
+The replacement should be a 40-50 second problem-solving proof film, not a slideshow, generic AI montage, or breathless feature inventory. The advertisement itself should demonstrate Ferocity's marketing features at work.
 
-1. **0-4 seconds — unfinished work:** a real service business is active, but demand, calls, estimates, schedules, receipts, invoices, and customer promises are scattered.
-2. **4-9 seconds — demand begins:** customer-approved completed-job proof becomes a targeted campaign and local-search improvement.
-3. **9-15 seconds — the opportunity arrives:** Ferocity answers the resulting call, understands the request, qualifies the lead, and preserves the source and conversation.
-4. **15-22 seconds — sales becomes operations:** the estimate uses the conversation, scheduling checks real capacity, and the crew receives the promise and job context without another handoff meeting.
-5. **22-29 seconds — the field updates the business:** time, photos, materials, receipts, and a changed condition update cost, margin, customer communication, and the next authorized action.
-6. **29-35 seconds — work becomes cash and trust:** completion triggers the invoice and payment path, updates profit, and sends an eligible review request.
-7. **35-40 seconds — the loop compounds:** the result returns to marketing, source-to-revenue reporting, recommendations, and the Business Brain.
-8. **40-45 seconds — the category lands:** “Most software helps you run the business. Ferocity helps run it with you.” End on `FEROCITY.LIVE` and **See Ferocity run a business**.
+### The problem
 
-Show the operating chain with real Ferocity UI and exact post-produced text. Generated footage may supply the emotional opening and connective shots, but it must not impersonate the product interface.
+A service business completed a profitable job. The best photos are sitting on a phone, the customer has not been asked for a review, the result has not become useful content, and the business has already moved on. Valuable proof is disappearing while the owner pays for generic marketing.
+
+### The story
+
+1. **0-4 seconds — wasted proof:** show the completed project, strong field photos, and the quiet failure around them. Voiceover: “This job was finished. Its best marketing was about to be forgotten.”
+2. **4-9 seconds — Ferocity notices:** real Ferocity UI connects completion, customer-approved photos, service, location, margin, and review eligibility. On-screen: **Ferocity found an opportunity.**
+3. **9-15 seconds — strategy before generation:** Ferocity identifies the audience and offer, uses real proof, selects a campaign angle, writes the hook and script, and proposes one clear destination. It does not spend on a render until the creative direction passes preflight.
+4. **15-22 seconds — the film is built and improved:** generated footage supplies only the shots it is good at. Ferocity combines it with real product and job proof, checks representative frames, flags generic or inaccurate material, applies exact branding and captions in finishing, and prepares vertical, square, and widescreen versions without casually buying another render.
+5. **22-28 seconds — controlled distribution:** the owner sees the important decision and approves it. Ferocity queues channel-ready versions and publishes only to destinations that are connected and authorized; every other destination receives a safe export package.
+6. **28-35 seconds — marketing becomes a customer:** a tracked prospect responds. Ferocity preserves the source, answers or follows up, qualifies the need, prepares the estimate, and schedules the next step.
+7. **35-42 seconds — the result becomes intelligence:** payment and profit return to source-to-revenue reporting. Ferocity can recommend continuing the winner, revising the weak version, or stopping waste rather than celebrating clicks with no business result.
+8. **42-50 seconds — the proof lands:** show the film inside the operating loop and then the Ferocity mark. Voiceover: “This video was created using Ferocity's marketing features. But the video was only the first move.” End on **Turn finished work into your next customer.** and `FEROCITY.LIVE`.
+
+Use real Ferocity UI for every product claim and exact text in post-production. Generated footage may supply emotional and connective shots, but it must never impersonate the interface, invent a customer result, or suggest that an unconnected provider published or spent money.
+
+### Why this is the flagship
+
+The film solves a specific problem that the target customer recognizes: good work is completed once and then wasted. It demonstrates the Marketing OS, approved proof, Video Ad Studio, premium-provider controls, quality review, local finishing, channel variants, publishing gates, lead attribution, follow-up, and source-to-profit learning as one coordinated system. The viewer sees an outcome, not a list of tools.
 
 ## Production Credit
 
-Use this exact public credit only for a film actually planned through Ferocity’s Video Ad Studio workflow:
+Use this exact public credit only for a film actually planned and finished through Ferocity's marketing workflow:
 
-> **Made with Ferocity.** Concept, script, shot plan, and production workflow created in Ferocity; final rendering completed through a connected video provider.
+> **Created using Ferocity's marketing features.** Ferocity shaped the opportunity, campaign strategy, script, shot plan, quality review, finishing workflow, and channel-ready versions; final rendering was completed through a connected video provider.
 
-This is more credible than implying Ferocity itself is the underlying rendering model, and it demonstrates the value customers should receive: Ferocity should direct, evaluate, improve, and finish the work instead of returning an unreviewed AI clip.
+This is more credible than implying Ferocity itself is the underlying rendering model. It also demonstrates the real customer value: Ferocity should discover the opportunity, direct the work, evaluate and improve the output, govern release, measure the business result, and decide what should happen next instead of returning an unreviewed AI clip.

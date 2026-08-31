@@ -37,7 +37,7 @@ export async function FeaturedDemoMedia({ priority = false, fallbackAlt }: Props
           <source src={mediaUrl} />
           Your browser does not support this video. Open the full product demo instead.
         </video>
-        <figcaption><strong>Made with Ferocity.</strong> Concept, script, shot plan, and production workflow created in Ferocity; final rendering completed through a connected video provider.</figcaption>
+        <figcaption><strong>Created using Ferocity&rsquo;s marketing features.</strong> Ferocity shaped the opportunity, campaign strategy, script, shot plan, quality review, finishing workflow, and channel-ready versions; final rendering was completed through a connected video provider.</figcaption>
       </figure>
     );
   }
@@ -53,7 +53,7 @@ export async function FeaturedDemoMedia({ priority = false, fallbackAlt }: Props
         referrerPolicy="strict-origin-when-cross-origin"
         allowFullScreen
       />
-      <figcaption><strong>Made with Ferocity.</strong> Concept, script, shot plan, and production workflow created in Ferocity; final rendering completed through a connected video provider.</figcaption>
+      <figcaption><strong>Created using Ferocity&rsquo;s marketing features.</strong> Ferocity shaped the opportunity, campaign strategy, script, shot plan, quality review, finishing workflow, and channel-ready versions; final rendering was completed through a connected video provider.</figcaption>
     </figure>
   );
 }
