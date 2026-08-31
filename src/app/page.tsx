@@ -33,13 +33,13 @@ const commandCards = [
 ];
 
 const activityTimeline = [
-  ["7:18 AM", "New lead", "Ferocity responds, captures what they need, and gets the next step moving."],
-  ["8:43 AM", "Estimate needs attention", "Ferocity keeps the authorized follow-up moving."],
-  ["10:07 AM", "Customer replies", "Ferocity uses the conversation and business context to keep the work moving."],
-  ["11:26 AM", "Team update", "The update becomes part of the job and Business Brain—not another disconnected conversation."],
-  ["1:14 PM", "Money needs attention", "Ferocity keeps authorized payment follow-up moving."],
-  ["2:52 PM", "Work completed", "Ferocity advances enabled next steps for payment, follow-up, reviews, referrals, and growth."],
-  ["4:17 PM", "Outside the rules", "Ferocity knows this one needs a person."]
+  ["7:18 AM", "A new lead asks for an urgent inspection", "Ferocity responds, qualifies the request, records the source, and offers an approved opening."],
+  ["8:43 AM", "A viewed estimate starts going quiet", "Ferocity recognizes the stall and continues the approved follow-up while the opportunity is still warm."],
+  ["10:07 AM", "A customer needs to move tomorrow’s visit", "Ferocity checks the schedule, crew, and job context before confirming a workable time."],
+  ["11:26 AM", "The field team uploads photos and a receipt", "Ferocity attaches them to the right job, updates its cost picture, and keeps the office current."],
+  ["1:14 PM", "An invoice passes its due date", "Ferocity follows the business’s collection rules and keeps the payment request from being forgotten."],
+  ["2:52 PM", "A job is marked complete", "Ferocity advances the enabled invoice, review, referral, proof, and marketing steps instead of letting the momentum end."],
+  ["4:17 PM", "A warranty request falls outside policy", "Ferocity stops, brings the facts and options to the owner, and waits for a real decision."]
 ];
 
 const capabilityAreas = [
@@ -129,8 +129,8 @@ export default async function HomePage() {
         <section className="panel activity-story" aria-labelledby="activity-story-title">
           <div className="activity-story-heading">
             <div>
-              <p className="eyebrow">Show, don’t explain</p>
-              <h2 id="activity-story-title">Imagine what you wouldn’t have to chase anymore.</h2>
+              <p className="eyebrow">One ordinary Tuesday</p>
+              <h2 id="activity-story-title">Seven loose ends appeared. Six never became the owner’s problem.</h2>
             </div>
             <div className="activity-score"><strong>7</strong> situations <span>·</span> <strong>6</strong> handled <span>·</span> <strong>1</strong> decision</div>
           </div>
@@ -143,7 +143,7 @@ export default async function HomePage() {
               </article>
             ))}
           </div>
-          <p className="activity-close"><CheckCircle2 size={17} /> Ferocity kept the work moving.</p>
+          <p className="activity-close"><CheckCircle2 size={17} /> With the right connections and authority enabled, Ferocity kept the day moving—and interrupted the owner once.</p>
         </section>
 
         <section className="video-tour">
@@ -164,7 +164,7 @@ export default async function HomePage() {
 
         <section className="panel business-brain-story">
           <div>
-            <p className="eyebrow">Built for the work between the work</p>
+            <p className="eyebrow">The part other software leaves to you</p>
             <h2>The bigger the business gets, the more someone has to notice, remember, coordinate, and finish.</h2>
             <p>
               More customers, conversations, employees, jobs, decisions, follow-up, and systems eventually make running the business another job of its own. Ferocity takes on that work.
@@ -182,7 +182,7 @@ export default async function HomePage() {
 
         <section className="panel capability-story" aria-labelledby="capability-title">
           <div className="capability-heading">
-            <div><p className="eyebrow">One operating system</p><h2 id="capability-title">The whole business.</h2></div>
+            <div><p className="eyebrow">How far Ferocity reaches</p><h2 id="capability-title">The whole business.</h2></div>
             <p>Not another pile of disconnected tools. One coordinated system for the work customers see—and everything required to deliver it.</p>
           </div>
           <div className="capability-grid">

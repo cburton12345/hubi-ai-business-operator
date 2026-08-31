@@ -11,7 +11,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "Ferocity Pricing | AI Operating System for Businesses",
   description:
-    "Compare Ferocity Calls and complete AI operating-system plans for phone answering, follow-up, jobs, growth, payments, operations, and daily business control.",
+    "Compare complete Ferocity plans for follow-up, jobs, growth, payments, operations, customer communication, and daily business control.",
   alternates: { canonical: "/pricing" }
 };
 
@@ -106,19 +106,6 @@ export default async function PricingPage() {
           </div>
         </section>
 
-        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
-          <div>
-            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
-            <strong className="price-line">{publicEarnPlan.price}</strong>
-            <h2>{publicEarnPlan.name}</h2>
-            <p className="muted">{publicEarnPlan.rates}</p>
-          </div>
-          <div>
-            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
-            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
-          </div>
-        </section>
-
         <section className="pricing-grid" id="plans" aria-label="Primary Ferocity plans">
           {primaryPublicPlans.map((plan) => (
             <article className={`panel pricing-card${plan.featured ? " featured-pricing-card" : ""}`} key={plan.key}>
@@ -126,7 +113,6 @@ export default async function PricingPage() {
                 <p className="eyebrow">{plan.featured ? "Most popular · " : ""}{plan.name}</p>
                 <strong className="price-line">{plan.price}</strong>
                 <h2>{plan.fit}</h2>
-                <p className="muted">{managedVoiceAllowance[plan.key]}</p>
               </div>
               <Link className="button plan-primary-cta" href={`/subscribe?plan=${plan.key}`}>
                 Start {plan.name}
@@ -151,8 +137,28 @@ export default async function PricingPage() {
                   ))}
                 </ul>
               </details>
+              <p className="muted plan-usage-note"><strong>Managed calling included:</strong> {managedVoiceAllowance[plan.key]}</p>
             </article>
           ))}
+        </section>
+
+        <section className="section-actions">
+          <p className="eyebrow">Focused ways to start</p>
+          <h2>Not ready for the full operating system? Start with the part you need now.</h2>
+          <p className="muted">Each focused option works on its own and can grow into full Ferocity without starting over.</p>
+        </section>
+
+        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
+          <div>
+            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+            <strong className="price-line">{publicEarnPlan.price}</strong>
+            <h2>{publicEarnPlan.name}</h2>
+            <p className="muted">{publicEarnPlan.rates}</p>
+          </div>
+          <div>
+            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
+            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
+          </div>
         </section>
 
         <section className="panel feature-split" aria-label="Ferocity Calls plan guidance">
@@ -187,6 +193,37 @@ export default async function PricingPage() {
               <Link className="button" href="/subscribe?plan=ferocity_connect">Start Connect</Link>
               <Link className="button secondary-button" href="/ferocity-connect">See how it works</Link>
             </div>
+          </div>
+        </section>
+
+        <section className="panel managed-pricing-card">
+          <div>
+            <p className="eyebrow">Focused jobs and money</p>
+            <strong className="price-line">{jobTrackerPlan.price}</strong>
+            <h2>{jobTrackerPlan.fit}</h2>
+            <p className="muted">{jobTrackerPlan.bestFor}</p>
+            <Link className="button secondary-button" href="/subscribe?plan=job_tracker">Start Job Tracker</Link>
+          </div>
+          <div>
+            <ul className="plain-list">
+              {jobTrackerPlan.bullets.map((item) => (
+                <li key={item}>
+                  <CheckCircle2 size={16} />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <details className="plan-feature-details">
+              <summary>See {jobTrackerPlan.moreFeatures.length} more included capabilities</summary>
+              <ul className="plain-list">
+                {jobTrackerPlan.moreFeatures.map((item) => (
+                  <li key={item}>
+                    <CheckCircle2 size={15} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </div>
         </section>
 
@@ -251,37 +288,6 @@ export default async function PricingPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </section>
-
-        <section className="panel managed-pricing-card">
-          <div>
-            <p className="eyebrow">Focused paid option</p>
-            <strong className="price-line">{jobTrackerPlan.price}</strong>
-            <h2>{jobTrackerPlan.fit}</h2>
-            <p className="muted">{jobTrackerPlan.bestFor}</p>
-            <Link className="button secondary-button" href="/subscribe?plan=job_tracker">Start Job Tracker</Link>
-          </div>
-          <div>
-            <ul className="plain-list">
-              {jobTrackerPlan.bullets.map((item) => (
-                <li key={item}>
-                  <CheckCircle2 size={16} />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-            <details className="plan-feature-details">
-              <summary>See {jobTrackerPlan.moreFeatures.length} more included capabilities</summary>
-              <ul className="plain-list">
-                {jobTrackerPlan.moreFeatures.map((item) => (
-                  <li key={item}>
-                    <CheckCircle2 size={15} />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
           </div>
         </section>
 

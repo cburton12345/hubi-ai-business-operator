@@ -225,7 +225,7 @@ export const publicPlans: PublicPlan[] = [
   }
 ];
 
-export const primaryPublicPlans = publicPlans.filter((plan) => plan.key !== "job_tracker");
+export const primaryPublicPlans = publicPlans.filter((plan) => !["calls", "job_tracker"].includes(plan.key));
 export const jobTrackerPlan = publicPlans.find((plan) => plan.key === "job_tracker")!;
 
 export function isSelfServePlanKey(value: string): value is SelfServePlanKey {

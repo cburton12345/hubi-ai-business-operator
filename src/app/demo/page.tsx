@@ -57,10 +57,10 @@ export default async function DemoPage() {
 
         <section className="demo-positioning">
           <div>
-            <p className="eyebrow">What makes it intelligent</p>
-            <h2>The entire workforce shares the thread when work crosses departments.</h2>
+            <p className="eyebrow">The handoffs stop breaking</p>
+            <h2>The estimate knows what was promised on the call. The crew knows what was sold. The invoice knows what changed.</h2>
             <p>
-              Ferocity gives people and AI employees the same business context. It remembers what happened, watches for meaningful change, explains why it matters, determines what should happen next, completes authorized work, verifies the result, and continues watching.
+              People and AI employees work from the same Business Brain instead of rebuilding the story at every step. Ferocity remembers what happened, notices meaningful change, advances authorized work, checks the result, and keeps the next department moving.
             </p>
           </div>
           <div className="demo-proof-flow">

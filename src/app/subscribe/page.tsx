@@ -5,6 +5,11 @@ import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { getPublicPlan, publicPlans } from "@/lib/billing/public-plans";
 
+const planDisplayOrder = ["starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
+const orderedPublicPlans = [...publicPlans].sort(
+  (left, right) => planDisplayOrder.indexOf(left.key) - planDisplayOrder.indexOf(right.key)
+);
+
 export const metadata: Metadata = {
   title: "Start Ferocity | Choose Your Operating Level",
   description: "Choose how much of the organization Ferocity should coordinate, pay securely, and activate the shared Business Brain for your human and AI workforce.",
@@ -50,7 +55,7 @@ export default async function SubscribePage({
 
         {!plan ? (
           <section className="plan-selector" aria-label="Choose a Ferocity plan">
-            {publicPlans.map((option) => (
+            {orderedPublicPlans.map((option) => (
               <Link className="panel plan-choice" href={`/subscribe?plan=${option.key}`} key={option.key}>
                 <span>
                   <span className="eyebrow">{option.featured ? "Most popular · " : ""}{option.name}</span>

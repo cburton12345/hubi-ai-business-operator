@@ -84,12 +84,12 @@ const engines = [
 ];
 
 const ownerOutcomes = [
-  ["Get found", "Business grader, SEO/GEO drafts, Google profile ideas, proof capture, reviews, funnels, ads, and campaign planning."],
-  ["Catch the lead", "Forms, quote links, source tracking, lead scoring, urgent lead alerts, and first-response drafts."],
-  ["Win the job", "Follow-up, estimates, material takeoffs, customer-safe bid views, reminders, and pipeline visibility."],
-  ["Run the day", "Jobs, tasks, worker plans, receipts, field proof, payroll review, and owner briefing."],
-  ["Get paid", "Invoices, payment records, overdue reminders, job profit, expenses, and money waiting for attention."],
-  ["Improve the machine", "Reports, AI recommendations, automation timeline, lead-source ROI, and review-ready growth actions."]
+  ["Be found before the competition", "Business grader, SEO/GEO drafts, Google profile ideas, proof capture, reviews, funnels, ads, and campaign planning."],
+  ["Respond before the lead moves on", "Forms, quote links, source tracking, lead scoring, urgent lead alerts, and first-response drafts."],
+  ["Turn interest into booked work", "Follow-up, estimates, material takeoffs, customer-safe bid views, reminders, and pipeline visibility."],
+  ["Keep the day from coming apart", "Jobs, tasks, worker plans, receipts, field proof, payroll review, and owner briefing."],
+  ["Collect the money without remembering every invoice", "Invoices, payment records, overdue reminders, job profit, expenses, and money waiting for attention."],
+  ["Learn what actually grows profit", "Reports, AI recommendations, automation timeline, lead-source ROI, and review-ready growth actions."]
 ];
 
 export default function FeaturesPage() {
@@ -99,11 +99,11 @@ export default function FeaturesPage() {
         <PublicNav />
 
         <section className="public-hero features-hero">
-          <p className="eyebrow">Features</p>
-            <h1>Everything your service business needs to win, run, and grow work.</h1>
+          <p className="eyebrow">One system for what happens next</p>
+            <h1>Ferocity doesn’t just organize the business. It helps run it.</h1>
           <p className="muted">
-            Ferocity gives the business one shared operating system for qualified leads, follow-up, jobs,
-            payments, reviews, growth, team visibility, and the decisions that keep work moving.
+            It watches leads, conversations, jobs, money, customers, and growth; advances the work you authorize;
+            and brings people the decisions that genuinely need them.
           </p>
           <div className="button-row">
             <Link className="button" href="/subscribe">
@@ -114,8 +114,8 @@ export default function FeaturesPage() {
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">What it helps you do</p>
-          <h2>Ferocity is organized around outcomes, not software menus.</h2>
+          <p className="eyebrow">Start with the pressure you want gone</p>
+          <h2>What do you want to stop chasing?</h2>
           <div className="value-ladder">
             {ownerOutcomes.map(([title, body]) => (
               <div key={title}>
