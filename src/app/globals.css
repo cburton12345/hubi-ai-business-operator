@@ -1274,6 +1274,22 @@ textarea {
   gap: 12px;
 }
 
+.featured-demo-media {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.featured-demo-media figcaption {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.featured-demo-media figcaption strong {
+  color: var(--accent-dark);
+}
+
 .walkthrough-animation {
   display: block;
   width: 100%;

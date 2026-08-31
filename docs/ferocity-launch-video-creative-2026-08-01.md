@@ -48,12 +48,29 @@ The generated clip is an emotional opening, not the whole product demonstration.
 
 Use exact text and branding in post-production rather than asking a video model to render interface copy.
 
-## Completed Final Cut
+## Current Production Status
 
-- Runtime: 25.8 seconds
-- Format: 1280x720 H.264 with AAC audio
-- Opening: paid Sora-generated emotional hook
-- Proof: three real local-release Ferocity product scenes
-- Ending: exact `FEROCITY.LIVE` CTA and `Created with Ferocity` credit
-- Verified narration: “Your business shouldn't wait for someone to remember. Ferocity keeps the work moving. One shared Business Brain watches what changes, decides what should happen next, coordinates people and AI employees, and advances authorized work across the company. See Ferocity work.”
-- Final asset: `artifacts/launch-video/ferocity-launch-ad-final-2026-08-01.mp4`
+A 25.8-second Sora-assisted cut was previously documented, but its final MP4 is not present in the current workspace and no public video URL is configured. The homepage and demo therefore use the safe animated product walkthrough. Do not describe that fallback as a finished video or claim that a final film is live.
+
+## Replacement Flagship Film
+
+The replacement should be a 35-45 second proof film, not a slideshow and not a montage of generic AI business imagery.
+
+1. **0-4 seconds — unfinished work:** a real service business is active, but demand, calls, estimates, schedules, receipts, invoices, and customer promises are scattered.
+2. **4-9 seconds — demand begins:** customer-approved completed-job proof becomes a targeted campaign and local-search improvement.
+3. **9-15 seconds — the opportunity arrives:** Ferocity answers the resulting call, understands the request, qualifies the lead, and preserves the source and conversation.
+4. **15-22 seconds — sales becomes operations:** the estimate uses the conversation, scheduling checks real capacity, and the crew receives the promise and job context without another handoff meeting.
+5. **22-29 seconds — the field updates the business:** time, photos, materials, receipts, and a changed condition update cost, margin, customer communication, and the next authorized action.
+6. **29-35 seconds — work becomes cash and trust:** completion triggers the invoice and payment path, updates profit, and sends an eligible review request.
+7. **35-40 seconds — the loop compounds:** the result returns to marketing, source-to-revenue reporting, recommendations, and the Business Brain.
+8. **40-45 seconds — the category lands:** “Most software helps you run the business. Ferocity helps run it with you.” End on `FEROCITY.LIVE` and **See Ferocity run a business**.
+
+Show the operating chain with real Ferocity UI and exact post-produced text. Generated footage may supply the emotional opening and connective shots, but it must not impersonate the product interface.
+
+## Production Credit
+
+Use this exact public credit only for a film actually planned through Ferocity’s Video Ad Studio workflow:
+
+> **Made with Ferocity.** Concept, script, shot plan, and production workflow created in Ferocity; final rendering completed through a connected video provider.
+
+This is more credible than implying Ferocity itself is the underlying rendering model, and it demonstrates the value customers should receive: Ferocity should direct, evaluate, improve, and finish the work instead of returning an unreviewed AI clip.
