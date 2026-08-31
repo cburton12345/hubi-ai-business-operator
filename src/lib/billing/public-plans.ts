@@ -5,7 +5,7 @@ export const publicConnectPlan = {
   name: "Ferocity Connect",
   price: "$29/mo",
   priceCents: 2900,
-  fit: "Let approved Ferocity workflows text through one paired Android phone and its mobile plan.",
+  fit: "Turn the Android business phone you already own into a Ferocity-controlled texting line.",
   additionalDevicePrice: "$10/mo per additional Android device"
 };
 
@@ -26,11 +26,11 @@ export const publicEarnPlan = {
   name: "Ferocity Earn",
   eyebrow: "Pay when the business gets paid",
   price: "$0/month base",
-  fit: "Use Ferocity without a fixed monthly subscription.",
+  fit: "Put Ferocity to work without committing to a fixed monthly subscription.",
   rates: "0.9% when your business brings an opportunity to Ferocity to manage. 6% when Ferocity creates the opportunity. The two rates never stack.",
   eligibility: "Earn applies to eligible revenue actually collected—not leads, estimates, contracts, completed jobs, or unpaid invoices.",
   costs: "Provider usage, payment processing, advertising spend, and third-party costs remain separate.",
-  cta: "Ask about Ferocity Earn"
+  cta: "Start with Ferocity Earn"
 };
 
 export const publicPlans: PublicPlan[] = [
@@ -39,8 +39,8 @@ export const publicPlans: PublicPlan[] = [
     name: "Ferocity Calls",
     price: "$49/mo + $0.25/completed voice minute",
     priceCents: 4900,
-    fit: "A complete AI phone department without replacing your CRM.",
-    bestFor: "Businesses that want every call answered, understood, and moved to the right next step while keeping the systems they already use.",
+    fit: "Never let another valuable call reach a dead end.",
+    bestFor: "Give customers and leads a capable phone experience that answers, understands, and advances the conversation while preserving the systems you already use.",
     bullets: [
       "Answer inbound calls around the clock with your Business Brain",
       "Recognize existing customers and qualify new leads",
@@ -69,8 +69,8 @@ export const publicPlans: PublicPlan[] = [
     name: "Starter",
     price: "$79/mo",
     priceCents: 7900,
-    fit: "Your everyday business control.",
-    bestFor: "Ferocity watches the everyday business and handles routine work under the authority level the owner chooses.",
+    fit: "Stop running the everyday business from memory.",
+    bestFor: "Give the business one memory, one attention list, and an AI operator that handles routine work under the authority level the owner chooses.",
     bullets: [
       "One dashboard for the Business Brain, customers, jobs, schedule, money, and attention items",
       "Ask Ferocity what needs attention and what to do next",
@@ -111,8 +111,8 @@ export const publicPlans: PublicPlan[] = [
     name: "Growth",
     price: "$199/mo",
     priceCents: 19900,
-    fit: "Your growth and follow-up team.",
-    bestFor: "Ferocity connects follow-up, proof, content, search, campaigns, and revenue so the business can create and measure demand.",
+    fit: "Turn today’s work into tomorrow’s growth.",
+    bestFor: "Connect follow-up, proof, reviews, content, search, campaigns, and revenue so every lead and completed job can create the next opportunity.",
     bullets: [
       "Everything in Starter",
       "Faster response and persistent follow-up until the customer answers",
@@ -156,8 +156,8 @@ export const publicPlans: PublicPlan[] = [
     name: "Operator",
     price: "$399/mo",
     priceCents: 39900,
-    fit: "Your proactive operating team.",
-    bestFor: "Ferocity proactively monitors the operating day and coordinates sales, jobs, money, schedule, team, and connected systems.",
+    fit: "Put an AI operating team behind the entire day.",
+    bestFor: "Have Ferocity proactively watch and coordinate sales, jobs, money, schedules, the team, customers, and connected systems—then bring people the decisions that truly need them.",
     bullets: [
       "Everything in Growth",
       "Continuous operating-day monitoring with important decisions remembered",
@@ -198,8 +198,8 @@ export const publicPlans: PublicPlan[] = [
     name: "Job Tracker",
     price: "$39/mo",
     priceCents: 3900,
-    fit: "Only need jobs and money tracking?",
-    bestFor: "A focused tool for owners who want job and money control without Ferocity's full sales, growth, and operating departments.",
+    fit: "Know what every job costs, owes, and earns.",
+    bestFor: "Get focused job and money control without subscribing to Ferocity's complete sales, growth, and operating departments.",
     bullets: [
       "Bids, estimates, and job notes",
       "Materials, receipts, and expenses",

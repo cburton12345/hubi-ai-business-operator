@@ -106,6 +106,25 @@ export default async function PricingPage() {
           </div>
         </section>
 
+        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
+          <div>
+            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+            <strong className="price-line">{publicEarnPlan.price}</strong>
+            <h2>Let Ferocity earn its place in the business.</h2>
+            <p className="muted">{publicEarnPlan.fit}</p>
+          </div>
+          <div>
+            <p><strong>{publicEarnPlan.rates}</strong></p>
+            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
+            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
+          </div>
+        </section>
+
+        <section className="section-actions">
+          <p className="eyebrow">Complete Ferocity plans</p>
+          <h2>Choose how much of the business you want Ferocity to move forward.</h2>
+        </section>
+
         <section className="pricing-grid" id="plans" aria-label="Primary Ferocity plans">
           {primaryPublicPlans.map((plan) => (
             <article className={`panel pricing-card${plan.featured ? " featured-pricing-card" : ""}`} key={plan.key}>
@@ -143,30 +162,17 @@ export default async function PricingPage() {
         </section>
 
         <section className="section-actions">
-          <p className="eyebrow">Focused ways to start</p>
-          <h2>Not ready for the full operating system? Start with the part you need now.</h2>
-          <p className="muted">Each focused option works on its own and can grow into full Ferocity without starting over.</p>
-        </section>
-
-        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
-          <div>
-            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
-            <strong className="price-line">{publicEarnPlan.price}</strong>
-            <h2>{publicEarnPlan.name}</h2>
-            <p className="muted">{publicEarnPlan.rates}</p>
-          </div>
-          <div>
-            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
-            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
-          </div>
+          <p className="eyebrow">Start with one department</p>
+          <h2>Want one immediate win before bringing in the full operating system?</h2>
+          <p className="muted">Calls, Android texting, and job tracking work independently and can grow into full Ferocity without starting over.</p>
         </section>
 
         <section className="panel feature-split" aria-label="Ferocity Calls plan guidance">
           <div>
             <p className="eyebrow">Start with the phone department</p>
-            <h2>Ferocity Calls works on its own—and it is already part of the larger operating system.</h2>
+            <h2>Give every caller a capable next step—even when nobody can answer.</h2>
             <p className="muted">
-              Start with phone coverage for $49 per month plus $0.25 per completed voice minute. Calls use the same
+              Ferocity Calls works on its own for $49 per month plus $0.25 per completed voice minute. It uses the same
               contacts, Business Brain, scheduling, communications history, and authority controls as full Ferocity.
             </p>
           </div>
@@ -184,7 +190,7 @@ export default async function PricingPage() {
           <div>
             <p className="eyebrow">Texting without another SMS provider</p>
             <strong className="price-line">{publicConnectPlan.price}</strong>
-            <h2>{publicConnectPlan.name} works on its own or inside any monthly Ferocity plan.</h2>
+            <h2>Let Ferocity text from the Android business phone customers already recognize.</h2>
             <p className="muted">{publicConnectPlan.fit}</p>
           </div>
           <div>
