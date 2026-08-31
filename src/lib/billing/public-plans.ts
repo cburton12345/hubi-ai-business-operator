@@ -103,7 +103,6 @@ export const publicPlans: PublicPlan[] = [
       "Worker requests and availability intake",
       "AI-assisted labor match suggestions",
       "Managed-ad budget safeguards when that service is chosen",
-      "25 managed AI phone minutes included; then $0.25 per completed minute",
       "One Ferocity Connect Android device included"
     ]
   },
@@ -148,7 +147,6 @@ export const publicPlans: PublicPlan[] = [
       "Owner AI decision memory",
       "AI monitoring and briefing queues",
       "Managed-ad budget controls and reporting",
-      "100 managed AI phone minutes included; then $0.25 per completed minute",
       "One Ferocity Connect Android device included"
     ],
     featured: true
@@ -192,7 +190,6 @@ export const publicPlans: PublicPlan[] = [
       "Advanced labor matching and operations visibility",
       "Multi-platform managed-ad controls when chosen",
       "Managed video production path when chosen",
-      "300 managed AI phone minutes included; then $0.25 per completed minute",
       "One Ferocity Connect Android device included"
     ]
   },

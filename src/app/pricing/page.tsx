@@ -53,9 +53,9 @@ const fees = [
 
 const managedVoiceAllowance: Record<string, string> = {
   calls: "Managed calling is $0.25 per completed minute; no included-minute allowance.",
-  starter: "Includes 25 managed voice minutes each month; then $0.25 per completed minute.",
-  growth: "Includes 100 managed voice minutes each month; then $0.25 per completed minute.",
-  operator: "Includes 300 managed voice minutes each month; then $0.25 per completed minute."
+  starter: "25 managed voice minutes each month; then $0.25 per completed minute.",
+  growth: "100 managed voice minutes each month; then $0.25 per completed minute.",
+  operator: "300 managed voice minutes each month; then $0.25 per completed minute."
 };
 
 const engineLevels = [
