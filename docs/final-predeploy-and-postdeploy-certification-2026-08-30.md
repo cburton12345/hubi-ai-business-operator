@@ -1,8 +1,8 @@
 # Ferocity final predeploy and postdeploy certification
 
-**Status:** Predeploy work complete. **No frontend or application deployment was performed.**
+**Status:** Production release deployed and automated postdeploy certification completed on **2026-08-30**. Customer/device/provider tests that require a real human interaction remain listed below.
 
-This document is the authoritative handoff for the next production release. Older checklists remain useful history, but this file records the current gate and the tests that must happen immediately after the user authorizes deployment.
+This document is the authoritative record for the current production release. Older checklists remain useful history, but this file records what shipped, what was certified automatically, and what still needs a real customer/device/provider interaction.
 
 ## Completed before deploy
 
@@ -23,16 +23,34 @@ This document is the authoritative handoff for the next production release. Olde
 - [x] Reframed employee access as a reusable Field Team work mode, added a sign-in choice, fixed field-mode post-login routing, and added one-tap switching for authorized owners/managers/operators.
 - [x] Ran the full unit/integration suite: **126 test files, 464 tests passed**.
 - [x] Ran TypeScript, lint, public-claims, provider-truth, RLS, and local predeploy gates successfully.
-- [x] Verified **201 database migrations**, **14 provider capability groups**, **42 integrated workflows**, and **98 built routes/pages**.
+- [x] Verified **202 database migrations**, **14 provider capability groups**, **42 integrated workflows**, and **98 built routes/pages**.
 - [x] Visually checked `/features`, `/pricing`, and `/start` locally on desktop and mobile; no horizontal overflow and no browser warnings/errors were found.
 
-## Deployment hold
+## Production release record
 
-- [ ] Deploy only after the user explicitly authorizes the frontend/application deployment.
-- [ ] Do not silently add unfinished or approval-blocked providers to public claims.
-- [ ] Do not enable Retell outbound calling or live transfer without a verified destination and tenant-safe routing.
+- [x] User authorized deployment.
+- [x] Git release checkpoint committed and pushed: `a920479 Prepare Ferocity launch release and Connect`.
+- [x] Database migration 202 applied; zero pending migrations remain; RLS verification passed.
+- [x] Signed Ferocity Connect 1.0.1 (`versionCode` 2) published to private storage at `android/2/Ferocity-Connect-1.0.1.apk`.
+- [x] Published APK SHA-256 verified as `6A4FD1FD52ADA1D4E6461001FAB4374C290657E5958B0A83FCE171B24A3FFDD4` (1,076,965 bytes).
+- [x] Netlify draft deploy `6a950e45e75f978639f03a97` passed release smoke and responsive checks.
+- [x] Production deploy `6a950f49ab359975ebbb687f` promoted to `https://ferocity.live`.
+- [x] Public claims continue to keep unfinished or approval-blocked providers out of live claims.
+- [x] Retell outbound calling and live transfer remain disabled until a verified per-tenant destination and tenant-safe routing are present.
 
-## Required immediately after deployment
+## Automated postdeploy results (2026-08-30)
+
+- [x] Production launch smoke passed for Home, Features, Automations, Integrations, Connect Website, Demo, Tour, Pricing, Start, Signup, Install, Business Health Score, Login, password reset, health, app protection, and a live public worker intake route.
+- [x] Home, Pricing, Start, Ferocity Connect, and Field Team login were checked in the live browser with correct titles/headings, no horizontal overflow, and no browser warnings/errors.
+- [x] `robots.txt` and `sitemap.xml` return 200. Public pages are allowed/indexable, authenticated/API paths are disallowed, and public canonical URLs point to `https://ferocity.live` without `noindex`.
+- [x] Anonymous `/api/ferocity-connect/download` requests redirect to login rather than exposing the APK.
+- [x] Production readiness passed with 202 migrations and 116 required files; all 14 provider capability-group smoke checks passed.
+- [x] All seven Stripe live prices are readable. A live-mode checkout session was created and expired without payment, proving checkout API wiring without charging a card.
+- [x] Retell API key, support agent, production phone number, inbound/fallback binding, webhook, database provider state, and 20-call concurrency/burst controls passed readiness.
+- [x] Existing real inbound Retell evidence was recorded and the callback caller ID was certified in the database.
+- [x] Core launch providers passed. Current truthful warnings: Meta is missing `META_BUSINESS_LOGIN_CONFIG_ID`; Yahoo is unconfigured; optional Twilio SMS remains unavailable; Office Manager live voice still needs its phone/budget values.
+
+## Remaining live/human certification
 
 Run these in order and record the result, timestamp, workspace, provider event ID, and any corrective action.
 
