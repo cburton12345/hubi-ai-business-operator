@@ -18,7 +18,27 @@ export const facebookObservationSchema = z.object({
   surface: z.enum(["page", "group", "messenger"]),
   connectorVersion: z.string().trim().min(1).max(50),
   observedAt: z.string().datetime().optional()
+}).superRefine((value, context) => {
+  let hostname = "";
+  try { hostname = new URL(value.sourceUrl).hostname.toLowerCase(); } catch { /* zod reports the URL */ }
+  if (!["facebook.com", "www.facebook.com", "m.facebook.com", "messenger.com", "www.messenger.com"].includes(hostname)) {
+    context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Observation must originate from Facebook or Messenger." });
+  }
+  if (isFacebookChromeNoise(value.body)) {
+    context.addIssue({ code: "custom", path: ["body"], message: "Facebook interface text is not a customer message." });
+  }
 });
+
+const facebookChromeNoise = [
+  /^message requests?$/i, /^marketplace$/i, /^facebook$/i, /^messenger$/i, /^chats?$/i,
+  /^search messenger$/i, /^new message$/i, /^you sent$/i, /^delivered$/i, /^seen$/i,
+  /^press enter to send$/i, /^type a message$/i, /^write a reply$/i
+];
+
+export function isFacebookChromeNoise(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length < 2 || facebookChromeNoise.some((pattern) => pattern.test(normalized));
+}
 
 export const facebookHealthSchema = z.object({
   state: z.enum(["ready", "warning", "verification_required", "restricted", "connector_incompatible"]),
@@ -93,7 +113,7 @@ export async function issueFacebookPairingCode(input: {
 }
 
 export async function exchangeFacebookPairingCode(input: {
-  code: string; deviceId: string; connectorVersion: string;
+  code: string; deviceId: string; connectorVersion: string; deviceName?: string;
 }) {
   const normalized = normalizePairingCode(input.code);
   if (normalized.length !== 12) return null;
@@ -107,15 +127,20 @@ export async function exchangeFacebookPairingCode(input: {
   `, [hash(normalized)]);
   const row = claimed?.rows[0];
   if (!row) return null;
-  const token = await issueGrowthConnectorSession({
+  const session = await issueGrowthConnectorSession({
     tenantId: row.tenant_id, brandId: row.brand_id, identityId: row.identity_id,
     deviceId: input.deviceId, connectorVersion: input.connectorVersion,
-    scopes: [...facebookConnectorScopes], lifetimeMinutes: 720
+    scopes: [...facebookConnectorScopes], lifetimeMinutes: 43_200,
+    metadata: {
+      destination: "ferocity",
+      transport: "chrome_extension",
+      deviceName: input.deviceName?.trim().slice(0, 120) || "Facebook browser connector"
+    }
   });
   await queryPostgres(`
     update public.growth_connector_sessions set paired_at = now()
     where token_hash = $1
-  `, [hash(token)]);
+  `, [hash(session.token)]);
   await queryPostgres(`
     update public.growth_distribution_identities set connection_mode = 'assisted_browser',
       authorization_status = 'connected',
@@ -123,7 +148,8 @@ export async function exchangeFacebookPairingCode(input: {
       connector_version = $3, last_health_check_at = now(), updated_at = now()
     where tenant_id = $1 and id = $2 and channel_key = 'facebook'
   `, [row.tenant_id, row.identity_id, input.connectorVersion]);
-  return { token, tenantId: row.tenant_id, brandId: row.brand_id, identityId: row.identity_id, expiresInSeconds: 43_200 };
+  return { token: session.token, tenantId: row.tenant_id, brandId: row.brand_id, identityId: row.identity_id,
+    expiresAt: session.expiresAt, expiresInSeconds: 2_592_000 };
 }
 
 export function readConnectorBearer(request: Request) {

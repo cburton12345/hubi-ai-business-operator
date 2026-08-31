@@ -3,6 +3,7 @@ import {
   facebookActionConfirmationSchema,
   facebookHealthSchema,
   facebookObservationSchema,
+  isFacebookChromeNoise,
   normalizePairingCode
 } from "./facebook-connector-protocol";
 
@@ -19,6 +20,13 @@ describe("Facebook connector protocol", () => {
     };
     expect(facebookObservationSchema.safeParse(base).success).toBe(true);
     expect(facebookObservationSchema.safeParse({ ...base, surface: "unknown" }).success).toBe(false);
+    expect(facebookObservationSchema.safeParse({ ...base, sourceUrl: "https://example.com/messages" }).success).toBe(false);
+    expect(facebookObservationSchema.safeParse({ ...base, body: "Type a message" }).success).toBe(false);
+  });
+
+  it("rejects common Facebook interface chrome without rejecting real short replies", () => {
+    expect(isFacebookChromeNoise("Message requests")).toBe(true);
+    expect(isFacebookChromeNoise("Yes, Tuesday works")).toBe(false);
   });
 
   it("accepts explicit provider safety states", () => {

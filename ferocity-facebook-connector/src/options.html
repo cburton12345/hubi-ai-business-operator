@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Ferocity Facebook Connector</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 24px; color: #111827; max-width: 760px; }
+    label { display: block; font-weight: 700; margin: 14px 0 6px; }
+    input[type="text"], input[type="password"], select { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+    .muted { color: #6b7280; font-size: 13px; }
+    button { padding: 10px 14px; border: 0; border-radius: 6px; background: #1d4ed8; color: white; font-weight: 700; cursor: pointer; }
+    .secondary { background: #e5e7eb; color: #111827; }
+    .status { margin-top: 12px; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Ferocity Facebook Connector</h1>
+  <p class="muted">Watch loaded Facebook/Messenger conversations for one Ferocity workspace. Sending remains off until Ferocity has approved a reply and you deliberately enable approved-reply execution on this browser.</p>
+  <div id="sessionInfo" class="muted">Session: loading...</div>
+
+  <label for="pairingCode">Pairing code</label>
+  <input id="pairingCode" type="text" autocomplete="off" placeholder="Example: ABCD2345" />
+
+  <label for="deviceName">Device name</label>
+  <input id="deviceName" type="text" placeholder="Office Chrome connector" />
+
+  <div class="row">
+    <label class="row"><input id="observeEnabled" type="checkbox" /> Observe inbound messages</label>
+  </div>
+  <div class="row">
+    <label class="row"><input id="watcherEnabled" type="checkbox" /> Keep a read-only Facebook watcher tab running</label>
+  </div>
+  <div class="row">
+    <label class="row"><input id="sendActionsEnabled" type="checkbox" /> Execute replies already approved in Ferocity</label>
+  </div>
+  <div class="muted">Fresh installs remain observe-only. Ferocity records each claim and result. Checkpoints and restrictions pause execution rather than attempting to bypass Facebook security.</div>
+
+  <label for="inboxUrl">Facebook inbox/listing page to watch</label>
+  <input id="inboxUrl" type="text" />
+  <div class="muted">Use a Facebook messages, Marketplace inbox, or listing-management URL. The browser must remain open and signed in.</div>
+
+  <div class="row">
+    <button id="saveBtn">Save</button>
+    <button id="pairBtn" class="secondary">Pair</button>
+    <button id="testBtn" class="secondary">Test connection</button>
+    <button id="watchBtn" class="secondary">Start watcher</button>
+    <button id="loginBtn" class="secondary">Open Facebook login</button>
+    <button id="inboxBtn" class="secondary">Open inbox</button>
+    <button id="requestsBtn" class="secondary">Open requests</button>
+    <button id="pollBtn" class="secondary">Poll replies now</button>
+    <button id="pauseBtn" class="secondary">Pause</button>
+    <button id="resumeBtn" class="secondary">Resume</button>
+    <button id="disconnectBtn" class="secondary">Disconnect</button>
+  </div>
+
+  <div id="status" class="status muted">Not checked yet.</div>
+
+  <script src="options.js"></script>
+</body>
+</html>

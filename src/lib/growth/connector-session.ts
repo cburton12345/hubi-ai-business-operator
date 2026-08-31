@@ -8,18 +8,20 @@ function hash(value: string) {
 export async function issueGrowthConnectorSession(input: {
   tenantId: string; brandId: string; identityId: string; deviceId: string; scopes: string[];
   connectorVersion?: string; issuedByUserId?: string; lifetimeMinutes?: number;
+  metadata?: Record<string, unknown>;
 }) {
   const token = randomBytes(32).toString("base64url");
-  const lifetimeMinutes = Math.min(Math.max(input.lifetimeMinutes ?? 60, 5), 1440);
+  const lifetimeMinutes = Math.min(Math.max(input.lifetimeMinutes ?? 60, 5), 43_200);
+  const expiresAt = new Date(Date.now() + lifetimeMinutes * 60_000).toISOString();
   await queryPostgres(`
     insert into public.growth_connector_sessions (
       tenant_id, brand_id, identity_id, device_id_hash, token_hash, scope_keys, connector_version,
       issued_by_user_id, expires_at, metadata_json
-    ) values ($1,$2,$3,$4,$5,$6::text[],$7,$8,now() + ($9::text || ' minutes')::interval,
-      '{"secretStorage":"hash_only","serviceRoleExposed":false}'::jsonb)
+    ) values ($1,$2,$3,$4,$5,$6::text[],$7,$8,$9::timestamptz,$10::jsonb)
   `, [input.tenantId, input.brandId, input.identityId, hash(input.deviceId), hash(token), input.scopes,
-    input.connectorVersion ?? null, input.issuedByUserId ?? null, String(lifetimeMinutes)]);
-  return token;
+    input.connectorVersion ?? null, input.issuedByUserId ?? null, expiresAt,
+    JSON.stringify({ secretStorage: "hash_only", serviceRoleExposed: false, ...(input.metadata ?? {}) })]);
+  return { token, expiresAt };
 }
 
 export async function validateGrowthConnectorSession(input: { token: string; deviceId: string; requiredScope: string }) {

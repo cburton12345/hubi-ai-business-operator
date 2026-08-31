@@ -7,7 +7,8 @@ import { consumePublicRateLimit } from "@/lib/security/rate-limit";
 const schema = z.object({
   code: z.string().trim().min(12).max(20),
   deviceId: z.string().trim().min(16).max(200),
-  connectorVersion: z.string().trim().min(1).max(50)
+  connectorVersion: z.string().trim().min(1).max(50),
+  deviceName: z.string().trim().min(1).max(120).optional()
 });
 
 export async function POST(request: NextRequest) {

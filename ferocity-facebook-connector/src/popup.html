@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { width: 340px; font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 14px; color: #111827; }
+    h1 { font-size: 16px; margin: 0 0 8px; }
+    .muted { color: #6b7280; font-size: 12px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0; }
+    button { padding: 8px 10px; border: 0; border-radius: 6px; background: #1d4ed8; color: white; font-weight: 700; cursor: pointer; margin: 3px 2px 0 0; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    pre { white-space: pre-wrap; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; font-size: 11px; max-height: 180px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Ferocity Facebook</h1>
+  <div class="muted">Assisted Facebook/Messenger connector.</div>
+  <div class="row"><span class="muted">Organization</span><strong id="organization">-</strong></div>
+  <div class="row"><span class="muted">Business</span><strong id="destination">-</strong></div>
+  <div class="row"><span class="muted">Device</span><strong id="device">-</strong></div>
+  <div class="row"><span class="muted">Connected</span><strong id="connected">-</strong></div>
+  <div class="row"><span class="muted">Heartbeat</span><strong id="heartbeat">-</strong></div>
+  <div class="row"><span class="muted">Observe</span><strong id="observe">-</strong></div>
+  <div class="row"><span class="muted">Watcher</span><strong id="watcher">-</strong></div>
+  <div class="row"><span class="muted">Send queued replies</span><strong id="send">-</strong></div>
+  <button id="optionsBtn">Options</button>
+  <button id="watchBtn">Start watcher</button>
+  <button id="loginBtn">Facebook login</button>
+  <button id="requestsBtn">Requests</button>
+  <button id="debugBtn">Debug page</button>
+  <button id="pollBtn">Poll replies</button>
+  <button id="pauseBtn" class="secondary">Pause</button>
+  <button id="resumeBtn" class="secondary">Resume</button>
+  <button id="disconnectBtn" class="secondary">Disconnect</button>
+  <pre id="status">Loading...</pre>
+  <script src="popup.js"></script>
+</body>
+</html>

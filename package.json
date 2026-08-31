@@ -68,6 +68,7 @@
     "review-request:smoke": "node scripts/review-request-smoke.mjs",
     "email:live:smoke": "node scripts/live-email-delivery-smoke.mjs",
     "provider-promotion:smoke": "node scripts/provider-promotion-smoke.mjs",
+    "facebook-connector:readiness": "node scripts/facebook-connector-readiness.mjs",
     "start": "next start",
     "ferocity-connect:service": "tsx services/ferocity-connect/src/server.ts",
     "ferocity-connect:release:upload": "node scripts/publish-ferocity-connect-release.mjs",
