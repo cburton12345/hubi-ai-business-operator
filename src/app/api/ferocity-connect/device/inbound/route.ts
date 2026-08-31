@@ -5,6 +5,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { classifySmsKeyword, normalizeSmsKeyword } from "@/lib/messaging/sms-policy";
+import { prepareInboundReply } from "@/lib/messaging/prepare-inbound-reply";
 
 const schema = z.object({
   eventId: z.string().min(8).max(160), sender: z.string().min(7).max(32), recipient: z.string().max(32).nullable().optional(),
@@ -87,5 +88,24 @@ export async function POST(request: Request) {
     });
     complianceReplyQueued = reply.ok;
   }
-  return NextResponse.json({ ok: true, conversationId, optOutRecorded: complianceKeyword === "stop", complianceReplyQueued });
+  let replyDraft = null;
+  if (!complianceKeyword && conversationId) {
+    try {
+      replyDraft = await prepareInboundReply({
+        tenantId: auth.identity.tenantId, conversationId, inboundMessageId: parsed.data.eventId,
+        channel: "sms", providerKey: "ferocity_connect", from: sender, body: parsed.data.body
+      });
+    } catch (error) {
+      await queryPostgres(`
+        insert into public.operator_alerts
+          (tenant_id,alert_key,category,severity,status,title,summary,action_href,metadata_json)
+        values ($1,$2,'automation','medium','active','SMS reply draft needs attention',$3,'/app/messaging',$4::jsonb)
+        on conflict (tenant_id,alert_key) do update set status='active',summary=excluded.summary,last_seen_at=now(),updated_at=now()
+      `, [auth.identity.tenantId, `sms-reply-draft:${parsed.data.eventId}`,
+        "The inbound SMS was saved, but Ferocity could not prepare its reply draft.",
+        JSON.stringify({ conversationId, safeError: error instanceof Error ? error.message.slice(0, 300) : "unknown" })]);
+    }
+  }
+  return NextResponse.json({ ok: true, conversationId, optOutRecorded: complianceKeyword === "stop", complianceReplyQueued,
+    replyPrepared: Boolean(replyDraft), replyMode: replyDraft?.mode ?? null });
 }

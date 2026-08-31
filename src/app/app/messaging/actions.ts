@@ -14,6 +14,28 @@ const retrySchema = z.object({
   messageId: z.string().uuid(),
   providerKey: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i)
 });
+const inboundReplyModeSchema = z.enum(["off", "review", "automatic"]);
+
+export async function updateInboundSmsReplyModeAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const mode = inboundReplyModeSchema.safeParse(formData.get("mode"));
+  if (!mode.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(`
+    insert into public.live_action_policies (
+      tenant_id,action_key,provider_key,label,status,minimum_plan_key,
+      requires_consent,requires_human_approval,risk_level,metadata_json
+    ) values ($1,'inbound_sms_reply','ferocity_connect','Reply to inbound SMS',$2,'ferocity_connect',true,$3,'medium',$4::jsonb)
+    on conflict (tenant_id,action_key) do update set status=excluded.status,
+      requires_human_approval=excluded.requires_human_approval,
+      metadata_json=public.live_action_policies.metadata_json || excluded.metadata_json,updated_at=now()
+  `, [tenantId, mode.data === "off" ? "disabled" : mode.data === "automatic" ? "live" : "review_only",
+    mode.data !== "automatic", JSON.stringify({
+      selectedMode: mode.data, selectedAt: new Date().toISOString(), ordinaryInboundOnly: true,
+      safeguards: ["consent", "suppression", "quiet_hours", "provider_health", "confidence", "risk_escalation"]
+    })]);
+  revalidatePath("/app/messaging");
+}
 
 export async function retryMessageAction(formData: FormData) {
   await requirePermission("tenant:manage");

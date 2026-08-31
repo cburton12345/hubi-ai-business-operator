@@ -12,7 +12,8 @@ import {
 import {
   clearMessagingEmergencyPauseAction,
   emergencyPauseMessagingAccountAction,
-  retryMessageAction
+  retryMessageAction,
+  updateInboundSmsReplyModeAction
 } from "./actions";
 
 function statusTone(status: string) {
@@ -56,6 +57,25 @@ export default async function MessagingPage() {
         <Metric label="Opt-outs" value={dashboard.metrics.optOuts} />
         <Metric label="Delivery problems" value={dashboard.metrics.deliveryProblems} />
       </div>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Inbound SMS replies</h2>
+            <p className="muted">Ferocity always records the inbound text. It can prepare a Business Brain reply for review, or automatically queue only high-confidence ordinary replies when you explicitly allow it. Consent, opt-outs, quiet hours, provider health, and risk escalation still apply.</p>
+          </div>
+          <form action={updateInboundSmsReplyModeAction} className="inline-actions">
+            <label className="sr-only" htmlFor="inbound-reply-mode">Inbound SMS reply mode</label>
+            <select id="inbound-reply-mode" name="mode" defaultValue={dashboard.inboundReplyMode}>
+              <option value="off">Record only</option>
+              <option value="review">Prepare for review</option>
+              <option value="automatic">Automatic when safe</option>
+            </select>
+            <button className="mini-button" type="submit">Save reply mode</button>
+          </form>
+        </div>
+        {dashboard.inboundReplyMode === "automatic" ? <p className="muted">Automatic mode is active. Low-confidence, money, legal, safety, angry-customer, opt-out, and ambiguous messages still require a person.</p> : null}
+      </section>
 
       <section className="panel section-actions">
         <div className="list-row flush-row">

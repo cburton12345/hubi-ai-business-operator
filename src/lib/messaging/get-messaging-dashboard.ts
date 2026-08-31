@@ -4,6 +4,7 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type MessagingDashboard = {
   webhookUrl: string;
+  inboundReplyMode: "off" | "review" | "automatic";
   providers: Array<{
     providerKey: string;
     displayName: string;
@@ -125,7 +126,7 @@ function capabilities(row: {
 
 export async function getMessagingDashboard(): Promise<MessagingDashboard> {
   const tenantId = await getCurrentWorkspaceId();
-  const [providerResult, accountResult, registrationResult, metricResult, failureResult, conversationResult, messageHealthResult] = await Promise.all([
+  const [providerResult, accountResult, registrationResult, metricResult, failureResult, conversationResult, messageHealthResult, inboundReplyPolicy] = await Promise.all([
     queryPostgres<{
       id: string;
       provider_key: string;
@@ -366,6 +367,11 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
        order by coalesce(m.delivery_updated_at, m.created_at) desc
        limit 50`,
       [tenantId]
+    ),
+    queryPostgres<{ status: string; requires_human_approval: boolean }>(
+      `select status,requires_human_approval from public.live_action_policies
+       where tenant_id=$1 and action_key='inbound_sms_reply' and provider_key='ferocity_connect' limit 1`,
+      [tenantId]
     )
   ]);
 
@@ -373,6 +379,8 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
 
   return {
     webhookUrl: `${envAppUrl().replace(/\/$/, "")}/api/messaging/webhooks/{provider}`,
+    inboundReplyMode: inboundReplyPolicy?.rows[0]?.status === "live" && !inboundReplyPolicy.rows[0].requires_human_approval
+      ? "automatic" : inboundReplyPolicy?.rows[0]?.status === "disabled" ? "off" : "review",
     providers: (providerResult?.rows ?? []).map((row) => {
       const runtime = getMessagingProviderStatus(row.provider_key);
       return {

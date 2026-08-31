@@ -12,9 +12,12 @@ The connector supports:
 - observe-only startup and normalized inbound conversation capture;
 - server-side deduplication and rejection of common Facebook interface text;
 - identity health reports for verification, restriction, and incompatible surfaces;
+- five-minute connector heartbeats with owner alerts for unhealthy states;
 - one approved outbound action claim at a time;
 - a two-minute local send lock and server-side action/idempotency gates;
 - explicit confirmation of send success or failure;
+- shared conversation history for inbound and outbound bodies, with browser-send evidence kept distinct from delivery/read evidence;
+- Business Brain reply drafts prepared from the inbound conversation and held for review;
 - workspace device listing and immediate revocation.
 
 ## Customer installation
@@ -36,7 +39,7 @@ Fresh installations should remain approval-first. Full autonomous sending should
 ## Certification before release
 
 Prepared package: `public/downloads/ferocity-facebook-connector-0.1.0.zip`
-SHA-256: `7D9633D3B87FB5DED9BE67ECCEDAC62FFC8330A8A6C582147C454E36410D722F`
+SHA-256: `3F652CA4CB3B02A6D917CC319F331A43D32C01C60DA20560804C4FCCDC036430`
 
 - [ ] Downloaded ZIP hash matches the release record.
 - [ ] A new install contains no credential or customer data.

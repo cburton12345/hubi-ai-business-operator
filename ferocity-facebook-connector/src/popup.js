@@ -8,7 +8,7 @@ async function load() {
   document.getElementById("destination").textContent = pair.brandId ? `${pair.brandId.slice(0, 8)}...` : "Not paired";
   document.getElementById("device").textContent = pair.deviceName || "Browser connector";
   document.getElementById("connected").textContent = data.connectorToken ? "Yes" : "No";
-  document.getElementById("heartbeat").textContent = status.lastDiagnosticAt || status.lastPollAt || status.lastEventAt || "-";
+  document.getElementById("heartbeat").textContent = status.lastHeartbeatAt || status.lastDiagnosticAt || status.lastPollAt || status.lastEventAt || "-";
   document.getElementById("observe").textContent = data.observeEnabled === false ? "Off" : "On";
   document.getElementById("watcher").textContent = data.watcherEnabled === false ? "Off" : "On";
   document.getElementById("send").textContent = data.sendActionsEnabled === true ? "On" : "Off";

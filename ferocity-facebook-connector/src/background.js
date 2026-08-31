@@ -389,6 +389,30 @@ async function recordPageDebugReport(details) {
   return result;
 }
 
+async function reportConnectorHeartbeat() {
+  const config = await getConfig();
+  if (!config.connectorToken) return { ok: true, skipped: "not_paired" };
+  const { watcherTabId } = await chrome.storage.local.get(WATCHER_TAB_KEY);
+  const tab = watcherTabId ? await chrome.tabs.get(watcherTabId).catch(() => null) : null;
+  let snapshot = null;
+  if (tab?.id && isFacebookUrl(tab.url)) {
+    snapshot = await chrome.tabs.sendMessage(tab.id, { type: "ferocity_page_debug_snapshot" }).catch(() => null);
+  }
+  const details = snapshot?.details || snapshot || {};
+  const state = tab?.id && isFacebookUrl(tab.url) ? healthState(details) : "warning";
+  const reason = tab?.id && isFacebookUrl(tab.url)
+    ? healthReason(details)
+    : "The Ferocity Facebook watcher tab is not open. Inbound observation and approved replies may be delayed.";
+  const result = await requestFerocity("health", {
+    state,
+    reason,
+    url: details?.url || tab?.url || "https://www.facebook.com/messages/requests",
+    connectorVersion: CONNECTOR_VERSION
+  });
+  await setStatus({ lastHeartbeatAt: new Date().toISOString(), lastHeartbeatState: state, lastHeartbeatResult: result, lastError: "" });
+  return result;
+}
+
 function healthState(snapshot) {
   snapshot = snapshot?.details || snapshot || {};
   const text = `${snapshot?.title || ""} ${snapshot?.bodyHint || ""}`.toLowerCase();
@@ -449,11 +473,13 @@ chrome.runtime.onInstalled.addListener(async () => {
   await setStatus({ installedAt: new Date().toISOString(), connectorVersion: CONNECTOR_VERSION, sendCapability: existing.sendActionsEnabled ? "enabled" : "disabled" });
   chrome.alarms.create("ferocity_watcher_tick", { periodInMinutes: Math.max(1, Number(existing.scanIntervalMinutes || DEFAULTS.scanIntervalMinutes)) });
   chrome.alarms.create("ferocity_send_tick", { periodInMinutes: 1 });
+  chrome.alarms.create("ferocity_health_tick", { periodInMinutes: 5 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create("ferocity_watcher_tick", { periodInMinutes: 1 });
   chrome.alarms.create("ferocity_send_tick", { periodInMinutes: 1 });
+  chrome.alarms.create("ferocity_health_tick", { periodInMinutes: 5 });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -462,6 +488,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
   if (alarm.name === "ferocity_send_tick") {
     pollSendActions().catch((err) => setStatus({ lastError: err.message || String(err) }));
+  }
+  if (alarm.name === "ferocity_health_tick") {
+    reportConnectorHeartbeat().catch((err) => setStatus({ lastError: err.message || String(err), lastHeartbeatFailedAt: new Date().toISOString() }));
   }
 });
 

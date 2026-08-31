@@ -1,6 +1,7 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getGrowthChannel, scoreGrowthOpportunity } from "./distribution-engine";
 import { recordGrowthEvent } from "./growth-events";
+import { prepareInboundReply } from "@/lib/messaging/prepare-inbound-reply";
 
 const messagingChannel: Record<string, string> = {
   facebook: "facebook_messenger", instagram: "instagram", reddit: "reddit", linkedin: "linkedin", x: "x",
@@ -103,6 +104,24 @@ export async function ingestGrowthEngagement(input: InboundGrowthEngagement) {
       outcome: "captured", idempotencyKey: eventKey, rawEvent: input.rawEvent,
       dimensions: { externalActorId: input.externalActorId, providerEventId: input.providerEventId, overallScore: score.overallScore }
     });
+    if (input.channelKey === "facebook" && opportunityId) {
+      try {
+        await prepareInboundReply({
+          tenantId: input.tenantId, brandId: input.brandId, conversationId,
+          inboundMessageId: message.rows[0].id, channel: "facebook", providerKey: channel.providerKey,
+          from: input.externalActorId, body: input.body, sourceUrl: input.sourceUrl, opportunityId
+        });
+      } catch (error) {
+        await queryPostgres(`
+          insert into public.operator_alerts
+            (tenant_id,alert_key,category,severity,status,title,summary,action_href,metadata_json)
+          values ($1,$2,'automation','medium','active','Facebook reply draft needs attention',$3,'/app/growth',$4::jsonb)
+          on conflict (tenant_id,alert_key) do update set status='active',summary=excluded.summary,last_seen_at=now(),updated_at=now()
+        `, [input.tenantId, `facebook-reply-draft:${message.rows[0].id}`,
+          "The inbound Facebook message was saved, but Ferocity could not prepare its reply draft.",
+          JSON.stringify({ conversationId, opportunityId, safeError: error instanceof Error ? error.message.slice(0, 300) : "unknown" })]);
+      }
+    }
   }
   return { duplicate: !message?.rows[0], conversationId, opportunityId, score };
 }

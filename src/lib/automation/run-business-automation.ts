@@ -19,6 +19,7 @@ import { sendPlatformAdminDailyBrief } from "@/lib/observability/platform-admin-
 import { safeLogAppError } from "@/lib/observability/log-error";
 import { syncGoldenBusinessLoopsForTenant, type GoldenLoopSyncResult } from "@/lib/business-loop/sync-golden-loop";
 import { runCapabilityReliabilityWatchdog, syncCapabilityTrustHealthForTenant } from "@/lib/reliability/capability-runtime";
+import { evaluateConnectorHeartbeatAlerts } from "@/lib/observability/connector-heartbeats";
 
 export type BusinessAutomationCompletedResult = {
   ok: true;
@@ -41,6 +42,7 @@ export type BusinessAutomationCompletedResult = {
   platformAdminBrief: Awaited<ReturnType<typeof sendPlatformAdminDailyBrief>>;
   capabilityWatchdog: Awaited<ReturnType<typeof runCapabilityReliabilityWatchdog>>;
   capabilityHealth: Array<{ tenantId: string } & Awaited<ReturnType<typeof syncCapabilityTrustHealthForTenant>>>;
+  connectorHeartbeats: Awaited<ReturnType<typeof evaluateConnectorHeartbeatAlerts>>;
   tenantFailures: Array<{ tenantId: string; message: string }>;
   elapsedMs: number;
 };
@@ -356,6 +358,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
   const platformCapacity = await evaluatePlatformCapacity();
   const platformAdminBrief = await sendPlatformAdminDailyBrief();
   const capabilityWatchdog = await runCapabilityReliabilityWatchdog({ tenantId: input.tenantId ?? null, limit: 200 });
+  const connectorHeartbeats = await evaluateConnectorHeartbeatAlerts();
   await cleanupExpiredRuntimeRows();
 
   await queryPostgres(
@@ -387,6 +390,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
         platformCapacity,
         platformAdminBrief,
         capabilityWatchdog,
+        connectorHeartbeats,
         capabilityHealth,
         tenantFailures,
         elapsedMs: Date.now() - startedAt,
@@ -415,6 +419,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
     platformCapacity,
     platformAdminBrief,
     capabilityWatchdog,
+    connectorHeartbeats,
     capabilityHealth,
     tenantFailures,
     elapsedMs: Date.now() - startedAt
