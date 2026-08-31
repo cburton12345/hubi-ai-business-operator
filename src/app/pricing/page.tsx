@@ -106,17 +106,14 @@ export default async function PricingPage() {
           </div>
         </section>
 
-        <section className="panel feature-split" aria-label="Ferocity Earn pricing">
+        <section className="panel feature-split" aria-label="Ferocity Earn introduction">
           <div>
-            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
-            <strong className="price-line">{publicEarnPlan.price}</strong>
-            <h2>Let Ferocity earn its place in the business.</h2>
-            <p className="muted">{publicEarnPlan.fit}</p>
+            <p className="eyebrow">A lower-commitment way to begin</p>
+            <h2>Prefer no monthly subscription?</h2>
           </div>
           <div>
-            <p><strong>{publicEarnPlan.rates}</strong></p>
-            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
-            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
+            <p className="muted">Put Ferocity to work and pay a percentage only when eligible revenue is actually collected.</p>
+            <Link className="button secondary-button" href="#earn">Explore Ferocity Earn ↓</Link>
           </div>
         </section>
 
@@ -159,6 +156,20 @@ export default async function PricingPage() {
               <p className="muted plan-usage-note"><strong>Managed calling included:</strong> {managedVoiceAllowance[plan.key]}</p>
             </article>
           ))}
+        </section>
+
+        <section className="panel feature-split" id="earn" aria-label="Ferocity Earn pricing">
+          <div>
+            <p className="eyebrow">{publicEarnPlan.eyebrow}</p>
+            <strong className="price-line">{publicEarnPlan.price}</strong>
+            <h2>Let Ferocity earn its place in the business.</h2>
+            <p className="muted">{publicEarnPlan.fit}</p>
+          </div>
+          <div>
+            <p><strong>{publicEarnPlan.rates}</strong></p>
+            <p className="muted">{publicEarnPlan.eligibility} {publicEarnPlan.costs}</p>
+            <Link className="button" href="/start?source=pricing&plan=earn#start-request">{publicEarnPlan.cta}</Link>
+          </div>
         </section>
 
         <section className="section-actions">
