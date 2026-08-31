@@ -20,6 +20,7 @@ const checkoutSchema = z.object({
 });
 
 const priceEnvByPlan = {
+  ferocity_connect: "STRIPE_PRICE_ID_FEROCITY_CONNECT",
   calls: "STRIPE_PRICE_ID_CALLS",
   job_tracker: "STRIPE_PRICE_ID_JOB_TRACKER",
   starter: "STRIPE_PRICE_ID_STARTER",

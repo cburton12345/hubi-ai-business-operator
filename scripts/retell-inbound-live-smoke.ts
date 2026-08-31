@@ -50,7 +50,7 @@ async function main() {
     signedInboundAccepted: true,
     invalidSignatureRejected: true,
     assistantSelected: true,
-    restrictedMode: payload.call_inbound.retell_llm_dynamic_variables?.ferocity_call_mode ?? null,
+    restrictedMode: payload.call_inbound.dynamic_variables?.ferocity_call_mode ?? null,
     number: number?.rows[0] ?? null
   }, null, 2));
 }

@@ -49,6 +49,7 @@ loadLocalEnv();
 const priceEnvKeys = [
   "STRIPE_PRICE_ID_JOB_TRACKER",
   "STRIPE_PRICE_ID_CALLS",
+  "STRIPE_PRICE_ID_FEROCITY_CONNECT",
   "STRIPE_PRICE_ID_STARTER",
   "STRIPE_PRICE_ID_GROWTH",
   "STRIPE_PRICE_ID_OPERATOR",
@@ -61,7 +62,8 @@ assert(process.env.STRIPE_WEBHOOK_SECRET?.startsWith("whsec_"), "STRIPE_WEBHOOK_
 
 const presentPrices = priceEnvKeys.filter((key) => process.env[key]);
 assert(process.env.STRIPE_PRICE_ID_CALLS, "STRIPE_PRICE_ID_CALLS is required.");
-assert(presentPrices.length >= 5, "Expected Calls, Job Tracker, Starter, Growth, and Operator price IDs.");
+assert(process.env.STRIPE_PRICE_ID_FEROCITY_CONNECT, "STRIPE_PRICE_ID_FEROCITY_CONNECT is required.");
+assert(presentPrices.length >= 7, "Expected Connect, Calls, Job Tracker, Starter, Growth, Operator, and report price IDs.");
 
 line("Stripe key mode", process.env.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "live secret" : "live restricted");
 line("Webhook secret", "configured");
@@ -71,6 +73,7 @@ for (const key of presentPrices) {
   assert(price.active, `${key} is not active.`);
   assert(price.recurring?.interval === "month" || key === "STRIPE_PRICE_ID_AI_GROWTH_REPORT", `${key} should be monthly recurring unless it is the optional report price.`);
   if (key === "STRIPE_PRICE_ID_CALLS") assert(price.unit_amount === 4900, "The Calls plan must be $49/month.");
+  if (key === "STRIPE_PRICE_ID_FEROCITY_CONNECT") assert(price.unit_amount === 2900, "Ferocity Connect must be $29/month.");
   line(key, `${price.id} / ${price.currency?.toUpperCase() ?? "USD"} / ${price.unit_amount ?? "custom"} / ${price.recurring?.interval ?? "one-time"}`);
 }
 

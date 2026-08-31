@@ -66,7 +66,7 @@ export default async function StartPage({
   searchParams: Promise<{ error?: string; source?: string; plan?: string; billing?: string }>;
 }) {
   const params = await searchParams;
-  const plan = ["earn", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
+  const plan = ["earn", "ferocity_connect", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
   const billingMessage =
     params.billing === "stripe_not_ready"
       ? "Your setup request will save the selected plan. Ferocity will confirm checkout before any billing starts."
@@ -134,9 +134,9 @@ export default async function StartPage({
             </label>
 
             <div>
-              <p className="eyebrow">AI setup request</p>
+              <p className="eyebrow">Create your workspace</p>
               <h2>Tell us where to create your workspace.</h2>
-              <p className="muted">Only your email and consent are required.</p>
+              <p className="muted">Only your email and consent are required. The rest can wait until guided setup.</p>
             </div>
 
             {params.error ? (
@@ -240,6 +240,7 @@ export default async function StartPage({
               <select name="requestedPlan" defaultValue={plan}>
                 <option value="not_sure">Not sure yet</option>
                 <option value="earn">Ferocity Earn — $0/month base</option>
+                <option value="ferocity_connect">Ferocity Connect — $29/month</option>
                 <option value="job_tracker">Job Tracker</option>
                 <option value="starter">Starter</option>
                 <option value="growth">Growth</option>

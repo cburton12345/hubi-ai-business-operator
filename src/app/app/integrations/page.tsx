@@ -100,6 +100,9 @@ export default async function IntegrationsPage({
             <Link className="button secondary-button" href="/app/integrations/service-platforms">
               <ArrowRight size={16} /> Existing service platform
             </Link>
+            <Link className="button secondary-button" href="/app/integrations/ferocity-connect">
+              <ArrowRight size={16} /> Android SMS gateway
+            </Link>
             <Link className="button secondary-button" href="/docs/provider-account-setup">
               Provider Setup Packet
             </Link>

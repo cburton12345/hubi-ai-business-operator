@@ -6,6 +6,9 @@ export type PlatformActivityItem = {
   detail: string;
   status: string;
   occurredAt: string;
+  supportIssueId?: string;
+  contact?: string | null;
+  summary?: string | null;
 };
 
 export async function getPlatformActivity() {
@@ -36,8 +39,8 @@ export async function getPlatformActivity() {
        from public.access_requests where request_type='paid_checkout'
        order by created_at desc limit 12`
     ),
-    queryPostgres<{ id: string; requester_name: string | null; requester_email: string | null; subject: string | null; issue_type: string; status: string; created_at: Date }>(
-      `select id, requester_name, requester_email, subject, issue_type, status, created_at
+    queryPostgres<{ id: string; requester_name: string | null; requester_email: string | null; requester_phone: string | null; subject: string | null; message: string; issue_type: string; status: string; created_at: Date }>(
+      `select id, requester_name, requester_email, requester_phone, subject, message, issue_type, status, created_at
        from public.support_issue_queue order by created_at desc limit 12`
     )
   ]);
@@ -64,7 +67,10 @@ export async function getPlatformActivity() {
       title: item.subject || "Support request",
       detail: `${item.requester_name || item.requester_email || "Customer"} · ${item.issue_type}`,
       status: item.status,
-      occurredAt: item.created_at.toISOString()
+      occurredAt: item.created_at.toISOString(),
+      supportIssueId: item.id,
+      contact: item.requester_email || item.requester_phone,
+      summary: item.message.slice(0, 500)
     }))
   };
 }

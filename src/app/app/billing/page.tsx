@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { approveUsageChargeAction, voidUsageChargeAction } from "./actions";
+import { approveUsageChargeAction, saveManagedVoiceLimitAction, voidUsageChargeAction } from "./actions";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { getBillingOverview } from "@/lib/billing/get-billing-overview";
@@ -165,6 +165,58 @@ export default async function BillingPage() {
           ))}
         </ul>
       </section>
+
+      {billing.managedVoice ? (
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Managed AI Phone Usage</h2>
+              <p className="muted">
+                Calling continues after the included minutes at the disclosed usage price. Add a monthly charge limit only if the business wants one;
+                leaving it blank keeps calling available while normal billing and platform safety protections remain active.
+              </p>
+            </div>
+            <span className="pill">
+              {billing.managedVoice.usedMinutes.toLocaleString()} / {billing.managedVoice.includedMinutes.toLocaleString()} included minutes
+            </span>
+          </div>
+          <div className="grid section-actions">
+            <Metric label="Included each month" value={`${billing.managedVoice.includedMinutes.toLocaleString()} minutes`} />
+            <Metric label="After included usage" value={`$${(billing.managedVoice.overageUnitPriceCents / 100).toFixed(2)}/completed minute`} />
+            <Metric
+              label="Optional charge limit"
+              value={billing.managedVoice.optionalMonthlyChargeLimitCents === null
+                ? "No customer limit"
+                : money(billing.managedVoice.optionalMonthlyChargeLimitCents)}
+            />
+          </div>
+          {can(actor, "billing:manage") ? (
+            <div className="inline-actions">
+              <form action={saveManagedVoiceLimitAction} className="inline-actions">
+                <label>
+                  Optional monthly voice overage limit ($)
+                  <input
+                    defaultValue={billing.managedVoice.optionalMonthlyChargeLimitCents === null
+                      ? ""
+                      : billing.managedVoice.optionalMonthlyChargeLimitCents / 100}
+                    min="1"
+                    max="100000"
+                    name="monthlyLimitDollars"
+                    placeholder="No limit"
+                    step="1"
+                    type="number"
+                  />
+                </label>
+                <button className="mini-button" type="submit">Save limit</button>
+              </form>
+              <form action={saveManagedVoiceLimitAction}>
+                <input name="monthlyLimitDollars" type="hidden" value="" />
+                <button className="mini-button secondary-button" type="submit">Remove limit</button>
+              </form>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="panel section-actions">
         <div className="list-row flush-row">

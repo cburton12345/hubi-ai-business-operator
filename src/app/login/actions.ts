@@ -9,6 +9,7 @@ import { hashPassword, hashSessionToken, randomSessionToken, verifyPassword } fr
 import { signInWithSupabasePassword } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 import { consumeLoginRateLimit } from "@/lib/security/rate-limit";
+import { safePostLoginDestination } from "@/lib/auth/post-login-destination";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -170,7 +171,7 @@ export async function loginUser(formData: FormData) {
     priority: "high"
   });
 
-  redirect(parsed.data.next?.startsWith("/app") ? parsed.data.next : "/app");
+  redirect(safePostLoginDestination(parsed.data.next));
 }
 
 export async function logoutUser() {

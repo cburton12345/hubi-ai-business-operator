@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 const complianceLinks = [
+  ["Ferocity Connect", "/ferocity-connect"],
   ["Support", "/support"],
   ["Privacy", "/privacy"],
   ["Terms", "/terms"],

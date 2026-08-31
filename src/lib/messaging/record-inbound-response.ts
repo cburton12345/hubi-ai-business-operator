@@ -6,6 +6,7 @@ export type InboundResponseInput = {
   leadId?: string | null;
   customerId?: string | null;
   sourceThreadId?: string | null;
+  externalConversationRef?: string | null;
   sourceMessageId?: string | null;
   channel: "sms" | "mms" | "email" | "phone" | "website_chat" | "app_push";
   providerKey: string;
@@ -30,7 +31,7 @@ export async function recordInboundResponse(input: InboundResponseInput) {
     )
     values (
       $1, $2, $3, $4, $5, $6,
-      coalesce($9::text, $7, $6 || ':' || lower($8)), $9, coalesce($10, 'Customer conversation'),
+      coalesce($11, $9::text, $7, $6 || ':' || lower($8)), $9::uuid, coalesce($10, 'Customer conversation'),
       'waiting_on_team', 1, now() + interval '15 minutes', now(), now(),
       jsonb_build_object('lastInboundContact', $8)
     )
@@ -51,7 +52,7 @@ export async function recordInboundResponse(input: InboundResponseInput) {
     [
       input.tenantId, input.brandId ?? null, input.leadId ?? null, input.customerId ?? null,
       input.channel, input.providerKey, input.providerMessageId ?? null, input.from,
-      input.sourceThreadId ?? null, input.subject ?? null
+      input.sourceThreadId ?? null, input.subject ?? null, input.externalConversationRef ?? null
     ]
   );
   const conversationId = conversationResult?.rows[0]?.id;

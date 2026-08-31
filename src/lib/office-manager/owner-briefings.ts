@@ -3,6 +3,7 @@ import { decryptSecret, encryptSecret } from "@/lib/credentials/credential-vault
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
+import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
 
 type OwnerPreferenceInput = {
   tenantId: string;
@@ -505,7 +506,7 @@ export async function startOwnerBriefingCall(input: {
   const conversationId = conversation?.rows[0]?.id;
   if (!conversationId) return { ok: false as const, message: "Ferocity could not create the private briefing session." };
 
-  const call = await provider.startOutboundCall(context, {
+  const call = await new ProviderBackedVoiceAgent(provider).startConversation(context, {
     toNumber,
     fromNumber: connection.data.phoneNumber,
     assistantId,

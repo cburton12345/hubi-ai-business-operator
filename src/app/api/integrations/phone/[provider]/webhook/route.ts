@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryPostgres } from "@/lib/db/postgres";
 import { safelyEvaluateAndStoreCallManagementDecision } from "@/lib/office-manager/call-management";
 import { getPhoneProvider } from "@/lib/phone/provider-registry";
+import { releaseOutboundCapacityReservation } from "@/lib/phone/outbound-capacity";
 
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 500) : null;
@@ -112,6 +113,9 @@ export async function POST(
   );
 
   const callId = call?.rows[0]?.id ?? null;
+  if (["completed", "missed", "transferred", "failed", "spam", "blocked"].includes(event.status)) {
+    await releaseOutboundCapacityReservation(providerKey, event.providerCallId);
+  }
   const callDecision = callId
     ? await safelyEvaluateAndStoreCallManagementDecision({
         tenantId,

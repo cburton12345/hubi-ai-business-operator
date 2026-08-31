@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { env } from "@/lib/env";
 import { sendEmailWithResend } from "@/lib/email/resend";
 import { logAppError } from "@/lib/observability/log-error";
@@ -14,11 +15,21 @@ export async function sendTransactionalEmail(input: {
   eventKey: string;
   metadata?: Record<string, unknown>;
 }): Promise<TransactionalEmailResult> {
+  const idempotencyDigest = createHash("sha256")
+    .update([
+      input.tenantId ?? "platform",
+      input.eventKey,
+      input.to.trim().toLowerCase(),
+      input.subject,
+      input.text
+    ].join("\0"))
+    .digest("hex")
+    .slice(0, 32);
   const result = await sendEmailWithResend({
     to: input.to,
     subject: input.subject,
     text: input.text,
-    queueId: `transactional:${input.eventKey}`.slice(0, 180),
+    queueId: `transactional:${input.eventKey}:${idempotencyDigest}`.slice(0, 180),
     tenantId: input.tenantId ?? "platform"
   });
 

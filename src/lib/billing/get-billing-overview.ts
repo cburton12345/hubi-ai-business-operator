@@ -80,6 +80,12 @@ export type BillingOverview = {
     queuedCents: number;
     recent: UsageChargeRow[];
   };
+  managedVoice: {
+    includedMinutes: number;
+    usedMinutes: number;
+    overageUnitPriceCents: number;
+    optionalMonthlyChargeLimitCents: number | null;
+  } | null;
   storage: {
     usedBytes: number;
     maxBytes: number;
@@ -99,7 +105,7 @@ export type BillingOverview = {
 
 export async function getBillingOverview(): Promise<BillingOverview> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [subscription, plans, usageResult, gatesResult, stripeResult, connectResult, rebillingResult, usageChargesResult, usageChargeSummaryResult, storageResult, managedAdBudgets] = await Promise.all([
+  const [subscription, plans, usageResult, gatesResult, stripeResult, connectResult, rebillingResult, usageChargesResult, usageChargeSummaryResult, storageResult, voiceResult, managedAdBudgets] = await Promise.all([
     queryPostgres<{ plan_key: string; status: string; seats: number; current_period_end: Date | null; external_customer_ref: string | null }>(
       "select plan_key, status, seats, current_period_end, external_customer_ref from public.billing_subscriptions where tenant_id = $1 limit 1",
       [workspaceId]
@@ -285,6 +291,53 @@ export async function getBillingOverview(): Promise<BillingOverview> {
       `,
       [workspaceId]
     ),
+    queryPostgres<{
+      included_quantity: string | number;
+      overage_unit_price_cents: string | number;
+      used_minutes: string | number;
+      monthly_customer_charge_cap_cents: string | number | null;
+    }>(
+      `
+      with tenant_plan as (
+        select coalesce(s.plan_key, t.plan_key, 'free') as plan_key
+        from public.tenants t
+        left join public.billing_subscriptions s on s.tenant_id = t.id
+        where t.id = $1
+      ), policy as (
+        select p.included_quantity, p.overage_unit_price_cents
+        from public.usage_allowance_policies p, tenant_plan tp
+        where p.feature_key = 'ai_receptionist'
+          and p.unit_type = 'minute'
+          and p.status = 'active'
+          and tp.plan_key in ('calls', 'starter', 'growth', 'operator', 'managed_operator')
+          and p.overage_unit_price_cents > 0
+          and (p.tenant_id = $1 or (p.tenant_id is null and p.plan_key = tp.plan_key))
+        order by (p.tenant_id is not null) desc
+        limit 1
+      )
+      select
+        p.included_quantity,
+        p.overage_unit_price_cents,
+        coalesce((
+          select sum(u.quantity)
+          from public.usage_meter_events u
+          where u.tenant_id = $1
+            and u.feature_key = 'ai_receptionist'
+            and u.unit_type = 'minute'
+            and u.billing_period_start = date_trunc('month', now())::date
+            and u.status not in ('void', 'failed')
+        ), 0) as used_minutes,
+        l.monthly_customer_charge_cap_cents
+      from policy p
+      left join public.spend_limits l
+        on l.tenant_id = $1
+       and l.scope_type = 'feature'
+       and l.scope_key = 'ai_receptionist'
+       and l.status = 'active'
+      limit 1
+      `,
+      [workspaceId]
+    ),
     getManagedAdBudgetControls(workspaceId)
   ]);
   const sub = subscription?.rows[0];
@@ -317,6 +370,7 @@ export async function getBillingOverview(): Promise<BillingOverview> {
   const connect = connectResult?.rows[0];
   const usageChargeSummary = usageChargeSummaryResult?.rows[0];
   const storage = storageResult?.rows[0];
+  const voice = voiceResult?.rows[0];
   const usedBytes = Number(storage?.used_bytes ?? 0);
   const maxBytes = Number(storage?.max_bytes ?? 0);
   const managedPaymentsEnabled = env.FEROCITY_MANAGED_PAYMENTS_ENABLED === "true";
@@ -387,6 +441,17 @@ export async function getBillingOverview(): Promise<BillingOverview> {
         createdAt: charge.created_at?.toISOString() ?? ""
       }))
     },
+    managedVoice: voice
+      ? {
+          includedMinutes: Number(voice.included_quantity ?? 0),
+          usedMinutes: Number(voice.used_minutes ?? 0),
+          overageUnitPriceCents: Number(voice.overage_unit_price_cents ?? 0),
+          optionalMonthlyChargeLimitCents:
+            voice.monthly_customer_charge_cap_cents === null
+              ? null
+              : Number(voice.monthly_customer_charge_cap_cents)
+        }
+      : null,
     storage: {
       usedBytes,
       maxBytes,

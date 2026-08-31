@@ -38,6 +38,11 @@ describe("voice agent business profile", () => {
     expect(prompt).toContain("Roofing business operations");
     expect(prompt).toContain("Capture the property address");
     expect(prompt).toContain("English, Spanish");
+    expect(prompt).toContain("two reasonable attempts");
+    expect(prompt).toContain("clearly asks for a human");
+    expect(prompt).toContain("create a tracked human follow-up");
+    expect(prompt).toContain("Do not lead with labels such as AI");
+    expect(prompt).toContain("answer honestly");
     expect(prompt).not.toMatch(/Twilio|Vapi|Retell|Telnyx/);
   });
 

@@ -58,9 +58,9 @@ const features = [
     body: "Ask what needs attention, what AI handled, what needs approval, and what to do next."
   },
   {
-    title: "AI Office Manager",
+    title: "Calls and customer conversations",
     icon: CalendarClock,
-    body: "Handle routine calls, screen important ones, explain why a caller needs you, and protect your time while keeping customer service moving."
+    body: "Answer routine calls, understand why someone is calling, preserve the conversation, and route real decisions or tracked follow-up without losing context."
   }
 ];
 
@@ -75,12 +75,12 @@ const engines = [
   ["Remembers how you work", "Save a choice for the business, a workflow, or a customer, then change it for one action without leaving the task."],
   ["Qualified lead and show-up loop", "Audits, quizzes, active qualification forms, follow-up sequences, booked appointments, timed reminders, and revenue feedback."],
   ["Authority and Link Intelligence", "Completed jobs become proof, reviews, case studies, linkable assets, earned-link opportunities, website updates, and video briefs."],
-  ["SEO and AI-search growth", "Website analysis, service pages, local content, GBP ideas, community topics, and search visibility tracking."],
+  ["SEO and AI-search growth", "Website analysis, service pages, local content, GBP ideas, community topics, and visibility planning with connected-data tracking when authorized."],
   ["Ad and video creative", "Platform-specific hooks, ad variants, short-video scripts, scene plans, voiceover drafts, and provider-ready briefs."],
   ["Simple operations and Job Health", "Customers, bids, AI estimates, materials, jobs, field notes, receipts, invoices, payments, and explainable job-risk checks."],
   ["Owner command", "Daily briefing, risks, money waiting, approvals, AI actions, and what needs attention now."],
   ["AI Office Manager", "Customer service, scheduling, follow-up, collections, intelligent call screening, and contextual handoffs while keeping the business number customers already know."],
-  ["Connected systems", "Website, marketplace sources, payment tools, email, SMS, voice, video, ads, calendars, and BYO providers through controlled integrations."]
+  ["Connected systems", "Website, marketplace sources, payment tools, email, SMS, voice, video, ads, calendars, and BYO providers through controlled, capability-verified integrations."]
 ];
 
 const ownerOutcomes = [
@@ -102,8 +102,8 @@ export default function FeaturesPage() {
           <p className="eyebrow">Features</p>
             <h1>Everything your service business needs to win, run, and grow work.</h1>
           <p className="muted">
-            Ferocity can start as a simple tracker or become the command center for qualified leads,
-            follow-up, jobs, payments, reviews, SEO, ads, video briefs, team visibility, and daily decisions.
+            Ferocity gives the business one shared operating system for qualified leads, follow-up, jobs,
+            payments, reviews, growth, team visibility, and the decisions that keep work moving.
           </p>
           <div className="button-row">
             <Link className="button" href="/subscribe">
@@ -157,7 +157,7 @@ export default function FeaturesPage() {
             <p className="eyebrow">Two ways to use it</p>
             <h2>Let AI guide you, or use the tools directly.</h2>
             <p>
-              Normal users can tell Ferocity what they want done. Power users can still open leads,
+              Tell Ferocity the outcome you want in normal words. Power users can still open leads,
               jobs, invoices, marketing, settings, integrations, and reports directly.
             </p>
           </div>

@@ -519,10 +519,10 @@ async function createStarterWorkspace(input: {
   const workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 5).toLowerCase()}`;
   const brandSlug = slugify(workspaceName) || "main-brand";
   const planKey =
-    input.requestedPlan && ["free", "job_tracker", "starter", "growth", "operator", "managed_operator"].includes(input.requestedPlan)
+    input.requestedPlan && ["free", "ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator", "managed_operator", "pro_agency"].includes(input.requestedPlan)
       ? input.requestedPlan
       : "free";
-  const manualBillingPlan = planKey === "managed_operator";
+  const manualBillingPlan = planKey === "managed_operator" || planKey === "pro_agency";
   const token = randomSessionToken();
 
   const workspaceResult = await queryPostgres<{ id: string; slug: string }>(

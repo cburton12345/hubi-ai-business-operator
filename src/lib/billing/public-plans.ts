@@ -1,4 +1,13 @@
-export type SelfServePlanKey = "calls" | "job_tracker" | "starter" | "growth" | "operator";
+export type SelfServePlanKey = "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator";
+
+export const publicConnectPlan = {
+  key: "ferocity_connect" as const,
+  name: "Ferocity Connect",
+  price: "$29/mo",
+  priceCents: 2900,
+  fit: "Let approved Ferocity workflows text through one paired Android phone and its mobile plan.",
+  additionalDevicePrice: "$10/mo per additional Android device"
+};
 
 export type PublicPlan = {
   key: SelfServePlanKey;
@@ -51,7 +60,8 @@ export const publicPlans: PublicPlan[] = [
       "SMS through a configured provider, email, and manual-device fallback",
       "Usage controls and $0.25 billing per completed voice minute",
       "Optional CRM and service-platform call handoff as each adapter is connected and certified",
-      "Shared Ferocity contacts, scheduling, memory, and communications"
+      "Shared Ferocity contacts, scheduling, memory, and communications",
+      "One Ferocity Connect Android device included"
     ]
   },
   {
@@ -92,7 +102,9 @@ export const publicPlans: PublicPlan[] = [
       "Daily Owner Brief generated on demand",
       "Worker requests and availability intake",
       "AI-assisted labor match suggestions",
-      "Managed-ad budget safeguards when that service is chosen"
+      "Managed-ad budget safeguards when that service is chosen",
+      "25 managed AI phone minutes included; then $0.25 per completed minute",
+      "One Ferocity Connect Android device included"
     ]
   },
   {
@@ -135,7 +147,9 @@ export const publicPlans: PublicPlan[] = [
       "Bulk email workflow access with a connected provider",
       "Owner AI decision memory",
       "AI monitoring and briefing queues",
-      "Managed-ad budget controls and reporting"
+      "Managed-ad budget controls and reporting",
+      "100 managed AI phone minutes included; then $0.25 per completed minute",
+      "One Ferocity Connect Android device included"
     ],
     featured: true
   },
@@ -177,7 +191,9 @@ export const publicPlans: PublicPlan[] = [
       "Cross-platform owner event registry",
       "Advanced labor matching and operations visibility",
       "Multi-platform managed-ad controls when chosen",
-      "Managed video production path when chosen"
+      "Managed video production path when chosen",
+      "300 managed AI phone minutes included; then $0.25 per completed minute",
+      "One Ferocity Connect Android device included"
     ]
   },
   {
@@ -203,7 +219,8 @@ export const publicPlans: PublicPlan[] = [
       "Worker and subcontractor availability intake",
       "Job money board",
       "Evidence-backed Job Health and field-report drafts",
-      "Basic invoices and payment reminders"
+      "Basic invoices and payment reminders",
+      "One Ferocity Connect Android device included"
     ]
   }
 ];
@@ -212,9 +229,26 @@ export const primaryPublicPlans = publicPlans.filter((plan) => plan.key !== "job
 export const jobTrackerPlan = publicPlans.find((plan) => plan.key === "job_tracker")!;
 
 export function isSelfServePlanKey(value: string): value is SelfServePlanKey {
-  return publicPlans.some((plan) => plan.key === value);
+  return value === publicConnectPlan.key || publicPlans.some((plan) => plan.key === value);
 }
 
 export function getPublicPlan(value: string) {
+  if (value === publicConnectPlan.key) {
+    return {
+      ...publicConnectPlan,
+      bestFor: "Businesses that want Ferocity's approved SMS workflows without subscribing to the full operating system.",
+      bullets: [
+        "One paired Android device included",
+        "Approved follow-ups, reminders, review requests, and customer replies",
+        "Consent, quiet hours, STOP/HELP, pacing, and delivery-health controls"
+      ],
+      moreFeatures: [
+        "Canonical Ferocity conversation history",
+        "Failure isolation and explicit retry",
+        "Customer-owned phone number, SIM, and carrier plan",
+        "Additional paired devices available for $10/month each"
+      ]
+    } satisfies PublicPlan;
+  }
   return publicPlans.find((plan) => plan.key === value) ?? null;
 }

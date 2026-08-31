@@ -78,7 +78,10 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     call_inbound: {
       override_agent_id: account.assistant_id,
-      retell_llm_dynamic_variables: {
+      // Retell's inbound-webhook contract calls this field
+      // `dynamic_variables` (outbound call creation uses
+      // `retell_llm_dynamic_variables`).
+      dynamic_variables: {
         ...(callContext?.variables ?? {}),
         ferocity_call_mode: access.restrictedMode ?? "full_service",
         ferocity_call_mode_instruction: access.restrictedMode === "take_message_only"

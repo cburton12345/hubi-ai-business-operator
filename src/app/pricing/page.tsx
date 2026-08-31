@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
-import { jobTrackerPlan, primaryPublicPlans, publicEarnPlan } from "@/lib/billing/public-plans";
+import { jobTrackerPlan, primaryPublicPlans, publicConnectPlan, publicEarnPlan } from "@/lib/billing/public-plans";
 import { getPublicCopy } from "@/lib/public-site/featured-demo";
 
 export const revalidate = 60;
@@ -39,7 +39,7 @@ const connectedServices = [
   ["Advertising", "Create + export now", "Create campaigns and platform-specific creative now. Direct ad-platform execution is enabled only for an activated adapter; manual export remains available."],
   ["Video ads", "Briefs now; rendering connected", "Scripts, hooks, scenes, voiceover drafts, and briefs work without a renderer. Premium rendering requires an activated provider and may use credits."],
   ["AI receptionist", "Available with Ferocity Calls", "Retell inbound and approved outbound calling are supported after the workspace, agent, phone route, consent, and billing setup pass verification. Alternate voice engines remain available only through certified adapters."],
-  ["Email and SMS", "Supported adapters", "Resend email and Twilio texting can execute after connection. Manual drafts and copy-to-send fallbacks remain available."],
+  ["Email and SMS", "Supported adapters", "Resend handles connected email. Ferocity Connect can send approved SMS through a paired Android phone; managed and BYO SMS providers remain separate options."],
   ["Web publishing", "Prepare + review", "Prepare publish-ready content, use hosted Ferocity pages, or export it. Direct external publishing requires an activated adapter."],
   ["Another provider", "Request an adapter", "Request a reviewed BYO adapter for a niche provider without changing Ferocity’s core business workflows."]
 ];
@@ -47,9 +47,16 @@ const connectedServices = [
 const fees = [
   ["Ad spend", "Paid directly to the advertising platform or handled under written managed terms."],
   ["Payment processing", "Stripe or another connected payment provider charges its normal processing fees."],
-  ["Heavy provider usage", "Live voice, rendered video, high-volume messaging, storage, and premium AI may use credits or approved overages."],
+  ["Provider usage", "Core software stays available. Metered services use the stated allowance and a disclosed pay-per-use price where offered; unusually large storage or managed-service needs may require an upgrade."],
   ["Managed work", "Custom setup, monitoring, marketing, or payment services require clear written pricing."]
 ];
+
+const managedVoiceAllowance: Record<string, string> = {
+  calls: "Managed calling is $0.25 per completed minute; no included-minute allowance.",
+  starter: "Includes 25 managed voice minutes each month; then $0.25 per completed minute.",
+  growth: "Includes 100 managed voice minutes each month; then $0.25 per completed minute.",
+  operator: "Includes 300 managed voice minutes each month; then $0.25 per completed minute."
+};
 
 const engineLevels = [
   {
@@ -119,6 +126,7 @@ export default async function PricingPage() {
                 <p className="eyebrow">{plan.featured ? "Most popular · " : ""}{plan.name}</p>
                 <strong className="price-line">{plan.price}</strong>
                 <h2>{plan.fit}</h2>
+                <p className="muted">{managedVoiceAllowance[plan.key]}</p>
               </div>
               <Link className="button plan-primary-cta" href={`/subscribe?plan=${plan.key}`}>
                 Start {plan.name}
@@ -152,16 +160,50 @@ export default async function PricingPage() {
             <p className="eyebrow">Start with the phone department</p>
             <h2>Ferocity Calls works on its own—and it is already part of the larger operating system.</h2>
             <p className="muted">
-              Start with AI phone coverage for $49 per month plus $0.25 per completed voice minute. Calls use the same
+              Start with phone coverage for $49 per month plus $0.25 per completed voice minute. Calls use the same
               contacts, Business Brain, scheduling, communications history, and authority controls as full Ferocity.
             </p>
           </div>
           <div>
             <p className="muted">
-              If the business later adds Starter, Growth, or Operator, its call history and setup stay in place. Connected
+              Starter, Growth, and Operator include 25, 100, and 300 managed voice minutes respectively. If the business later adds
+              a full plan, its call history and setup stay in place. Connected
               CRM and field-service handoffs are optional and only turn on after the selected provider adapter and permissions are ready.
             </p>
             <Link className="button secondary-button" href="/subscribe?plan=calls">Start Ferocity Calls</Link>
+          </div>
+        </section>
+
+        <section className="panel feature-split" aria-label="Ferocity Connect pricing">
+          <div>
+            <p className="eyebrow">Texting without another SMS provider</p>
+            <strong className="price-line">{publicConnectPlan.price}</strong>
+            <h2>{publicConnectPlan.name} works on its own or inside any monthly Ferocity plan.</h2>
+            <p className="muted">{publicConnectPlan.fit}</p>
+          </div>
+          <div>
+            <p className="muted">One device is included with every monthly Ferocity plan. Standalone Connect includes one device; {publicConnectPlan.additionalDevicePrice}. Carrier charges, consent rules, and safety limits still apply.</p>
+            <div className="button-row">
+              <Link className="button" href="/subscribe?plan=ferocity_connect">Start Connect</Link>
+              <Link className="button secondary-button" href="/ferocity-connect">See how it works</Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel feature-split" aria-label="Included and pay-per-use explanation">
+          <div>
+            <p className="eyebrow">Built to keep working</p>
+            <h2>Included does not mean Ferocity suddenly stops.</h2>
+            <p className="muted">
+              Each plan includes the everyday operating system and a stated amount of managed provider usage. Managed calling continues after its
+              included allowance at the clearly disclosed pay-per-use price instead of disabling the workspace.
+            </p>
+          </div>
+          <div>
+            <p className="muted">
+              The business can add, change, or remove an optional managed-calling limit. Advertising budgets, payment processing, premium rendered
+              media, high-volume messaging, large storage needs, and other third-party costs remain separate so one unusually heavy customer cannot make every plan more expensive.
+            </p>
           </div>
         </section>
 

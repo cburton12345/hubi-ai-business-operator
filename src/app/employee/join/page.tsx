@@ -14,7 +14,7 @@ export default async function EmployeeJoinPage({
     <main className="page-shell">
       <section className="workspace auth-workspace">
         <div>
-          <p className="eyebrow">{spanish ? "Acceso para empleados" : "Employee access"}</p>
+          <p className="eyebrow">{spanish ? "Acceso del equipo de campo" : "Field team access"}</p>
           <h1>{spanish ? "Conéctese con su empresa" : "Connect to your company"}</h1>
           <p className="muted">
             {spanish
@@ -43,7 +43,7 @@ export default async function EmployeeJoinPage({
             </label>
             <label className="sr-only" aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off" /></label>
             <p className="field-help">{spanish ? "La solicitud no concede acceso por sí sola. Un usuario autorizado de la empresa debe aprobarla." : "The request does not grant access by itself. An authorized company user must approve it."}</p>
-            <button className="button" type="submit">{spanish ? "Solicitar acceso" : "Request employee access"}</button>
+            <button className="button" type="submit">{spanish ? "Solicitar acceso" : "Request field team access"}</button>
             <Link className="button secondary-button" href="/login">{spanish ? "Ya tengo una cuenta" : "I already have an account"}</Link>
           </form>
         )}

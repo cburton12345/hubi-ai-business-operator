@@ -4,10 +4,12 @@ import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-aler
 
 export async function createSupportIssue(input: {
   tenantId?: string | null;
-  source: "public_form" | "customer_portal" | "internal";
+  source: "public_form" | "customer_portal" | "internal" | "voice_agent";
   issueType: string;
   requesterName?: string | null;
-  requesterEmail: string;
+  requesterEmail?: string | null;
+  requesterPhone?: string | null;
+  severity?: "low" | "normal" | "high";
   subject: string;
   message: string;
   metadata?: Record<string, unknown>;
@@ -15,15 +17,17 @@ export async function createSupportIssue(input: {
   const result = await queryPostgres<{ id: string }>(
     `insert into public.support_issue_queue (
        tenant_id, source, issue_type, status, severity, requester_name, requester_email,
-       subject, message, metadata_json
-     ) values ($1,$2,$3,'open','normal',$4,lower($5),$6,$7,$8::jsonb)
+       requester_phone, subject, message, metadata_json
+     ) values ($1,$2,$3,'open',$4,$5,lower($6),$7,$8,$9,$10::jsonb)
      returning id`,
     [
       input.tenantId ?? null,
       input.source,
       input.issueType.slice(0, 80),
+      input.severity ?? "normal",
       input.requesterName || null,
-      input.requesterEmail,
+      input.requesterEmail || null,
+      input.requesterPhone || null,
       input.subject,
       input.message,
       JSON.stringify(input.metadata ?? {})
@@ -53,27 +57,30 @@ export async function createSupportIssue(input: {
     );
   }
 
-  await Promise.all([
+  const tasks: Array<Promise<unknown>> = [
     raisePlatformAdminAlert({
       fingerprint: `support-request:${issueId}`,
       family: "customer_support",
       type: "support_requested",
       severity: "high",
       title: `Customer support request: ${input.subject}`,
-      body: `${input.requesterName || input.requesterEmail} needs help. The request is recorded in Ferocity's support queue.`,
+      body: `${input.requesterName || input.requesterEmail || input.requesterPhone || "A caller"} needs help. The request is recorded in Ferocity's support queue.`,
       tenantId: input.tenantId,
       actionUrl: "/app/platform-activity#support",
-      metadata: { supportIssueId: issueId, issueType: input.issueType, requesterEmail: input.requesterEmail }
-    }),
-    sendTransactionalEmail({
+      metadata: { supportIssueId: issueId, issueType: input.issueType, requesterEmail: input.requesterEmail ?? null, requesterPhone: input.requesterPhone ?? null }
+    })
+  ];
+  if (input.requesterEmail) {
+    tasks.push(sendTransactionalEmail({
       to: input.requesterEmail,
       subject: "Ferocity received your support request",
       text: `We received your request: ${input.subject}\n\nReference: ${issueId}\n\nYou do not need to submit it again. If you need to add context, email support@ferocity.live and include this reference. Do not send passwords, verification codes, or full payment information.`,
       tenantId: input.tenantId,
       eventKey: `support-confirmation-${issueId}`,
       metadata: { supportIssueId: issueId }
-    })
-  ]);
+    }));
+  }
+  await Promise.all(tasks);
 
   return { issueId };
 }

@@ -132,7 +132,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   <Link href="/app/estimator">AI Estimator</Link>
                   <Link href="/app/pricebook">Pricebook & Memberships</Link>
                   <Link href="/app/purchasing">Purchasing & Accounting</Link>
-                  <Link href="/employee">Employee App</Link>
+                  <Link href="/employee">Field Team</Link>
                   <Link href="/app/schedule">Schedule & Dispatch</Link>
                   <Link href="/app/calendar">Marketing / AI Calendar</Link>
                   <Link href="/app/team">Hiring & Team Readiness</Link>
@@ -219,6 +219,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             ) : null}
           </div>
+          <Link className="mini-button" href="/employee">Field team</Link>
           <form action={logoutUser}>
             <button className="mini-button" type="submit">
               Sign out

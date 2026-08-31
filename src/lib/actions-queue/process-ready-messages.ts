@@ -14,6 +14,7 @@ import {
   recordCapabilityProviderResult
 } from "@/lib/reliability/capability-runtime";
 import { classifyProviderFailure, evaluateFallback } from "@/lib/reliability/capability-trust";
+import { inferSmsPurpose } from "@/lib/messaging/sms-policy";
 
 export type ReadyMessageProcessingResult = {
   checked: number;
@@ -47,7 +48,9 @@ type ReadyMessageRow = {
 function engineProviderKey(actionType: "email_send" | "sms_send", providerKey: string) {
   if (providerKey === "resend_shared") return "resend_email";
   if (providerKey === "twilio_shared") return "twilio_sms";
-  return actionType === "email_send" ? "resend_email" : providerKey === "manual_sms" ? "manual_sms" : "twilio_sms";
+  if (actionType === "email_send") return "resend_email";
+  if (providerKey === "twilio") return "twilio_sms";
+  return providerKey || "twilio_sms";
 }
 
 async function updateQueueResult(input: {
@@ -75,7 +78,10 @@ async function updateQueueResult(input: {
       JSON.stringify({
         processedBy: "business_automation_loop",
         providerMessageId: input.providerMessageId ?? null,
-        processedAt: new Date().toISOString()
+        processedAt: new Date().toISOString(),
+        ...(input.row.action_type === "voice_call" && input.status === "sent"
+          ? { voiceCapacity: { status: "started", startedAt: new Date().toISOString() } }
+          : {})
       })
     ]
   );
@@ -164,6 +170,49 @@ async function updateQueueResult(input: {
     );
     await ensureInvoiceReviewEnrollment({ tenantId: input.tenantId, invoiceId: input.row.target_id, event: "invoice_sent" });
   }
+}
+
+async function deferQueueForQuietHours(input: { tenantId: string; row: ReadyMessageRow; retryAt: string; message: string }) {
+  await queryPostgres(
+    `update public.outbound_action_queue
+     set status='queued',scheduled_for=$3::timestamptz,last_error=$4,
+       metadata_json=metadata_json || $5::jsonb,updated_at=now()
+     where tenant_id=$1 and id=$2`,
+    [input.tenantId, input.row.id, input.retryAt, input.message,
+      JSON.stringify({ deferredBy: "sms_quiet_hours", retryAt: input.retryAt })]
+  );
+}
+
+async function deferQueueForVoiceCapacity(input: {
+  tenantId: string;
+  row: ReadyMessageRow;
+  retryAt?: string;
+  message: string;
+}) {
+  const parsed = input.retryAt ? new Date(input.retryAt) : new Date(Date.now() + 5 * 60_000);
+  const retryAt = Number.isFinite(parsed.getTime()) && parsed.getTime() > Date.now()
+    ? parsed
+    : new Date(Date.now() + 5 * 60_000);
+  await queryPostgres(
+    `update public.outbound_action_queue
+     set scheduled_for=$3,
+         last_error=null,
+         metadata_json=metadata_json || $4::jsonb,
+         updated_at=now()
+     where tenant_id=$1 and id=$2`,
+    [
+      input.tenantId,
+      input.row.id,
+      retryAt.toISOString(),
+      JSON.stringify({
+        voiceCapacity: {
+          status: "waiting_for_capacity",
+          estimatedStartAt: retryAt.toISOString(),
+          message: input.message
+        }
+      })
+    ]
+  );
 }
 
 export async function processReadyMessagesForTenant(tenantId: string, limit = 50): Promise<ReadyMessageProcessingResult> {
@@ -339,6 +388,23 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: true, providerReference: call.data.providerCallId });
         await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: true });
       } else {
+        if (call.retryable && ["concurrent_call_limit", "global_concurrent_call_limit"].includes(call.errorCategory)) {
+          await deferQueueForVoiceCapacity({
+            tenantId,
+            row,
+            retryAt: call.retryAt,
+            message: call.safeMessage
+          });
+          await recordCapabilityProviderResult({
+            tenantId,
+            auditId: trustExecution.auditId,
+            providerKey: voice.provider_key,
+            ok: false,
+            retryable: true,
+            error: call.safeMessage
+          });
+          continue;
+        }
         failed += 1;
         await updateQueueResult({ tenantId, row, status: call.retryable ? "failed" : "blocked", message: call.safeMessage });
         await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: false, retryable: call.retryable, error: call.safeMessage });
@@ -366,7 +432,10 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         aiGenerated: true,
         source: "outbound_action_queue",
         targetType: row.target_type,
-        targetId: row.target_id
+        targetId: row.target_id,
+        workflowType: row.workflow_type,
+        messagePurpose: inferSmsPurpose(row.workflow_type),
+        enforceQuietHours: true
       }
     });
 
@@ -391,6 +460,18 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       });
       await recordCapabilityExecutionState({ tenantId, auditId: trustExecution.auditId, state: "needs_attention", error: "A manual send was prepared and still needs a person to complete it." });
     } else {
+      const retryAt = typeof sendResult.metadata?.retryAt === "string" ? sendResult.metadata.retryAt : null;
+      if (sendResult.metadata?.blockedBy === "quiet_hours" && retryAt) {
+        await deferQueueForQuietHours({ tenantId, row, retryAt, message: sendResult.error });
+        await recordCapabilityExecutionState({
+          tenantId,
+          auditId: trustExecution.auditId,
+          state: "delayed",
+          error: sendResult.error,
+          metadata: { retryAt, reason: "sms_quiet_hours" }
+        });
+        continue;
+      }
       failed += 1;
       await recordCapabilityProviderResult({
         tenantId,

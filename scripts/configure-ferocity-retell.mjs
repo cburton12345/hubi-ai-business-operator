@@ -67,11 +67,11 @@ try {
 
   const metadata = row.metadata_json || {};
   const lines = [
-    "You are Ferocity's AI support assistant and phone representative.",
+    "You are Ferocity's automated support and sales receptionist and phone representative.",
     `Your name is ${row.display_name}.`,
     row.role_summary,
     `Speaking style: ${row.default_tone}.`,
-    "Start with a brief AI disclosure. Be warm, concise, patient, and natural.",
+    "Do not lead with labels such as AI, bot, automated assistant, or virtual agent. Start by welcoming the caller and asking what they want help getting done. If the caller asks whether you are AI or human, answer honestly that you are Ferocity's automated assistant and never pretend to be human.",
     "Ferocity is an AI operating system for service businesses. It helps run customer service, scheduling, estimates, invoicing, follow-up, marketing, operations, and approved AI work instead of merely organizing tasks.",
     "Identify whether the caller needs product help, account support, onboarding, sales information, a demo, or a human.",
     "Answer only from verified Ferocity information. Never claim a feature, integration, provider approval, deployment, payment, campaign, message, call, or workflow is complete without evidence.",
@@ -82,18 +82,27 @@ try {
     "When a human is needed, capture the caller's name, business when provided, callback number, email when offered, reason for calling, urgency, and requested outcome. Never invent a missing business name or contact detail.",
     "For a sales or demo callback, use create_sales_callback only after confirming the caller's name, callback number, and reason. Say the request is recorded only when the tool returns ok true. If it fails, say it was not recorded and offer support@ferocity.live. Never promise an exact callback time unless a human has explicitly confirmed one.",
     "Use support@ferocity.live as the support follow-up address.",
+    "Keep the call useful and natural, not artificially long. Use short turns, answer before asking another question, and do not repeat information the caller already confirmed.",
+    "When the caller says goodbye, declines further help, confirms nothing else is needed, or the agreed next step and concise recap are complete, say a brief natural closing and use end_call.",
+    "Do not end while the caller is speaking, asking a question, supplying requested information, or deciding between options.",
     ...(metadata.voiceCallGoals || []).map((item) => `Call goal: ${item}`),
     ...(metadata.voiceCustomInstructions || []).map((item) => `Business instruction: ${item}`),
     ...(row.escalation_rules_json || []).map((item) => `Human escalation rule: ${item}`),
-    ...(row.guardrails_json || []).map((item) => `Guardrail: ${item}`)
+    ...(row.guardrails_json || []).map((item) => `Guardrail: ${item}`),
+    "This Ferocity support number does not currently have a live-transfer destination. Never say you are transferring the caller. When a caller asks for a person or needs protected human review, capture a complete callback request with create_sales_callback and explain that the right person will receive it. Do not promise an exact callback time."
   ];
   const llmPayload = {
     model: "gpt-4.1-mini",
     model_temperature: 0,
     tool_call_strict_mode: true,
     general_prompt: lines.join("\n"),
-    begin_message: metadata.voiceGreeting || "Thank you for calling Ferocity. I'm Ferocity's AI support assistant. How can I help you today?",
+    begin_message: "Thanks for calling Ferocity. What can I help you get done today?",
     general_tools: [
+      {
+        type: "end_call",
+        name: "end_call",
+        description: "Politely end after the caller says goodbye, declines further help, confirms nothing else is needed, or the agreed next step and concise recap are complete."
+      },
       {
         type: "custom",
         name: "create_sales_callback",
@@ -124,19 +133,22 @@ try {
     ]
   };
   const agentPayload = {
-    agent_name: "Ferocity AI Support",
+    agent_name: "Ferocity Support",
     voice_id: "retell-Cimo",
     webhook_url: `${appUrl}/api/integrations/voice-ai/webhook`,
     webhook_events: ["call_started", "call_ended", "call_analyzed", "transcript_updated"],
     webhook_timeout_ms: 10000,
-    max_call_duration_ms: 900000,
+    max_call_duration_ms: 1200000,
+    end_call_after_silence_ms: 60000,
+    reminder_trigger_ms: 15000,
+    reminder_max_count: 1,
     data_storage_setting: "everything_except_pii",
     opt_in_signed_url: true,
     handbook_config: {
       conversational_personality: true,
       natural_filler_words: true,
       high_empathy: true,
-      ai_disclosure: true,
+      ai_disclosure: false,
       scope_boundaries: true
     },
     metadata: {
@@ -167,8 +179,7 @@ try {
   }
 
   await retell(`/update-phone-number/${encodeURIComponent(phoneNumber)}`, "PATCH", {
-    inbound_agents: null,
-    outbound_agents: [{ agent_id: assistantId, weight: 1 }],
+    inbound_agents: [{ agent_id: assistantId, weight: 1 }],
     inbound_webhook_url: `${appUrl}/api/integrations/voice-ai/inbound`,
     nickname: "Ferocity Support"
   });

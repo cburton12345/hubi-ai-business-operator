@@ -103,6 +103,12 @@ export default async function ActionsPage() {
                       </p>
                       <p className="muted">{action.recipientLabel ?? "No recipient"}</p>
                       {action.bodyPreview ? <p>{action.bodyPreview}</p> : null}
+                      {action.voiceCapacityStatus === "waiting_for_capacity" ? (
+                        <p className="muted">
+                          Ferocity is holding this call until phone capacity is available
+                          {action.voiceEstimatedStartAt ? ` — estimated ${dateLabel(action.voiceEstimatedStartAt)}` : ""}.
+                        </p>
+                      ) : null}
                       {action.lastError ? <p className="danger-text">{action.lastError}</p> : null}
                     </div>
                     <div className="inline-actions">

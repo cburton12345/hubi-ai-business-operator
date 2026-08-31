@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 
+const { resolveRetellConfigurationMock } = vi.hoisted(() => ({
+  resolveRetellConfigurationMock: vi.fn()
+}));
+
+const readyRetellConfiguration = {
+  apiKey: "retell-api-key",
+  webhookApiKey: "retell-webhook-key",
+  phoneNumber: "+15550003333",
+  voiceId: "retell-Cimo",
+  callbackStatus: "certified" as const,
+  inboundEnabled: true,
+  outboundEnabled: true
+};
+
 vi.mock("./vapi-config", () => ({
   resolveVapiWebhookTenant: vi.fn().mockResolvedValue(null),
   resolveVapiConfiguration: vi.fn().mockResolvedValue({
@@ -14,12 +28,7 @@ vi.mock("./vapi-config", () => ({
 
 vi.mock("./retell-config", () => ({
   resolveRetellWebhookTenant: vi.fn().mockResolvedValue(null),
-  resolveRetellConfiguration: vi.fn().mockResolvedValue({
-    apiKey: "retell-api-key",
-    webhookApiKey: "retell-webhook-key",
-    phoneNumber: "+15550003333",
-    voiceId: "retell-Cimo"
-  })
+  resolveRetellConfiguration: resolveRetellConfigurationMock
 }));
 
 import {
@@ -32,7 +41,11 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resolveRetellConfigurationMock.mockReset();
+  resolveRetellConfigurationMock.mockResolvedValue(readyRetellConfiguration);
 });
+
+resolveRetellConfigurationMock.mockResolvedValue(readyRetellConfiguration);
 
 describe("Vapi voice adapter", () => {
   it("registers live and planned adapters without treating the planned adapter as webhook-ready", () => {
@@ -168,6 +181,44 @@ describe("Vapi voice adapter", () => {
 });
 
 describe("Retell voice adapter", () => {
+  it("blocks production calls until the displayed caller ID has passed a real callback test", async () => {
+    resolveRetellConfigurationMock.mockResolvedValueOnce({
+      ...readyRetellConfiguration,
+      callbackStatus: "untested"
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await new RetellVoiceAdapter().startOutboundCall(
+      {
+        tenantId: "11111111-1111-4111-8111-111111111111",
+        correlationId: "uncertified-caller-id",
+        idempotencyKey: "uncertified-caller-id",
+        liveActionsEnabled: true
+      },
+      { toNumber: "+15550001111", fromNumber: "+15550003333", assistantId: "customer-agent" }
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errorCategory).toBe("callback_route_not_certified");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks an outbound caller ID that does not belong to the workspace", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await new RetellVoiceAdapter().startOutboundCall(
+      {
+        tenantId: "11111111-1111-4111-8111-111111111111",
+        correlationId: "caller-id-mismatch",
+        idempotencyKey: "caller-id-mismatch",
+        liveActionsEnabled: true
+      },
+      { toNumber: "+15550001111", fromNumber: "+18885550000", assistantId: "customer-agent" }
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errorCategory).toBe("caller_id_mismatch");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("injects verified briefing context as call-scoped string variables", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ call_id: "owner-call-id", call_status: "registered" }),
@@ -180,7 +231,8 @@ describe("Retell voice adapter", () => {
         tenantId: "11111111-1111-4111-8111-111111111111",
         correlationId: "owner-briefing-test",
         idempotencyKey: "owner-briefing-test",
-        liveActionsEnabled: true
+        liveActionsEnabled: true,
+        purpose: "authorized_test"
       },
       {
         toNumber: "+15550001111",

@@ -3,6 +3,7 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { hasAdminSession } from "@/lib/auth/admin-session";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { getPlatformActivity, type PlatformActivityItem } from "@/lib/platform/get-platform-activity";
+import { updatePlatformSupportStatusAction } from "./actions";
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -59,8 +60,26 @@ function ActivityList({ title, rows, anchor }: { title: string; rows: PlatformAc
       <ul className="list">
         {rows.map((row) => (
           <li className="list-row" key={row.id}>
-            <div><strong>{row.title}</strong><p>{row.detail}</p><span className="muted">{dateLabel(row.occurredAt)}</span></div>
-            <span className="pill">{row.status}</span>
+            <div>
+              <strong>{row.title}</strong>
+              <p>{row.detail}</p>
+              {row.contact ? <p><strong>Contact:</strong> {row.contact}</p> : null}
+              {row.summary ? <p>{row.summary}</p> : null}
+              <span className="muted">{dateLabel(row.occurredAt)}</span>
+            </div>
+            {row.supportIssueId ? (
+              <form action={updatePlatformSupportStatusAction} className="inline-actions">
+                <input type="hidden" name="issueId" value={row.supportIssueId} />
+                <select name="status" defaultValue={row.status} aria-label={`Status for ${row.title}`}>
+                  <option value="open">Received</option>
+                  <option value="reviewing">In review</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="dismissed">Closed</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <button className="mini-button" type="submit">Save</button>
+              </form>
+            ) : <span className="pill">{row.status}</span>}
           </li>
         ))}
         {!rows.length ? <li className="list-row"><span className="muted">Nothing here yet.</span></li> : null}

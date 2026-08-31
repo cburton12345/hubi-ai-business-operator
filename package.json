@@ -42,6 +42,7 @@
     "stripe-connect:readiness": "node scripts/stripe-connect-readiness.mjs",
     "stripe-connect:reconcile": "node scripts/stripe-connect-reconcile.mjs",
     "retell:readiness": "node scripts/retell-readiness.mjs",
+    "retell:callback:readiness": "node scripts/retell-callback-readiness.mjs",
     "retell:call:preflight": "node scripts/retell-call-certification-preflight.mjs",
     "jobber:oauth:readiness": "node scripts/jobber-oauth-readiness.mjs",
     "jobber:sync:read-only": "npx --yes tsx scripts/sync-jobber-read-model.ts",
@@ -68,6 +69,9 @@
     "email:live:smoke": "node scripts/live-email-delivery-smoke.mjs",
     "provider-promotion:smoke": "node scripts/provider-promotion-smoke.mjs",
     "start": "next start",
+    "ferocity-connect:service": "tsx services/ferocity-connect/src/server.ts",
+    "ferocity-connect:release:upload": "node scripts/publish-ferocity-connect-release.mjs",
+    "ferocity-connect:release:publish": "node scripts/publish-ferocity-connect-release.mjs --publish",
     "start:render": "npm run db:migrate && next start",
     "lint": "eslint .",
     "test": "vitest run",
@@ -95,6 +99,7 @@
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.2.11",
     "typescript": "^5.9.3",
+    "tsx": "^4.23.12",
     "vitest": "^4.0.16"
   },
   "overrides": {

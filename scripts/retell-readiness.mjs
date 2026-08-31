@@ -33,8 +33,22 @@ try {
     [tenantId]
   );
   const numberResult = await client.query(
-    `select phone_number,status,inbound_enabled,outbound_enabled,compliance_status from public.telephony_numbers
+    `select phone_number,status,inbound_enabled,outbound_enabled,compliance_status,callback_status,callback_last_tested_at from public.telephony_numbers
       where tenant_id=$1 and provider_key='retell_voice' order by updated_at desc limit 1`,
+    [tenantId]
+  );
+  const connectionResult = await client.query(
+    `select nullif(human_transfer_number,'') is not null as transfer_number_configured
+       from public.phone_connections where tenant_id=$1 limit 1`,
+    [tenantId]
+  );
+  const limitResult = await client.query(
+    `select concurrent_call_limit from public.spend_limits
+      where tenant_id=$1 and status='active'
+        and (scope_type='provider' and scope_key='retell_voice'
+          or scope_type='feature' and scope_key='ai_receptionist'
+          or scope_type='tenant')
+      order by case scope_type when 'provider' then 0 when 'feature' then 1 else 2 end limit 1`,
     [tenantId]
   );
   const provider = providerResult.rows[0];
@@ -42,12 +56,21 @@ try {
   const assistantId = provider?.metadata_json?.assistantId;
   const outboundAssistantId = provider?.metadata_json?.outboundAssistantId;
   if (!assistantId || !number?.phone_number) throw new Error("Retell assistant or phone number is missing from the tenant record.");
-  const [agent, remoteNumber] = await Promise.all([
+  const [agent, remoteNumber, concurrency] = await Promise.all([
     retell(`/get-agent/${encodeURIComponent(assistantId)}`),
-    retell(`/get-phone-number/${encodeURIComponent(number.phone_number)}`)
+    retell(`/get-phone-number/${encodeURIComponent(number.phone_number)}`),
+    retell('/get-concurrency')
   ]);
+  const llmId = agent?.response_engine?.llm_id;
+  const llm = llmId ? await retell(`/get-retell-llm/${encodeURIComponent(llmId)}`) : null;
+  const transferToolConfigured = Array.isArray(llm?.general_tools)
+    && llm.general_tools.some((tool) => tool?.type === 'transfer_call');
   const inboundAgentId = remoteNumber.inbound_agent_id ?? remoteNumber.inbound_agents?.[0]?.agent_id ?? null;
   const outboundAgentId = remoteNumber.outbound_agent_id ?? remoteNumber.outbound_agents?.[0]?.agent_id ?? null;
+  const normalConcurrencyLimit = Number(concurrency.concurrency_limit);
+  const reservedInboundSlots = Number.isFinite(normalConcurrencyLimit) && normalConcurrencyLimit > 2
+    ? Math.min(normalConcurrencyLimit - 1, Math.max(2, Math.ceil(normalConcurrencyLimit * 0.25)))
+    : 0;
   console.log(JSON.stringify({
     ok: true,
     apiKeyAccepted: true,
@@ -55,6 +78,7 @@ try {
     agentName: agent.agent_name ?? null,
     phoneExists: remoteNumber.phone_number === number.phone_number,
     inboundAgentAssigned: inboundAgentId === assistantId,
+    inboundFallbackAgentAssigned: inboundAgentId === assistantId,
     inboundRoutingReady: inboundAgentId === assistantId || remoteNumber.inbound_webhook_url === `${appUrl}/api/integrations/voice-ai/inbound`,
     outboundAgentAssigned: outboundAgentId === (outboundAssistantId ?? assistantId),
     inboundWebhookConfigured: remoteNumber.inbound_webhook_url === `${appUrl}/api/integrations/voice-ai/inbound`,
@@ -63,7 +87,19 @@ try {
     databaseLiveActionsEnabled: provider.live_actions_enabled,
     databaseInboundEnabled: number.inbound_enabled,
     databaseOutboundEnabled: number.outbound_enabled,
-    databaseComplianceStatus: number.compliance_status
+    databaseComplianceStatus: number.compliance_status,
+    databaseCallbackStatus: number.callback_status,
+    databaseCallbackLastTestedAt: number.callback_last_tested_at,
+    tenantTransferNumberConfigured: connectionResult.rows[0]?.transfer_number_configured === true,
+    retellTransferToolConfigured: transferToolConfigured,
+    retellCurrentConcurrency: concurrency.current_concurrency ?? null,
+    retellConcurrencyLimit: concurrency.concurrency_limit ?? null,
+    retellBurstEnabled: concurrency.concurrency_burst_enabled === true,
+    ferocityReservedInboundSlots: reservedInboundSlots,
+    ferocityRoutineOutboundSoftLimit: Number.isFinite(normalConcurrencyLimit)
+      ? Math.max(1, normalConcurrencyLimit - reservedInboundSlots)
+      : null,
+    ferocityTenantConcurrencyLimit: limitResult.rows[0]?.concurrent_call_limit ?? null
   }, null, 2));
 } finally {
   await client.end();

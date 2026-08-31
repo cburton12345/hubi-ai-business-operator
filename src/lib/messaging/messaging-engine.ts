@@ -1,6 +1,8 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getServiceGate } from "@/lib/controls/service-gates";
+import { getContactCommunicationPreference } from "@/lib/preferences/contact-communication-preferences";
 import { getMessagingProvider, getProvidersForChannel } from "./provider-registry";
+import { estimateSmsSegments, isWithinQuietHours, localTimeInZone, smsPurpose } from "./sms-policy";
 import type { MessagingSendInput, MessagingSendResult } from "./types";
 
 function normalizeContact(value: string) {
@@ -24,6 +26,22 @@ function fallbackProviderKey(input: MessagingSendInput) {
   if (input.channel === "manual_sms") return "manual_sms";
   if (input.channel === "sms" || input.channel === "mms") return "twilio_sms";
   return "manual_sms";
+}
+
+async function resolveProviderKey(input: MessagingSendInput) {
+  if (input.providerKey) return input.providerKey;
+  if (input.channel === "sms") {
+    const configured = await queryPostgres<{ provider_key: string }>(
+      `select provider_key from public.tenant_messaging_accounts
+       where tenant_id=$1 and default_channel='sms' and connection_status='active'
+         and credentials_status in ('configured','not_required') and live_sending_enabled=true and outbound_enabled=true
+         and coalesce((metadata_json->>'isDefault')::boolean,false)=true
+       order by updated_at desc limit 1`,
+      [input.tenantId]
+    );
+    if (configured?.rows[0]?.provider_key) return configured.rows[0].provider_key;
+  }
+  return fallbackProviderKey(input);
 }
 
 function serviceFeatureForChannel(channel: MessagingSendInput["channel"]) {
@@ -58,15 +76,48 @@ export function estimatedMessagingUsage(input: MessagingSendInput) {
   if (input.channel === "mms") {
     return { unitType: "mms", units: 1, providerCostCents: configuredRate("MMS_PROVIDER_COST_CENTS", 3) };
   }
-  const unicode = /[^\u0000-\u007f]/.test(input.body);
-  const singleLimit = unicode ? 70 : 160;
-  const multipartLimit = unicode ? 67 : 153;
-  const units = input.body.length <= singleLimit ? 1 : Math.ceil(input.body.length / multipartLimit);
+  const segments = estimateSmsSegments(input.body);
   return {
     unitType: "message",
-    units,
-    providerCostCents: units * configuredRate("SMS_SEGMENT_PROVIDER_COST_CENTS", 2)
+    units: segments.units,
+    providerCostCents: segments.units * configuredRate("SMS_SEGMENT_PROVIDER_COST_CENTS", 2),
+    encoding: segments.encoding
   };
+}
+
+async function getSmsPolicyDecision(input: MessagingSendInput) {
+  if (input.channel !== "sms" && input.channel !== "mms" && input.channel !== "manual_sms") {
+    return { allowed: true as const };
+  }
+  const purpose = smsPurpose(input.metadata?.messagePurpose);
+  if (purpose === "security" || purpose === "compliance") return { allowed: true as const };
+
+  const [preference, workspace] = await Promise.all([
+    getContactCommunicationPreference(input.tenantId, normalizeContact(input.to)),
+    queryPostgres<{ timezone: string | null }>(
+      `select coalesce(w.timezone,'America/Los_Angeles') as timezone
+       from public.tenants t left join public.workspace_settings w on w.tenant_id=t.id
+       where t.id=$1 limit 1`,
+      [input.tenantId]
+    )
+  ]);
+  if (purpose === "marketing" && preference.noMarketingTexts) {
+    return { allowed: false as const, reason: "This contact does not accept marketing texts.", category: "marketing_preference" };
+  }
+
+  const timezone = workspace?.rows[0]?.timezone || "America/Los_Angeles";
+  const localTime = localTimeInZone(new Date(), timezone);
+  const quietStart = preference.quietHoursStart || "21:00";
+  const quietEnd = preference.quietHoursEnd || "08:00";
+  if (input.metadata?.enforceQuietHours === true && localTime && isWithinQuietHours(localTime, quietStart, quietEnd)) {
+    return {
+      allowed: false as const,
+      reason: `SMS is deferred during the contact's quiet hours (${quietStart}-${quietEnd} ${timezone}).`,
+      category: "quiet_hours",
+      retryAt: new Date(Date.now() + 15 * 60_000).toISOString()
+    };
+  }
+  return { allowed: true as const };
 }
 
 async function getMessagingSendDecision(input: MessagingSendInput, providerKey: string) {
@@ -284,10 +335,11 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
 
 async function hasRequiredConsent(input: MessagingSendInput) {
   if (["internal", "app_push"].includes(input.channel)) return true;
+  if (smsPurpose(input.metadata?.messagePurpose) === "compliance" && input.metadata?.inboundComplianceReply === true) return true;
   if (hasAuthenticatedOwnerVerificationConsent(input)) return true;
   const channel = ["manual_sms", "mms"].includes(input.channel) ? "sms" : input.channel;
   const contact = normalizeContact(input.to);
-  const result = await queryPostgres<{ granted: boolean; revoked: boolean }>(
+  const result = await queryPostgres<{ granted: boolean; revoked: boolean; marketing_granted: boolean }>(
     `
     select
       (
@@ -314,11 +366,24 @@ async function hasRequiredConsent(input: MessagingSendInput) {
             and lower(contact_value) = $3 and status in ('revoked', 'blocked')
         )
       ) as revoked
+      ,(
+        exists (
+          select 1 from public.messaging_consents
+          where tenant_id = $1 and contact_channel = $2 and lower(contact_value) = $3
+            and status = 'granted' and lower(coalesce(proof_json->>'marketingConsent','false')) in ('true','1','yes')
+        )
+        or exists (
+          select 1 from public.contact_consent_records
+          where tenant_id = $1 and channel = $2 and lower(contact_value) = $3
+            and status = 'granted' and lower(coalesce(metadata_json->>'marketingConsent','false')) in ('true','1','yes')
+        )
+      ) as marketing_granted
     `,
     [input.tenantId, channel, contact]
   );
   const consent = result?.rows[0];
-  return Boolean(consent?.granted && !consent.revoked);
+  const marketingRequired = smsPurpose(input.metadata?.messagePurpose) === "marketing";
+  return Boolean(consent?.granted && !consent.revoked && (!marketingRequired || consent.marketing_granted));
 }
 
 async function reserveIdempotentSend(input: MessagingSendInput, providerKey: string) {
@@ -443,7 +508,7 @@ async function logMessage(input: MessagingSendInput, result: MessagingSendResult
       messageDestinationForStorage(input),
       input.subject ?? null,
       messageBodyForStorage(input),
-      result.ok ? (result.status === "manual_ready" ? "queued" : "sent") : "failed",
+      result.ok ? (result.status === "manual_ready" || result.status === "queued" ? "queued" : "sent") : "failed",
       Boolean(input.metadata?.aiGenerated),
       idempotencyKey,
       JSON.stringify({
@@ -591,7 +656,7 @@ async function logUsage(input: MessagingSendInput, result: MessagingSendResult) 
 }
 
 export async function sendMessage(input: MessagingSendInput): Promise<MessagingSendResult> {
-  const providerKey = input.providerKey ?? fallbackProviderKey(input);
+  const providerKey = await resolveProviderKey(input);
   const provider = getMessagingProvider(providerKey) ?? getProvidersForChannel(input.channel)[0];
 
   if (!provider) {
@@ -626,7 +691,23 @@ export async function sendMessage(input: MessagingSendInput): Promise<MessagingS
     return result;
   }
 
-  if (await isSuppressed(input)) {
+  const smsPolicy = await getSmsPolicyDecision(input);
+  if (!smsPolicy.allowed) {
+    const result = {
+      ok: false,
+      providerKey: provider.providerKey,
+      status: 0,
+      error: smsPolicy.reason,
+      retryable: smsPolicy.category === "quiet_hours",
+      metadata: { blockedBy: smsPolicy.category, ...(smsPolicy.retryAt ? { retryAt: smsPolicy.retryAt } : {}) }
+    } satisfies MessagingSendResult;
+    await logEngineFailure(input, provider.providerKey, result);
+    await logMessage(input, result);
+    return result;
+  }
+
+  const complianceReply = smsPurpose(input.metadata?.messagePurpose) === "compliance" && input.metadata?.inboundComplianceReply === true;
+  if (!complianceReply && await isSuppressed(input)) {
     const result = {
       ok: false,
       providerKey: provider.providerKey,

@@ -35,6 +35,7 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
         <section className="notice warning">
           <strong>{copy.linkTitle}</strong>
           <p>{copy.linkBody}</p>
+          {employeeDashboard?.access.canManageAll ? <Link className="mini-button" href="/app/operations-workforce">Create or link my field profile</Link> : null}
         </section>
       ) : null}
 
@@ -256,10 +257,10 @@ function DollarSignIcon() {
 
 const employeeCopy = {
   en: {
-    eyebrow: "Employee App", title: "Today's Work",
+    eyebrow: "Field Team", title: "Today's Work",
     description: "See your schedule, record hours and location, note what you completed, and send field records to the office.",
-    linkTitle: "Your employee profile needs to be linked.",
-    linkBody: "Ask the company owner for a private employee invitation. The one-time link connects only your company membership and employee record.",
+    linkTitle: "Your field profile needs to be linked.",
+    linkBody: "Ask an authorized company user for a private invitation. Owners and managers can also create a field profile for themselves. The link connects only your company membership and worker record.",
     language: "Language", saveLanguage: "Save", workingNow: "Working now", scheduledToday: "Scheduled today",
     openAssignments: "Open assignments", needsReview: "Needs review", workList: "Work List",
     workListBody: "Your assigned work, schedule, and field actions are together in one place.", openWork: "Open work",
@@ -278,10 +279,10 @@ const employeeCopy = {
     fieldNotes: "Field Notes", fieldNotesBody: "Keep the office current with job notes, receipts, mileage, and proof while you work."
   },
   es: {
-    eyebrow: "Aplicación para empleados", title: "Trabajo de hoy",
+    eyebrow: "Equipo de campo", title: "Trabajo de hoy",
     description: "Vea su horario, registre horas y ubicación, anote lo que completó y envíe registros del campo a la oficina.",
-    linkTitle: "Su perfil de empleado necesita conectarse.",
-    linkBody: "Pida al dueño de la empresa una invitación privada. El enlace de un solo uso conecta únicamente su membresía y registro de empleado.",
+    linkTitle: "Su perfil de campo necesita conectarse.",
+    linkBody: "Pida una invitación privada a un usuario autorizado de la empresa. Los dueños y gerentes también pueden crear su propio perfil de campo. El enlace conecta únicamente su membresía y registro de trabajador.",
     language: "Idioma", saveLanguage: "Guardar", workingNow: "Trabajando ahora", scheduledToday: "Programado hoy",
     openAssignments: "Trabajos abiertos", needsReview: "Por revisar", workList: "Lista de trabajo",
     workListBody: "Sus trabajos, horario y acciones de campo están juntos en un solo lugar.", openWork: "Abrir trabajo",

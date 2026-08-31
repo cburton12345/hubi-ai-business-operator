@@ -11,6 +11,7 @@ import { orchestrateCompletedCall } from "@/lib/phone/post-call-orchestration";
 import { createVoiceAppointment } from "@/lib/phone/voice-scheduling";
 import { safelyEnqueueExternalCallLogHandoffs } from "@/lib/integrations/call-log/enqueue";
 import { recordCapabilityDeliveryEvidence } from "@/lib/reliability/capability-runtime";
+import { releaseOutboundCapacityReservation } from "@/lib/phone/outbound-capacity";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized voice webhook." }, { status: 401 });
@@ -158,6 +159,9 @@ export async function POST(request: NextRequest) {
   const callerNumber = safeString(body?.callerNumber ?? body?.from);
   const finalEvent = ["completed", "missed", "transferred", "failed", "spam", "blocked"].includes(status)
     || eventType === "call_analyzed";
+  if (finalEvent) {
+    await releaseOutboundCapacityReservation(provider, providerCallId);
+  }
   const contact = await reconcileCallContact({
     tenantId,
     brandId,

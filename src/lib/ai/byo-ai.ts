@@ -6,9 +6,15 @@ export type AiExecutionConfiguration = {
   providerKey: "openai" | "openai_byok";
   model: string;
   apiKey: string | null;
-  baseUrl: "https://api.openai.com/v1";
+  baseUrl: string;
   ownershipMode: "ferocity_managed" | "workspace";
 };
+
+function managedOpenAiBaseUrl() {
+  const configured = process.env.OPENAI_BASE_URL?.trim().replace(/\/$/, "");
+  if (!configured) return "https://api.openai.com/v1";
+  return configured.endsWith("/v1") ? configured : `${configured}/v1`;
+}
 
 const byoEligibleRunTypes = new Set([
   "construction_field_log",
@@ -36,7 +42,7 @@ export function managedAiConfiguration(
     providerKey: "openai",
     model: managedModelForRunType({ runType, requestType }),
     apiKey: process.env.OPENAI_API_KEY ?? null,
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: managedOpenAiBaseUrl(),
     ownershipMode: "ferocity_managed"
   };
 }

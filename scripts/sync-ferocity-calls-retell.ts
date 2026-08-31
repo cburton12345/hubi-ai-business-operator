@@ -116,7 +116,9 @@ async function main() {
       method: "PATCH",
       headers: { Authorization: `Bearer ${retellConfiguration.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        inbound_agents: null,
+        // Keep the receptionist bound as Retell's fallback if Ferocity's
+        // dynamic inbound webhook is temporarily unavailable.
+        inbound_agents: [{ agent_id: inbound.data.assistantId, weight: 1 }],
         outbound_agents: [{ agent_id: outbound.data.assistantId, weight: 1 }],
         inbound_webhook_url: `${appUrl}/api/integrations/voice-ai/inbound`,
         nickname: "Ferocity Calls"

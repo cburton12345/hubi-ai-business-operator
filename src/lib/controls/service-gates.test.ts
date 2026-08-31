@@ -43,4 +43,11 @@ describe("Ferocity core AI plan boundaries", () => {
     expect(planAllowsFeature("calls", "seo_autopilot")).toBe(false);
     expect(planAllowsFeature("calls", "payment_collection")).toBe(false);
   });
+
+  it("allows Ferocity Connect SMS without unlocking the full operating system", () => {
+    expect(planAllowsFeature("ferocity_connect", "sms_send")).toBe(true);
+    expect(planAllowsFeature("ferocity_connect", "follow_up_recovery")).toBe(true);
+    expect(planAllowsFeature("ferocity_connect", "voice_ai")).toBe(false);
+    expect(planAllowsFeature("job_tracker", "sms_send")).toBe(true);
+  });
 });

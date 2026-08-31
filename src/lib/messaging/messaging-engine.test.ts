@@ -18,8 +18,8 @@ describe("estimatedMessagingUsage", () => {
   });
 
   it("uses the smaller Unicode segment boundaries", () => {
-    expect(estimatedMessagingUsage(message("sms", "é".repeat(70))).units).toBe(1);
-    expect(estimatedMessagingUsage(message("sms", "é".repeat(71))).units).toBe(2);
+    expect(estimatedMessagingUsage(message("sms", "\u4f60".repeat(70))).units).toBe(1);
+    expect(estimatedMessagingUsage(message("sms", "\u4f60".repeat(71))).units).toBe(2);
   });
 
   it("meters email and MMS as explicit units with nonzero conservative cost", () => {

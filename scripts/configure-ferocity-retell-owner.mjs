@@ -82,7 +82,9 @@ try {
     "Use owner_business_action only after the required approval. Set explicit_approval and secondary_confirmation truthfully from the conversation; never infer either flag.",
     "If the tool asks for fresh owner verification or review in the app, say so plainly and do not claim the action completed.",
     "Never ask for passwords, API keys, full card numbers, Social Security numbers, banking credentials, or a verification code during this call.",
-    "End with a concise recap of what was completed, queued, blocked, or left for review."
+    "End with a concise recap of what was completed, queued, blocked, or left for review.",
+    "Keep the briefing useful and natural, not artificially long. Do not repeat decisions or details the owner already confirmed.",
+    "When the owner says goodbye, declines further help, confirms nothing else is needed, or the recap is complete, say a brief natural closing and use end_call. Do not end while the owner is still asking a question or deciding."
   ].join("\n");
   const llmPayload = {
     model: "gpt-4.1-mini",
@@ -96,6 +98,10 @@ try {
       briefing_context: "No verified briefing items were supplied. Explain that no action can be taken from this call."
     },
     general_tools: [{
+      type: "end_call",
+      name: "end_call",
+      description: "Politely end when the owner says goodbye, declines further help, confirms nothing else is needed, or the concise recap is complete."
+    }, {
       type: "custom",
       name: "owner_business_action",
       description: "Prepare or perform an owner-authorized Ferocity action using only real IDs supplied in briefing_context. The API independently enforces authentication, approval, confirmation, tenant isolation, and idempotency.",
@@ -126,7 +132,10 @@ try {
     webhook_url: `${appUrl}/api/integrations/voice-ai/webhook`,
     webhook_events: ["call_started", "call_ended", "call_analyzed", "transcript_updated"],
     webhook_timeout_ms: 10000,
-    max_call_duration_ms: 900000,
+    max_call_duration_ms: 1200000,
+    end_call_after_silence_ms: 60000,
+    reminder_trigger_ms: 15000,
+    reminder_max_count: 1,
     data_storage_setting: "everything_except_pii",
     opt_in_signed_url: true,
     allow_user_dtmf: true,
@@ -174,7 +183,9 @@ try {
       "Do not promise that someone will call back. If the person actually requests a human callback, confirm their name, callback number, and reason, then use create_sales_callback. Say it is recorded only when the tool returns ok true.",
       "If the person asks not to receive AI calls, apologize, end promptly, and state that their preference will be recorded.",
       "Never request passwords, verification codes, full payment-card details, Social Security numbers, or banking credentials.",
-      "Close with the agreed next step without claiming it is completed unless a connected Ferocity tool confirmed it."
+      "Close with the agreed next step without claiming it is completed unless a connected Ferocity tool confirmed it.",
+      "Keep the call useful and natural, not artificially long. Do not repeat the purpose, questions, or facts the person already confirmed.",
+      "When the person says goodbye, declines the call or further help, asks not to be called, confirms nothing else is needed, or the agreed next step and brief recap are complete, apologize or close naturally as appropriate and use end_call. Do not end while the person is still asking a question or providing information."
     ].join("\n"),
     begin_message: "Hi {{contact_name}}. I'm Ferocity's AI service coordinator calling on behalf of {{business_name}}. The reason for my call is {{call_purpose}}. Is now an okay time?",
     default_dynamic_variables: {
@@ -190,6 +201,10 @@ try {
       allowed_next_steps: "Answer from supplied context, clarify naturally, and record a callback only through the connected tool."
     },
     general_tools: [{
+      type: "end_call",
+      name: "end_call",
+      description: "Politely end after the person declines the call or further help, asks not to be called, says goodbye, confirms nothing else is needed, or the agreed next step and brief recap are complete."
+    }, {
       type: "custom",
       name: "create_sales_callback",
       description: "Record a real human callback request after the person confirms their name, callback number, and reason. Use the returned ok value before saying it was recorded.",
@@ -223,7 +238,10 @@ try {
     webhook_url: `${appUrl}/api/integrations/voice-ai/webhook`,
     webhook_events: ["call_started", "call_ended", "call_analyzed", "transcript_updated"],
     webhook_timeout_ms: 10000,
-    max_call_duration_ms: 900000,
+    max_call_duration_ms: 1200000,
+    end_call_after_silence_ms: 45000,
+    reminder_trigger_ms: 12000,
+    reminder_max_count: 1,
     data_storage_setting: "everything_except_pii",
     opt_in_signed_url: true,
     post_call_analysis_data: [

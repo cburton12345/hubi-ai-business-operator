@@ -20,6 +20,7 @@ export default async function SubscribePage({
   const plan = getPublicPlan(params.plan ?? "");
   const isCallsPlan = plan?.key === "calls";
   const planGuidance = {
+    ferocity_connect: "Approved Android business texting with Ferocity safety and delivery controls.",
     calls: "A complete AI phone team with simple usage-based voice billing.",
     job_tracker: "Focused job and money control with basic AI guidance.",
     starter: "The shared business memory and everyday control layer.",

@@ -27,6 +27,9 @@ export type OutboundActionRow = {
   workflowKey: string;
   phone: string | null;
   email: string | null;
+  voiceCapacityStatus: string | null;
+  voiceCapacityMessage: string | null;
+  voiceEstimatedStartAt: string | null;
 };
 
 export type ProviderAccountRow = {
@@ -134,6 +137,9 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       workflow_key: string;
       phone: string | null;
       email: string | null;
+      voice_capacity_status: string | null;
+      voice_capacity_message: string | null;
+      voice_estimated_start_at: string | null;
     }>(
       `
       select
@@ -147,6 +153,9 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
         q.scheduled_for,
         q.target_type,
         q.last_error,
+        nullif(q.metadata_json#>>'{voiceCapacity,status}', '') as voice_capacity_status,
+        nullif(q.metadata_json#>>'{voiceCapacity,message}', '') as voice_capacity_message,
+        nullif(q.metadata_json#>>'{voiceCapacity,estimatedStartAt}', '') as voice_estimated_start_at,
         left(coalesce(q.payload_json->>'body', ''), 220) as body_preview,
         q.created_at,
         pref.value_json->>'method' as resolved_method,
@@ -352,7 +361,10 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       resolvedScope: row.resolved_scope ?? "this action",
       workflowKey: row.workflow_key,
       phone: row.phone,
-      email: row.email
+      email: row.email,
+      voiceCapacityStatus: row.voice_capacity_status,
+      voiceCapacityMessage: row.voice_capacity_message,
+      voiceEstimatedStartAt: row.voice_estimated_start_at
     })),
     providers: (providerResult?.rows ?? []).map((row) => ({
       providerKey: row.provider_key,

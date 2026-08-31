@@ -14,6 +14,8 @@ import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-
 import { processExternalCallLogQueueForTenant } from "@/lib/integrations/call-log/processor";
 import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
 import { evaluatePlatformCapacity } from "@/lib/observability/platform-capacity";
+import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
+import { sendPlatformAdminDailyBrief } from "@/lib/observability/platform-admin-daily-brief";
 import { safeLogAppError } from "@/lib/observability/log-error";
 import { syncGoldenBusinessLoopsForTenant, type GoldenLoopSyncResult } from "@/lib/business-loop/sync-golden-loop";
 import { runCapabilityReliabilityWatchdog, syncCapabilityTrustHealthForTenant } from "@/lib/reliability/capability-runtime";
@@ -36,6 +38,7 @@ export type BusinessAutomationCompletedResult = {
   aiWorkforce: Awaited<ReturnType<typeof runDueAgentWorkflows>>;
   providerFunding: Awaited<ReturnType<typeof evaluateProviderFundingAlerts>>;
   platformCapacity: Awaited<ReturnType<typeof evaluatePlatformCapacity>>;
+  platformAdminBrief: Awaited<ReturnType<typeof sendPlatformAdminDailyBrief>>;
   capabilityWatchdog: Awaited<ReturnType<typeof runCapabilityReliabilityWatchdog>>;
   capabilityHealth: Array<{ tenantId: string } & Awaited<ReturnType<typeof syncCapabilityTrustHealthForTenant>>>;
   tenantFailures: Array<{ tenantId: string; message: string }>;
@@ -334,9 +337,24 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
   };
   await Promise.all(Array.from({ length: Math.min(automationConcurrency(input.tenantConcurrency), Math.max(tenantIds.length, 1)) }, () => worker()));
 
+  for (const failure of tenantFailures.slice(0, 10)) {
+    await raisePlatformAdminAlert({
+      fingerprint: `business-automation:${failure.tenantId}`,
+      family: "automation_health",
+      type: "tenant_automation_failed",
+      severity: "high",
+      title: "Customer automation needs attention",
+      body: `A scheduled Ferocity automation run failed for workspace ${failure.tenantId}. The failure was isolated so other workspaces could continue.`,
+      tenantId: failure.tenantId,
+      actionUrl: "/app/platform-activity",
+      metadata: { safeError: failure.message.slice(0, 500), isolatedToTenant: true }
+    });
+  }
+
   const aiWorkforce = await runDueAgentWorkflows({ limit: input.agentLimit ?? 25, tenantId: input.tenantId ?? null });
   const providerFunding = await evaluateProviderFundingAlerts();
   const platformCapacity = await evaluatePlatformCapacity();
+  const platformAdminBrief = await sendPlatformAdminDailyBrief();
   const capabilityWatchdog = await runCapabilityReliabilityWatchdog({ tenantId: input.tenantId ?? null, limit: 200 });
   await cleanupExpiredRuntimeRows();
 
@@ -367,6 +385,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
         aiWorkforce,
         providerFunding,
         platformCapacity,
+        platformAdminBrief,
         capabilityWatchdog,
         capabilityHealth,
         tenantFailures,
@@ -394,6 +413,7 @@ async function runBusinessAutomationLoopUnlocked(input: { tenantLimit?: number; 
     aiWorkforce,
     providerFunding,
     platformCapacity,
+    platformAdminBrief,
     capabilityWatchdog,
     capabilityHealth,
     tenantFailures,

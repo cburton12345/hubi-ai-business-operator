@@ -19,8 +19,8 @@ export const defaultContactCommunicationPreference: ContactCommunicationPreferen
   callBeforeTexting: false,
   noMarketingTexts: false,
   noAiCalls: false,
-  quietHoursStart: "",
-  quietHoursEnd: "",
+  quietHoursStart: "21:00",
+  quietHoursEnd: "08:00",
   bestContactTime: "",
   preferredEmployee: "",
   department: ""

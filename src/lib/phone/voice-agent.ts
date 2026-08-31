@@ -53,7 +53,8 @@ export class ProviderBackedVoiceAgent implements VoiceAgent {
       const access = await evaluateVoiceAccess({
         tenantId: context.tenantId,
         providerKey: this.engine.providerKey,
-        purpose: context.purpose
+        purpose: context.purpose,
+        callDirection: "outbound"
       });
       if (!access.allowed) {
         return {

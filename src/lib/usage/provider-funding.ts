@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { raisePlatformAdminAlert, resolvePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 
 export type FundingHealthStatus =
   | "healthy"
@@ -493,6 +494,25 @@ export async function evaluateProviderFundingAlerts() {
           })
         ]
       );
+      await raisePlatformAdminAlert({
+        fingerprint: `provider-funding:${account.id}`,
+        family: "provider_health",
+        type: "managed_provider_funding",
+        severity: severity === "high" ? "high" : "warning",
+        title: `${account.displayName} funding needs attention`,
+        body: account.health.reason,
+        tenantId: account.tenantId,
+        actionUrl: "/app/provider-costs",
+        metadata: {
+          providerKey: account.providerKey,
+          fundingAccountId: account.id,
+          balanceCents: account.health.totalAvailableCents,
+          daysRemaining: account.health.estimatedDaysRemaining,
+          needsReload: account.health.needsReload,
+          paymentStatus: account.paymentStatus
+        },
+        notify: severity === "high"
+      });
       await queryPostgres(
         `
         update public.provider_funding_alerts
@@ -512,6 +532,7 @@ export async function evaluateProviderFundingAlerts() {
         [account.id]
       );
       resolved += result?.rowCount ?? 0;
+      await resolvePlatformAdminAlert(`provider-funding:${account.id}`);
     }
 
     const cap = account.monthlyProviderSpendCapCents;

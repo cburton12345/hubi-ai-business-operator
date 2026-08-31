@@ -10,6 +10,11 @@ import { resolveVapiConfiguration, resolveVapiWebhookTenant } from "@/lib/provid
 import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/providers/retell-config";
 import { resilientFetch } from "@/lib/http/resilient-fetch";
 import { retellBusinessTools } from "@/lib/phone/retell-tool-definitions";
+import {
+  abandonOutboundCapacityReservation,
+  activateOutboundCapacityReservation,
+  reserveOutboundCapacity
+} from "@/lib/phone/outbound-capacity";
 
 function notConfigured(providerKey: string): ProviderResult<never> {
   return {
@@ -182,8 +187,14 @@ function retellSystemPrompt(config: Record<string, unknown>) {
   const model = record(config.model);
   const messages = Array.isArray(model.messages) ? model.messages : [];
   const systemMessage = messages.find((message) => record(message).role === "system");
-  return text(record(systemMessage).content)
+  const base = text(record(systemMessage).content)
     ?? "Act as the business's AI receptionist. Collect only necessary information and escalate uncertain, financial, legal, or safety matters.";
+  return [
+    base,
+    "Keep the conversation useful and natural, not artificially long. Use short turns, answer before asking another question, and do not repeat information the caller already confirmed.",
+    "When the caller says goodbye, declines further help, confirms nothing else is needed, or the agreed next step and concise recap are complete, say a brief natural closing and use end_call.",
+    "Do not end while the caller is speaking, asking a question, supplying requested information, or deciding between options. Never invent urgency merely to shorten the call."
+  ].join("\n");
 }
 
 export function verifyRetellSignature(rawBody: string, apiKey: string, signature: string | null) {
@@ -497,6 +508,18 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
   ): Promise<ProviderResult<VoiceProviderConnection>> {
     const credentials = await resolveRetellConfiguration(context.tenantId, requireLiveActions);
     if (!credentials?.phoneNumber) return notConfigured(this.providerKey) as ProviderResult<VoiceProviderConnection>;
+    if (
+      requireLiveActions
+      && context.purpose !== "authorized_test"
+      && (!credentials.outboundEnabled || credentials.callbackStatus !== "certified")
+    ) {
+      return {
+        ok: false,
+        errorCategory: "callback_route_not_certified",
+        safeMessage: "This caller ID has not passed its callback routing test, so Ferocity will not use it for customer calls.",
+        retryable: false
+      };
+    }
     return {
       ok: true,
       data: {
@@ -530,7 +553,10 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       `/update-phone-number/${encodeURIComponent(credentials.phoneNumber)}`,
       "PATCH",
       {
-        inbound_agents: input.inboundWebhookUrl ? null : [{ agent_id: input.assistantId, weight: 1 }],
+        // Keep a bound inbound agent even when dynamic inbound routing is in
+        // use. Retell falls back to this agent if the webhook times out or
+        // fails, avoiding a silent callback.
+        inbound_agents: [{ agent_id: input.assistantId, weight: 1 }],
         outbound_agents: [{ agent_id: input.assistantId, weight: 1 }],
         ...(input.inboundWebhookUrl ? { inbound_webhook_url: input.inboundWebhookUrl } : {}),
         nickname: "Ferocity AI Receptionist"
@@ -576,7 +602,10 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       webhook_url: text(server.url),
       webhook_events: ["call_started", "call_ended", "call_analyzed", "transcript_updated"],
       webhook_timeout_ms: 10000,
-      max_call_duration_ms: Math.min(3_600_000, Math.max(60, number(config.maxDurationSeconds) ?? 1800) * 1000),
+      max_call_duration_ms: Math.min(1_200_000, Math.max(60, number(config.maxDurationSeconds) ?? 1200) * 1000),
+      end_call_after_silence_ms: 60000,
+      reminder_trigger_ms: 15000,
+      reminder_max_count: 1,
       data_storage_setting: "everything_except_pii",
       opt_in_signed_url: true,
       handbook_config: {
@@ -662,6 +691,50 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     }
     const credentials = await resolveRetellConfiguration(context.tenantId, !authorizedTest);
     if (!credentials) return notConfigured(this.providerKey) as ProviderResult<{ providerCallId: string; status: string }>;
+    if (credentials.phoneNumber !== input.fromNumber) {
+      return {
+        ok: false,
+        errorCategory: "caller_id_mismatch",
+        safeMessage: "Ferocity blocked an outbound call that attempted to use a caller ID outside this workspace.",
+        retryable: false
+      };
+    }
+    if (
+      !authorizedTest
+      && (!credentials.outboundEnabled || credentials.callbackStatus !== "certified")
+    ) {
+      return {
+        ok: false,
+        errorCategory: "callback_route_not_certified",
+        safeMessage: "Ferocity will not place customer calls from this number until a real callback reaches the correct workspace and agent.",
+        retryable: false
+      };
+    }
+    const capacity = authorizedTest ? null : await reserveOutboundCapacity({
+      tenantId: context.tenantId,
+      providerKey: this.providerKey,
+      correlationId: context.correlationId,
+      priority: "routine"
+    });
+    if (!authorizedTest && !capacity) {
+      return {
+        ok: false,
+        errorCategory: "voice_capacity_check_unavailable",
+        safeMessage: "Ferocity could not safely verify shared phone capacity. The call was not started and can be retried.",
+        retryable: true
+      };
+    }
+    if (capacity && !capacity.allowed) {
+      return {
+        ok: false,
+        errorCategory: "concurrent_call_limit",
+        safeMessage: capacity.retryAt
+          ? `Phone capacity is busy. Ferocity will automatically try again around ${new Date(capacity.retryAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.`
+          : "Phone capacity is busy. Ferocity will automatically try again shortly.",
+        retryable: true,
+        retryAt: capacity.retryAt ?? undefined
+      };
+    }
     const call = await retellRequest(credentials.apiKey, "/v2/create-phone-call", "POST", {
       from_number: input.fromNumber,
       to_number: input.toNumber,
@@ -676,12 +749,19 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
     });
     const callId = text(call.body?.call_id);
     if (!call.response.ok || !callId) {
+      if (capacity?.reservationId) await abandonOutboundCapacityReservation(capacity.reservationId);
       return {
         ok: false,
         errorCategory: call.response.status === 401 ? "provider_authentication" : "provider_error",
         safeMessage: `Retell call creation failed with HTTP ${call.response.status}.`,
         retryable: call.response.status === 429 || call.response.status >= 500
       };
+    }
+    if (capacity?.reservationId) {
+      const activated = await activateOutboundCapacityReservation(capacity.reservationId, callId);
+      if (!activated) {
+        console.error(`Retell call ${callId} started without a confirmed Ferocity capacity reservation.`);
+      }
     }
     return {
       ok: true,

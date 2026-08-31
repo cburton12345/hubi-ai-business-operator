@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { env } from "@/lib/env";
+
+function phoneHref(value: string) { return `tel:${value.replace(/[^+\d]/g, "")}`; }
 
 export const metadata = {
   title: "Support",
@@ -12,6 +15,7 @@ export default async function SupportPage({
   searchParams: Promise<{ sent?: string; reference?: string; error?: string }>;
 }) {
   const params = await searchParams;
+  const supportPhone = env.VOICE_PHONE_NUMBER;
   return (
     <main className="public-page">
       <header className="public-nav">
@@ -22,6 +26,11 @@ export default async function SupportPage({
         <span className="eyebrow">Ferocity Support</span>
         <h1>Tell us what you need.</h1>
         <p>Ferocity creates a trackable request, alerts the support team, and emails your reference number.</p>
+        <div className="button-row section-actions">
+          {supportPhone ? <a className="button" href={phoneHref(supportPhone)}>Call AI support</a> : null}
+          <a className="button secondary-button" href="mailto:support@ferocity.live">Email support</a>
+        </div>
+        {supportPhone ? <p className="muted">Our AI support agent can record a trackable case and alert the platform administrator. Ask for human follow-up at any time.</p> : null}
 
         {params.sent ? (
           <section className="success-panel">

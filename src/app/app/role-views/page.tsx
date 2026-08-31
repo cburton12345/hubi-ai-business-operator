@@ -69,13 +69,14 @@ const modes = [
     ]
   },
   {
-    title: "What should workers do?",
-    subtitle: "Use this only when somebody needs to clock in, see today's work, upload proof, or log job costs.",
+    title: "What should the field team do?",
+    subtitle: "A focused work mode for anyone—including an owner—who needs to see today's work, report hours, upload proof, or log job costs.",
     icon: <HardHat size={18} />,
-    primaryHref: "/app/operations-workforce#time-clock",
-    primaryLabel: "Punch In / Out",
+    primaryHref: "/employee",
+    primaryLabel: "Open Field Team",
     links: [
-      ["Punch in or out", "/app/operations-workforce#time-clock"],
+      ["My field team view", "/employee"],
+      ["Punch in or out", "/employee#quick-actions"],
       ["Today's assignments", "/app/operations-workforce#schedule"],
       ["Field costs and mileage", "/app/operations-workforce#field-work"],
       ["Field photos and proof", "/app/operations-workforce#field-work"],

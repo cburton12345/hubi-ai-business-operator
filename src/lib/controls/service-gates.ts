@@ -3,7 +3,7 @@ import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
 
 export type ServiceMode = "off" | "draft_only" | "review_required" | "enabled";
 export type OveragePolicy = "block" | "allow_with_review" | "allow";
-export type PlanKey = "free" | "calls" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
+export type PlanKey = "free" | "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
 
 export type ServiceGate = {
   featureKey: string;
@@ -22,6 +22,7 @@ export type ServiceGate = {
 
 const planRank: Record<PlanKey, number> = {
   free: 0,
+  ferocity_connect: 3,
   calls: 4,
   job_tracker: 5,
   starter: 10,
@@ -33,6 +34,7 @@ const planRank: Record<PlanKey, number> = {
 
 const planLabel: Record<PlanKey, string> = {
   free: "Free",
+  ferocity_connect: "Ferocity Connect",
   calls: "Ferocity Calls",
   job_tracker: "Job Tracker",
   starter: "Starter",
@@ -47,7 +49,7 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   seo_autopilot: "growth",
   hosted_growth_pages: "growth",
   publishing_queue: "growth",
-  sms_send: "growth",
+  sms_send: "ferocity_connect",
   email_send: "growth",
   review_requests: "growth",
   ugc_proof_capture: "growth",
@@ -83,6 +85,7 @@ const featureMinimumPlan: Record<string, PlanKey> = {
 };
 
 function normalizePlanKey(planKey: string | null | undefined): PlanKey {
+  if (planKey === "ferocity_connect") return planKey;
   if (planKey === "calls") return planKey;
   if (planKey === "job_tracker") return planKey;
   if (planKey === "managed_operator") return planKey;
@@ -102,9 +105,12 @@ const callsFeatures = new Set([
   "intelligent_call_management"
 ]);
 
+const connectFeatures = new Set(["sms_send", "follow_up_recovery", "ai_generation"]);
+
 export function planAllowsFeature(planKey: string | null | undefined, featureKey: string) {
   const normalized = normalizePlanKey(planKey);
   if (normalized === "calls") return callsFeatures.has(featureKey);
+  if (normalized === "ferocity_connect") return connectFeatures.has(featureKey);
   return planMeetsMinimum(normalized, minimumPlanForFeature(featureKey));
 }
 

@@ -45,8 +45,21 @@ async function requestJson(url, options = {}) {
 async function verifyOpenAi() {
   if (!has("OPENAI_API_KEY")) return false;
   const model = process.env.AI_MODEL || "gpt-4.1-mini";
-  const response = await requestJson(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, {
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+  const configuredBase = process.env.OPENAI_BASE_URL?.trim().replace(/\/$/, "");
+  const baseUrl = configuredBase
+    ? (configuredBase.endsWith("/v1") ? configuredBase : `${configuredBase}/v1`)
+    : "https://api.openai.com/v1";
+  const response = await requestJson(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "Reply only OK" }],
+      max_tokens: 3
+    })
   });
   return response.ok;
 }

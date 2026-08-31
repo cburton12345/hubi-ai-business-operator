@@ -1,6 +1,6 @@
 export type ProviderResult<T> =
   | { ok: true; data: T; providerRequestId?: string; providerCostCents?: number }
-  | { ok: false; errorCategory: string; safeMessage: string; retryable: boolean; providerRequestId?: string };
+  | { ok: false; errorCategory: string; safeMessage: string; retryable: boolean; providerRequestId?: string; retryAt?: string };
 
 export type ProviderContext = {
   tenantId: string;

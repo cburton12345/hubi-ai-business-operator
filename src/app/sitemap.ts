@@ -14,6 +14,7 @@ const publicRoutes = [
   { path: "/connect-website", priority: 0.85 },
   { path: "/automations", priority: 0.8 },
   { path: "/pricing", priority: 0.8 },
+  { path: "/ferocity-connect", priority: 0.8 },
   { path: "/integrations", priority: 0.7 },
   { path: "/about", priority: 0.65 },
   { path: "/start", priority: 0.6 },

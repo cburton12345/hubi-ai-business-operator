@@ -91,6 +91,8 @@ async function checkResend() {
 async function checkStripe() {
   const priceKeys = [
     "STRIPE_PRICE_ID_JOB_TRACKER",
+    "STRIPE_PRICE_ID_CALLS",
+    "STRIPE_PRICE_ID_FEROCITY_CONNECT",
     "STRIPE_PRICE_ID_STARTER",
     "STRIPE_PRICE_ID_GROWTH",
     "STRIPE_PRICE_ID_OPERATOR",
@@ -126,8 +128,21 @@ async function checkOpenAi() {
     return false;
   }
   const model = process.env.AI_MODEL || "gpt-4.1-mini";
-  const response = await checkJson(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, {
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+  const configuredBase = process.env.OPENAI_BASE_URL?.trim().replace(/\/$/, "");
+  const baseUrl = configuredBase
+    ? (configuredBase.endsWith("/v1") ? configuredBase : `${configuredBase}/v1`)
+    : "https://api.openai.com/v1";
+  const response = await checkJson(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "Reply only OK" }],
+      max_tokens: 3
+    })
   }).catch((error) => ({ ok: false, status: 0, body: error instanceof Error ? error.message : "request failed" }));
   row("OpenAI", response.ok ? "ready" : "blocked", response.ok ? `${model} is reachable` : `model check failed with HTTP ${response.status}`);
   return response.ok;

@@ -34,6 +34,7 @@ type AiBudgetDecision = {
 
 const defaultCoreAiCostCapsCents: Record<PlanKey, number> = {
   free: 50,
+  ferocity_connect: 100,
   calls: 250,
   job_tracker: 100,
   starter: 500,

@@ -12,8 +12,8 @@ const files = {
 const required = [
   ["home", "authorize routine actions"],
   ["demo", "authorized work"],
-  ["pricing", "can execute after connection"],
-  ["pricing", "Manual drafts and copy-to-send fallbacks remain available"],
+  ["pricing", "Routine work prepared or executed when the required provider, consent, and authority are in place"],
+  ["pricing", "manual export remains available"],
   ["commandStory", "approved follow-ups prepared"],
   ["commandStory", "decisions routed to the owner"],
   ["featuredDemo", "ferocity-demo-walkthrough.svg"],

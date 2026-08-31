@@ -92,10 +92,27 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 ## Phase 5 — P1 communication completion
 
 - [x] Native public website chat API and shared-conversation path exist.
+- [x] Keep one canonical support queue across authenticated forms, the public form, email guidance, and signed Retell voice intake.
+- [x] Show workspace users their recent support references and statuses; alert platform admins through dashboard, email, and push.
+- [x] Let the Ferocity support voice agent create a tracked case without transferring every caller to the platform owner.
+- [x] Let AI support diagnose routine access, billing, integration, workflow, and technical problems first; record confirmed self-service outcomes and escalate only unresolved or protected matters.
 - [ ] Run deployed production website-chat certification and reconcile its connection/status language.
 - [ ] Resolve or replace the suspended managed SMS lane; retain BYO Twilio and manual/email/app fallbacks.
 - [ ] Complete owner OTP and private briefing certification after transactional SMS exists.
 - [ ] Certify inbound receptionist behavior separately from outbound Retell certification.
+- [x] Confirm the shared 888 caller ID is an imported Retell/Twilio number and that failed callbacks never reached Retell; the suspended carrier route is the current upstream blocker.
+- [x] Bind Ferocity Support as Retell's inbound fallback while retaining the dynamic inbound webhook, so a webhook timeout cannot produce a silent callback after the carrier route is restored.
+- [x] Pause live outbound use of the shared 888 number while its callback path is uncertified; leave inbound support routing configured.
+- [x] Prevent customer, agency, and partner workspaces from inheriting the platform 888 number when they do not have an assigned or BYO number.
+- [x] Add caller-ID ownership checks and require a real, correctly routed inbound callback before a production number is eligible for outbound customer calls.
+- [x] Add a callback-readiness check that can certify a number only from recent Retell inbound-call evidence, the intended agent, a nonzero connected call, the inbound webhook, and the bound fallback agent.
+- [ ] Restore or move the 888 carrier route, place one real callback, and run `npm run retell:callback:readiness -- --certify` before re-enabling outbound use.
+- [x] Add provider-account-wide atomic outbound Retell capacity reservations so parallel workers cannot over-launch calls.
+- [x] Read the normal Retell concurrency limit dynamically and reserve 25% (five of the current twenty slots) for unpredictable inbound traffic.
+- [x] Defer controlled outbound queue work with a visible estimated retry time only when the protected outbound ceiling is actually reached.
+- [x] Release reservations from final call webhooks and expire abandoned reservations safely.
+- [x] Route private owner briefings through the same billing, tenant-concurrency, and provider-capacity safety checks as other production calls.
+- [x] Apply migrations 193-201. The database is current; the application/frontend release remains held for explicit owner approval.
 - [ ] Keep shared-number multi-tenant routing and owner inbound PIN disabled until privacy, authentication, abuse, and concurrency tests pass.
 - [ ] Build mailbox ingestion only after choosing Gmail/Microsoft scopes and completing OAuth review; calendar authorization must never imply mailbox access.
 - [ ] Certify customer lifecycle email for sender identity, consent/unsubscribe, templates, quotas, inbound replies, and suppression.
@@ -103,6 +120,7 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 ## Phase 6 — P1 money and accounting truth
 
 - [x] Ferocity subscriptions and a real Stripe Connect tenant invoice payment are certified.
+- [x] Align full-platform managed voice overage with Ferocity Calls at 25 cents per completed minute; retain 25/100/300/500 included minutes and a 20-cent provider-cost safety ceiling.
 - [x] Native invoice, ledger, purchasing, receipt, vendor-bill, expense, P&L, tax, and portable export paths exist.
 - [ ] Continue refund, dispute, chargeback, bank-return, failed-payout, and support-path certification.
 - [ ] Build QuickBooks OAuth/sandbox only after the canonical accounting sync contract and conflict ownership are defined.
@@ -145,13 +163,13 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 
 ## Phase 10 — P0 final reconciliation and release
 
-- [ ] Update all public plans and demos from the truth registry; integrations and AI receptionist claims were reconciled in this pass.
+- [x] Update the launch-critical public plans, demos, Calls, Connect, integrations, and AI receptionist claims from the truth registry.
 - [x] Hide or qualify provider-dependent capabilities that are not certified in runtime cards and the public integrations/pricing language reviewed so far.
-- [ ] Ensure every unavailable capability still offers a useful fallback or clear request path.
-- [ ] Complete realistic isolated-workspace workflow certifications.
-- [ ] Run local production build and visual/mobile checks.
-- [ ] Update the canonical remaining-work MD with evidence, not estimates.
-- [ ] Present the exact remaining external-account approvals and owner actions.
+- [x] Ensure launch-facing unavailable capabilities offer a useful fallback or clear request path.
+- [x] Complete realistic isolated-workspace workflow certifications for signup/checkout, public chat, estimate acceptance/deposit, Office Manager, reviews/service recovery, receptionist calls, and load/failure isolation.
+- [x] Run a clean local production build and desktop/mobile visual checks for the homepage, pricing, Ferocity Connect, and Connect checkout.
+- [x] Update the canonical remaining-work MD with evidence, not estimates.
+- [x] Present the exact remaining external-account approvals and owner actions.
 - [ ] Obtain explicit owner authorization before one frontend production deployment.
 
 ## Current working order
@@ -185,3 +203,9 @@ No item passes because a table, card, form, environment variable, OAuth start ro
 - 2026-08-16: the isolated QA business loop is certified across all 13 stages with zero handoff gaps and no live provider actions.
 - 2026-08-16: local load, provider-failure isolation, RLS, dependency, claims, UI, integration, migration, and production-build checks pass. Current production routes also pass read-only smoke testing.
 - 2026-08-16: frontend production deployment was still not performed; explicit owner approval remains required.
+- 2026-08-28: migrations 193-201 are applied. Ferocity Connect has certified live Stripe products for the $29/month standalone plan and $10/month additional-device entitlement; standalone Connect uses the standard secure self-serve checkout. The additional-device purchase UI remains admin-assisted and is not represented as one-click self-service.
+- 2026-08-28: corrected managed OpenAI routing to honor Netlify AI Gateway's injected base URL while retaining direct OpenAI routing for workspace BYO keys. A production-context 11-token completion using `gpt-4.1-mini` passed, and the launch provider check now passes all required providers and all seven live Stripe prices.
+- 2026-08-28: final local gate passed 125 test files / 462 tests, TypeScript, ESLint, migration validation, RLS, provider truth (30 providers), public claims, UI integrity (270 routes / 232 components), 42 connected workflows, 14 provider capability groups, and an optimized 98-page build.
+- 2026-08-28: the final health review exposed and corrected a transactional-email idempotency collision that could suppress later signup/welcome emails. Keys are now deterministic per tenant, event, recipient, subject, and body; identical retries reuse a key while different messages cannot collide. The affected customer signup path passed again with zero new error/critical events.
+- 2026-08-28: post-build customer-path, public-chat, estimate, Office Manager, review, receptionist-call, and load smokes passed. Two load gates completed 280 total requests at concurrency 12 with zero failures. Desktop/mobile visual checks found no horizontal overflow or console warnings/errors on the homepage, pricing, Ferocity Connect, or Connect checkout.
+- 2026-08-28: remaining launch boundary is external/post-deploy rather than unfinished core code: explicitly approve the single application/frontend deployment, then run production signup/payment/webhook, production Connect pairing/outbound/inbound/STOP/HELP/pause/revoke/offline recovery, production website chat, and monitoring checks. Microsoft advertiser identity, restored/shared-number callback certification, Jobber authorization, TikTok authorization, and other provider approvals remain optional capability gates and are not represented as core-live.
