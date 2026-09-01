@@ -6,6 +6,8 @@ Last verified: 2026-08-31
 
 Ferocity Connect is a working Android/SIM SMS transport. Its queue, device authentication, pairing, delivery receipts, inbound capture, STOP/HELP handling, pacing, health isolation, and emergency controls exist and have passed a real Android 16 / Verizon outbound-delivery test.
 
+The latest reliability layer also records exact inbound and outbound message history in Ferocity's canonical conversation timeline, preserves provider/device statuses and safe error details, alerts the workspace owner when a paired Android device stops checking in, and prepares Business Brain reply drafts for ordinary inbound SMS. Workspace owners can choose record-only, prepare-for-review, or guarded automatic replies. Automatic mode remains subject to consent, suppression, quiet-hour, provider-health, confidence, risk, and authorization checks; STOP and HELP retain their dedicated compliance behavior.
+
 H4R is **not connected to that transport yet**. H4R currently has a setup-only connector registry and UI entry for `ferocity_android_bridge`; its production `dynamic-processor` continues to send through the existing H4R Twilio path. Do not tell anyone that H4R failover is live until the bridge, callback, routing, and controlled production tests below pass.
 
 Once the bridge is completed, H4R can use Ferocity Connect without Twilio. SMS will be sent by the SIM in the paired Android phone, subject to that carrier plan and Ferocity safety controls.
@@ -67,6 +69,8 @@ Do not let H4R call Ferocity's Android device endpoints. Those endpoints are onl
 7. Return a stable Ferocity message/job reference and normalized state. Add a signed callback from Ferocity to an H4R Edge Function for `queued`, `sent`, `delivered`, `failed_retryable`, and terminal failure updates.
 8. Send inbound replies and STOP/HELP events back to H4R through a signed callback. H4R's local consent/opt-out state must be updated immediately; Ferocity's canonical suppression remains in force too.
 9. Store only safe error codes/details in H4R. Do not copy bridge secrets, device credentials, or message bodies into diagnostic logs.
+
+Do not automatically enable H4R replies merely because Ferocity supports guarded automatic replies. H4R must explicitly choose its own reply mode and provide the required consent and authorization evidence. Until that is certified, return inbound messages and Ferocity-prepared reply suggestions to the intended H4R conversation for review.
 
 Suggested server-only secrets:
 
@@ -130,5 +134,7 @@ The H4R bridge is ready only when all of these are evidenced:
 ## Current verification evidence
 
 On 2026-08-31, the focused Ferocity Connect, SMS policy, and messaging-engine safety suite passed: 6 test files / 24 tests. The current signed APK remains at the location above. Earlier physical certification proved a real Android 16 / Verizon send and delivered callback. Broader Android/carrier coverage remains an honest limitation documented in the release evidence.
+
+The subsequent connector-health and inbound-reply controls are preserved in local Ferocity commit `8a04caa` (`Add connector health and inbound reply controls`). TypeScript, lint, connector readiness, syntax checks, and the focused connector/message-health suite passed after that change. This commit has not been pushed or deployed.
 
 No deployment or H4R routing change is authorized by this handoff document.
