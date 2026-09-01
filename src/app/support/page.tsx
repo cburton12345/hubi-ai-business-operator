@@ -1,12 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { env } from "@/lib/env";
 
 function phoneHref(value: string) { return `tel:${value.replace(/[^+\d]/g, "")}`; }
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Support",
-  description: "Get help with your Ferocity account, billing, or platform experience."
+  description: "Get help with your Ferocity account, billing, or platform experience.",
+  alternates: { canonical: "/support" }
 };
 
 export default async function SupportPage({

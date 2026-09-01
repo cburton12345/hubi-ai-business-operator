@@ -167,3 +167,37 @@ Record timestamp, tenant/workspace, provider event/reference, result, and correc
 ## Final boundary
 
 This evidence supports a controlled launch, not an unqualified claim that every optional external provider has been approved and live-certified. The core release may proceed after explicit deployment authorization. The post-deployment list must be completed before broad traffic or stronger provider-specific claims.
+
+## Current-production certification completed after this gate
+
+The owner asked to certify everything possible against the recently deployed production version before the next final deployment. The following checks were completed against `https://ferocity.live` without deploying or pushing code:
+
+- Production launch smoke passed for Home, Features, Automations, Integrations, Connect Website, Demo, Tour, Pricing, Start, Signup, Install, Business Health Score, Login, password reset, health, protected-app redirect, and a live public worker intake route.
+- A production customer-path smoke created an isolated workspace, invite, lead sources, active form, grader report, leads, owner events, and a live Starter checkout; the checkout was expired without payment and every smoke record was removed.
+- Production website chat created a lead, two-way conversation, guarded human handoff, and owner event; every smoke record was removed.
+- Current Home, Pricing, Start, Connect, Login, SMS opt-in, and Support pages were inspected at phone width with no horizontal overflow and no browser warnings or errors.
+- `robots.txt` returns 200, allows the public site, disallows app/API/account paths, and references the correct sitemap.
+- `sitemap.xml` returns 200 and contains all 24 intended public URLs, including Support and the legal/SMS pages.
+- Googlebot and Bingbot user-agent requests return 200.
+- The checked public pages have no `noindex` meta tag or `X-Robots-Tag: noindex` header.
+- Home, Features, Pricing, Start, Connect, Terms, Privacy, SMS Terms, and SMS opt-in have the correct production canonical URL.
+- Production provider readiness, 14 provider-lane groups, seven Stripe prices, Stripe Connect, Retell inbound routing/callback evidence, workflow health, and capacity passed.
+- Stripe Connect still reports card payments and payouts active with no current or past-due requirements.
+- Retell currently has 0/20 calls active, five reserved inbound slots, a routine outbound soft limit of 15, and a per-tenant limit of two. Live transfer remains correctly disabled because no tenant transfer destination/tool is configured.
+- Capacity remained healthy at 14/60 database connections, zero recent errors, zero failed actions, and zero active alerts.
+
+### Issues found and prepared for the next deployment
+
+- Production `/support` incorrectly inherited the homepage canonical. The local page now declares `https://ferocity.live/support`, and the render smoke permanently checks expected canonicals and rejects accidental `noindex` on public legal/support pages.
+- Jobber is not currently OAuth-ready and TikTok's access/refresh path is expired. Both remain optional and disabled; neither may be represented as live until reauthorized and certified.
+- A remote production load test was deliberately not forced because the repository guard allows remote load testing only against an explicitly approved preview environment. The local release load gate already passed with zero failures.
+
+### Work that must wait for the next deployment
+
+- Migration 203 and the new SMS reply-mode/offline-alert behavior.
+- Migration 204 and the H4R signed SMS bridge currently being implemented by the separate H4R task.
+- Ferocity Facebook connector pairing, heartbeat, timeline, failure, and approval-send certification.
+- The corrected Support canonical smoke.
+- Resend's expanded delivery-event webhook subscriptions against the new handler.
+
+After the H4R task finishes, rerun the full combined local suite, migration validation/RLS checks, production build, and release report before authorizing the next deployment.
