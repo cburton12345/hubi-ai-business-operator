@@ -8,7 +8,7 @@ Ferocity Connect is a working Android/SIM SMS transport. Its queue, device authe
 
 The latest reliability layer also records exact inbound and outbound message history in Ferocity's canonical conversation timeline, preserves provider/device statuses and safe error details, alerts the workspace owner when a paired Android device stops checking in, and prepares Business Brain reply drafts for ordinary inbound SMS. Workspace owners can choose record-only, prepare-for-review, or guarded automatic replies. Automatic mode remains subject to consent, suppression, quiet-hour, provider-health, confidence, risk, and authorization checks; STOP and HELP retain their dedicated compliance behavior.
 
-H4R is **not connected to that transport yet**. H4R currently has a setup-only connector registry and UI entry for `ferocity_android_bridge`; its production `dynamic-processor` continues to send through the existing H4R Twilio path. Do not tell anyone that H4R failover is live until the bridge, callback, routing, and controlled production tests below pass.
+The Ferocity side of the signed bridge is now implemented locally, but H4R is **not routed to that transport yet**. H4R currently has a setup-only connector registry and UI entry for `ferocity_android_bridge`; its production `dynamic-processor` continues to send through the existing H4R Twilio path. Do not tell anyone that H4R failover is live until migrations 203/204, the H4R adapter, callback, routing, and controlled production tests below pass.
 
 Once the bridge is completed, H4R can use Ferocity Connect without Twilio. SMS will be sent by the SIM in the paired Android phone, subject to that carrier plan and Ferocity safety controls.
 
@@ -138,3 +138,20 @@ On 2026-08-31, the focused Ferocity Connect, SMS policy, and messaging-engine sa
 The subsequent connector-health and inbound-reply controls are preserved in local Ferocity commit `8a04caa` (`Add connector health and inbound reply controls`). TypeScript, lint, connector readiness, syntax checks, and the focused connector/message-health suite passed after that change. This commit has not been pushed or deployed.
 
 No deployment or H4R routing change is authorized by this handoff document.
+
+## Ferocity-side implementation update — 2026-09-02
+
+Implemented locally, not deployed:
+
+- `POST /api/integrations/h4r/sms` with timestamp, nonce, HMAC, stale-request, and replay protection.
+- Database-only H4R-workspace → Ferocity-tenant mapping; no caller-supplied tenant or callback destination.
+- Active-only live sends. `review` mappings return a review-required response and are never converted into fake human approval.
+- Canonical server-derived idempotency key per H4R workspace/outbox row.
+- E.164 recipient normalization, category allowlists, required structured consent evidence, preservation of prior revocations, and the normal Ferocity suppression/quiet-hour/provider/cost gates.
+- Full message-body redaction in bridge diagnostic events.
+- HTTPS-only mapped callbacks with bounded retries and an owner alert on callback delivery failure.
+- Delivery-status, inbound-message, STOP/HELP, and prepared-reply callbacks carrying the H4R conversation/prospect identifiers supplied on ingress.
+- RLS on all three bridge tables, including the nonce table, and explicit browser-role grant restrictions.
+- Focused tests for stale signatures, review-mode safety, recipient normalization, tenant-derived idempotency, mapped callback use, redaction, and database isolation.
+
+Local verification passed with 129 test files / 474 tests, TypeScript, ESLint, migration validation, RLS verification, and the optimized production build. Migration 204 remains unapplied. H4R's sending adapter and live controlled phone test remain separate work and are still required by the acceptance gate above.

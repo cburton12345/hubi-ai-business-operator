@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticateConnectDevice } from "@/lib/ferocity-connect/device-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 import { recordMessageDeliveryReceipt, type NormalizedDeliveryStatus } from "@/lib/messaging/message-health";
+import { postH4rCallback } from "@/lib/integrations/h4r/callback";
 
 const schema = z.object({
   eventId: z.string().min(8).max(160), status: z.enum(["sending","sent","delivered","failed_retryable","failed_terminal"]),
@@ -22,14 +23,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   if (existing?.rows[0]) return NextResponse.json({ ok: true, duplicate: true });
   const terminalFailure = parsed.data.status === "failed_terminal";
   const retryableFailure = parsed.data.status === "failed_retryable";
-  const job = await queryPostgres<{ id: string; attempt_count: number; max_attempts: number }>(
+  const job = await queryPostgres<{ id: string; attempt_count: number; max_attempts: number; metadata_json: Record<string, unknown> | null }>(
     `update public.ferocity_connect_jobs set
        status=case when $4='failed_retryable' and attempt_count>=max_attempts then 'dead_letter' else $4 end,
        available_at=case when $4='failed_retryable' then now()+(least(300,power(2,attempt_count)::int*5)::text || ' seconds')::interval else available_at end,
        lease_expires_at=null,last_error_code=$5,last_error_safe=$6,
        sent_at=case when $4 in ('sent','delivered') then coalesce(sent_at,now()) else sent_at end,
        delivered_at=case when $4='delivered' then now() else delivered_at end,updated_at=now()
-     where id=$1 and tenant_id=$2 and claimed_by_device_id=$3 and status not in ('delivered','canceled','dead_letter') returning id,attempt_count,max_attempts`,
+     where id=$1 and tenant_id=$2 and claimed_by_device_id=$3 and status not in ('delivered','canceled','dead_letter')
+     returning id,attempt_count,max_attempts,metadata_json`,
     [jobId, auth.identity.tenantId, auth.identity.deviceId, parsed.data.status, parsed.data.errorCode ?? null, parsed.data.safeError ?? null]
   );
   if (!job?.rows[0]) return NextResponse.json({ ok: false, error: "Job not found or status is final." }, { status: 404 });
@@ -49,6 +51,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     isFinal: normalized === "delivered" || terminalFailure,
     metadata: { deviceId: auth.identity.deviceId }
   });
+  const metadata = job.rows[0].metadata_json ?? {};
+  if (metadata.source === "h4r") {
+    await postH4rCallback({ tenantId: auth.identity.tenantId,
+      callbackUrl: typeof metadata.h4rCallbackUrl === "string" ? metadata.h4rCallbackUrl : null, payload: {
+      event_type: "delivery_status",
+      event_id: parsed.data.eventId,
+      workspace_id: metadata.h4rWorkspaceId ?? null,
+      sms_outbox_id: metadata.h4rSmsOutboxId ?? null,
+      provider_message_ref: jobId,
+      ferocity_message_ref: jobId,
+      status: parsed.data.status,
+      occurred_at: parsed.data.occurredAt ?? new Date().toISOString(),
+      error_code: parsed.data.errorCode ?? null,
+      safe_error: parsed.data.safeError ?? null
+    }});
+  }
   if (normalized === "delivered") await queryPostgres(`update public.ferocity_connect_devices set consecutive_failures=0,last_success_at=now(),updated_at=now() where id=$1`, [auth.identity.deviceId]);
   if (retryableFailure || terminalFailure) {
     const health = await queryPostgres<{ consecutive_failures: number }>(

@@ -126,7 +126,8 @@ const envSchema = z.object({
   VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND: optionalString,
   NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: optionalString,
   WEB_PUSH_VAPID_PRIVATE_KEY: optionalString,
-  WEB_PUSH_VAPID_SUBJECT: optionalString
+  WEB_PUSH_VAPID_SUBJECT: optionalString,
+  H4R_SMS_BRIDGE_SECRET: optionalSecret(24)
 });
 
 export const env = envSchema.parse({
@@ -243,7 +244,8 @@ export const env = envSchema.parse({
   VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND: process.env.VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND,
   NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY,
   WEB_PUSH_VAPID_PRIVATE_KEY: process.env.WEB_PUSH_VAPID_PRIVATE_KEY,
-  WEB_PUSH_VAPID_SUBJECT: process.env.WEB_PUSH_VAPID_SUBJECT
+  WEB_PUSH_VAPID_SUBJECT: process.env.WEB_PUSH_VAPID_SUBJECT,
+  H4R_SMS_BRIDGE_SECRET: process.env.H4R_SMS_BRIDGE_SECRET
 });
 
 export function hasSupabaseBrowserConfig() {

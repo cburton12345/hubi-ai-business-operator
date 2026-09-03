@@ -6,6 +6,7 @@ import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { classifySmsKeyword, normalizeSmsKeyword } from "@/lib/messaging/sms-policy";
 import { prepareInboundReply } from "@/lib/messaging/prepare-inbound-reply";
+import { postH4rCallback } from "@/lib/integrations/h4r/callback";
 
 const schema = z.object({
   eventId: z.string().min(8).max(160), sender: z.string().min(7).max(32), recipient: z.string().max(32).nullable().optional(),
@@ -27,6 +28,20 @@ export async function POST(request: Request) {
   if (!event?.rows[0]) return NextResponse.json({ ok: true, duplicate: true });
 
   const sender = parsed.data.sender.trim().toLowerCase();
+  const h4rContext = await queryPostgres<{
+    metadata_json: Record<string, unknown> | null;
+    id: string;
+  }>(
+    `select id,metadata_json
+     from public.ferocity_connect_jobs
+     where tenant_id=$1
+       and lower(recipient)=lower($2)
+       and metadata_json->>'source'='h4r'
+     order by created_at desc
+     limit 1`,
+    [auth.identity.tenantId, sender]
+  );
+  const h4rMetadata = h4rContext?.rows[0]?.metadata_json ?? null;
   const keyword = normalizeSmsKeyword(parsed.data.body);
   const complianceKeyword = classifySmsKeyword(parsed.data.body);
   if (complianceKeyword === "stop") {
@@ -104,6 +119,42 @@ export async function POST(request: Request) {
       `, [auth.identity.tenantId, `sms-reply-draft:${parsed.data.eventId}`,
         "The inbound SMS was saved, but Ferocity could not prepare its reply draft.",
         JSON.stringify({ conversationId, safeError: error instanceof Error ? error.message.slice(0, 300) : "unknown" })]);
+    }
+  }
+  if (h4rMetadata?.source === "h4r") {
+    const basePayload = {
+      event_id: parsed.data.eventId,
+      workspace_id: h4rMetadata.h4rWorkspaceId ?? null,
+      h4r_conversation_id: h4rMetadata.h4rConversationId ?? null,
+      h4r_prospect_id: h4rMetadata.h4rProspectId ?? null,
+      provider_message_ref: parsed.data.eventId,
+      from: sender,
+      to: parsed.data.recipient ?? null,
+      body: parsed.data.body,
+      occurred_at: parsed.data.receivedAt,
+      compliance_keyword: complianceKeyword ?? null,
+      conversation_id: conversationId,
+    };
+    await postH4rCallback({ tenantId: auth.identity.tenantId,
+      callbackUrl: typeof h4rMetadata.h4rCallbackUrl === "string" ? h4rMetadata.h4rCallbackUrl : null, payload: {
+      ...basePayload,
+      event_type: complianceKeyword === "stop" ? "stop" : complianceKeyword === "help" ? "help" : "inbound_message",
+    }});
+    if (replyDraft && !complianceKeyword) {
+      await postH4rCallback({ tenantId: auth.identity.tenantId,
+        callbackUrl: typeof h4rMetadata.h4rCallbackUrl === "string" ? h4rMetadata.h4rCallbackUrl : null, payload: {
+        event_type: "reply_draft",
+        event_id: `${parsed.data.eventId}:draft`,
+        workspace_id: h4rMetadata.h4rWorkspaceId ?? null,
+        h4r_conversation_id: h4rMetadata.h4rConversationId ?? null,
+        h4r_prospect_id: h4rMetadata.h4rProspectId ?? null,
+        provider_message_ref: parsed.data.eventId,
+        reply_draft: replyDraft.reply,
+        confidence: replyDraft.confidence,
+        intent: "sms_reply",
+        prompt_version: "ferocity-business-brain-review-v1",
+        occurred_at: new Date().toISOString(),
+      }});
     }
   }
   return NextResponse.json({ ok: true, conversationId, optOutRecorded: complianceKeyword === "stop", complianceReplyQueued,

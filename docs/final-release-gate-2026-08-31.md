@@ -6,11 +6,12 @@
 
 The local release candidate has no known code, build, migration-validity, tenant-isolation, billing-configuration, or public-page blocker. No deployment or remote push was performed during this gate.
 
-One database migration is intentionally pending because it belongs to the unreleased connector-health and inbound-reply code:
+Two database migrations are intentionally pending because they belong to unreleased code:
 
 - `203_inbound_reply_policy.sql`
+- `204_h4r_ferocity_connect_bridge.sql`
 
-Apply migration 203 as part of the authorized cutover, before certifying the new inbound SMS reply controls. Do not represent those controls as production-live until that migration and the post-deploy tests pass.
+Apply migrations 203 and 204 in order as part of the authorized cutover. Do not represent the inbound SMS reply controls or H4R bridge as production-live until the migrations and their post-deploy tests pass.
 
 ## Local evidence completed
 
@@ -103,7 +104,7 @@ These do not block the core controlled release because they are not represented 
 ## Required deployment sequence
 
 1. Confirm the exact release commit and connected Netlify/Supabase production targets.
-2. Apply migration 203 transactionally and rerun pending-migration plus RLS checks.
+2. Apply migrations 203 and 204 transactionally and rerun pending-migration plus RLS checks.
 3. Deploy the application/frontend once.
 4. Run the public route, auth redirect, health, robots, sitemap, canonical, and responsive smoke checks.
 5. If a provider lane fails, disable/isolate that lane; do not take down the platform.
@@ -195,9 +196,57 @@ The owner asked to certify everything possible against the recently deployed pro
 ### Work that must wait for the next deployment
 
 - Migration 203 and the new SMS reply-mode/offline-alert behavior.
-- Migration 204 and the H4R signed SMS bridge currently being implemented by the separate H4R task.
+- Migration 204 and the locally completed H4R signed SMS bridge.
 - Ferocity Facebook connector pairing, heartbeat, timeline, failure, and approval-send certification.
 - The corrected Support canonical smoke.
 - Resend's expanded delivery-event webhook subscriptions against the new handler.
 
-After the H4R task finishes, rerun the full combined local suite, migration validation/RLS checks, production build, and release report before authorizing the next deployment.
+The combined local rerun below supersedes the earlier separate-task note.
+
+## Final combined local rerun — 2026-09-02
+
+The H4R work was reviewed and completed in the combined Ferocity checkout. No deployment or push was performed.
+
+### Passed now
+
+- Full suite: **129 test files / 474 tests passed**.
+- TypeScript and full ESLint: passed.
+- Optimized production build: passed; **100 static pages generated**, including the new signed H4R ingress route.
+- Production readiness: passed with **204 migrations** and 116 required files.
+- Pending migration validation: migrations 203 and 204 passed without being persisted.
+- RLS and sensitive-table grant verification: passed.
+- Provider truth, all 14 provider-lane groups, public claim guard, public data guard, UI guard, and 42-workflow integration guard: passed.
+- Current production launch smoke: passed across all public buying pages, health, protected-app redirect, and a live worker intake route.
+- Local runtime/load gate: 120 requests at concurrency 12, zero failures, 68.2 requests/second, p95 799 ms, p99 905 ms.
+- Stripe: all seven live prices readable; a live checkout was created and expired without payment.
+- Stripe Connect: card payments and payouts active, no current/past-due requirements, no database drift.
+- Workflow health: 54 active workflows, zero failed/stuck runs and zero failed/blocked actions in the prior 24 hours.
+- Capacity: 10/60 database connections, zero recent errors, zero failed actions, zero active alerts.
+- Retell: inbound/fallback routing and real callback evidence remain ready; 0/20 concurrent calls at check time.
+- Facebook connector package readiness: passed with tenant-specific `ferocity` destination and no H4R production references.
+- H4R bridge safety: signed timestamp/nonce/HMAC ingress, mapped tenant/callback only, active-only live sending, canonical idempotency, normalized recipient, required structured consent evidence, preserved revocations, full diagnostic body redaction, HTTPS callback restriction, callback retries/owner alerting, inbound/status callbacks, and RLS/revoked browser grants. Focused H4R tests passed.
+
+### Known non-core provider limitations (truthfully disabled)
+
+- Jobber customer OAuth is not currently ready: the saved access credential is expired, the current runtime reports no client configuration, and live actions remain off.
+- TikTok access/refresh is expired or invalid; production actions must stay disabled until a clean authorization is completed.
+- Meta official connection still lacks `META_BUSINESS_LOGIN_CONFIG_ID`; Yahoo remains unconfigured.
+- Call-log bridge contract is ready, but no Jobber, GoHighLevel, or Housecall Pro bridge is configured/certified yet.
+- The flagship demo has a working static fallback; the final approved video override is not configured.
+
+These are not hidden launch defects: the provider-truth layer keeps them out of live claims and actions. They can be activated independently after account approval and certification without making the core platform fail.
+
+### Items that cannot honestly be completed before the authorized deployment
+
+1. Apply migrations 203 and 204 to the production database.
+2. Deploy the exact reviewed commit once.
+3. Complete one real paid subscription lifecycle with a controlled payment instrument: checkout, entitlement, receipt/webhook, portal, renewal/plan change, cancellation/refund, failed-payment recovery, restriction, and restoration.
+4. Re-pair a fresh Android phone and certify Connect queued/sent/delivery-or-unknown/failure/inbound/STOP/HELP/offline/recovery/revoke/update behavior against the deployed code.
+5. Pair and certify the Ferocity Facebook connector in an isolated live tenant.
+6. Enable and certify the expanded Resend delivery-event webhook against the deployed handler.
+7. Certify two-tenant Retell routing and each tenant's own transfer/callback destination; transfer remains correctly unavailable where no destination is configured.
+8. Complete real-device Field Team English/Spanish, permissions, offline sync, proof, time/location, advance, and cross-tenant-denial tests.
+9. Run the approved preview/production load test and then the public route, canonical, robots, sitemap, CTA, responsive, auth, and failure-isolation smoke suite.
+10. Complete Microsoft advertiser identity and any optional provider OAuth/approval steps that require the owner or provider.
+
+Do not call the H4R bridge, expanded inbound-reply modes, new Facebook connector, or optional expired OAuth providers production-certified before those applicable post-deployment tests pass.
