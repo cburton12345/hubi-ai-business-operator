@@ -16,6 +16,7 @@ const commandShortcuts = [
 ];
 
 const primaryNavigation = [
+  { label: "Ask Ferocity", href: "/app/ferocity", paths: ["/app/ferocity"] },
   { label: "Today", href: "/app", paths: ["/app", "/app/attention-command"] },
   { label: "Customers", href: "/app/lead-command", paths: ["/app/lead-command", "/app/leads", "/app/messaging"] },
   { label: "Schedule", href: "/app/schedule", paths: ["/app/schedule"] },
@@ -90,6 +91,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="app-nav" aria-label="Ferocity workspace navigation">
             {(callsOnly ? [
+              { label: "Ask Ferocity", href: "/app/ferocity", paths: ["/app/ferocity"] },
               { label: "Today", href: "/app", paths: ["/app", "/app/attention-command"] },
               { label: "Calls", href: "/app/calls", paths: ["/app/calls", "/app/office-manager"] },
               { label: "Contacts", href: "/app/lead-command", paths: ["/app/lead-command", "/app/leads", "/app/messaging"] },

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { ArrowRight, CheckCircle2, Send, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, CheckCircle2, LayoutDashboard, Send, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import { executeAiWorkforceCommandAction } from "@/app/app/ai-workforce/actions";
+import { ferocityGoals, hasUsefulIndustry, moneyCommand, moneyOutcomes, type FerocityGoal } from "@/lib/ai-workforce/guided-conversation";
 
 type ChatTurn = {
   id: string;
@@ -23,15 +24,23 @@ type SourceEvent = {
   recommendedAction: string | null;
 };
 
-const suggestions = [
-  "What needs my attention today?",
-  "Follow up with estimates that are losing momentum.",
-  "What should happen next to grow the business?"
-];
+type GuideStep = "idle" | "industry" | "money_outcome" | "ready";
 
-export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialCommand: string; sourceEvent: SourceEvent | null }) {
+export function FerocityOwnerChat({
+  initialCommand,
+  sourceEvent,
+  industry
+}: {
+  initialCommand: string;
+  sourceEvent: SourceEvent | null;
+  industry: string | null;
+}) {
   const [command, setCommand] = useState(initialCommand);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [guideStep, setGuideStep] = useState<GuideStep>("idle");
+  const [guideIndustry, setGuideIndustry] = useState(hasUsefulIndustry(industry) ? industry!.trim() : "");
+  const [guideOwnerMessage, setGuideOwnerMessage] = useState("");
+  const [guideMessage, setGuideMessage] = useState("");
   const [submittedCommand, setSubmittedCommand] = useState("");
   const recordedResponse = useRef<string | null>(null);
   const [state, action, pending] = useActionState(executeAiWorkforceCommandAction, { ok: false });
@@ -54,7 +63,50 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
       }
     ]);
     setCommand("");
+    setGuideStep("idle");
+    setGuideMessage("");
+    setGuideOwnerMessage("");
   }, [state, submittedCommand]);
+
+  function chooseGoal(goal: FerocityGoal) {
+    setGuideOwnerMessage(goal.label);
+    if (goal.key === "money") {
+      if (hasUsefulIndustry(guideIndustry)) {
+        setGuideStep("money_outcome");
+        setGuideMessage(`I know this is a ${guideIndustry} business. Where should I focus first?`);
+      } else {
+        setGuideStep("industry");
+        setGuideMessage("First, what kind of business is this—or are you still deciding which industry to enter?");
+        setCommand("");
+      }
+      return;
+    }
+
+    setGuideStep("ready");
+    setGuideMessage("I can start there. Review the request below, add any detail you want, then send it. I’ll use what the Business Brain already knows instead of making you repeat yourself.");
+    setCommand(goal.command);
+  }
+
+  function chooseMoneyOutcome(outcome: string) {
+    setGuideStep("ready");
+    setGuideMessage("Good. I’ll check what is already working, find the strongest opportunities, and prepare the next moves. Review or add detail, then send it.");
+    setCommand(moneyCommand(guideIndustry, outcome));
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (guideStep === "industry") {
+      event.preventDefault();
+      const nextIndustry = command.trim();
+      if (nextIndustry.length < 2) return;
+      setGuideIndustry(nextIndustry);
+      setGuideOwnerMessage(`Make more money — ${nextIndustry}`);
+      setGuideStep("money_outcome");
+      setGuideMessage(`Got it—${nextIndustry}. Which result matters most right now?`);
+      setCommand("");
+      return;
+    }
+    setSubmittedCommand(command.trim());
+  }
 
   return (
     <main className="ferocity-chat-shell">
@@ -76,8 +128,8 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
         <article className="ferocity-chat-message ferocity-chat-message-ai">
           <span className="ferocity-chat-avatar"><Sparkles size={18} /></span>
           <div className="ferocity-chat-bubble">
-            <strong>What would you like me to handle?</strong>
-            <p>Ask about the business, approve work, change a plan, or tell me the outcome you want. I’ll find the right systems and only stop for decisions that truly need you.</p>
+            <strong>What do you want to accomplish?</strong>
+            <p>Start with the outcome—not the software. I’ll ask only what I still need, use what Ferocity already knows, and move the work forward.</p>
           </div>
         </article>
 
@@ -91,6 +143,27 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
               {sourceEvent.recommendedAction ? <p><strong>Suggested next step:</strong> {sourceEvent.recommendedAction}</p> : null}
             </div>
           </article>
+        ) : null}
+
+        {guideStep !== "idle" ? (
+          <div className="ferocity-chat-exchange">
+            <article className="ferocity-chat-message ferocity-chat-message-owner">
+              <div className="ferocity-chat-bubble"><p>{guideOwnerMessage}</p></div>
+            </article>
+            <article className="ferocity-chat-message ferocity-chat-message-ai">
+              <span className="ferocity-chat-avatar"><Sparkles size={18} /></span>
+              <div className="ferocity-chat-bubble">
+                <strong>{guideMessage}</strong>
+                {guideStep === "money_outcome" ? (
+                  <div className="ferocity-chat-next-choices" aria-label="Choose a growth outcome">
+                    {moneyOutcomes.map((outcome) => (
+                      <button type="button" key={outcome} onClick={() => chooseMoneyOutcome(outcome)}>{outcome}<ArrowRight size={14} /></button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </article>
+          </div>
         ) : null}
 
         {turns.map((turn) => (
@@ -113,7 +186,7 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
                   </ul>
                 ) : null}
                 <div className="button-row">
-                  {turn.href ? <Link className="mini-button" href={turn.href}>Open answer <ArrowRight size={13} /></Link> : null}
+                  {turn.href ? <Link className="mini-button" href={turn.href}>Open the right workspace <ArrowRight size={13} /></Link> : null}
                   {turn.runId ? <Link className="mini-button secondary-button" href={`/app/ai-workforce/results/${turn.runId}`}>Review details</Link> : null}
                 </div>
               </div>
@@ -129,10 +202,13 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
         ) : null}
       </section>
 
-      {turns.length === 0 ? (
-        <div className="ferocity-chat-suggestions" aria-label="Suggested requests">
-          {suggestions.map((suggestion) => (
-            <button type="button" key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>
+      {turns.length === 0 && guideStep === "idle" && !command.trim() ? (
+        <div className="ferocity-goal-grid" aria-label="Choose what you want to accomplish">
+          {ferocityGoals.map((goal) => (
+            <button type="button" key={goal.key} onClick={() => chooseGoal(goal)}>
+              <strong>{goal.label}</strong>
+              <span>{goal.description}</span>
+            </button>
           ))}
         </div>
       ) : null}
@@ -140,7 +216,7 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
       <form
         action={action}
         className="ferocity-chat-composer"
-        onSubmit={() => setSubmittedCommand(command.trim())}
+        onSubmit={handleSubmit}
       >
         <label className="sr-only" htmlFor="ferocity-owner-command">Ask Ferocity or tell it what to do</label>
         <textarea
@@ -148,17 +224,20 @@ export function FerocityOwnerChat({ initialCommand, sourceEvent }: { initialComm
           name="command"
           value={command}
           onChange={(event) => setCommand(event.target.value)}
-          placeholder="Ask Ferocity anything or tell it what to do…"
-          minLength={8}
+          placeholder={guideStep === "industry" ? "Example: Roofing, a dental office, or I'm looking for an industry…" : "Ask Ferocity anything or tell it what outcome you want…"}
+          minLength={guideStep === "industry" ? 2 : 8}
           maxLength={2000}
           rows={3}
           required
         />
-        <button className="button" type="submit" disabled={pending || command.trim().length < 8} aria-label="Send to Ferocity">
+        <button className="button" type="submit" disabled={pending || command.trim().length < (guideStep === "industry" ? 2 : 8)} aria-label="Send to Ferocity">
           <Send size={17} />
         </button>
       </form>
-      <p className="ferocity-chat-footnote">Ferocity follows your authority settings. Spending, publishing, payments, and other consequential actions still require the approval level you selected.</p>
+      <div className="ferocity-chat-footer">
+        <p className="ferocity-chat-footnote">Ferocity follows your authority settings. Spending, publishing, payments, and other consequential actions still require the approval level you selected.</p>
+        <Link href="/app/full"><LayoutDashboard size={13} /> Prefer dashboards? Open the full Command Center.</Link>
+      </div>
     </main>
   );
 }

@@ -89,7 +89,7 @@ Still requiring one controlled production subscription lifecycle test after depl
 
 These do not block the core controlled release because they are not represented as universally live:
 
-- Meta official connection lacks `META_BUSINESS_LOGIN_CONFIG_ID`.
+- Meta Business Login configuration `2301498587321705` is completed and staged in Netlify production. It will become available to the deployed callback on the next authorized deploy. The app remains unpublished and limited to administrator/testing access until Meta's Tech Provider/App Review requirements are completed.
 - Yahoo is unconfigured.
 - Optional Twilio SMS remains unavailable/suspended.
 - Microsoft Advertising advertiser identity still requires owner completion.
@@ -190,6 +190,7 @@ The owner asked to certify everything possible against the recently deployed pro
 ### Issues found and prepared for the next deployment
 
 - Production `/support` incorrectly inherited the homepage canonical. The local page now declares `https://ferocity.live/support`, and the render smoke permanently checks expected canonicals and rejects accidental `noindex` on public legal/support pages.
+- Ask Ferocity is now the first primary workspace destination and opens as an outcome-first conversation rather than a tool inventory. It uses saved industry context, asks only for missing context, narrows broad goals such as making more money, runs the existing guarded business scans, and links each result to the correct detailed workspace. Dashboards remain available as the full Command Center.
 - Jobber is not currently OAuth-ready and TikTok's access/refresh path is expired. Both remain optional and disabled; neither may be represented as live until reauthorized and certified.
 - A remote production load test was deliberately not forced because the repository guard allows remote load testing only against an explicitly approved preview environment. The local release load gate already passed with zero failures.
 
@@ -230,7 +231,7 @@ The H4R work was reviewed and completed in the combined Ferocity checkout. No de
 
 - Jobber customer OAuth is not currently ready: the saved access credential is expired, the current runtime reports no client configuration, and live actions remain off.
 - TikTok access/refresh is expired or invalid; production actions must stay disabled until a clean authorization is completed.
-- Meta official connection still lacks `META_BUSINESS_LOGIN_CONFIG_ID`; Yahoo remains unconfigured.
+- Meta's client configuration now passes readiness and is staged for the next authorized deploy, but third-party customer access remains disabled until Meta review/publishing is completed; Yahoo remains unconfigured.
 - Call-log bridge contract is ready, but no Jobber, GoHighLevel, or Housecall Pro bridge is configured/certified yet.
 - The flagship demo has a working static fallback; the final approved video override is not configured.
 

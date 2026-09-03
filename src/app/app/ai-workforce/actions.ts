@@ -19,7 +19,7 @@ import { generateSeoAutopilotAction } from "@/app/app/seo/actions";
 import { scanServiceOpsAction } from "@/app/app/service/actions";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
-import { classifyAiCommandIntent, readOnlyRouteForCommand } from "@/lib/ai-workforce/command-intent";
+import { classifyAiCommandIntent, readOnlyRouteForCommand, workspaceRouteForCommand } from "@/lib/ai-workforce/command-intent";
 import { queryPostgres } from "@/lib/db/postgres";
 import { processNewestWebsiteImportForUrl } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
@@ -518,15 +518,15 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     prepared.push("Ran SEO autopilot through existing draft/page/calendar systems.");
   }
 
-  if (hasAny(lower, ["follow", "reactivate", "old lead", "stale", "missed call", "callback", "estimate", "invoice", "review"])) {
+  if (hasAny(lower, [
+    "follow", "reactivate", "old lead", "stale", "missed call", "callback", "estimate", "invoice", "review",
+    "make more money", "revenue opportunit", "new customers", "bring in more", "get paid faster", "growth system"
+  ])) {
     await scanLeadToJobLoopAction();
-    prepared.push("Scanned lead-to-job records for conversations, opportunities, callbacks, and scheduled work.");
     await scanGrowthLoopAction();
-    prepared.push("Scanned growth loop records for stale leads, reviews, invoices, attribution, and content gaps.");
     await scanServiceOpsAction();
-    prepared.push("Scanned service operations for jobs, estimates, invoices, reviews, recurring service, and inventory tasks.");
     await scanActionQueueAction();
-    prepared.push("Scanned action queue for follow-up, review, publishing, calendar, and consent-ready work.");
+    prepared.push("Checked the full revenue path for lead gaps, stalled follow-up, estimates, scheduled work, invoices, reviews, attribution, and approval-ready opportunities.");
   }
 
   if (hasAny(lower, ["authority", "proof", "case study", "finished work", "completed job", "job into marketing", "turn this job into marketing", "reviews from jobs"])) {
@@ -640,10 +640,11 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
 
   return {
     ok: blocked.length === 0,
-    message: blocked.length === 0 ? "Guided setup prepared work inside existing Ferocity systems. Review before anything goes live." : "Guided setup prepared some work, but one or more steps need attention.",
+    message: blocked.length === 0 ? "I reviewed the business and prepared the next steps. Nothing consequential went live without your approval." : "I prepared what I safely could. One or more decisions still need your attention.",
     prepared,
     blocked,
-    runId: runId ?? undefined
+    runId: runId ?? undefined,
+    href: workspaceRouteForCommand(command)
   };
 }
 

@@ -53,5 +53,11 @@ export default async function FerocityChatPage({
     ? `Review this ${sourceEvent.platformName} alert and advise me on the next step: ${sourceEvent.title}. ${sourceEvent.summary}`.slice(0, 2000)
     : params.command?.slice(0, 2000) ?? "";
 
-  return <FerocityOwnerChat initialCommand={contextualCommand} sourceEvent={sourceEvent} />;
+  const workspaceId = await getCurrentWorkspaceId();
+  const brandResult = await queryPostgres<{ industry: string | null }>(
+    `select industry from public.brands where tenant_id = $1 order by created_at asc limit 1`,
+    [workspaceId]
+  );
+
+  return <FerocityOwnerChat initialCommand={contextualCommand} sourceEvent={sourceEvent} industry={brandResult?.rows[0]?.industry ?? null} />;
 }

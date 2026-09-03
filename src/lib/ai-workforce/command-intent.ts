@@ -88,3 +88,14 @@ export function readOnlyRouteForCommand(command: string) {
   if (lower.includes("alert")) return "/app/alerts";
   return "/app/attention-command";
 }
+
+export function workspaceRouteForCommand(command: string) {
+  const lower = command.toLowerCase();
+  if (["marketing", "campaign", "customer", "lead", "growth", "seo", "review", "referral", "advertis"].some((term) => lower.includes(term))) return "/app/growth";
+  if (["invoice", "paid", "cash", "collection", "owe", "money"].some((term) => lower.includes(term))) return "/app/cash-collection";
+  if (["estimate", "job", "material", "scope", "crew", "work more smoothly"].some((term) => lower.includes(term))) return "/app/job-tracker";
+  if (["schedule", "dispatch", "appointment"].some((term) => lower.includes(term))) return "/app/schedule";
+  if (["connect", "integration", "provider"].some((term) => lower.includes(term))) return "/app/integrations";
+  if (["set ferocity up", "set up", "setup", "business profile"].some((term) => lower.includes(term))) return "/app/welcome";
+  return "/app/attention-command";
+}
