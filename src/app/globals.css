@@ -475,6 +475,27 @@ textarea {
   color: #8af2dc;
 }
 
+.ferocity-chat-avatar-attention {
+  background: #6f3d17;
+  color: #ffe0a3;
+}
+
+.ferocity-attention-badge {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid #efd2aa;
+  border-radius: 999px;
+  background: #fff8ec;
+  color: #7a4317;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .ferocity-chat-thread {
   display: grid;
   align-content: end;
@@ -530,6 +551,46 @@ textarea {
 
 .ferocity-chat-result-blocked li {
   color: #8b3f22;
+}
+
+.ferocity-attention-list {
+  display: grid;
+  gap: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 1px solid #e2e9e7;
+  border-radius: 12px;
+  list-style: none;
+  overflow: hidden;
+}
+
+.ferocity-attention-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  border-bottom: 1px solid #e8eeec;
+}
+
+.ferocity-attention-list li:last-child {
+  border-bottom: 0;
+}
+
+.ferocity-attention-list p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ferocity-attention-list a {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: #245347;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .ferocity-chat-thinking {

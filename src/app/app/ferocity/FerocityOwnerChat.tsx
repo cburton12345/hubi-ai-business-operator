@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { ArrowRight, CheckCircle2, LayoutDashboard, Send, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, BellRing, CheckCircle2, LayoutDashboard, Send, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import { executeAiWorkforceCommandAction } from "@/app/app/ai-workforce/actions";
 import { ferocityGoals, hasUsefulIndustry, moneyCommand, moneyOutcomes, type FerocityGoal } from "@/lib/ai-workforce/guided-conversation";
 
@@ -24,16 +24,25 @@ type SourceEvent = {
   recommendedAction: string | null;
 };
 
+type AttentionItem = {
+  title: string;
+  detail: string;
+  href: string;
+  urgency: "critical" | "high" | "medium" | "low";
+};
+
 type GuideStep = "idle" | "industry" | "money_outcome" | "ready";
 
 export function FerocityOwnerChat({
   initialCommand,
   sourceEvent,
-  industry
+  industry,
+  attentionItems
 }: {
   initialCommand: string;
   sourceEvent: SourceEvent | null;
   industry: string | null;
+  attentionItems: AttentionItem[];
 }) {
   const [command, setCommand] = useState(initialCommand);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -41,6 +50,7 @@ export function FerocityOwnerChat({
   const [guideIndustry, setGuideIndustry] = useState(hasUsefulIndustry(industry) ? industry!.trim() : "");
   const [guideOwnerMessage, setGuideOwnerMessage] = useState("");
   const [guideMessage, setGuideMessage] = useState("");
+  const [showAttention, setShowAttention] = useState(false);
   const [submittedCommand, setSubmittedCommand] = useState("");
   const recordedResponse = useRef<string | null>(null);
   const [state, action, pending] = useActionState(executeAiWorkforceCommandAction, { ok: false });
@@ -119,6 +129,11 @@ export function FerocityOwnerChat({
           </div>
         </div>
         <div className="ferocity-chat-header-actions">
+          {attentionItems.length ? (
+            <button className="ferocity-attention-badge" type="button" onClick={() => setShowAttention((current) => !current)}>
+              <BellRing size={14} /> {attentionItems.length} need attention
+            </button>
+          ) : null}
           <span className="pill"><ShieldCheck size={14} /> Authority rules active</span>
           <Link className="mini-button secondary-button" href="/app">Open workspace</Link>
         </div>
@@ -132,6 +147,39 @@ export function FerocityOwnerChat({
             <p>Start with the outcome—not the software. I’ll ask only what I still need, use what Ferocity already knows, and move the work forward.</p>
           </div>
         </article>
+
+        {attentionItems.length ? (
+          <article className="ferocity-chat-message ferocity-chat-message-ai">
+            <span className="ferocity-chat-avatar ferocity-chat-avatar-attention"><BellRing size={18} /></span>
+            <div className="ferocity-chat-bubble">
+              <strong>{attentionItems.length} {attentionItems.length === 1 ? "thing needs" : "things need"} your attention.</strong>
+              <p>I can give you the short version, open the exact records, or handle the safe parts and bring back only the decisions.</p>
+              <div className="button-row">
+                <button className="mini-button" type="button" onClick={() => setShowAttention((current) => !current)}>
+                  {showAttention ? "Hide details" : "What are they?"}
+                </button>
+                <button
+                  className="mini-button secondary-button"
+                  type="button"
+                  onClick={() => setCommand("Review everything that needs my attention today. Run every safe, authorized step you can and bring me only the decisions that require me.")}
+                >
+                  Handle what you can
+                </button>
+              </div>
+              {showAttention ? (
+                <ul className="ferocity-attention-list">
+                  {attentionItems.map((item) => (
+                    <li key={`${item.href}-${item.title}`}>
+                      <span className={`status-dot ${item.urgency}`} />
+                      <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+                      <Link href={item.href}>Open <ArrowRight size={12} /></Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </article>
+        ) : null}
 
         {sourceEvent ? (
           <article className="ferocity-chat-message ferocity-chat-message-ai">

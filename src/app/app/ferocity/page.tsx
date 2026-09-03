@@ -1,4 +1,5 @@
 import { FerocityOwnerChat } from "./FerocityOwnerChat";
+import { getAttentionCommandDashboard } from "@/lib/attention-command/get-attention-command-dashboard";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -54,10 +55,20 @@ export default async function FerocityChatPage({
     : params.command?.slice(0, 2000) ?? "";
 
   const workspaceId = await getCurrentWorkspaceId();
-  const brandResult = await queryPostgres<{ industry: string | null }>(
-    `select industry from public.brands where tenant_id = $1 order by created_at asc limit 1`,
-    [workspaceId]
-  );
+  const [brandResult, attention] = await Promise.all([
+    queryPostgres<{ industry: string | null }>(
+      `select industry from public.brands where tenant_id = $1 order by created_at asc limit 1`,
+      [workspaceId]
+    ),
+    getAttentionCommandDashboard()
+  ]);
 
-  return <FerocityOwnerChat initialCommand={contextualCommand} sourceEvent={sourceEvent} industry={brandResult?.rows[0]?.industry ?? null} />;
+  return (
+    <FerocityOwnerChat
+      initialCommand={contextualCommand}
+      sourceEvent={sourceEvent}
+      industry={brandResult?.rows[0]?.industry ?? null}
+      attentionItems={attention.doFirst.slice(0, 5)}
+    />
+  );
 }
