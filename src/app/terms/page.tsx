@@ -128,12 +128,12 @@ export default function TermsPage() {
 
       <h2>Electronic records and notices</h2>
       <p>
-        You consent to transact electronically and to receive contractual, billing, security, and service notices electronically. Checking the acceptance box and submitting checkout constitutes your electronic acceptance. Ferocity may provide notices through the service or to the account email. Notices to Ferocity must be sent to ferocityflow@outlook.com. You are responsible for keeping the account email current and retaining copies of agreements and notices needed for your records.
+        You consent to transact electronically and to receive contractual, billing, security, and service notices electronically. Checking the acceptance box and submitting checkout constitutes your electronic acceptance. Ferocity may provide notices through the service or to the account email. Notices to Ferocity must be sent to support@ferocity.live. You are responsible for keeping the account email current and retaining copies of agreements and notices needed for your records.
       </p>
 
       <h2>Changes and contact</h2>
       <p>
-        We may update these Terms and will identify the current version by its updated date. Material changes apply prospectively after reasonable notice where required. Continued use after an effective update constitutes acceptance where permitted by law. Questions may be sent to ferocityflow@outlook.com.
+        We may update these Terms and will identify the current version by its updated date. Material changes apply prospectively after reasonable notice where required. Continued use after an effective update constitutes acceptance where permitted by law. Questions may be sent to support@ferocity.live.
       </p>
     </LegalPageShell>
   );

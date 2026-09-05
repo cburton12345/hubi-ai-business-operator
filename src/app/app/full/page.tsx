@@ -324,7 +324,7 @@ export default async function FullAppDashboardPage() {
         <div className="list-row flush-row">
           <div>
             <p className="eyebrow">Simple path</p>
-            <h2>Not sure what to do? Choose the work you want off your plate.</h2>
+            <h2>Not sure what to do? Choose the outcome you want Ferocity to move first.</h2>
             <p className="muted">
               Start with one lane. Ferocity can guide setup, while manual tools stay available for basic work.
             </p>

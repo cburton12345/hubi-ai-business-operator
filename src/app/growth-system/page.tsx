@@ -103,11 +103,10 @@ export default function GrowthSystemPage() {
 
         <section className="hero-command">
           <div className="hero-copy">
-            <p className="eyebrow">Free business audit + setup funnel</p>
-            <h1>Generate qualified leads, then let Ferocity help turn them into booked income.</h1>
+            <p className="eyebrow">The Ferocity Growth System</p>
+            <h1>Find demand, convert it, prove what worked, and make the next move smarter.</h1>
             <p>
-              Start with a free audit or a simple offer. Ferocity helps build the funnel, qualify the lead,
-              follow up, and track which marketing turns into real work and paid revenue.
+              Start with a free business audit or a specific growth goal. Ferocity can identify gaps, create the offer and funnel, qualify and follow up with leads, preserve the handoff into sales and operations, and connect the result back to revenue, reviews, and the next campaign.
             </p>
             <div className="button-row">
               <Link className="button" href="/business-health-score?source=growth_system">
@@ -176,7 +175,7 @@ export default function GrowthSystemPage() {
         <section className="demo-positioning">
           <div>
             <p className="eyebrow">The outcome</p>
-            <h2>A repeatable engine for better leads, better follow-up, and better decisions.</h2>
+            <h2>A closed growth loop—not a pile of disconnected marketing tasks.</h2>
             <p>
               Ferocity is not trying to dump more names into a spreadsheet. The goal is qualified demand,
               faster response, cleaner handoff, and a feedback loop that shows what actually creates money.
@@ -205,8 +204,7 @@ export default function GrowthSystemPage() {
             <p className="eyebrow">Short walkthrough</p>
             <h2>The audit is the start. The operating loop is the product.</h2>
             <p>
-              Keep it quick. The job is to show the idea fast: Ferocity is not just a score. It helps turn the score into a working system:
-              better lead response, stronger follow-up, clearer money tracking, more reviews, useful marketing, and fewer daily loose ends.
+              The score identifies the opportunity. Ferocity can turn it into a working system: stronger demand, faster response, persistent follow-up, cleaner revenue attribution, more customer proof, and better-informed growth decisions.
             </p>
             <Link className="button" href="/demo">
               Open full demo <ArrowRight size={16} />

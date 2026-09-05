@@ -43,7 +43,7 @@ export default async function SmsOptInPage({
               <p className="form-error">Enter a valid mobile number and affirmatively select the service-message consent checkbox.</p>
             ) : null}
             {status === "error" ? (
-              <p className="form-error">Ferocity could not record the preference. Please try again or email ferocityflow@outlook.com.</p>
+              <p className="form-error">Ferocity could not record the preference. Please try again or email support@ferocity.live.</p>
             ) : null}
 
             <label>
@@ -78,7 +78,7 @@ export default async function SmsOptInPage({
               <li><ShieldCheck size={16} /><span>The checkboxes begin unchecked.</span></li>
               <li><ShieldCheck size={16} /><span>Marketing consent is separate and optional.</span></li>
               <li><ShieldCheck size={16} /><span>Reply STOP at any time to opt out.</span></li>
-              <li><ShieldCheck size={16} /><span>Reply HELP or email ferocityflow@outlook.com for help.</span></li>
+              <li><ShieldCheck size={16} /><span>Reply HELP or email support@ferocity.live for help.</span></li>
             </ul>
           </aside>
         </section>

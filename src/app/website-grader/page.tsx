@@ -1,6 +1,7 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, Gauge, ShieldCheck, Sparkles } from "lucide-react";
+import { PublicNav } from "@/components/public/PublicNav";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
   title: "Free Business Grader for Growth-Focused Businesses",
@@ -48,18 +49,7 @@ export default async function WebsiteGraderPage({
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">
-            Ferocity
-          </Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">Ferocity Business Grader</p>
@@ -68,6 +58,19 @@ export default async function WebsiteGraderPage({
             Run a free audit that scores the business, highlights useful improvements, and shows the first actions Ferocity would recommend.
             No credit card required.
           </p>
+        </section>
+
+        <section className="panel feature-split" aria-label="Example Business Grader result">
+          <div>
+            <p className="eyebrow">See the value before the form</p>
+            <h2>A sample result: strong reputation, weak follow-up, money waiting.</h2>
+            <p className="muted">A service business scores 64/100. Ferocity finds that leads are arriving, but response time is inconsistent, viewed estimates have no recovery path, and completed jobs are not reliably producing reviews.</p>
+          </div>
+          <div className="stacked-list">
+            <div className="list-row flush-row"><span><strong>First move:</strong> recover the warmest viewed estimates</span><CheckCircle2 size={18} /></div>
+            <div className="list-row flush-row"><span><strong>Next:</strong> connect completed jobs to review eligibility</span><CheckCircle2 size={18} /></div>
+            <div className="list-row flush-row"><span><strong>Then:</strong> measure which sources become paid work</span><CheckCircle2 size={18} /></div>
+          </div>
         </section>
 
         <section className="start-grid">
@@ -219,6 +222,7 @@ export default async function WebsiteGraderPage({
             </div>
           </aside>
         </section>
+        <PublicFooter />
       </section>
     </main>
   );

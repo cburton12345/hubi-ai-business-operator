@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { BellRing, CalendarClock, FileCheck2, MailCheck, Megaphone, MessageSquareReply, ShieldCheck, Star } from "lucide-react";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "AI Business Automations for Leads, Reviews, Estimates, and Invoices",
@@ -55,25 +56,13 @@ export default function AutomationsPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">
-            Ferocity
-          </Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
 
         <section className="public-hero">
           <p className="eyebrow">AI automations</p>
-          <h1>Ferocity watches the business and gets the next action ready.</h1>
+          <h1>Automations run steps. Ferocity stays responsible for what happens next.</h1>
           <p className="muted">
-            AI agents can monitor leads, estimates, invoices, reviews, jobs, marketing, and owner alerts. They prepare the work,
-            then the business controls what sends, publishes, syncs, or spends.
+            Ferocity keeps shared context across leads, estimates, invoices, reviews, jobs, marketing, and owner decisions. It notices when a workflow stalls, coordinates the next authorized move, verifies the result, and keeps watching after a single trigger would have stopped.
           </p>
           <div className="button-row">
             <Link className="button" href="/start?source=automations">
@@ -149,6 +138,12 @@ export default function AutomationsPage() {
               See tiers
             </Link>
           </div>
+        </section>
+
+        <section className="panel section-actions">
+          <p className="eyebrow">More than trigger-and-action</p>
+          <h2>The workflow does not disappear after one step fires.</h2>
+          <p className="muted">A traditional automation can send an email when a status changes. Ferocity can understand why the status matters, preserve the customer and job context, choose the allowed next step, detect a failed delivery, recover or escalate, and remember the outcome for the next decision.</p>
         </section>
         <PublicFooter />
       </section>

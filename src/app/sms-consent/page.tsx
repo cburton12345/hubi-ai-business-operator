@@ -46,7 +46,7 @@ export default function SmsConsentPage() {
       </p>
 
       <h2>Questions or complaints</h2>
-      <p>Email ferocityflow@outlook.com with the mobile number involved and a description of the request. Do not include passwords, verification codes, or full payment details.</p>
+      <p>Email support@ferocity.live with the mobile number involved and a description of the request. Do not include passwords, verification codes, or full payment details.</p>
     </LegalPageShell>
   );
 }

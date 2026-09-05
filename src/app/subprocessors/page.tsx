@@ -60,7 +60,7 @@ export default function SubprocessorsPage() {
 
       <h2>Updates and objections</h2>
       <p>
-        This page is the current notice of core subprocessors. Material additions will be reflected here before or when processing begins. Customers may send a reasonable data-protection objection to ferocityflow@outlook.com as described in the Data Processing Addendum.
+        This page is the current notice of core subprocessors. Material additions will be reflected here before or when processing begins. Customers may send a reasonable data-protection objection to support@ferocity.live as described in the Data Processing Addendum.
       </p>
     </LegalPageShell>
   );

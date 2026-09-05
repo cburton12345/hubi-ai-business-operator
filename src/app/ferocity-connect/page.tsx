@@ -63,6 +63,16 @@ export default function FerocityConnectPage() {
           </div>
         </section>
 
+        <section className="section-actions" aria-label="Ferocity Connect delivery loop">
+          <p className="eyebrow">A complete message loop</p>
+          <h2>Queued is not sent. Sent is not delivered. A reply is not the end of the workflow.</h2>
+          <div className="public-grid">
+            <article className="panel value-card"><h2>Before sending</h2><p className="muted">Ferocity checks workspace authority, recipient consent, suppression state, quiet hours, pacing, device health, and duplicate protection.</p></article>
+            <article className="panel value-card"><h2>After sending</h2><p className="muted">The conversation timeline records provider and device state, delivery evidence when available, failures, retry history, and the reason attention is needed.</p></article>
+            <article className="panel value-card"><h2>When a reply arrives</h2><p className="muted">Ferocity records the inbound message, honors STOP and HELP, updates the conversation, and can prepare or perform only the response allowed by that workspace’s rules.</p></article>
+          </div>
+        </section>
+
         <section className="panel section-actions">
           <p className="eyebrow">Secure Android installation</p>
           <h2>Subscribers download the signed app inside their workspace.</h2>

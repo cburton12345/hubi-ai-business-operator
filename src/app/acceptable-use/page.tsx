@@ -45,7 +45,7 @@ export default function AcceptableUsePage() {
       </p>
 
       <h2>Report abuse</h2>
-      <p>Email ferocityflow@outlook.com with the subject “Abuse report” and enough information to identify the activity. Do not send passwords, verification codes, or full payment credentials.</p>
+      <p>Email support@ferocity.live with the subject “Abuse report” and enough information to identify the activity. Do not send passwords, verification codes, or full payment credentials.</p>
     </LegalPageShell>
   );
 }

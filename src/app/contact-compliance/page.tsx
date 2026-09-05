@@ -12,7 +12,7 @@ export default function ContactCompliancePage() {
   return (
     <LegalPageShell eyebrow="Help and reporting" title="Contact / Compliance">
       <p>
-        Ferocity routes support and compliance requests to the people responsible for the affected account, provider, or policy. Email <a href="mailto:ferocityflow@outlook.com">ferocityflow@outlook.com</a> and use one of the subjects below so the request can be classified correctly.
+        Ferocity routes support and compliance requests to the people responsible for the affected account, provider, or policy. Email <a href="mailto:support@ferocity.live">support@ferocity.live</a> and use one of the subjects below so the request can be classified correctly.
       </p>
 
       <h2>SMS help or opt-out</h2>

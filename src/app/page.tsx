@@ -33,7 +33,6 @@ const commandCards = [
 ];
 
 const activityTimeline = [
-  ["6:55 AM", "Yesterday’s best job becomes today’s growth campaign", "Ferocity uses customer-approved proof, checks the saved budget and channels, and launches only the work already authorized."],
   ["7:18 AM", "A new lead asks for an urgent inspection", "Ferocity responds, qualifies the request, records the source, and offers an approved opening."],
   ["8:43 AM", "A viewed estimate starts going quiet", "Ferocity recognizes the stall and continues the approved follow-up while the opportunity is still warm."],
   ["10:07 AM", "A customer needs to move tomorrow’s visit", "Ferocity checks the schedule, crew, and job context before confirming a workable time."],
@@ -131,9 +130,9 @@ export default async function HomePage() {
           <div className="activity-story-heading">
             <div>
               <p className="eyebrow">One ordinary Tuesday</p>
-              <h2 id="activity-story-title">Eight situations moved the business forward. Seven never became the owner’s problem.</h2>
+              <h2 id="activity-story-title">Seven situations appeared. Six never became the owner’s problem.</h2>
             </div>
-            <div className="activity-score"><strong>8</strong> situations <span>·</span> <strong>7</strong> handled <span>·</span> <strong>1</strong> decision</div>
+            <div className="activity-score"><strong>7</strong> situations <span>·</span> <strong>6</strong> handled <span>·</span> <strong>1</strong> decision</div>
           </div>
           <div className="activity-timeline">
             {activityTimeline.map(([time, title, detail], index) => (

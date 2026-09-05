@@ -17,7 +17,7 @@ export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
   home_hero: {
     eyebrow: "Meet your AI operations department",
     headline: "Your business shouldn't stop when you stop looking at it.",
-    body: "Ferocity answers the phone. Chases leads. Follows up on estimates. Schedules work. Coordinates crews. Talks to customers. Collects money. Keeps marketing moving. Watches for problems—and handles hundreds of other things it takes to keep a business running. And when something actually needs you, Ferocity brings you the decision.",
+    body: "Ferocity gives your people and AI workforce one shared Business Brain. It notices what changed, understands what it affects, and keeps the next authorized step moving across sales, operations, field work, finance, customer care, and growth. Only a real decision comes back to you.",
     ctaLabel: "See Ferocity run a business",
     ctaHref: "/demo",
     secondaryCtaLabel: "See plans & pricing",
@@ -28,7 +28,7 @@ export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
     headline: "Build the business without making yourself the bottleneck.",
     body: "More customers shouldn't mean more things for you to chase. More employees shouldn't mean more things for you to coordinate. More work shouldn't mean more things for you to remember. More software shouldn't mean more dashboards for you to watch. Your business keeps moving—even when you're not watching it.",
     ctaLabel: "Start Ferocity",
-    ctaHref: "/subscribe",
+    ctaHref: "/start",
     secondaryCtaLabel: "Compare plans",
     secondaryCtaHref: "/pricing"
   },
@@ -37,14 +37,14 @@ export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
     headline: "Watch the whole business think and act as one.",
     body: "One opportunity moves through people, AI employees, departments, and providers without losing its context. Ferocity decides what should happen next, advances authorized work, verifies the result, and keeps going until a real decision is needed.",
     ctaLabel: "Start Ferocity",
-    ctaHref: "/subscribe",
+    ctaHref: "/start",
     secondaryCtaLabel: "Compare plans",
     secondaryCtaHref: "/pricing"
   },
   pricing_hero: {
     eyebrow: "Simple paid plans",
-    headline: "Choose how much work you want taken off your plate.",
-    body: "Every plan includes Ferocity’s real AI engine. Higher tiers handle more of the customer journey, connect more of the business, and watch for more problems before they cost you.",
+    headline: "Choose how much of the business you want Ferocity to run.",
+    body: "Every complete plan uses the same Business Brain. Higher tiers give it more specialized departments, connected execution, and authority to keep more of the business moving proactively.",
     ctaLabel: "Start Growth",
     ctaHref: "/subscribe?plan=growth",
     secondaryCtaLabel: "Compare plans",

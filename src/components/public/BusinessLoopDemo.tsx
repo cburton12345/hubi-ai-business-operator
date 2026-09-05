@@ -264,6 +264,11 @@ export function BusinessLoopDemo() {
           </div>
         </div>
       </div>
+      <div className="panel section-actions" aria-label="Walkthrough result">
+        <p className="eyebrow">The result</p>
+        <h2>One customer. Eight departments. Every handoff preserved. One owner decision.</h2>
+        <p className="muted">Ferocity did not merely display the work. It recognized what mattered, coordinated the next authorized move, verified the outcome, and used that outcome to improve what happens next.</p>
+      </div>
     </section>
   );
 }

@@ -40,7 +40,7 @@ export default function DataProcessingAddendumPage() {
 
       <h2>Subprocessors</h2>
       <p>
-        The customer grants general authorization for Ferocity to use the providers on the <Link href="/subprocessors">Subprocessor List</Link> and providers an authorized workspace user deliberately connects. Ferocity will impose data-protection obligations appropriate to each provider&apos;s function. Ferocity may update the public list before or when a new core subprocessor begins processing customer personal data. A customer with a reasonable data-protection objection may notify ferocityflow@outlook.com; Ferocity will attempt a commercially reasonable alternative, and if none is reasonably available, either party may discontinue the affected feature without terminating unaffected services.
+        The customer grants general authorization for Ferocity to use the providers on the <Link href="/subprocessors">Subprocessor List</Link> and providers an authorized workspace user deliberately connects. Ferocity will impose data-protection obligations appropriate to each provider&apos;s function. Ferocity may update the public list before or when a new core subprocessor begins processing customer personal data. A customer with a reasonable data-protection objection may notify support@ferocity.live; Ferocity will attempt a commercially reasonable alternative, and if none is reasonably available, either party may discontinue the affected feature without terminating unaffected services.
       </p>
 
       <h2>Individual rights and customer assistance</h2>
@@ -84,7 +84,7 @@ export default function DataProcessingAddendumPage() {
       </p>
 
       <h2>Contact</h2>
-      <p>Questions, objections, or data-protection requests may be sent to ferocityflow@outlook.com.</p>
+      <p>Questions, objections, or data-protection requests may be sent to support@ferocity.live.</p>
     </LegalPageShell>
   );
 }

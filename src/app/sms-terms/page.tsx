@@ -32,7 +32,7 @@ export default function SmsTermsPage() {
 
       <h2>Opt out and help</h2>
       <p>
-        Reply STOP to opt out. After an opt-out request, you may receive one confirmation message and then no additional messages from that program unless you opt in again. Reply HELP for help or email ferocityflow@outlook.com. We may also recognize other customary opt-out keywords where supported by the provider.
+        Reply STOP to opt out. After an opt-out request, you may receive one confirmation message and then no additional messages from that program unless you opt in again. Reply HELP for help or email support@ferocity.live. We may also recognize other customary opt-out keywords where supported by the provider.
       </p>
 
       <h2>Delivery and availability</h2>
@@ -46,7 +46,7 @@ export default function SmsTermsPage() {
       </p>
 
       <h2>Contact</h2>
-      <p>For SMS questions or support, email ferocityflow@outlook.com.</p>
+      <p>For SMS questions or support, email support@ferocity.live.</p>
     </LegalPageShell>
   );
 }

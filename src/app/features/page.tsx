@@ -25,7 +25,7 @@ const features = [
   {
     title: "Lead follow-up",
     icon: MessageSquareText,
-    body: "Capture leads, draft replies, remind you to call back, and keep old leads from disappearing."
+    body: "Capture and qualify leads, preserve their source and context, prepare or send authorized replies, and keep following up until the opportunity reaches a real outcome."
   },
   {
     title: "Jobs and daily work",
@@ -106,7 +106,7 @@ export default function FeaturesPage() {
             and brings people the decisions that genuinely need them.
           </p>
           <div className="button-row">
-            <Link className="button" href="/subscribe">
+            <Link className="button" href="/start">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/demo">See it work</Link>
@@ -114,8 +114,8 @@ export default function FeaturesPage() {
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">Start with the pressure you want gone</p>
-          <h2>What do you want to stop chasing?</h2>
+          <p className="eyebrow">Start with the outcome the business needs</p>
+          <h2>Where should Ferocity create momentum first?</h2>
           <div className="value-ladder">
             {ownerOutcomes.map(([title, body]) => (
               <div key={title}>
@@ -140,8 +140,8 @@ export default function FeaturesPage() {
         </section>
 
         <section className="panel section-actions">
-          <p className="eyebrow">What Ferocity is built to run</p>
-          <h2>One system. Multiple engines.</h2>
+          <p className="eyebrow">The operating intelligence underneath</p>
+          <h2>Ferocity remembers, watches, understands, coordinates, acts, verifies, and learns.</h2>
           <div className="value-ladder">
             {engines.map(([title, body]) => (
               <div key={title}>
@@ -190,7 +190,7 @@ export default function FeaturesPage() {
             <p>Run the free grader, then choose the plan that fits the amount of help you want.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/subscribe">
+            <Link className="button" href="/start">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/pricing">Compare plans</Link>

@@ -119,7 +119,7 @@ export default async function PricingPage() {
 
         <section className="section-actions">
           <p className="eyebrow">Complete Ferocity plans</p>
-          <h2>Choose how much of the business you want Ferocity to move forward.</h2>
+          <h2>The core system stays whole. Ferocity takes on more responsibility as you move up.</h2>
         </section>
 
         <section className="pricing-grid" id="plans" aria-label="Primary Ferocity plans">
@@ -179,7 +179,7 @@ export default async function PricingPage() {
         <section className="section-actions">
           <p className="eyebrow">Start with one department</p>
           <h2>Want one immediate win before bringing in the full operating system?</h2>
-          <p className="muted">Calls, Android texting, and job tracking work independently and can grow into full Ferocity without starting over.</p>
+          <p className="muted">Calls, Android texting, and job tracking are focused entry points—not different products with dead-end data. They use Ferocity records and can grow into the complete operating system without starting over.</p>
         </section>
 
         <section className="panel feature-split" aria-label="Ferocity Calls plan guidance">

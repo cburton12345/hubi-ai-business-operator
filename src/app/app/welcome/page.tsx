@@ -43,7 +43,7 @@ export default async function WelcomePage() {
           <p className="eyebrow">Welcome</p>
           <h1>Start {workspace.name} the simple way.</h1>
           <p className="muted">
-            Pick what you want off your plate first. Ferocity can guide setup and prepare work, while manual tools stay available
+            Pick the outcome you want Ferocity to move first. Ferocity can guide setup and prepare work, while manual tools stay available
             for customers, jobs, invoices, field costs, reminders, workers, and payments.
           </p>
         </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Ferocity Integrations",
@@ -28,13 +29,14 @@ const connectionGroups = [
     detail: "These adapters can execute after the business finishes its provider setup.",
     providers: [
       "Stripe online invoice payments and bank payouts",
-      "Twilio business texting",
+      "Customer-connected Twilio business texting",
       "Retell outbound AI voice, with other voice engines added through tested adapters",
       "Resend email",
       "Google Calendar and Microsoft Outlook Calendar",
       "Google Search Console and Google Analytics read-only reporting",
       "Jobber read-only business sync",
       "Marketplace and partner lead sources",
+      "Ferocity Facebook browser connector with paired-session health checks",
       "Premium video rendering and secure webhooks"
     ]
   },
@@ -63,19 +65,10 @@ export default function PublicIntegrationsPage() {
   return (
     <main className="public-page">
       <section className="public-shell">
-        <nav className="public-nav">
-          <Link className="brand-mark" href="/">Ferocity</Link>
-          <div>
-            <Link href="/demo">Demo</Link>
-            <Link href="/features">Features</Link>
-            <Link href="/pricing">Plans</Link>
-            <Link href="/start">Start</Link>
-            <Link href="/login">Sign in</Link>
-          </div>
-        </nav>
+        <PublicNav />
         <section className="public-hero">
           <p className="eyebrow">Integrations</p>
-          <h1>Connect Ferocity to the tools your business already uses.</h1>
+          <h1>Keep the tools that work. Give them one intelligence for what happens next.</h1>
           <p className="muted">
             Keep trusted systems for payments, email, SMS, voice, video, calendars, ads, marketplace leads, and public profiles.
             Ferocity organizes the work around them instead of forcing every business into one provider.

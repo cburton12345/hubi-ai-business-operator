@@ -68,7 +68,7 @@ export default function PrivacyPage() {
 
       <h2>Your choices and requests</h2>
       <p>
-        Depending on your location, you may have rights to request access, correction, deletion, portability, or restriction of certain personal information. Workspace owners can manage users, preferences, providers, and many records in Ferocity. To make a privacy request, email ferocityflow@outlook.com from the address associated with the account. We may verify identity and authority before acting. Some information may be retained where required for security, consent evidence, legal compliance, or financial records.
+        Depending on your location, you may have rights to request access, correction, deletion, portability, or restriction of certain personal information. Workspace owners can manage users, preferences, providers, and many records in Ferocity. To make a privacy request, email support@ferocity.live from the address associated with the account. We may verify identity and authority before acting. Some information may be retained where required for security, consent evidence, legal compliance, or financial records.
       </p>
       <p>
         Where applicable, you may also opt out of sale, sharing, or targeted advertising; object to or restrict processing; withdraw consent; appeal a denied privacy request; or use an authorized agent. Ferocity does not discriminate against a person for exercising an applicable privacy right. Because Ferocity does not sell personal information or use workspace data for unrelated targeted advertising, an opt-out request may confirm that no such activity is occurring. Appeals may be sent to the same address with the subject &quot;Privacy appeal.&quot;
@@ -84,7 +84,7 @@ export default function PrivacyPage() {
 
       <h2>Changes and contact</h2>
       <p>
-        We may update this policy as Ferocity and applicable requirements change. The updated date identifies the current version. Privacy and data requests may be sent to ferocityflow@outlook.com.
+        We may update this policy as Ferocity and applicable requirements change. The updated date identifies the current version. Privacy and data requests may be sent to support@ferocity.live.
       </p>
     </LegalPageShell>
   );

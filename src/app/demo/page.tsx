@@ -120,7 +120,7 @@ export default async function DemoPage() {
             <p>Start with the free grader, compare the operating levels, or connect the organization now.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/subscribe">
+            <Link className="button" href="/start">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/pricing">Compare plans</Link>

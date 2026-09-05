@@ -76,9 +76,9 @@ export default async function StartPage({
 
         <section className="public-hero">
           <p className="eyebrow">Start simple</p>
-          <h1>Choose what you want Ferocity to help with first.</h1>
+          <h1>Tell Ferocity what outcome you want first.</h1>
           <p className="muted">
-            Pick a starting point. Detailed setup can wait until after your account is created.
+            You do not need to understand every feature or integration before starting. Give Ferocity one outcome, create the workspace, and finish the important choices through guided setup.
           </p>
           <div className="button-row">
             <Link className="button" href="/business-health-score">
@@ -116,7 +116,7 @@ export default async function StartPage({
 
             <div>
               <p className="eyebrow">Create your workspace</p>
-              <h2>Tell us where to create your workspace.</h2>
+              <h2>Create the workspace. Ferocity will guide the rest.</h2>
               <p className="muted">Only your email and consent are required. The rest can wait until guided setup.</p>
             </div>
 
