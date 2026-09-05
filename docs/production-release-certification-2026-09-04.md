@@ -47,3 +47,14 @@ These items do not block the core controlled release. They do block claims that 
 ## Release decision
 
 The deployed core is suitable for a controlled customer launch. Provider-specific capabilities must remain labeled and gated according to their real readiness state. Do not describe the optional items above as live-certified until their external or physical-device evidence is recorded.
+
+## Continued live certification — 2026-09-04
+
+- The existing Samsung SM-S938U / Verizon SIM remains paired to the Internal Portfolio workspace. Its messaging account is active with live inbound/outbound enabled, the SMS entitlement enabled, a 1,500-segment monthly cap, and enforced limits of 2/minute, 30/hour, and 100/day.
+- The device had not checked in recently. The production connector watchdog detected the stale heartbeat and created the expected high-severity owner alert instead of silently representing the device as available.
+- A real owner-authorized certification SMS was accepted by the canonical messaging engine as job `29e28531-44a2-4c5c-b513-7638f3848e47`. It remains durable and unclaimed while the phone is offline; no duplicate attempt or false delivery receipt was created.
+- The live per-workspace emergency pause blocked a certification send with `blockedBy=emergency_pause`. The pause was then cleared and database state verified as restored.
+- Android unit tests, lint, minified release build, and release-signing validation passed in one clean Gradle release run.
+- Signed Ferocity Connect `1.0.1` (`versionCode 2`) was uploaded as a private draft at `android/2/Ferocity-Connect-1.0.1.apk`. The SHA-256 remains `6A4FD1FD52ADA1D4E6461001FAB4374C290657E5958B0A83FCE171B24A3FFDD4`. It was deliberately not published before the independent signing-key recovery copy and final physical-device production flow are complete.
+- Microsoft Advertising sign-in was restored and the advertiser verification workflow was inspected. Preferred LLC and the business address are already populated, but Microsoft requires business and domain-ownership documents plus the business website, email, and identifier before final submission.
+- Meta's Ferocity app is present and authenticated but remains unpublished. Business verification is incomplete; access verification cannot begin until an owner with full control completes the business-document step.
