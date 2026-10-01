@@ -31,3 +31,13 @@
 ## Known non-blocking warning
 
 - Next.js continues to emit the existing `unpdf/dist/pdfjs.mjs` dynamic-dependency warning. Compilation and deployment complete successfully.
+
+## Post-release public-copy recovery
+
+- Audited every database-controlled public copy slot: `home_hero`, `home_final_cta`, `demo_hero`, and `pricing_hero`.
+- Found one regression: a September 23 `home_hero` override replaced the researched September 28 headline and changed the primary CTA from the embedded homepage chat to `/demo`.
+- Published the reviewed canonical values for all four slots with actor `codex:approved-public-copy-recovery-2026-09-30` and wrote published revision records.
+- Restored homepage headline: `Your business shouldn't stop when you stop looking at it.`
+- Restored primary CTA: `Give Ferocity an outcome` → `#ask-ferocity`.
+- Verified the production page after cache revalidation: canonical headline visible, direct-chat CTA present, chat anchor present, and the real Ferocity chat experience rendered.
+- No additional frontend deployment was required for this recovery.

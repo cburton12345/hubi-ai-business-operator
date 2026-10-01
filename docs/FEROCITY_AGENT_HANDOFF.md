@@ -18,6 +18,7 @@ This is the portable starting point for Codex, Claude Code, Cursor, Copilot, Gro
 - Do not run destructive Git commands, mass cleanup, broad formatting, or regenerate files without checking overlap. Never use `git reset --hard`, `git clean`, or checkout-based discards.
 - A production deploy is not a backup. Preserve work with a reviewed Git checkpoint; deploy only after release gates pass and the owner says the exact words `do front end deploy`.
 - Do not assume every local migration or adapter is deployed. Verify production state independently.
+- The September 30 production release is recorded in `docs/PRODUCTION_RELEASE_2026-09-30.md`. After release, all four database-controlled public copy slots were explicitly published as reviewed canonical revisions; do not replace them during deployment or provider work without a public-copy review.
 
 ## 2. Product definition and non-negotiable rules
 
