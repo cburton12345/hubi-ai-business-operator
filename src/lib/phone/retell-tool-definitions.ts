@@ -1,4 +1,21 @@
-export function retellBusinessTools(origin: string, transferNumber?: string | null) {
+import type { HumanTransferDestination } from "@/lib/phone/transfer-routing";
+
+function toolName(label: string, index: number) {
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  return `transfer_to_${slug || `human_${index + 1}`}`;
+}
+
+function transferDescription(destination: HumanTransferDestination) {
+  const schedule = destination.availableStart && destination.availableEnd
+    ? ` Availability: weekdays ${destination.weekdays.join(",")}, ${destination.availableStart}-${destination.availableEnd} in ${destination.timezone}.`
+    : " Available whenever the business has not supplied a narrower schedule.";
+  return `Transfer to ${destination.label} for ${destination.role.replaceAll("_", " ")} calls. Use when the caller asks for this person or department, or the escalation rules select it.${schedule} If it is outside the stated availability, take a complete message instead.`;
+}
+
+export function retellBusinessTools(
+  origin: string,
+  transfer?: string | null | HumanTransferDestination[]
+) {
   const url = `${origin.replace(/\/+$/, "")}/api/integrations/voice-ai/tools/business`;
   const common = { type: "custom", url, method: "POST", speak_during_execution: true, speak_after_execution: true, timeout_ms: 10000, max_retry: 1 };
   const tools: Array<Record<string, unknown>> = [
@@ -14,12 +31,24 @@ export function retellBusinessTools(origin: string, transferNumber?: string | nu
     { ...common, name: "record_ferocity_support_resolution", description: "Record whether the support guidance solved the caller's problem. If it did not solve the problem or escalation is required, create a tracked support case next.", parameters: { type: "object", properties: { self_service_id: { type: "string" }, outcome: { type: "string", enum: ["solved", "not_solved"] }, notes: { type: "string" } }, required: ["self_service_id", "outcome"] } },
     { ...common, name: "report_ferocity_support_issue", description: "Create a trackable Ferocity software, account, billing, integration, privacy, or platform support case after safe troubleshooting did not solve it or the diagnosis requires escalation. Use only for help with Ferocity itself, not for an ordinary customer service request to the tenant business. Collect the caller's problem and at least a name or callback number. Never collect passwords, verification codes, or full payment-card details.", parameters: { type: "object", properties: { caller_name: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, issue_type: { type: "string", enum: ["account", "billing", "technical", "workflow", "integration", "privacy", "other"] }, subject: { type: "string" }, message: { type: "string" }, urgency: { type: "string", enum: ["normal", "high"] }, self_service_id: { type: "string" } }, required: ["issue_type", "subject", "message"] } }
   ];
-  if (transferNumber && /^\+[1-9]\d{7,14}$/.test(transferNumber)) {
+  const destinations: HumanTransferDestination[] = Array.isArray(transfer)
+    ? transfer
+    : transfer && /^\+[1-9]\d{7,14}$/.test(transfer)
+      ? [{ label: "business", role: "general", phoneNumber: transfer, priority: 100, weekdays: [0, 1, 2, 3, 4, 5, 6], availableStart: null, availableEnd: null, timezone: "America/Chicago", isPrimary: true }]
+      : [];
+  const usedNames = new Set<string>();
+  destinations
+    .filter((destination) => /^\+[1-9]\d{7,14}$/.test(destination.phoneNumber))
+    .slice(0, 12)
+    .forEach((destination, index) => {
+      let name = destination.isPrimary && destinations.length === 1 ? "transfer_to_business" : toolName(destination.label, index);
+      if (usedNames.has(name)) name = `${name}_${index + 1}`;
+      usedNames.add(name);
     tools.push({
-      type: "transfer_call", name: "transfer_to_business", description: "Transfer the caller to the verified business destination only when the caller asks for a person or Ferocity's escalation rules require it.",
-      transfer_destination: { type: "predefined", number: transferNumber, ignore_e164_validation: false },
+      type: "transfer_call", name, description: transferDescription(destination),
+      transfer_destination: { type: "predefined", number: destination.phoneNumber, ignore_e164_validation: false },
       transfer_option: { type: "cold_transfer", show_transferee_as_caller: false }, speak_during_execution: true
     });
-  }
+  });
   return tools;
 }

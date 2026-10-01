@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Scanned-PDF OCR renders pages with a platform-native canvas binary. Keep
+  // it out of webpack so each server runtime loads its own optional package.
+  serverExternalPackages: ["@napi-rs/canvas"],
   allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.1.173"],
   turbopack: {
     root: __dirname

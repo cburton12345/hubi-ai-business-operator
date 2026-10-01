@@ -6,6 +6,7 @@ import { logAppError } from "@/lib/observability/log-error";
 import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
 import { recordMessageDeliveryReceipt } from "@/lib/messaging/message-health";
 import { resendEmailProvider } from "@/lib/messaging/providers/resend-email";
+import { processExpenseDocumentBatch } from "@/lib/document-intelligence/workflow";
 
 type RouteRow = {
   id: string;
@@ -24,6 +25,14 @@ type ThreadRow = {
 };
 
 type NormalizedInboundEmail = ReturnType<typeof normalizeInboundEmail>;
+
+type ReceivedAttachment = {
+  id?: string;
+  filename?: string;
+  content_type?: string;
+  download_url?: string;
+  size?: number;
+};
 
 const FEROCITY_SUPPORT_ADDRESS = "support@ferocity.live";
 
@@ -208,6 +217,33 @@ async function hydrateReceivedEmail(email: NormalizedInboundEmail) {
   }
 }
 
+async function downloadReceivedExpenseAttachments(providerMessageId: string) {
+  if (!env.EMAIL_API_KEY) throw new Error("Resend API access is not configured.");
+  const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(providerMessageId)}/attachments`, {
+    headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error(`Resend attachment listing failed (${response.status}).`);
+  const payload = asRecord(await response.json().catch(() => null));
+  const attachments = (Array.isArray(payload.data) ? payload.data : [])
+    .filter((value): value is ReceivedAttachment => Boolean(value && typeof value === "object"))
+    .slice(0, 25);
+  const files: File[] = [];
+  for (const attachment of attachments) {
+    const mimeType = clean(attachment.content_type).toLowerCase();
+    if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") continue;
+    if (!attachment.download_url || Number(attachment.size ?? 0) > 15 * 1024 * 1024) continue;
+    const url = new URL(attachment.download_url);
+    if (url.protocol !== "https:" || (url.hostname !== "resend.com" && !url.hostname.endsWith(".resend.com"))) continue;
+    const download = await fetch(url, { cache: "no-store" });
+    if (!download.ok) continue;
+    const bytes = await download.arrayBuffer();
+    if (bytes.byteLength === 0 || bytes.byteLength > 15 * 1024 * 1024) continue;
+    files.push(new File([bytes], clean(attachment.filename) || `expense-document-${files.length + 1}`, { type: mimeType }));
+  }
+  return files;
+}
+
 async function forwardFerocitySupportEmail(email: NormalizedInboundEmail) {
   const notifyEmail = env.FEROCITY_NOTIFY_EMAIL?.trim().toLowerCase();
   if (
@@ -389,6 +425,42 @@ export async function POST(request: Request) {
     [email.recipients]
   );
   const route = routeResult?.rows[0];
+
+  if (route?.default_lead_source === "expense_document_email") {
+    try {
+      const files = await downloadReceivedExpenseAttachments(email.providerMessageId);
+      if (!files.length) return json(422, { ok: false, error: "Receipt email did not contain a supported image or PDF attachment." });
+      const batch = await processExpenseDocumentBatch({
+        workspaceId: route.tenant_id,
+        files,
+        sourceChannel: "email",
+        sourceMessageRef: email.providerMessageId,
+        suppliedText: [email.subject, email.body].filter(Boolean).join("\n\n")
+      });
+      await queryPostgres(
+        "update public.email_inbound_routes set last_received_at = now(), updated_at = now() where id = $1",
+        [route.id]
+      );
+      return json(batch.completed.length ? 200 : 422, {
+        ok: batch.failed.length === 0,
+        routed: true,
+        purpose: "expense_document_email",
+        imported: batch.completed.map((item) => ({ documentId: item.documentId, status: item.status })),
+        failures: batch.failed
+      });
+    } catch (error) {
+      await logAppError({
+        source: "api.integrations.resend.inbound",
+        severity: "error",
+        message: "Inbound receipt attachments could not be processed.",
+        category: "document_intelligence",
+        retryable: true,
+        tenantId: route.tenant_id,
+        metadata: { providerMessageId: email.providerMessageId, reason: error instanceof Error ? error.message : "unknown" }
+      });
+      return json(503, { ok: false, error: "Receipt attachment processing is temporarily unavailable." });
+    }
+  }
 
   if (!route?.brand_id) {
     if (supportForward.forwarded) {

@@ -4,6 +4,8 @@ import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/ac
 import { getAttentionCommandDashboard } from "@/lib/attention-command/get-attention-command-dashboard";
 import { getRecentAiCommandRuns } from "@/lib/ai-workforce/command-runs";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { queryPostgres } from "@/lib/db/postgres";
+import { redirect } from "next/navigation";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -15,6 +17,17 @@ function money(cents: number) {
 
 export default async function SimpleHomePage() {
   const workspaceId = await getCurrentWorkspaceId();
+  const workspaceState = await queryPostgres<{ account_type: string; onboarding_status: string }>(
+    `select account_type,onboarding_status from public.tenants where id=$1`,
+    [workspaceId]
+  );
+  if (workspaceState?.rows[0]?.account_type === "customer") {
+    redirect(
+      workspaceState.rows[0].onboarding_status === "completed"
+        ? "/app/ferocity"
+        : "/app/ferocity?onboarding=1"
+    );
+  }
   const [attention, recentCommands] = await Promise.all([
     getAttentionCommandDashboard(),
     getRecentAiCommandRuns(workspaceId, 3)

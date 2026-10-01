@@ -1,0 +1,5 @@
+worker.config.json
+connector-token.dpapi
+.facebook-profile/
+logs/
+node_modules/

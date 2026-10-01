@@ -14,6 +14,8 @@ export type PublicPlan = {
   name: string;
   price: string;
   priceCents: number;
+  annualPrice?: string;
+  annualPriceCents?: number;
   fit: string;
   bestFor: string;
   bullets: string[];
@@ -25,13 +27,39 @@ export const publicEarnPlan = {
   key: "earn" as const,
   name: "Ferocity Earn",
   eyebrow: "Pay when the business gets paid",
-  price: "$0/month base",
+  price: "No fixed monthly fee",
   fit: "Put Ferocity to work without committing to a fixed monthly subscription.",
   rates: "0.9% when your business brings an opportunity to Ferocity to manage. 6% when Ferocity creates the opportunity. The two rates never stack.",
   eligibility: "Earn applies to eligible revenue actually collected—not leads, estimates, contracts, completed jobs, or unpaid invoices.",
-  costs: "Provider usage, payment processing, advertising spend, and third-party costs remain separate.",
+  costs: "Provider usage, payment processing, advertising spend, and third-party costs remain separate unless Ferocity approves a written pilot exception.",
   cta: "Start with Ferocity Earn"
 };
+
+export const publicManagedVoicePricing = {
+  calls: { includedMinutes: 0, overageCentsPerCompletedMinute: 25 },
+  starter: { includedMinutes: 25, overageCentsPerCompletedMinute: 25 },
+  growth: { includedMinutes: 100, overageCentsPerCompletedMinute: 25 },
+  operator: { includedMinutes: 300, overageCentsPerCompletedMinute: 25 }
+} as const;
+
+export function managedVoicePricingLabel(planKey: keyof typeof publicManagedVoicePricing) {
+  const pricing = publicManagedVoicePricing[planKey];
+  const overage = `$${(pricing.overageCentsPerCompletedMinute / 100).toFixed(2)} per completed minute`;
+  return pricing.includedMinutes > 0
+    ? `${pricing.includedMinutes} managed voice minutes each month; then ${overage}.`
+    : `Managed calling is ${overage}; no included-minute allowance.`;
+}
+
+export const publicManagedSmsPricing = {
+  starter: { includedSegments: 100, overageCentsPerSegment: 4 },
+  growth: { includedSegments: 300, overageCentsPerSegment: 4 },
+  operator: { includedSegments: 1000, overageCentsPerSegment: 4 }
+} as const;
+
+export function managedSmsPricingLabel(planKey: keyof typeof publicManagedSmsPricing) {
+  const pricing = publicManagedSmsPricing[planKey];
+  return `${pricing.includedSegments.toLocaleString("en-US")} hosted SMS segments each month when the managed route is active; then $${(pricing.overageCentsPerSegment / 100).toFixed(2)} per segment. Connect and BYO routes have no Ferocity per-message charge.`;
+}
 
 export const publicPlans: PublicPlan[] = [
   {
@@ -67,8 +95,10 @@ export const publicPlans: PublicPlan[] = [
   {
     key: "starter",
     name: "Starter",
-    price: "$79/mo",
-    priceCents: 7900,
+    price: "$149/mo",
+    priceCents: 14900,
+    annualPrice: "$1,490/year",
+    annualPriceCents: 149000,
     fit: "Stop running the everyday business from memory.",
     bestFor: "Give the business one memory, one attention list, and an AI operator that handles routine work under the authority level the owner chooses.",
     bullets: [
@@ -92,12 +122,15 @@ export const publicPlans: PublicPlan[] = [
       "Qualified-lead scoring and source-to-revenue tracking",
       "Stale-lead and estimate recovery queue",
       "Customer proof and before-and-after capture",
+      "Receipt, bill, warranty, and statement intelligence with the original source preserved",
+      "A business objective and bottleneck plan with assumptions shown instead of hidden",
       "Review-first graphics",
       "Hosted service and growth-page drafts",
       "30-day SEO content plan",
       "AI Marketing Department recommendations and campaign drafts",
       "Video Ad Studio scripts, hooks, scenes, and briefs",
       "Ad launch kits with manual export",
+      "2 original organic publishing moments each week, adapted for connected business profiles after opt-in and review",
       "Website publishing setup and manual export",
       "Daily Owner Brief generated on demand",
       "Worker requests and availability intake",
@@ -109,8 +142,10 @@ export const publicPlans: PublicPlan[] = [
   {
     key: "growth",
     name: "Growth",
-    price: "$199/mo",
-    priceCents: 19900,
+    price: "$349/mo",
+    priceCents: 34900,
+    annualPrice: "$3,490/year",
+    annualPriceCents: 349000,
     fit: "Turn today’s work into tomorrow’s growth.",
     bestFor: "Connect follow-up, proof, reviews, content, search, campaigns, and revenue so every lead and completed job can create the next opportunity.",
     bullets: [
@@ -121,7 +156,9 @@ export const publicPlans: PublicPlan[] = [
       "Job proof converted into content, reviews, and publish-ready marketing",
       "Lead qualification, appointment show-up improvement, and old-opportunity recovery",
       "Search, AI-search, content, and campaign work created from real business data",
+      "4 original organic publishing moments each week, adapted across connected profiles",
       "Lead sources and campaigns traced through booked and paid work",
+      "Growth planned backward from collected cash through leads, appointments, estimates, capacity, and margin",
       "Legitimate link opportunities found and valuable backlinks protected",
       "Supplier pricing compared and estimate margins protected"
     ],
@@ -141,6 +178,7 @@ export const publicPlans: PublicPlan[] = [
       "Google and AI-search visibility tracking",
       "Service-area intelligence for cities, ZIP codes, and radius",
       "Creative variant testing and performance memory",
+      "Ideal-customer, ideal-job, offer, and customer-language memory that improves from real outcomes",
       "Video Ad Studio variants and provider-ready briefs",
       "Bring-your-own provider credential vault",
       "Bulk email workflow access with a connected provider",
@@ -154,15 +192,19 @@ export const publicPlans: PublicPlan[] = [
   {
     key: "operator",
     name: "Operator",
-    price: "$399/mo",
-    priceCents: 39900,
+    price: "$699/mo",
+    priceCents: 69900,
+    annualPrice: "$6,990/year",
+    annualPriceCents: 699000,
     fit: "Put an AI operating team behind the entire day.",
     bestFor: "Have Ferocity proactively watch and coordinate sales, jobs, money, schedules, the team, customers, and connected systems—then bring people the decisions that truly need them.",
     bullets: [
       "Everything in Growth",
+      "Up to 7 original organic publishing moments each week, continually informed by real business activity",
       "Continuous operating-day monitoring with important decisions remembered",
       "Scheduling, job progress, collections, and customer handoffs coordinated",
       "Reputation, backlinks, and growth opportunities watched proactively",
+      "Demand automatically held or redirected when capacity, margin, acquisition cost, or data quality becomes unsafe",
       "One daily owner briefing with a clear attention list",
       "Inventory, purchasing, workforce, recruiting, and job-cost risks controlled",
       "Payments, accounting, calendars, phone, video, and other providers connected"
@@ -185,6 +227,7 @@ export const publicPlans: PublicPlan[] = [
       "Advanced proof-to-content workflows",
       "Multi-platform ad launch kits and variants",
       "AI Marketing Department Plus optimization checks",
+      "Closed-loop growth controller with experiment guardrails and creative lifecycle monitoring",
       "Owner-only personal operations queue",
       "Cross-platform owner event registry",
       "Advanced labor matching and operations visibility",
@@ -224,6 +267,15 @@ export const publicPlans: PublicPlan[] = [
 
 export const primaryPublicPlans = publicPlans.filter((plan) => !["calls", "job_tracker"].includes(plan.key));
 export const jobTrackerPlan = publicPlans.find((plan) => plan.key === "job_tracker")!;
+
+export type BillingInterval = "month" | "year";
+
+export function publicPlanPrice(plan: PublicPlan, interval: BillingInterval = "month") {
+  if (interval === "year" && plan.annualPrice && plan.annualPriceCents) {
+    return { label: plan.annualPrice, cents: plan.annualPriceCents };
+  }
+  return { label: plan.price, cents: plan.priceCents };
+}
 
 export function isSelfServePlanKey(value: string): value is SelfServePlanKey {
   return value === publicConnectPlan.key || publicPlans.some((plan) => plan.key === value);

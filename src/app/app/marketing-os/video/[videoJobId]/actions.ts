@@ -19,6 +19,12 @@ const videoActionSchema = z.object({
   costApproval: z.literal("true").optional()
 });
 
+const variationSchema = z.object({
+  videoJobId: z.string().uuid(),
+  variationInstruction: z.string().trim().min(3).max(500),
+  aspectRatio: z.enum(["9:16", "16:9", "1:1"])
+});
+
 type VideoJobRow = {
   id: string;
   tenant_id: string;
@@ -43,6 +49,10 @@ function safeRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 async function loadVideoJob(tenantId: string, videoJobId: string) {
@@ -146,10 +156,16 @@ export async function submitVideoRenderAction(formData: FormData) {
   }
 
   const request = safeRecord(job.provider_request_json);
-  const seconds = normalizeVideoDuration(
+  const requestedSeconds = normalizeVideoDuration(
     configuration.providerKey,
     Number(metadata.durationSeconds ?? request.durationSeconds)
   );
+  const referenceAssetUrls = stringList(request.referenceAssetUrls).slice(0, 3);
+  const seconds = configuration.providerKey === "google_veo"
+    && referenceAssetUrls.length > 0
+    && !configuration.model.includes("lite")
+    ? 8
+    : requestedSeconds;
   const providerCostCents = seconds * configuration.providerCostCentsPerSecond;
   const customerChargeCents = seconds * configuration.customerPriceCentsPerSecond;
   const usageKey = `premium-video:${job.id}:${configuration.providerKey}`;
@@ -234,9 +250,15 @@ export async function submitVideoRenderAction(formData: FormData) {
     },
     {
       prompt,
+      assets: referenceAssetUrls,
       durationSeconds: seconds,
       aspectRatio: aspectRatio(request.aspectRatios ?? metadata.platform),
-      model: configuration.model
+      model: configuration.model,
+      quality: metadata.requestedQuality === "premium"
+        ? "premium"
+        : metadata.requestedQuality === "balanced"
+          ? "balanced"
+          : "economy"
     }
   );
 
@@ -259,46 +281,24 @@ export async function submitVideoRenderAction(formData: FormData) {
     `
     with usage_update as (
       update public.usage_meter_events
-      set provider_resource_id = $3, provider_event_id = $3, status = 'approved',
+      set provider_resource_id = $3, provider_event_id = $3,
           metadata_json = metadata_json || $4::jsonb
       where tenant_id = $1 and id = $2
       returning id
-    ),
-    charge_insert as (
-      insert into public.billing_usage_charges (
-        tenant_id, plan_key, charge_key, fee_family, description, source_table,
-        source_id, amount_cents, status, approved_by_user_id, approved_at, metadata_json
-      )
-      select
-        $1, $5, $6, 'usage_rebilling', 'Managed AI video render',
-        'marketing_video_jobs', $7, $8, 'approved', $9, now(), $10::jsonb
-      from usage_update
-      on conflict (tenant_id, charge_key, source_table, source_id) where source_table is not null and source_id is not null
-      do nothing
-      returning id
     )
     update public.marketing_video_jobs
-    set provider_key = $13, status = 'submitted',
-        provider_response_json = $11::jsonb, error_message = null,
-        history_json = history_json || $12::jsonb, updated_at = now()
-    where tenant_id = $1 and id = $7
+    set provider_key = $8, status = 'submitted',
+        provider_response_json = $6::jsonb, error_message = null,
+        history_json = history_json || $7::jsonb, updated_at = now()
+    where tenant_id = $1 and id = $5
       and exists (select 1 from usage_update)
     `,
     [
       tenantId,
       usageId,
       result.data.jobId,
-      JSON.stringify({ providerStatus: result.data.status }),
-      billing.plan_key,
-      `premium-video:${job.id}`,
+      JSON.stringify({ providerStatus: result.data.status, chargeState: "awaiting_successful_completion" }),
       job.id,
-      Math.ceil(customerChargeCents),
-      session?.userId ?? null,
-      JSON.stringify({
-        providerCostCents,
-        customerChargeCents,
-        customerApprovedAt: new Date().toISOString()
-      }),
       JSON.stringify({
         providerJobId: result.data.jobId,
         providerStatus: result.data.status,
@@ -309,7 +309,7 @@ export async function submitVideoRenderAction(formData: FormData) {
       JSON.stringify([{
         status: "submitted",
         at: new Date().toISOString(),
-        note: `Submitted to ${configuration.providerKey === "google_veo" ? "Google Veo" : "OpenAI Video"} for ${seconds} seconds after cost approval.`
+        note: `Submitted to ${configuration.providerKey === "google_veo" ? "Google Veo" : "OpenAI Video"} for ${seconds} seconds after cost approval. The customer charge stays pending until the provider succeeds.`
       }]),
       configuration.providerKey
     ]
@@ -352,6 +352,48 @@ export async function refreshVideoRenderAction(formData: FormData) {
   const failed = result.data.status === "failed";
   await queryPostgres(
     `
+    with usage_update as (
+      update public.usage_meter_events
+      set status = case when $4 then 'approved' else 'failed' end,
+          provider_cost_cents = case when $6 then 0 else provider_cost_cents end,
+          customer_charge_cents = case when $6 then 0 else customer_charge_cents end,
+          metadata_json = metadata_json || $10::jsonb
+      where tenant_id = $1
+        and source_table = 'marketing_video_jobs'
+        and source_id = $2
+        and ($4 or $6)
+        and status not in ('invoiced', 'paid')
+      returning plan_key, customer_charge_cents, user_id
+    ),
+    failed_charge_cleanup as (
+      update public.billing_usage_charges
+      set status = 'void', amount_cents = 0,
+          last_error = 'Video provider reported generation failure before completion.',
+          metadata_json = metadata_json || $10::jsonb,
+          updated_at = now()
+      where tenant_id = $1
+        and source_table = 'marketing_video_jobs'
+        and source_id = $2
+        and $6
+        and status not in ('invoiced', 'paid')
+      returning id
+    ),
+    completed_charge as (
+      insert into public.billing_usage_charges (
+        tenant_id, plan_key, charge_key, fee_family, description, source_table,
+        source_id, amount_cents, status, approved_by_user_id, approved_at, metadata_json
+      )
+      select $1, plan_key, $11, 'usage_rebilling', 'Managed AI video render',
+             'marketing_video_jobs', $2, ceil(customer_charge_cents)::integer,
+             'approved', user_id, now(), $10::jsonb
+      from usage_update
+      where $4
+      on conflict (tenant_id, charge_key, source_table, source_id) where source_table is not null and source_id is not null
+      do update set amount_cents = excluded.amount_cents, status = 'approved',
+                    approved_at = now(), metadata_json = public.billing_usage_charges.metadata_json || excluded.metadata_json,
+                    updated_at = now()
+      returning id
+    )
     update public.marketing_video_jobs
     set status = $3,
         output_url = case when $4 then $5 else output_url end,
@@ -383,8 +425,67 @@ export async function refreshVideoRenderAction(formData: FormData) {
           noAdditionalPremiumRender: true,
           note: "Ferocity will try post-production repairs before recommending another paid generation."
         }
-      } : {})
+      } : {}),
+      JSON.stringify({
+        providerStatus: result.data.status,
+        chargeState: completed ? "approved_after_success" : failed ? "void_provider_failed" : "awaiting_successful_completion"
+      }),
+      `premium-video:${job.id}`
     ]
   );
   revalidatePath(`/app/marketing-os/video/${job.id}`);
+}
+
+export async function createVideoVariationAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = variationSchema.safeParse({
+    videoJobId: formData.get("videoJobId"),
+    variationInstruction: formData.get("variationInstruction"),
+    aspectRatio: formData.get("aspectRatio")
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  const source = await loadVideoJob(tenantId, parsed.data.videoJobId);
+  if (!source) return;
+
+  const result = await queryPostgres<{ id: string }>(
+    `
+    insert into public.marketing_video_jobs (
+      tenant_id, brand_id, provider_key, service_label, goal, offer_label, status,
+      script_text, scenes_json, voiceover_text, cta_text, provider_request_json,
+      history_json, metadata_json
+    )
+    select
+      tenant_id, brand_id, 'provider_not_selected', service_label,
+      goal || ' — ' || $3, offer_label, 'needs_review',
+      script_text || E'\n\nVariation direction: ' || $3,
+      scenes_json, voiceover_text, cta_text,
+      provider_request_json || jsonb_build_object(
+        'aspectRatios', jsonb_build_array($4::text),
+        'variationOf', id,
+        'variationInstruction', $3::text,
+        'providerReady', false
+      ),
+      jsonb_build_array(jsonb_build_object(
+        'status', 'variation_created',
+        'at', now(),
+        'note', 'A new review-first variation was created without provider spend.'
+      )),
+      metadata_json || jsonb_build_object(
+        'parentVideoJobId', id,
+        'variationInstruction', $3::text,
+        'approvalRequired', true,
+        'noProviderSubmitted', true,
+        'productionStatus', 'ready_for_render_review'
+      )
+    from public.marketing_video_jobs
+    where tenant_id = $1 and id = $2
+    returning id
+    `,
+    [tenantId, source.id, parsed.data.variationInstruction, parsed.data.aspectRatio]
+  );
+  const variationId = result?.rows[0]?.id;
+  if (!variationId) return;
+  revalidatePath("/app/marketing-os");
+  revalidatePath(`/app/marketing-os/video/${source.id}`);
 }

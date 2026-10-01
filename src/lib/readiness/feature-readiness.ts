@@ -2,7 +2,7 @@ import { getBillingOverview } from "@/lib/billing/get-billing-overview";
 import { getServiceControls, type ServiceControl } from "@/lib/controls/get-service-controls";
 import { getIntegrationRows, type IntegrationRow } from "@/lib/integrations/get-integrations";
 
-export type FeatureReadinessState = "live_now" | "needs_connection" | "approval_first" | "higher_plan";
+export type FeatureReadinessState = "live_now" | "needs_connection" | "approval_first" | "higher_plan" | "unavailable";
 
 export type FeatureReadinessItem = {
   title: string;
@@ -20,7 +20,8 @@ function labelForState(state: FeatureReadinessState) {
   if (state === "needs_connection") return "Optional connection";
   if (state === "approval_first") return "Review before action";
   if (state === "higher_plan") return "Higher plan";
-  return "Needs plan or connection";
+  if (state === "unavailable") return "Not available yet";
+  return "Needs setup";
 }
 
 function serviceState(input: {
@@ -47,9 +48,26 @@ export async function getFeatureReadinessItems() {
   const [controls, integrations, billing] = await Promise.all([getServiceControls(), getIntegrationRows(), getBillingOverview()]);
   const controlByKey = new Map<string, ServiceControl>(controls.controls.map((control) => [control.featureKey, control]));
   const integrationByProvider = new Map<string, IntegrationRow>(integrations.map((integration) => [integration.provider, integration]));
-  const hasReady = (provider: string) => {
+  const hasConnected = (provider: string) => {
     const integration = integrationByProvider.get(provider);
-    return Boolean(integration && (integration.status === "connected" || integration.credentialsStatus === "configured" || integration.liveActionsEnabled));
+    return Boolean(integration && integration.credentialsStatus === "configured" && integration.certificationStatus !== "suspended");
+  };
+  const hasCertifiedLive = (provider: string) => {
+    const integration = integrationByProvider.get(provider);
+    return Boolean(
+      integration
+      && integration.credentialsStatus === "configured"
+      && integration.liveActionsEnabled
+      && integration.certificationStatus === "certified_live"
+    );
+  };
+  const hasCertifiedRead = (provider: string) => {
+    const integration = integrationByProvider.get(provider);
+    return Boolean(
+      integration
+      && integration.credentialsStatus === "configured"
+      && ["certified_limited", "certified_live"].includes(integration.certificationStatus)
+    );
   };
   const controlState = (featureKey: string, providerReady?: boolean, defaultWhenOn?: FeatureReadinessState) => {
     const control = controlByKey.get(featureKey);
@@ -95,7 +113,11 @@ export async function getFeatureReadinessItems() {
     item({
       title: "Email notifications",
       area: "Communication",
-      state: hasReady("resend_shared") || hasReady("email_provider") ? "approval_first" : "needs_connection",
+      state: hasCertifiedLive("resend_shared") || hasCertifiedLive("email_provider")
+        ? "approval_first"
+        : hasConnected("resend_shared") || hasConnected("email_provider")
+          ? "needs_connection"
+          : "needs_connection",
       whatWorks: "Resend can send transactional/internal notifications when configured, and inbound routes can record replies.",
       whatIsBlocked: "Bulk or customer-facing email still requires templates, approval, consent, and limits.",
       nextStep: "Check Resend/domain status and approved templates.",
@@ -131,7 +153,7 @@ export async function getFeatureReadinessItems() {
     item({
       title: "Google Business Profile",
       area: "Marketing Platforms",
-      state: hasReady("google_business_profile") ? "approval_first" : "needs_connection",
+      state: hasCertifiedLive("google_business_profile") ? "approval_first" : "needs_connection",
       whatWorks: "Ferocity can draft GBP ideas and track the work internally.",
       whatIsBlocked: "Live GBP publishing, profile updates, and review ingestion need Google OAuth/permissions.",
       nextStep: "Add Google OAuth credentials and connect the workspace profile.",
@@ -140,7 +162,9 @@ export async function getFeatureReadinessItems() {
     item({
       title: "Paid ad platforms",
       area: "Marketing Platforms",
-      state: hasReady("google_ads") || hasReady("facebook") || hasReady("reddit") ? "approval_first" : "needs_connection",
+      state: hasCertifiedLive("google_ads") || hasCertifiedLive("facebook") || hasCertifiedLive("reddit") || hasCertifiedLive("microsoft_ads")
+        ? "approval_first"
+        : "needs_connection",
       whatWorks: "Ferocity can plan campaigns, track sources, and prepare ad ideas.",
       whatIsBlocked: "Live ad creation, budget changes, and spend need Google/Meta/Reddit/Microsoft/Yahoo credentials and approval.",
       nextStep: "Connect an ad account when ready. Ferocity applies safety boundaries automatically; custom limits are optional.",
@@ -176,10 +200,10 @@ export async function getFeatureReadinessItems() {
     item({
       title: "Subscription billing",
       area: "Payments",
-      state: subscriptionLive ? "live_now" : "needs_connection",
+      state: subscriptionLive ? "approval_first" : "needs_connection",
       whatWorks: "Stripe checkout prices and webhooks are configured for Ferocity subscriptions.",
-      whatIsBlocked: "Stripe account review or missing env/webhook would block live processing.",
-      nextStep: "Run a live low-dollar checkout before broad launch.",
+      whatIsBlocked: "Broad unattended billing remains gated until the real payment, webhook, portal, failed-payment, restoration, refund, and reconciliation journey is certified.",
+      nextStep: "Complete the controlled real subscription lifecycle before broad launch.",
       href: "/app/billing"
     }),
     item({
@@ -194,7 +218,7 @@ export async function getFeatureReadinessItems() {
     item({
       title: "Ferocity-managed payouts",
       area: "Payments",
-      state: connectReady ? "approval_first" : "needs_connection",
+      state: connectReady ? "approval_first" : "unavailable",
       whatWorks: "Stripe Connect foundation and onboarding route exist.",
       whatIsBlocked: "Payout reconciliation, fee disclosure, refunds, disputes, chargebacks, bank returns, and support rules need final live testing.",
       nextStep: "Do not offer this publicly until Connect QA passes.",
@@ -221,11 +245,38 @@ export async function getFeatureReadinessItems() {
     item({
       title: "AI Office Manager and voice readiness",
       area: "Communication",
-      state: controlState("ai_office_manager", hasReady("voice_ai"), "approval_first"),
+      state: controlState("ai_office_manager", hasCertifiedLive("voice_ai"), "approval_first"),
       whatWorks: "The Office Manager can organize reception, customer service, scheduling, follow-up, collections, owner commands, app alerts, email drafts, manual text drafts, and action logs.",
       whatIsBlocked: "Live phone answering or outbound voice needs a voice provider, number routing, consent/recording rules, approval gates, and budget controls.",
       nextStep: "Open Office Manager, keep live voice disabled until provider setup is complete, and use push/email/manual drafts now.",
       href: "/app/office-manager"
+    }),
+    item({
+      title: "Ferocity Connect texting",
+      area: "Communication",
+      state: "needs_connection",
+      whatWorks: "Device pairing, outbound and inbound SMS records, scheduled texts, consent, STOP handling, queue recovery, Message Health, and device revocation exist.",
+      whatIsBlocked: "A customer device must be paired and healthy. The final physical outbound, inbound, STOP/START/HELP, delayed-send, offline, replacement, and update-installation certification is still required.",
+      nextStep: "Pair a controlled Android device and complete the physical certification checklist.",
+      href: "/app/messaging"
+    }),
+    item({
+      title: "Customer Gmail and Microsoft inbox monitoring",
+      area: "Communication",
+      state: hasCertifiedRead("gmail_mailbox") || hasCertifiedRead("microsoft_mailbox") ? "live_now" : "needs_connection",
+      whatWorks: "Ferocity can normalize connected mailbox messages for leads, customer needs, billing mail, support, and owner attention without granting send permission.",
+      whatIsBlocked: "Each provider needs a real OAuth connection, bounded sync, token-expiry/reconnect test, and revoke test. Sending from a customer mailbox is a separate unreleased capability.",
+      nextStep: "Connect one Gmail and one Microsoft 365 test mailbox and certify read-only sync and revocation.",
+      href: "/app/email-watch"
+    }),
+    item({
+      title: "Outside AI workers and MCP",
+      area: "AI Workforce",
+      state: "unavailable",
+      whatWorks: "Ferocity's native agents already use tenant-scoped business actions with permissions, audit records, approvals, and data minimization.",
+      whatIsBlocked: "There is no public MCP/API connection for outside agents yet. External identity, grants, short-lived tokens, rate and spend limits, redaction, approval continuation, and client certification remain required.",
+      nextStep: "Keep outside-agent access disabled until the secure adapter and certification work are complete.",
+      href: "/app/ai-workforce"
     })
   ] satisfies FeatureReadinessItem[];
 }

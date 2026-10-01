@@ -7,6 +7,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
+class ApiRequestException(val statusCode: Int, message: String) : RuntimeException(message)
+
 class ApiClient(private val context: Context) {
     private val secure = SecureStore(context)
     private fun baseUrl() = (secure.get("baseUrl") ?: BuildConfig.DEFAULT_API_BASE_URL).trimEnd('/')
@@ -33,6 +35,14 @@ class ApiClient(private val context: Context) {
         val result = request("GET", "/api/ferocity-connect/device/jobs/next", null)
         return if (result.isNull("job")) null else result.getJSONObject("job")
     }
+    fun scheduleText(recipient: String, body: String, scheduledFor: String, deviceTimeZone: String): JSONObject =
+        request("POST", "/api/ferocity-connect/device/scheduled-messages", JSONObject()
+            .put("recipient", recipient).put("body", body).put("scheduledFor", scheduledFor)
+            .put("deviceTimeZone", deviceTimeZone))
+    fun scheduledTexts(): JSONArray = request("GET", "/api/ferocity-connect/device/scheduled-messages", null)
+        .optJSONArray("messages") ?: JSONArray()
+    fun cancelScheduledText(messageId: String): JSONObject =
+        request("POST", "/api/ferocity-connect/device/scheduled-messages/$messageId/cancel", JSONObject())
     fun postEvent(path: String, payload: String) = request("POST", path, JSONObject(payload))
     fun postEvent(path: String, payload: JSONObject) = request("POST", path, payload)
     fun rotateCredentialIfNeeded() {
@@ -59,7 +69,7 @@ class ApiClient(private val context: Context) {
         val code = connection.responseCode
         val text = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val json = if (text.isBlank()) JSONObject() else JSONObject(text)
-        if (code !in 200..299) error(json.optString("error", "Ferocity returned HTTP $code"))
+        if (code !in 200..299) throw ApiRequestException(code, json.optString("error", "Ferocity returned HTTP $code"))
         return json
     }
 

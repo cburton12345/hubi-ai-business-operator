@@ -8,7 +8,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const schema = z.object({
-  source: z.enum(["owner_event", "ai_work", "approval", "provider_request", "funding_alert"]),
+  source: z.enum(["owner_event", "ai_work", "approval", "provider_request", "funding_alert", "marketing_recommendation"]),
   sourceId: z.string().uuid(),
   status: z.enum(["read", "acknowledged", "dismissed"])
 });

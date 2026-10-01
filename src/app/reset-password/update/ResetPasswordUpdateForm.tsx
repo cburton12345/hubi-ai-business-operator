@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 export function ResetPasswordUpdateForm() {
+  const router = useRouter();
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("Checking reset link...");
   const [saving, setSaving] = useState(false);
@@ -65,7 +67,7 @@ export function ResetPasswordUpdateForm() {
     }
 
     await supabase.auth.signOut();
-    window.location.assign("/login?reset=complete");
+    router.replace("/login?reset=complete");
   }
 
   return (

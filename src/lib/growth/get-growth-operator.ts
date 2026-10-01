@@ -136,6 +136,28 @@ export type GrowthOperatorDashboard = {
     urgency: "high" | "medium" | "low";
   }>;
   timeline: TimelineEventRow[];
+  dailyGrowthDepartment: {
+    worthwhile: number;
+    handledAutomatically: number;
+    needsApproval: number;
+    needsOwner: number;
+    actions: Array<{
+      id: string;
+      title: string;
+      whyNow: string;
+      nextStep: string;
+      category: string;
+      ownerInvolvement: "automatic" | "approval" | "personal";
+      organicFirst: boolean;
+      priorityScore: number;
+      confidenceScore: number;
+      evidence: string[];
+      executionStatus: string;
+      effectivenessScore: number | null;
+      capabilityKeys: string[];
+      assessmentScore: number | null;
+    }>;
+  };
 };
 
 function numberFrom(value: string | number | null | undefined) {
@@ -156,7 +178,8 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     seoOpportunityResult,
     weakAreaResult,
     conversionTargetResult,
-    timelineResult
+    timelineResult,
+    growthDepartmentResult
   ] = await Promise.all([
     queryPostgres<{
       seo_drafts: string;
@@ -403,6 +426,36 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       limit 30
       `,
       [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      title: string;
+      trigger_reason: string;
+      recommended_outputs_json: Array<{ nextStep?: string }>;
+      opportunity_category: string;
+      owner_involvement: "automatic" | "approval" | "personal";
+      organic_first: boolean;
+      priority_score: number;
+      confidence_score: number;
+      evidence_json: string[];
+      execution_status: string;
+      effectiveness_score: number | null;
+      capability_keys: string[];
+      assessment_json: { score?: number };
+    }>(
+      `
+      select id, title, trigger_reason, recommended_outputs_json, opportunity_category,
+        owner_involvement, organic_first, priority_score, confidence_score, evidence_json,
+        execution_status, effectiveness_score, capability_keys, assessment_json
+      from public.marketing_campaign_recommendations
+      where tenant_id = $1
+        and recommendation_key like 'growth-department:%'
+        and status in ('recommended', 'needs_review', 'approved', 'turned_into_campaign')
+        and (expires_at is null or expires_at > now())
+      order by priority_score desc, confidence_score desc, updated_at desc
+      limit 5
+      `,
+      [workspaceId]
     )
   ]);
 
@@ -508,6 +561,23 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       : null
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
+  const departmentActions = (growthDepartmentResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    title: row.title,
+    whyNow: row.trigger_reason,
+    nextStep: row.recommended_outputs_json?.[0]?.nextStep ?? "Review the evidence and choose the next authorized step.",
+    category: row.opportunity_category,
+    ownerInvolvement: row.owner_involvement,
+    organicFirst: row.organic_first,
+    priorityScore: row.priority_score,
+    confidenceScore: row.confidence_score,
+    evidence: row.evidence_json ?? [],
+    executionStatus: row.execution_status,
+    effectivenessScore: row.effectiveness_score,
+    capabilityKeys: row.capability_keys ?? [],
+    assessmentScore: row.assessment_json?.score ?? null
+  }));
+
   return {
     metrics: [
       { label: "SEO/content drafts", value: numberFrom(metrics?.seo_drafts), detail: "Draft-only growth assets" },
@@ -558,6 +628,13 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       period: row.period
     })),
     nextBestActions,
+    dailyGrowthDepartment: {
+      worthwhile: departmentActions.length,
+      handledAutomatically: departmentActions.filter((action) => action.ownerInvolvement === "automatic").length,
+      needsApproval: departmentActions.filter((action) => action.ownerInvolvement === "approval").length,
+      needsOwner: departmentActions.filter((action) => action.ownerInvolvement === "personal").length,
+      actions: departmentActions
+    },
     timeline: (timelineResult?.rows ?? []).map((row) => ({
       id: row.id,
       family: row.event_family,

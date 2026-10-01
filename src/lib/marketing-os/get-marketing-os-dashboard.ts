@@ -5,6 +5,9 @@ export type MarketingOsBrandOption = {
   id: string;
   name: string;
   website: string | null;
+  organicPublishingEnabled: boolean;
+  organicWeeklyMomentTarget: number;
+  organicChannels: string[];
 };
 
 export type MarketingOsAdvertisingDestination = {
@@ -95,12 +98,24 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
     platformPlaybookResult,
     advertisingDestinationResult
   ] = await Promise.all([
-    queryPostgres<{ id: string; name: string; domain: string | null }>(
+    queryPostgres<{
+      id: string;
+      name: string;
+      domain: string | null;
+      organic_publishing_enabled: boolean | null;
+      organic_weekly_moment_target: number | null;
+      organic_channels: string[] | null;
+    }>(
       `
-      select id, name, domain
-      from public.brands
-      where tenant_id = $1 and status <> 'archived'
-      order by created_at asc
+      select b.id, b.name, b.domain,
+             ms.organic_publishing_enabled,
+             ms.organic_weekly_moment_target,
+             ms.organic_channels
+      from public.brands b
+      left join public.brand_marketing_settings ms
+        on ms.tenant_id = b.tenant_id and ms.brand_id = b.id
+      where b.tenant_id = $1 and b.status <> 'archived'
+      order by b.created_at asc
       limit 20
       `,
       [workspaceId]
@@ -209,9 +224,11 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       title: string;
       status: string;
       risk_level: string;
+      organic_validation_status: string;
+      paid_amplification_status: string;
     }>(
       `
-      select id, output_type, title, status, risk_level
+      select id, output_type, title, status, risk_level, organic_validation_status, paid_amplification_status
       from public.content_studio_outputs
       where tenant_id = $1
       order by created_at desc
@@ -384,7 +401,14 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
   const metrics = metricResult?.rows[0];
 
   return {
-    brands: (brandsResult?.rows ?? []).map((brand) => ({ id: brand.id, name: brand.name, website: brand.domain })),
+    brands: (brandsResult?.rows ?? []).map((brand) => ({
+      id: brand.id,
+      name: brand.name,
+      website: brand.domain,
+      organicPublishingEnabled: brand.organic_publishing_enabled ?? false,
+      organicWeeklyMomentTarget: brand.organic_weekly_moment_target ?? 0,
+      organicChannels: brand.organic_channels ?? []
+    })),
     blueprints: (blueprintResult?.rows ?? []).map((blueprint) => ({
       campaignKey: blueprint.campaign_key,
       label: blueprint.label,
@@ -485,7 +509,7 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       row(campaign.id, campaign.campaign_name, campaign.prompt, campaign.status, `${campaign.output_count} outputs / ${campaign.approval_required ? "approval required" : "approval optional"}`)
     ),
     outputs: (outputResult?.rows ?? []).map((output) =>
-      row(output.id, output.title, output.output_type, output.status, output.risk_level)
+      row(output.id, output.title, output.output_type, output.status, `${output.risk_level} risk / organic: ${output.organic_validation_status.replaceAll("_", " ")} / amplification: ${output.paid_amplification_status.replaceAll("_", " ")}`)
     ),
     mediaAssets: (mediaResult?.rows ?? []).map((asset) =>
       row(asset.id, asset.title, asset.campaign_label, asset.status, `${asset.asset_type} / ${asset.service_label ?? "general"} / ${asset.approved_for_ai_reuse ? "AI reuse approved" : "not approved for AI reuse"}`)

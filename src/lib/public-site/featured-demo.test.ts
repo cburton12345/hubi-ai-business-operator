@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isSafePublicHref, normalizeDemoEmbedUrl } from "./featured-demo";
+import {
+  defaultPublicCopy,
+  isSafePublicHref,
+  normalizeDemoEmbedUrl,
+  publicCopyFromSnapshot,
+} from "./featured-demo";
 
 describe("normalizeDemoEmbedUrl", () => {
   it("accepts secure direct video files", () => {
@@ -34,5 +39,39 @@ describe("isSafePublicHref", () => {
     expect(isSafePublicHref("https://example.com")).toBe(false);
     expect(isSafePublicHref("//example.com")).toBe(false);
     expect(isSafePublicHref("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("publicCopyFromSnapshot", () => {
+  it("reads new editable-copy snapshots", () => {
+    expect(publicCopyFromSnapshot({
+      eyebrow: "Operator",
+      headline: "Work moved",
+      body: "Ferocity completed it.",
+      ctaLabel: "Start",
+      ctaHref: "/start",
+      secondaryCtaLabel: "Plans",
+      secondaryCtaHref: "/pricing",
+    }, defaultPublicCopy.home_hero)).toMatchObject({
+      headline: "Work moved",
+      ctaLabel: "Start",
+      secondaryCtaHref: "/pricing",
+    });
+  });
+
+  it("keeps older database revision snapshots restorable", () => {
+    expect(publicCopyFromSnapshot({
+      eyebrow: "Earlier",
+      headline: "Earlier headline",
+      body: "Earlier body",
+      cta_label: "Earlier action",
+      cta_href: "/demo",
+      secondary_cta_label: "Earlier plans",
+      secondary_cta_href: "/pricing",
+    }, defaultPublicCopy.home_hero)).toMatchObject({
+      headline: "Earlier headline",
+      ctaLabel: "Earlier action",
+      secondaryCtaLabel: "Earlier plans",
+    });
   });
 });

@@ -1,6 +1,11 @@
 import { queryPostgres } from "@/lib/db/postgres";
 
-export const publicCopyKeys = ["home_hero", "home_final_cta", "demo_hero", "pricing_hero"] as const;
+export const publicCopyKeys = [
+  "home_hero",
+  "home_final_cta",
+  "demo_hero",
+  "pricing_hero",
+] as const;
 export type PublicCopyKey = (typeof publicCopyKeys)[number];
 
 export type PublicCopySlot = {
@@ -15,41 +20,41 @@ export type PublicCopySlot = {
 
 export const defaultPublicCopy: Record<PublicCopyKey, PublicCopySlot> = {
   home_hero: {
-    eyebrow: "Meet your AI operations department",
+    eyebrow: "The AI operating system for running a business",
     headline: "Your business shouldn't stop when you stop looking at it.",
-    body: "Ferocity gives your people and AI workforce one shared Business Brain. It notices what changed, understands what it affects, and keeps the next authorized step moving across sales, operations, field work, finance, customer care, and growth. Only a real decision comes back to you.",
-    ctaLabel: "See Ferocity run a business",
-    ctaHref: "/demo",
-    secondaryCtaLabel: "See plans & pricing",
-    secondaryCtaHref: "/pricing"
+    body: "Give Ferocity the outcome. It finds what is blocking it, builds or improves what is missing, and carries authorized work from creating demand through delivery and collection. You handle the decisions that actually require you.",
+    ctaLabel: "Give Ferocity an outcome",
+    ctaHref: "#ask-ferocity",
+    secondaryCtaLabel: "Watch Ferocity operate",
+    secondaryCtaHref: "/demo",
   },
   home_final_cta: {
-    eyebrow: "Build without becoming the bottleneck",
-    headline: "Build the business without making yourself the bottleneck.",
-    body: "More customers shouldn't mean more things for you to chase. More employees shouldn't mean more things for you to coordinate. More work shouldn't mean more things for you to remember. More software shouldn't mean more dashboards for you to watch. Your business keeps moving—even when you're not watching it.",
-    ctaLabel: "Start Ferocity",
+    eyebrow: "Your business. One operating system.",
+    headline: "Set the goal. Keep control. Stop coordinating every next step.",
+    body: "Ferocity can create and convert opportunities, coordinate delivery, keep collection moving, verify the result, and bring you only the decisions that need your judgment.",
+    ctaLabel: "Put Ferocity to work",
     ctaHref: "/start",
     secondaryCtaLabel: "Compare plans",
-    secondaryCtaHref: "/pricing"
+    secondaryCtaHref: "/pricing",
   },
   demo_hero: {
     eyebrow: "See the operating system in motion",
     headline: "Watch the whole business think and act as one.",
-    body: "One opportunity moves through people, AI employees, departments, and providers without losing its context. Ferocity decides what should happen next, advances authorized work, verifies the result, and keeps going until a real decision is needed.",
+    body: "One opportunity moves through the people, departments, and connected systems responsible for it without losing context. Ferocity advances authorized work, verifies the result, and brings the owner a real decision only when one is needed.",
     ctaLabel: "Start Ferocity",
     ctaHref: "/start",
     secondaryCtaLabel: "Compare plans",
-    secondaryCtaHref: "/pricing"
+    secondaryCtaHref: "/pricing",
   },
   pricing_hero: {
-    eyebrow: "Simple paid plans",
-    headline: "Choose how much of the business you want Ferocity to run.",
-    body: "Every complete plan uses the same Business Brain. Higher tiers give it more specialized departments, connected execution, and authority to keep more of the business moving proactively.",
-    ctaLabel: "Start Growth",
-    ctaHref: "/subscribe?plan=growth",
-    secondaryCtaLabel: "Compare plans",
-    secondaryCtaHref: "#plans"
-  }
+    eyebrow: "Start with the result",
+    headline: "Put Ferocity to work before you commit to another subscription.",
+    body: "Start with Ferocity Earn and pay a percentage only when eligible revenue is actually collected—or choose a complete monthly plan when you want more of the operating system working across the business every day.",
+    ctaLabel: "Start with Ferocity Earn",
+    ctaHref: "/start?source=pricing&plan=earn#start-request",
+    secondaryCtaLabel: "Compare monthly plans",
+    secondaryCtaHref: "#plans",
+  },
 };
 
 export type FeaturedDemo = {
@@ -72,12 +77,13 @@ export const defaultFeaturedDemo: FeaturedDemo = {
   eyebrow: "Watch the operating system think",
   headline: "Watch work keep moving across the entire business.",
   body: "Ferocity connects leads, conversations, jobs, people, money, customer promises, and growth—then determines, performs, and follows through on the next authorized move.",
-  ctaLabel: "Open full demo",
-  ctaHref: "/demo"
+  ctaLabel: "Explore how Ferocity works",
+  ctaHref: "/demo",
 };
 
 export async function getFeaturedDemo(): Promise<FeaturedDemo> {
-  if (process.env.FEROCITY_PUBLIC_COPY_PREVIEW_DEFAULTS === "true") return defaultFeaturedDemo;
+  if (process.env.FEROCITY_PUBLIC_COPY_PREVIEW_DEFAULTS === "true")
+    return defaultFeaturedDemo;
 
   const result = await queryPostgres<{
     enabled: boolean;
@@ -95,7 +101,7 @@ export async function getFeaturedDemo(): Promise<FeaturedDemo> {
     from public.platform_public_content
     where content_key = 'featured_demo'
     limit 1
-    `
+    `,
   );
   const row = result?.rows[0];
   if (!row) return defaultFeaturedDemo;
@@ -108,14 +114,19 @@ export async function getFeaturedDemo(): Promise<FeaturedDemo> {
     eyebrow: row.eyebrow,
     headline: row.headline,
     body: row.body,
-    ctaLabel: row.cta_label,
-    ctaHref: row.cta_href
+    ctaLabel: /full demo/i.test(row.cta_label)
+      ? "Explore how Ferocity works"
+      : row.cta_label,
+    ctaHref: row.cta_href,
   };
 }
 
-export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot> {
+export async function getPublicCopy(
+  key: PublicCopyKey,
+): Promise<PublicCopySlot> {
   const fallback = defaultPublicCopy[key];
-  if (process.env.FEROCITY_PUBLIC_COPY_PREVIEW_DEFAULTS === "true") return fallback;
+  if (process.env.FEROCITY_PUBLIC_COPY_PREVIEW_DEFAULTS === "true")
+    return fallback;
 
   const result = await queryPostgres<{
     enabled: boolean;
@@ -134,11 +145,12 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
     where content_key = $1
     limit 1
     `,
-    [key]
+    [key],
   );
   const row = result?.rows[0];
   if (!row?.enabled) return fallback;
-  const isSeededCopy = !row.updated_by || row.updated_by.startsWith("migration:");
+  const isSeededCopy =
+    !row.updated_by || row.updated_by.startsWith("migration:");
   if (isSeededCopy) return fallback;
   return {
     eyebrow: row.eyebrow,
@@ -147,15 +159,106 @@ export async function getPublicCopy(key: PublicCopyKey): Promise<PublicCopySlot>
     ctaLabel: row.cta_label,
     ctaHref: row.cta_href,
     secondaryCtaLabel: row.secondary_cta_label ?? fallback.secondaryCtaLabel,
-    secondaryCtaHref: row.secondary_cta_href ?? fallback.secondaryCtaHref
+    secondaryCtaHref: row.secondary_cta_href ?? fallback.secondaryCtaHref,
+  };
+}
+
+export type PublicCopyRevision = {
+  id: string;
+  stage: "draft" | "published" | "discarded";
+  value: PublicCopySlot;
+  changedBy: string | null;
+  createdAt: string;
+};
+
+export type PublicCopyEditorState = {
+  published: PublicCopySlot;
+  draft: PublicCopyRevision | null;
+  revisions: PublicCopyRevision[];
+};
+
+type PublicCopySnapshot = Partial<PublicCopySlot> & {
+  stage?: unknown;
+  eyebrow?: unknown;
+  headline?: unknown;
+  body?: unknown;
+  cta_label?: unknown;
+  cta_href?: unknown;
+  secondary_cta_label?: unknown;
+  secondary_cta_href?: unknown;
+};
+
+function snapshotString(snapshot: PublicCopySnapshot, camel: keyof PublicCopySlot, snake: keyof PublicCopySnapshot) {
+  const value = snapshot[camel] ?? snapshot[snake];
+  return typeof value === "string" ? value : "";
+}
+
+export function publicCopyFromSnapshot(snapshot: unknown, fallback: PublicCopySlot): PublicCopySlot {
+  if (!snapshot || typeof snapshot !== "object") return fallback;
+  const value = snapshot as PublicCopySnapshot;
+  return {
+    eyebrow: snapshotString(value, "eyebrow", "eyebrow") || fallback.eyebrow,
+    headline: snapshotString(value, "headline", "headline") || fallback.headline,
+    body: snapshotString(value, "body", "body") || fallback.body,
+    ctaLabel: snapshotString(value, "ctaLabel", "cta_label") || fallback.ctaLabel,
+    ctaHref: snapshotString(value, "ctaHref", "cta_href") || fallback.ctaHref,
+    secondaryCtaLabel:
+      snapshotString(value, "secondaryCtaLabel", "secondary_cta_label") || fallback.secondaryCtaLabel,
+    secondaryCtaHref:
+      snapshotString(value, "secondaryCtaHref", "secondary_cta_href") || fallback.secondaryCtaHref,
+  };
+}
+
+function revisionStage(snapshot: unknown): PublicCopyRevision["stage"] {
+  if (!snapshot || typeof snapshot !== "object") return "published";
+  const stage = (snapshot as { stage?: unknown }).stage;
+  return stage === "draft" || stage === "discarded" ? stage : "published";
+}
+
+export async function getPublicCopyEditorState(key: PublicCopyKey): Promise<PublicCopyEditorState> {
+  const published = await getPublicCopy(key);
+  const result = await queryPostgres<{
+    id: string;
+    snapshot_json: unknown;
+    changed_by: string | null;
+    created_at: string;
+  }>(
+    `
+    select id, snapshot_json, changed_by, created_at
+    from public.platform_public_content_versions
+    where content_key = $1
+    order by created_at desc
+    limit 12
+    `,
+    [key],
+  );
+  const events = (result?.rows ?? []).map((row) => ({
+    id: row.id,
+    stage: revisionStage(row.snapshot_json),
+    value: publicCopyFromSnapshot(row.snapshot_json, published),
+    changedBy: row.changed_by,
+    createdAt: row.created_at,
+  }));
+  const latestEvent = events[0] ?? null;
+
+  return {
+    published,
+    draft: latestEvent?.stage === "draft" ? latestEvent : null,
+    revisions: events.filter((event) => event.stage === "published").slice(0, 5),
   };
 }
 
 export function isSafePublicHref(value: string) {
-  return (/^\/(?!\/)/.test(value) || /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value)) && value.length <= 300;
+  return (
+    (/^\/(?!\/)/.test(value) || /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value)) &&
+    value.length <= 300
+  );
 }
 
-export function normalizeDemoEmbedUrl(sourceType: FeaturedDemo["sourceType"], rawUrl: string) {
+export function normalizeDemoEmbedUrl(
+  sourceType: FeaturedDemo["sourceType"],
+  rawUrl: string,
+) {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -170,11 +273,14 @@ export function normalizeDemoEmbedUrl(sourceType: FeaturedDemo["sourceType"], ra
 
   if (sourceType === "youtube") {
     const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
-    const id = hostname === "youtu.be"
-      ? url.pathname.split("/").filter(Boolean)[0]
-      : ["youtube.com", "youtube-nocookie.com"].includes(hostname)
-        ? (url.pathname.startsWith("/embed/") ? url.pathname.split("/")[2] : url.searchParams.get("v"))
-        : null;
+    const id =
+      hostname === "youtu.be"
+        ? url.pathname.split("/").filter(Boolean)[0]
+        : ["youtube.com", "youtube-nocookie.com"].includes(hostname)
+          ? url.pathname.startsWith("/embed/")
+            ? url.pathname.split("/")[2]
+            : url.searchParams.get("v")
+          : null;
     return id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)
       ? `https://www.youtube-nocookie.com/embed/${id}`
       : null;
@@ -182,6 +288,9 @@ export function normalizeDemoEmbedUrl(sourceType: FeaturedDemo["sourceType"], ra
 
   const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
   if (!["vimeo.com", "player.vimeo.com"].includes(hostname)) return null;
-  const id = url.pathname.split("/").filter(Boolean).find((part) => /^\d+$/.test(part));
+  const id = url.pathname
+    .split("/")
+    .filter(Boolean)
+    .find((part) => /^\d+$/.test(part));
   return id ? `https://player.vimeo.com/video/${id}` : null;
 }

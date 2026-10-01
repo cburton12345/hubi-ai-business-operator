@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { safeRedirect } from "@/lib/http/safe-redirect";
-import { hasAdminSession } from "@/lib/auth/admin-session";
-import { getCurrentAppSession } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
-import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function redirectTo(request: NextRequest, path: string) {
   return safeRedirect(request, path);
 }
 
 export async function POST(request: NextRequest) {
-  const [adminSession, appSession] = await Promise.all([hasAdminSession(), getCurrentAppSession()]);
-  if (!adminSession && !appSession) {
-    return redirectTo(request, "/login?next=/app/billing");
-  }
+  const actor = await requirePermission("billing:manage");
 
   if (!env.STRIPE_SECRET_KEY) {
     await logAppError({
@@ -26,7 +21,7 @@ export async function POST(request: NextRequest) {
     return redirectTo(request, "/app/billing?portal=stripe_not_ready");
   }
 
-  const workspaceId = await getCurrentWorkspaceId();
+  const workspaceId = actor.workspace.id;
   const subscription = await queryPostgres<{ external_customer_ref: string | null }>(
     `
     select external_customer_ref

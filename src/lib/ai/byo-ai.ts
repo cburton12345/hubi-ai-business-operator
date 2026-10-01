@@ -25,8 +25,10 @@ const byoEligibleRunTypes = new Set([
 ]);
 
 const protectedFerocityRunTypes = new Set([
+  "ferocity_command_understanding",
   "owner_command_event_triage",
-  "public_website_chat_reply"
+  "public_website_chat_reply",
+  "public_website_chat_reply_recovery"
 ]);
 
 export function isByoAiEligibleRunType(runType: string) {

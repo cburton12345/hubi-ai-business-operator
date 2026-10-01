@@ -97,10 +97,18 @@ export async function resolveRetellConfiguration(tenantId: string, requireLiveAc
   const apiKey =
     secretByAliases(secrets, ["api_key", "retell_api_key"])
     ?? (managed ? env.RETELL_API_KEY : null);
-  // Retell signs webhook payloads with the account API key. It does not issue a
-  // separate webhook-signing secret, so verification must use the same resolved
-  // tenant credential that authenticates Retell API requests.
-  const webhookApiKey = apiKey;
+  // Retell workspaces may designate a different API key as the sole webhook
+  // signing key. Prefer that tenant-scoped key when configured, while retaining
+  // the API key fallback for accounts that use one key for both purposes.
+  const webhookApiKey =
+    secretByAliases(secrets, [
+      "webhook_api_key",
+      "retell_webhook_api_key",
+      "webhook_secret",
+      "retell_webhook_secret"
+    ])
+    ?? (managed ? env.RETELL_WEBHOOK_SECRET : null)
+    ?? apiKey;
   const phoneNumber = selectRetellPhoneNumber({
     accountType: account.account_type,
     ownershipMode: account.ownership_mode,

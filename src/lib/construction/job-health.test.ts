@@ -121,4 +121,15 @@ describe("construction field-note preparation", () => {
     }, fallback);
     expect(normalized.riskFlags.some((flag) => flag.category === "safety")).toBe(true);
   });
+
+  it("treats standing water near electrical equipment as a high-risk escalation", () => {
+    const draft = createConstructionFieldLogFallback(
+      "Standing water was observed near the temporary electrical panel. The panel was not inspected."
+    );
+    expect(draft.riskFlags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "safety", severity: "high" })
+    ]));
+    expect(draft.suggestedActions.join(" ").toLowerCase()).toContain("qualified");
+    expect(draft.suggestedActions.join(" ").toLowerCase()).toContain("do not direct an unqualified person");
+  });
 });

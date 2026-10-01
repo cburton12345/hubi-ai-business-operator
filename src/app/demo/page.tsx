@@ -6,6 +6,8 @@ import { PublicFooter } from "@/components/public/PublicFooter";
 import { FeaturedDemoMedia } from "@/components/public/FeaturedDemoMedia";
 import { BusinessLoopDemo } from "@/components/public/BusinessLoopDemo";
 import { PublicCommandStory } from "@/components/public/PublicCommandStory";
+import { ChatExperience } from "@/app/chat/[publicKey]/ChatExperience";
+import { getFerocityPublicSalesProfile } from "@/lib/forms/get-public-form-profile";
 import { getPublicCopy } from "@/lib/public-site/featured-demo";
 
 export const revalidate = 60;
@@ -13,21 +15,17 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "Ferocity Demo | Watch the AI Business Operating System Think",
   description:
-    "See one shared Business Brain coordinate people, AI employees, departments, and providers from the first conversation through future growth.",
+    "See one shared Business Brain coordinate people, specialized AI departments, and providers from the first conversation through future growth.",
   alternates: { canonical: "/demo" }
 };
 
 const loop = ["Remember", "Watch", "Understand", "Decide", "Coordinate", "Act", "Verify", "Continue"];
 
-const intelligence = [
-  ["Reputation and retention", "Reviews, referrals, memberships, reminders, reactivation, and customer-lifetime campaigns."],
-  ["Search and content", "SEO, GEO, legitimate authority building, content, images, and video generation grounded in real proof."],
-  ["Campaign intelligence", "Offers, creative variants, channel plans, managed budgets, and source-to-paid-revenue measurement."],
-  ["Owner intelligence", "The Business Brain, Daily Briefs, reports, profit leaks, risks, approvals, and operational monitoring."]
-];
-
 export default async function DemoPage() {
-  const hero = await getPublicCopy("demo_hero");
+  const [hero, publicSalesProfile] = await Promise.all([
+    getPublicCopy("demo_hero"),
+    getFerocityPublicSalesProfile()
+  ]);
   return (
     <main className="public-page">
       <section className="public-shell">
@@ -51,48 +49,34 @@ export default async function DemoPage() {
           </div>
         </section>
 
+        <section className="demo-audience-band" aria-label="Businesses Ferocity can coordinate">
+          <div><strong>Field and service businesses</strong><span>Calls, estimates, crews, jobs, changes, invoices, and follow-up.</span></div>
+          <div><strong>Professional firms</strong><span>Inquiries, appointments, proposals, client work, billing, and retention.</span></div>
+          <div><strong>Agencies and operators</strong><span>Campaigns, sales, delivery, reporting, renewals, and referrals.</span></div>
+        </section>
+
         <BusinessLoopDemo />
 
-        <PublicCommandStory />
+        {publicSalesProfile ? (
+          <PublicCommandStory>
+            <ChatExperience
+              brandName={publicSalesProfile.brandName}
+              experience="ferocity_sales"
+              publicKey={publicSalesProfile.publicKey}
+            />
+          </PublicCommandStory>
+        ) : null}
 
         <section className="demo-positioning">
           <div>
             <p className="eyebrow">The handoffs stop breaking</p>
             <h2>The estimate knows what was promised on the call. The crew knows what was sold. The invoice knows what changed.</h2>
             <p>
-              People and AI employees work from the same Business Brain instead of rebuilding the story at every step. Ferocity remembers what happened, notices meaningful change, advances authorized work, checks the result, and keeps the next department moving.
+              People and specialized AI departments work from the same Business Brain instead of rebuilding the story at every step. Ferocity remembers what happened, notices meaningful change, advances authorized work, checks the result, and keeps the next department moving.
             </p>
           </div>
           <div className="demo-proof-flow">
             {loop.map((item) => <span key={item}>{item}</span>)}
-          </div>
-        </section>
-
-        <section className="feature-split">
-          <article className="panel">
-            <h2>The customer conversation, connected</h2>
-            <p className="muted">
-              AI phone answering and voice conversations, website chat, texting, email, lead capture, qualification, long-term follow-up, estimating, booking, reminders, and customer history all share context.
-            </p>
-          </article>
-          <article className="panel">
-            <h2>The business operation, connected</h2>
-            <p className="muted">
-              Customers, jobs, dispatch, scheduling, crews, field work, inventory, purchasing, documents, invoicing, online payments, collections, job profit, and accounting records move as one operation.
-            </p>
-          </article>
-        </section>
-
-        <section className="panel section-actions">
-          <p className="eyebrow">The outcome feeds the next decision</p>
-          <h2>Completed work makes the entire business smarter.</h2>
-          <div className="value-ladder">
-            {intelligence.map(([title, body]) => (
-              <div key={title}>
-                <strong>{title}</strong>
-                <p>{body}</p>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -101,7 +85,7 @@ export default async function DemoPage() {
             <p className="eyebrow">Authority without bottlenecks</p>
             <h2>The right work goes to the right worker—human or AI.</h2>
             <p>
-              Assign work to a person, choose Draft only or Ask first for an AI employee, or authorize routine work to run automatically. Ferocity follows consent, spending, publishing, payment, and provider rules—and keeps every action traceable.
+              Assign work to a person, choose Draft only or Ask first for an AI department, or authorize routine work to run automatically. Ferocity follows consent, spending, publishing, payment, and provider rules—and keeps every action traceable.
             </p>
           </div>
           <div className="notice-card">
@@ -116,14 +100,15 @@ export default async function DemoPage() {
         <section className="final-cta">
           <div>
             <p className="eyebrow">Start with one problem</p>
-            <h2>Give your people and AI workforce one system for what happens next.</h2>
-            <p>Start with the free grader, compare the operating levels, or connect the organization now.</p>
+            <h2>Give everyone responsible for the business one system for what happens next.</h2>
+            <p>Ask Ferocity for a practical diagnosis, compare the operating levels, or start guided setup.</p>
           </div>
           <div className="button-row">
             <Link className="button" href="/start">
               Start Ferocity <ArrowRight size={16} />
             </Link>
             <Link className="button secondary-button" href="/pricing">Compare plans</Link>
+            <Link className="button secondary-button" href="#ask-ferocity">Ask Ferocity here</Link>
           </div>
         </section>
         <PublicFooter />

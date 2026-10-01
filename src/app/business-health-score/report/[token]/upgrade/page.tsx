@@ -174,7 +174,7 @@ export default async function AiGrowthReportUpgradePage({
                 <input name="selectedPath" type="hidden" value="starter" />
                 <div>
                   <h3>Starter includes the Blueprint</h3>
-                  <p className="muted">$79/mo. Best if they want Ferocity watching leads, follow-up, reviews, simple jobs, proof drafts, owner alerts, and basic reports.</p>
+                  <p className="muted">$149/mo. Best if they want Ferocity watching leads, follow-up, reviews, simple jobs, proof drafts, owner alerts, and basic reports.</p>
                 </div>
                 <button className="mini-button" type="submit">
                   Start Starter <ArrowRight size={14} />
@@ -196,7 +196,7 @@ export default async function AiGrowthReportUpgradePage({
                 <input name="selectedPath" type="hidden" value="growth" />
                 <div>
                   <h3>Growth includes refreshes</h3>
-              <p className="muted">$199/mo. Best for SEO drafts, reviews, proof capture, marketing campaigns, attribution, and weekly growth briefs.</p>
+              <p className="muted">$349/mo. Best for SEO drafts, reviews, proof capture, marketing campaigns, attribution, and weekly growth briefs.</p>
                 </div>
                 <button className="mini-button" type="submit">
                   Start Growth

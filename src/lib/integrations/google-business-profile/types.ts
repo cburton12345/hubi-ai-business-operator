@@ -10,6 +10,7 @@ export type BusinessProfileLocation = {
   addressText: string | null;
   primaryCategory: string | null;
   verificationState: string | null;
+  profile: Record<string, unknown>;
   metadata: Record<string, unknown>;
 };
 
@@ -23,4 +24,17 @@ export type BusinessProfileReview = {
   replyComment: string | null;
   replyUpdateTime: string | null;
   metadata: Record<string, unknown>;
+};
+
+export type BusinessProfileMetricPoint = {
+  metric: string;
+  date: string;
+  value: number;
+  breakdown: Record<string, unknown>;
+};
+
+export type BusinessProfileSearchQuery = {
+  query: string;
+  value: number | null;
+  threshold: number | null;
 };

@@ -13,8 +13,9 @@ import { env } from "@/lib/env";
 const acceptInviteSchema = z.object({
   token: z.string().min(20),
   name: z.string().min(1).max(160),
-  password: z.string().min(8).max(200)
-});
+  password: z.string().min(8).max(200),
+  confirmPassword: z.string().min(8).max(200)
+}).refine((value) => value.password === value.confirmPassword, { message: "Passwords must match.", path: ["confirmPassword"] });
 
 function appUrl(path: string) {
   const baseUrl = env.FEROCITY_APP_URL ?? "https://ferocity.live";
@@ -25,7 +26,8 @@ export async function acceptInviteAction(formData: FormData) {
   const parsed = acceptInviteSchema.safeParse({
     token: formData.get("token"),
     name: formData.get("name"),
-    password: formData.get("password")
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword")
   });
   if (!parsed.success) redirect("/login?error=invite");
 
@@ -156,7 +158,10 @@ Your Ferocity account is ready.
 You can open your workspace here:
 ${appUrl("/app")}
 
-Start with Autopilot Setup if you want Ferocity to guide setup, or use the dashboard to review leads, automations, service ops, and growth work.`,
+If Ferocity asks you to sign in again, use this direct workspace sign-in:
+${appUrl(`/login?mode=business&next=/app/ferocity?onboarding=1&email=${encodeURIComponent(invite.email)}`)}
+
+Ferocity will open with a short guided conversation. Tell it what kind of business you run and what result matters first; it will recommend a simple setup path without turning on live actions until approved.`,
     tenantId: invite.tenant_id,
     eventKey: "invite_accepted",
     metadata: {
@@ -181,8 +186,9 @@ Start with Autopilot Setup if you want Ferocity to guide setup, or use the dashb
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 14
+    maxAge: 60 * 60 * 24 * 14,
+    priority: "high"
   });
 
-  redirect(invite.invite_purpose === "employee" ? "/employee" : "/app/welcome");
+  redirect(invite.invite_purpose === "employee" ? "/employee" : "/app/ferocity?onboarding=1");
 }

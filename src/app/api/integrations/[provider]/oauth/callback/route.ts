@@ -20,7 +20,7 @@ function appRedirect(request: Request, params: Record<string, string>) {
   return NextResponse.redirect(url);
 }
 
-async function claimOAuthJob(workspaceId: string, state: string) {
+async function claimOAuthJob(workspaceId: string, state: string, provider: "tiktok" | "tiktok_content") {
   const result = await queryPostgres<{ id: string; credential_profile: string | null }>(
     `
     update public.integration_jobs
@@ -32,7 +32,7 @@ async function claimOAuthJob(workspaceId: string, state: string) {
       where tenant_id = $1
         and job_type = 'oauth_start_requested'
         and status = 'queued'
-        and payload_json->>'provider' = 'tiktok'
+        and payload_json->>'provider' = $3
         and payload_json->>'oauthState' = $2
         and created_at > now() - interval '10 minutes'
       order by created_at desc
@@ -41,7 +41,7 @@ async function claimOAuthJob(workspaceId: string, state: string) {
     )
     returning id, payload_json->>'credentialProfile' as credential_profile
     `,
-    [workspaceId, state]
+    [workspaceId, state, provider]
   );
   return result?.rows[0] ?? null;
 }
@@ -63,6 +63,7 @@ async function finishOAuthJob(jobId: string, status: "completed" | "failed", res
 async function saveEncryptedCredential(input: {
   workspaceId: string;
   userId: string | null;
+  provider: "tiktok" | "tiktok_content";
   label: "oauth_access_token" | "oauth_refresh_token";
   kind: "auth_token" | "refresh_token";
   secret: string;
@@ -80,8 +81,8 @@ async function saveEncryptedCredential(input: {
       last_verified_at, created_by_user_id, updated_by_user_id, metadata_json
     )
     values (
-      $1, 'tiktok', $2, $3, 'configured', $4, $5, $6, $7, $8, $9::timestamptz,
-      now(), $10, $10, $11::jsonb
+      $1, $2, $3, $4, 'configured', $5, $6, $7, $8, $9, $10::timestamptz,
+      now(), $11, $11, $12::jsonb
     )
     on conflict (tenant_id, provider_key, credential_label) do update
     set credential_kind = excluded.credential_kind,
@@ -100,6 +101,7 @@ async function saveEncryptedCredential(input: {
     `,
     [
       input.workspaceId,
+      input.provider,
       input.label,
       input.kind,
       encrypted.secretPreview,
@@ -117,6 +119,7 @@ async function saveEncryptedCredential(input: {
 
 async function recordConnectedAccount(input: {
   workspaceId: string;
+  provider: "tiktok" | "tiktok_content";
   tokens: TikTokTokenSet;
   profile: TikTokProfile;
   accessExpiresAt: string;
@@ -139,9 +142,9 @@ async function recordConnectedAccount(input: {
       tenant_id, provider, display_name, status, credentials_status, scopes_json,
       metadata_json, last_checked_at
     )
-    values ($1, 'tiktok', 'TikTok', 'connected', 'configured', $2::jsonb, $3::jsonb, now())
+    values ($1, $2, $3, 'connected', 'configured', $4::jsonb, $5::jsonb, now())
     on conflict (tenant_id, provider) do update
-    set display_name = 'TikTok',
+    set display_name = excluded.display_name,
         status = 'connected',
         credentials_status = 'configured',
         scopes_json = excluded.scopes_json,
@@ -150,7 +153,13 @@ async function recordConnectedAccount(input: {
         updated_at = now()
     returning id
     `,
-    [input.workspaceId, JSON.stringify(input.tokens.scope.split(",").filter(Boolean)), JSON.stringify(metadata)]
+    [
+      input.workspaceId,
+      input.provider,
+      input.provider === "tiktok_content" ? "TikTok Content Publishing" : "TikTok",
+      JSON.stringify(input.tokens.scope.split(",").filter(Boolean)),
+      JSON.stringify(metadata)
+    ]
   );
   if (!connection?.rowCount) throw new Error("Ferocity could not update the TikTok connection.");
 
@@ -160,7 +169,7 @@ async function recordConnectedAccount(input: {
       tenant_id, provider_key, display_name, status, credentials_status,
       live_actions_enabled, metadata_json
     )
-    values ($1, 'tiktok', $2, 'connected', 'configured', false, $3::jsonb)
+    values ($1, $2, $3, 'connected', 'configured', false, $4::jsonb)
     on conflict (tenant_id, provider_key) do update
     set display_name = excluded.display_name,
         status = 'connected',
@@ -169,62 +178,35 @@ async function recordConnectedAccount(input: {
         metadata_json = public.provider_accounts.metadata_json || excluded.metadata_json,
         updated_at = now()
     `,
-    [input.workspaceId, input.profile.display_name || "TikTok account", JSON.stringify(metadata)]
-  );
-
-  await queryPostgres(
-    `
-    insert into public.provider_connection_lanes (
-      tenant_id, capability_key, provider_key, lane_key, display_name, connection_status,
-      credentials_status, live_actions_enabled, source, plain_language_status, metadata_json
-    )
-    values (
-      $1, 'tiktok_ads', 'tiktok', 'customer_owned', 'Customer TikTok', 'connected',
-      'configured', false, 'provider_account', $2, $3::jsonb
-    )
-    on conflict (tenant_id, capability_key, lane_key) do update
-    set provider_key = 'tiktok',
-        display_name = 'Customer TikTok',
-        connection_status = 'connected',
-        credentials_status = 'configured',
-        live_actions_enabled = false,
-        source = 'provider_account',
-        plain_language_status = excluded.plain_language_status,
-        metadata_json = public.provider_connection_lanes.metadata_json || excluded.metadata_json,
-        updated_at = now()
-    `,
-    [
-      input.workspaceId,
-      "TikTok account identity is connected. Posting, campaign changes, and ad spend remain disabled until Ferocity receives the additional provider approvals and the business enables those actions.",
-      JSON.stringify(metadata)
-    ]
+    [input.workspaceId, input.provider, input.profile.display_name || "TikTok account", JSON.stringify(metadata)]
   );
 }
 
-async function handleTikTokCallback(request: Request) {
+async function handleTikTokCallback(request: Request, provider: "tiktok" | "tiktok_content") {
   await requirePermission("tenant:manage");
   const url = new URL(request.url);
   const state = url.searchParams.get("state");
-  if (!state) return appRedirect(request, { provider: "tiktok", setup: "invalid_state" });
+  if (!state) return appRedirect(request, { provider, setup: "invalid_state" });
 
   const workspaceId = await getCurrentWorkspaceId();
-  const job = await claimOAuthJob(workspaceId, state);
-  if (!job) return appRedirect(request, { provider: "tiktok", setup: "invalid_state" });
+  const job = await claimOAuthJob(workspaceId, state, provider);
+  if (!job) return appRedirect(request, { provider, setup: "invalid_state" });
   const jobId = job.id;
   const useSandboxCredentials = job.credential_profile === "sandbox";
 
   const providerError = url.searchParams.get("error") || url.searchParams.get("error_code");
   if (providerError) {
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "authorization_denied" }, providerError);
-    return appRedirect(request, { provider: "tiktok", setup: "denied" });
+    return appRedirect(request, { provider, setup: "denied" });
   }
 
   const code = url.searchParams.get("code");
   const clientKey = useSandboxCredentials ? env.TIKTOK_SANDBOX_CLIENT_KEY : env.TIKTOK_CLIENT_KEY;
   const clientSecret = useSandboxCredentials ? env.TIKTOK_SANDBOX_CLIENT_SECRET : env.TIKTOK_CLIENT_SECRET;
-  if (!code || !clientKey || !clientSecret || !env.TIKTOK_OAUTH_REDIRECT_URI) {
+  const redirectUri = provider === "tiktok_content" ? env.TIKTOK_CONTENT_REDIRECT_URI : env.TIKTOK_OAUTH_REDIRECT_URI;
+  if (!code || !clientKey || !clientSecret || !redirectUri) {
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "incomplete_callback" }, "TikTok callback was incomplete.");
-    return appRedirect(request, { provider: "tiktok", setup: "failed" });
+    return appRedirect(request, { provider, setup: "failed" });
   }
   if (!hasCredentialEncryptionKey()) {
     await finishOAuthJob(
@@ -233,7 +215,7 @@ async function handleTikTokCallback(request: Request) {
       { safeMode: true, reason: "credential_encryption_unavailable" },
       "Encrypted credential storage is not configured."
     );
-    return appRedirect(request, { provider: "tiktok", setup: "encryption_required" });
+    return appRedirect(request, { provider, setup: "encryption_required" });
   }
 
   try {
@@ -241,14 +223,14 @@ async function handleTikTokCallback(request: Request) {
       clientKey,
       clientSecret,
       code,
-      redirectUri: env.TIKTOK_OAUTH_REDIRECT_URI
+      redirectUri
     });
     const profile = await fetchTikTokProfile(tokens.access_token);
     const session = await getCurrentAppSession();
     const accessExpiresAt = tokenExpiryFromNow(tokens.expires_in);
     const refreshExpiresAt = tokenExpiryFromNow(tokens.refresh_expires_in);
     const commonMetadata = {
-      source: "tiktok_oauth",
+      source: provider === "tiktok_content" ? "tiktok_content_oauth" : "tiktok_oauth",
       credentialProfile: useSandboxCredentials ? "sandbox" : "production",
       openId: profile.open_id,
       scopes: tokens.scope.split(",").filter(Boolean)
@@ -257,6 +239,7 @@ async function handleTikTokCallback(request: Request) {
     await saveEncryptedCredential({
       workspaceId,
       userId: session?.userId ?? null,
+      provider,
       label: "oauth_access_token",
       kind: "auth_token",
       secret: tokens.access_token,
@@ -266,22 +249,23 @@ async function handleTikTokCallback(request: Request) {
     await saveEncryptedCredential({
       workspaceId,
       userId: session?.userId ?? null,
+      provider,
       label: "oauth_refresh_token",
       kind: "refresh_token",
       secret: tokens.refresh_token,
       rotationDueAt: refreshExpiresAt,
       metadata: commonMetadata
     });
-    await recordConnectedAccount({ workspaceId, tokens, profile, accessExpiresAt, refreshExpiresAt });
+    await recordConnectedAccount({ workspaceId, provider, tokens, profile, accessExpiresAt, refreshExpiresAt });
     await finishOAuthJob(jobId, "completed", {
       safeMode: true,
-      provider: "tiktok",
+      provider,
       openId: profile.open_id,
       displayName: profile.display_name,
       credentialProfile: useSandboxCredentials ? "sandbox" : "production",
       liveActionsEnabled: false
     });
-    return appRedirect(request, { provider: "tiktok", setup: "connected" });
+    return appRedirect(request, { provider, setup: "connected" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "TikTok connection failed.";
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "token_exchange_failed" }, message);
@@ -290,27 +274,31 @@ async function handleTikTokCallback(request: Request) {
       insert into public.integration_connections (
         tenant_id, provider, display_name, status, credentials_status, metadata_json
       )
-      values ($1, 'tiktok', 'TikTok', 'error', 'invalid', $2::jsonb)
+      values ($1, $2, $3, 'error', 'invalid', $4::jsonb)
       on conflict (tenant_id, provider) do update
       set status = 'error',
           credentials_status = 'invalid',
           metadata_json = public.integration_connections.metadata_json || excluded.metadata_json,
           updated_at = now()
       `,
-      [workspaceId, JSON.stringify({ lastOAuthErrorAt: new Date().toISOString() })]
+      [workspaceId, provider, provider === "tiktok_content" ? "TikTok Content Publishing" : "TikTok", JSON.stringify({ lastOAuthErrorAt: new Date().toISOString() })]
     );
-    return appRedirect(request, { provider: "tiktok", setup: "failed" });
+    return appRedirect(request, { provider, setup: "failed" });
   }
 }
 
 export async function GET(request: Request, context: { params: Promise<{ provider: string }> }) {
   const { provider } = await context.params;
   const normalizedProvider = provider.toLowerCase();
-  if (normalizedProvider === "tiktok") return handleTikTokCallback(request);
+  if (normalizedProvider === "tiktok" || normalizedProvider === "tiktok_content") return handleTikTokCallback(request, normalizedProvider);
   if (normalizedProvider === "reddit") return handleStandardOAuthCallback(request, ["reddit"]);
+  if (normalizedProvider === "linkedin_ads") return handleStandardOAuthCallback(request, ["linkedin_ads"]);
+  if (normalizedProvider === "pinterest_ads") return handleStandardOAuthCallback(request, ["pinterest_ads"]);
+  if (normalizedProvider === "snapchat_ads") return handleStandardOAuthCallback(request, ["snapchat_ads"]);
+  if (normalizedProvider === "amazon_ads") return handleStandardOAuthCallback(request, ["amazon_ads"]);
   if (normalizedProvider === "jobber") return handleStandardOAuthCallback(request, ["jobber"]);
-  if (normalizedProvider === "microsoft" || normalizedProvider === "microsoft_ads" || normalizedProvider === "microsoft_calendar") {
-    return handleStandardOAuthCallback(request, ["microsoft_ads", "microsoft_calendar"]);
+  if (normalizedProvider === "microsoft" || normalizedProvider === "microsoft_ads" || normalizedProvider === "microsoft_calendar" || normalizedProvider === "microsoft_mailbox") {
+    return handleStandardOAuthCallback(request, ["microsoft_ads", "microsoft_calendar", "microsoft_mailbox"]);
   }
   return Response.json(
     { ok: false, status: "unsupported_provider", message: "This OAuth provider is not registered in Ferocity." },

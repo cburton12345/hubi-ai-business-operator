@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { capabilitiesForPhonePath } from "@/lib/phone/phone-connections";
+import { capabilitiesForPhonePath, inferNorthAmericanAreaCode } from "@/lib/phone/phone-connections";
 import { getPhoneProvider, listPhoneProviders } from "@/lib/phone/provider-registry";
 import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
 import type { VoiceAgentProvider } from "@/lib/providers/interfaces";
 
 describe("provider-independent phone architecture", () => {
+  it("infers a local NANP area code when managed-number setup leaves it blank", () => {
+    expect(inferNorthAmericanAreaCode("+1 (715) 308-5984")).toBe("715");
+    expect(inferNorthAmericanAreaCode("+442079460123")).toBeNull();
+    expect(inferNorthAmericanAreaCode("+11235550123")).toBeNull();
+  });
+
   it("keeps the fast forwarding path intentionally simple", () => {
     const capabilities = capabilitiesForPhonePath("keep_number_forwarding");
     expect(capabilities).toContain("inbound_call");

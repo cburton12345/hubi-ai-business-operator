@@ -3,7 +3,10 @@ import { getServiceGate } from "@/lib/controls/service-gates";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { syncCustomerLifecycleForTenant } from "@/lib/customer-lifecycle/sync-customer-lifecycle";
+import { prepareContextAwareLeadFollowUps } from "@/lib/customer-lifecycle/prepare-context-aware-followups";
 import { evaluateVisitSchedule } from "@/lib/scheduling/evaluate-visit";
+import { executeWorkforceRuntime } from "@/lib/ai-workforce/execution-runtime";
+import { syncCompletedJobLocalPresenceEvents } from "@/lib/local-presence/events";
 
 export type AgentWorkflowRow = {
   id: string;
@@ -632,48 +635,22 @@ async function runLeadResponseAgent(tenantId: string, workflowId: string, runId:
 }
 
 async function runFollowUpAgent(tenantId: string, workflowId: string, runId: string) {
-  const result = await queryPostgres<{ id: string; lead_label: string | null }>(
-    `
-    insert into public.follow_up_workflows (
-      tenant_id, brand_id, lead_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
-    )
-    select l.tenant_id, l.brand_id, l.id, 'stale_lead_recovery', 'manual', 'open', now(),
-      'This lead is aging. Review the history, then call or send an approved follow-up.',
-      jsonb_build_object('createdByAgent', 'follow_up_agent', 'liveCustomerSend', false)
-    from public.leads l
-    where l.tenant_id = $1
-      and l.status in ('new', 'qualified')
-      and l.created_at < now() - interval '1 day'
-      and not exists (
-        select 1 from public.follow_up_workflows f
-        where f.tenant_id = l.tenant_id
-          and f.lead_id = l.id
-          and f.workflow_type = 'stale_lead_recovery'
-          and f.status in ('open', 'scheduled')
-      )
-    order by l.created_at asc
-    limit 20
-    returning id, lead_id::text as lead_label
-    `,
-    [tenantId]
-  );
-  const rows = result?.rows ?? [];
-  for (const row of rows) {
-    await recordOutput({
-      tenantId,
-      workflowId,
-      runId,
-      agentKey: "follow_up_agent",
-      outputType: "follow_up_workflow",
-      title: "Created stale lead follow-up task",
-      status: "needs_review",
-      targetType: "follow_up_workflow",
-      targetId: row.id
-    });
-  }
+  const result = await prepareContextAwareLeadFollowUps(tenantId);
+  await recordOutput({
+    tenantId,
+    workflowId,
+    runId,
+    agentKey: "follow_up_agent",
+    outputType: "follow_up_workflow",
+    title: result.prepared ? `Prepared ${result.prepared} context-aware lead follow-up(s)` : "Lead follow-up is caught up",
+    status: result.prepared ? "needs_review" : "prepared",
+    metadata: result
+  });
   return {
-    preparedCount: rows.length,
-    summary: rows.length ? `Created ${rows.length} stale lead follow-up task(s).` : "No stale lead follow-up tasks were needed."
+    preparedCount: result.prepared,
+    summary: result.prepared
+      ? `Prepared ${result.prepared} context-aware lead follow-up(s); ${result.skippedActiveConversation} active conversation(s) were protected and ${result.cappedForReview} lead(s) hit the frequency cap.`
+      : "No lead follow-up was due after context, response-stop, and frequency-cap checks."
   };
 }
 
@@ -841,6 +818,7 @@ async function runReviewAgent(tenantId: string, workflowId: string, runId: strin
     [tenantId]
   );
   const rows = result?.rows ?? [];
+  const localPresenceEvents = await syncCompletedJobLocalPresenceEvents(tenantId);
   for (const row of rows) {
     await recordOutput({
       tenantId,
@@ -856,7 +834,9 @@ async function runReviewAgent(tenantId: string, workflowId: string, runId: strin
   }
   return {
     preparedCount: rows.length,
-    summary: rows.length ? `Prepared ${rows.length} review request workflow(s).` : "No completed jobs needed review workflows."
+    summary: rows.length || localPresenceEvents
+      ? `Prepared ${rows.length} review request workflow(s) and ${localPresenceEvents} local-presence event(s).`
+      : "No completed jobs needed review workflows or new local-presence events."
   };
 }
 
@@ -1416,22 +1396,27 @@ async function runAgentWorkflowForTenant(input: {
   }
 
   try {
-    const result =
-      agentKey === "lead_response_agent"
-        ? await runLeadResponseAgent(tenantId, workflow.id, runId)
-        : agentKey === "follow_up_agent"
-          ? await runFollowUpAgent(tenantId, workflow.id, runId)
-          : agentKey === "customer_lifecycle_agent"
-            ? await runCustomerLifecycleAgent(tenantId, workflow.id, runId)
-          : agentKey === "dispatcher_agent"
-            ? await runDispatcherAgent(tenantId, workflow.id, runId)
-          : agentKey === "review_agent"
-            ? await runReviewAgent(tenantId, workflow.id, runId)
-            : agentKey === "invoice_reminder_agent"
-              ? await runInvoiceReminderAgent(tenantId, workflow.id, runId)
-              : agentKey === "authority_manager"
-                ? await runAuthorityManagerAgent(tenantId, workflow.id, runId)
-                : await runSeoMarketingAgent(tenantId, workflow.id, runId);
+    const execution = await executeWorkforceRuntime({
+      context: { tenantId, workflowId: workflow.id, runId, departmentKey: agentKey },
+      nativeExecute: async () => (
+        agentKey === "lead_response_agent"
+          ? await runLeadResponseAgent(tenantId, workflow.id, runId)
+          : agentKey === "follow_up_agent"
+            ? await runFollowUpAgent(tenantId, workflow.id, runId)
+            : agentKey === "customer_lifecycle_agent"
+              ? await runCustomerLifecycleAgent(tenantId, workflow.id, runId)
+            : agentKey === "dispatcher_agent"
+              ? await runDispatcherAgent(tenantId, workflow.id, runId)
+            : agentKey === "review_agent"
+              ? await runReviewAgent(tenantId, workflow.id, runId)
+              : agentKey === "invoice_reminder_agent"
+                ? await runInvoiceReminderAgent(tenantId, workflow.id, runId)
+                : agentKey === "authority_manager"
+                  ? await runAuthorityManagerAgent(tenantId, workflow.id, runId)
+                  : await runSeoMarketingAgent(tenantId, workflow.id, runId)
+      )
+    });
+    const result = execution.result;
 
     await finishRun({
       tenantId,
@@ -1445,7 +1430,8 @@ async function runAgentWorkflowForTenant(input: {
         cadenceKey: workflow.cadence_key,
         runMode: workflow.run_mode,
         liveCustomerSends: false,
-        livePublishing: false
+        livePublishing: false,
+        executionRuntime: execution.runtimeKey
       }
     });
     await logAgentTimeline({

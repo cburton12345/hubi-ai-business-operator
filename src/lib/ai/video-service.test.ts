@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateVideoFrameReviews,
+  extractVideoReferenceUrls,
   planVideoMarketingAsset,
   scoreVideoCreative,
   videoDeliverablesFor,
   videoFinishingPlan
-} from "./video-service";
+} from "@/lib/ai/video-service";
 
 const strongInput = {
   goal: "Show overwhelmed roofing owners how Ferocity keeps every lead and job moving",
@@ -17,6 +18,54 @@ const strongInput = {
   sourceAssets: "Approved Ferocity product screens and customer-authorized job footage"
 };
 
+describe("provider-neutral video planning", () => {
+  it("extracts and de-duplicates direct reference image URLs", () => {
+    expect(extractVideoReferenceUrls("Use https://cdn.example.com/product.jpg, https://cdn.example.com/product.jpg and https://cdn.example.com/team.png."))
+      .toEqual(["https://cdn.example.com/product.jpg", "https://cdn.example.com/team.png"]);
+  });
+
+  it("plans native portrait and landscape sources plus a local square finish", () => {
+    expect(videoDeliverablesFor("multi_platform").map((item) => [item.aspectRatio, item.productionMethod]))
+      .toEqual([
+        ["16:9", "source_render"],
+        ["9:16", "local_reframe"],
+        ["1:1", "local_reframe"]
+      ]);
+  });
+
+  it("keeps brand context, quality, references, and variations in the saved plan", () => {
+    const plan = planVideoMarketingAsset({
+      goal: "Promote our spring sale to nearby homeowners",
+      platform: "instagram",
+      durationSeconds: 15,
+      sourceAssets: "Product: https://cdn.example.com/product.jpg",
+      variantCount: 2,
+      quality: "balanced",
+      brandContext: { companyName: "Acme", brandVoice: "Plainspoken and helpful" }
+    });
+    expect(plan.providerRequest.referenceAssetUrls).toEqual(["https://cdn.example.com/product.jpg"]);
+    expect(plan.providerRequest.requestedQuality).toBe("balanced");
+    expect(plan.metadata.brandContext).toMatchObject({ companyName: "Acme" });
+    expect(plan.variantPrompts).toHaveLength(2);
+  });
+
+  it("turns UGC into a governed production workflow instead of a generic visual style", () => {
+    const plan = planVideoMarketingAsset({
+      goal: "Show how a busy owner gets an evening back",
+      platform: "instagram",
+      durationSeconds: 15,
+      contentStyle: "ugc",
+      brandContext: { companyName: "Acme", brandVoice: "Direct and human" }
+    });
+    expect(plan.providerRequest.contentStyle).toBe("ugc");
+    expect(plan.providerRequest.ugcPlan).toMatchObject({
+      format: "credible_first_person_story",
+      actorPolicy: expect.stringContaining("Never imply")
+    });
+    expect(plan.metadata.ugcPlan).toBeTruthy();
+  });
+});
+
 describe("video creative director", () => {
   it("scores a grounded concept before provider spend", () => {
     const result = scoreVideoCreative(strongInput);
@@ -26,11 +75,7 @@ describe("video creative director", () => {
   });
 
   it("blocks vague or unsupported absolute claims before a paid render", () => {
-    const result = scoreVideoCreative({
-      goal: "Best in town guaranteed",
-      platform: "tiktok",
-      durationSeconds: 15
-    });
+    const result = scoreVideoCreative({ goal: "Best in town guaranteed", platform: "tiktok", durationSeconds: 15 });
     expect(result.decision).toBe("blocked");
     expect(result.issues.map((issue) => issue.code)).toContain("claim_review_required");
   });
@@ -76,9 +121,7 @@ describe("post-render quality and finishing", () => {
   });
 
   it("keeps the publish gate closed when visual inspection is unavailable", () => {
-    const review = aggregateVideoFrameReviews([
-      { inspected: false, score: 0, observations: [], issues: [] }
-    ]);
+    const review = aggregateVideoFrameReviews([{ inspected: false, score: 0, observations: [], issues: [] }]);
     expect(review.status).toBe("unavailable");
     expect(review.decision).toBe("manual_review_required");
     expect(review.note).toContain("did not pretend");

@@ -207,7 +207,7 @@ export default function GrowthSystemPage() {
               The score identifies the opportunity. Ferocity can turn it into a working system: stronger demand, faster response, persistent follow-up, cleaner revenue attribution, more customer proof, and better-informed growth decisions.
             </p>
             <Link className="button" href="/demo">
-              Open full demo <ArrowRight size={16} />
+              Explore how Ferocity works <ArrowRight size={16} />
             </Link>
           </div>
         </section>

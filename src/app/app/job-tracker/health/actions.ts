@@ -64,6 +64,7 @@ export async function prepareConstructionFieldLogAction(formData: FormData) {
       "Categories: money, schedule, procurement, change, safety, information. Severities: low, medium, high, critical.",
       "Never invent facts. Separate observations from assumptions. Flag missing information.",
       "Do not make code, safety, contract, payment, schedule, disciplinary, or change-order decisions.",
+      "Treat possible water/electrical contact, exposed power, or an uninspected electrical condition as a high or critical safety flag. Recommend isolating the area and escalating to a qualified safety/electrical lead; never tell an unqualified person to inspect, touch, or diagnose it.",
       "The customer update is a draft and must not claim unverified facts."
     ].join(" "),
     user: `Job: ${job.title}\nField note:\n${parsed.data.rawNote}`,

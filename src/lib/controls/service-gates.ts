@@ -3,7 +3,7 @@ import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
 
 export type ServiceMode = "off" | "draft_only" | "review_required" | "enabled";
 export type OveragePolicy = "block" | "allow_with_review" | "allow";
-export type PlanKey = "free" | "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
+export type PlanKey = "free" | "earn" | "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator" | "managed_operator" | "pro_agency";
 
 export type ServiceGate = {
   featureKey: string;
@@ -22,6 +22,7 @@ export type ServiceGate = {
 
 const planRank: Record<PlanKey, number> = {
   free: 0,
+  earn: 30,
   ferocity_connect: 3,
   calls: 4,
   job_tracker: 5,
@@ -34,6 +35,7 @@ const planRank: Record<PlanKey, number> = {
 
 const planLabel: Record<PlanKey, string> = {
   free: "Free",
+  earn: "Ferocity Earn",
   ferocity_connect: "Ferocity Connect",
   calls: "Ferocity Calls",
   job_tracker: "Job Tracker",
@@ -48,7 +50,7 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   ai_generation: "free",
   seo_autopilot: "growth",
   hosted_growth_pages: "growth",
-  publishing_queue: "growth",
+  publishing_queue: "starter",
   sms_send: "ferocity_connect",
   email_send: "growth",
   review_requests: "growth",
@@ -64,7 +66,7 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   media_library: "starter",
   marketing_graphics: "growth",
   ai_video_generation: "operator",
-  voice_ai: "operator",
+  voice_ai: "starter",
   bulk_email: "growth",
   premium_ai_tasks: "operator",
   ai_office_manager: "starter",
@@ -84,7 +86,12 @@ const featureMinimumPlan: Record<string, PlanKey> = {
   adapter_factory: "starter"
 };
 
+export function listServiceFeatureDefinitions() {
+  return Object.entries(featureMinimumPlan).map(([key, minimumPlan]) => ({ key, minimumPlan }));
+}
+
 function normalizePlanKey(planKey: string | null | undefined): PlanKey {
+  if (planKey === "earn") return planKey;
   if (planKey === "ferocity_connect") return planKey;
   if (planKey === "calls") return planKey;
   if (planKey === "job_tracker") return planKey;
@@ -133,6 +140,18 @@ export function usesCountBasedLimit(featureKey: string) {
   return featureKey !== "ai_generation";
 }
 
+export function billingAllowsWorkspaceActions(input: {
+  accountType: string | null | undefined;
+  billingAccess: { allowPaidActions: boolean } | null | undefined;
+  planKey: PlanKey;
+}) {
+  // Ferocity-owned workspaces fund their own provider usage and do not have a
+  // customer Stripe subscription. A null subscription row must not disable
+  // internal product surfaces such as the public Ask Ferocity sales guide.
+  if (input.accountType === "internal") return true;
+  return input.billingAccess?.allowPaidActions ?? input.planKey === "free";
+}
+
 const serviceUsageSql: Record<string, string> = {
   ai_generation: "select count(*)::int as current_usage from public.ai_generation_runs where tenant_id = $1 and created_at >= date_trunc('month', now())",
   seo_autopilot: `
@@ -143,7 +162,15 @@ const serviceUsageSql: Record<string, string> = {
       and created_at >= date_trunc('month', now())
   `,
   hosted_growth_pages: "select count(*)::int as current_usage from public.brand_landing_pages where tenant_id = $1 and status <> 'archived'",
-  publishing_queue: "select count(*)::int as current_usage from public.publishing_queue where tenant_id = $1 and queue_status <> 'canceled'",
+  publishing_queue: `
+    select count(distinct publishing_moment_key)::int as current_usage
+    from public.publishing_queue
+    where tenant_id = $1
+      and distribution_type = 'organic'
+      and publishing_moment_key is not null
+      and queue_status <> 'canceled'
+      and created_at >= date_trunc('week', now())
+  `,
   sms_send: `
     select greatest(
       (select coalesce(sum(unit_count), 0)::int from public.provider_usage_events where tenant_id = $1 and action_type = 'sms_send' and created_at >= date_trunc('month', now())),
@@ -223,10 +250,11 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
     feature_key: string;
     status: string;
     usage_limit: number | null;
+    usage_period: string | null;
     metadata_json: { approvalMode?: ServiceMode; overagePolicy?: OveragePolicy; description?: string } | null;
   }>(
     `
-    select feature_key, status, usage_limit, metadata_json
+    select feature_key, status, usage_limit, usage_period, metadata_json
     from public.workspace_feature_entitlements
     where tenant_id = $1 and feature_key = $2
     limit 1
@@ -235,8 +263,13 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   );
 
   const row = result?.rows[0];
-  const billingResult = await queryPostgres<{ status: string; metadata_json: Record<string, unknown> | null }>(
-    `select status,metadata_json from public.billing_subscriptions where tenant_id=$1 order by updated_at desc limit 1`,
+  const billingResult = await queryPostgres<{ status: string | null; metadata_json: Record<string, unknown> | null; account_type: string }>(
+    `select s.status,s.metadata_json,t.account_type
+       from public.tenants t
+       left join public.billing_subscriptions s on s.tenant_id=t.id
+      where t.id=$1
+      order by s.updated_at desc nulls last
+      limit 1`,
     [tenantId]
   );
   const billing = billingResult?.rows[0];
@@ -269,7 +302,11 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
   const overagePolicy = row.metadata_json?.overagePolicy ?? "block";
   const remaining = row.usage_limit === null ? null : Math.max(row.usage_limit - currentUsage, 0);
   const limitReached = usesCountBasedLimit(featureKey) && row.usage_limit !== null && currentUsage >= row.usage_limit;
-  const billingAllowed = billingAccess?.allowPaidActions ?? true;
+  const billingAllowed = billingAllowsWorkspaceActions({
+    accountType: billing?.account_type,
+    billingAccess,
+    planKey
+  });
   const enabled = billingAllowed && planAllowed && row.status !== "disabled" && mode !== "off" && (!limitReached || overagePolicy !== "block");
 
   return {
@@ -287,7 +324,7 @@ export async function getServiceGate(tenantId: string, featureKey: string): Prom
         : !planAllowed
         ? `Requires ${planName(minimumPlanKey)} plan or higher.`
         : limitReached
-        ? "Monthly limit reached."
+        ? `${row.usage_period === "weekly" ? "Weekly" : row.usage_period === "daily" ? "Daily" : row.usage_period === "annual" ? "Annual" : "Monthly"} limit reached.`
         : "Service is off."
       : row.metadata_json?.description ?? "Service is available.",
     planKey,

@@ -84,7 +84,7 @@ const featureGroups = [
       ["Automation Timeline", "Trust feed showing what Ferocity prepared, blocked, synced, handled, and still needs approved.", "/app/automation-timeline", "visible now"],
       ["Notifications", "Device push setup for owner decisions, hot leads, blocked automation, safety, and money follow-up.", "/app/notifications", "visible now"],
       ["Install App", "Install Ferocity on phone, tablet, or desktop for faster owner and field access.", "/install", "visible now"],
-      ["AI Workforce", "AI employees, one-click starting points, agent runs, output queue, and the command box for business work.", "/app/ai-workforce", "visible"],
+      ["AI Workforce", "Specialized operating departments, outcome-based commands, governed runs, and one shared output queue inside the Business Brain.", "/app/ai-workforce", "visible"],
       ["Call Inbox", "Receptionist calls, missed calls, summaries, transcripts, recordings, follow-up, usage, and billing status.", "/app/calls", "visible now"],
       ["Automation Rules", "AI agents, recurring rules, queued actions, consent, live policies, provider readiness, and limits.", "/app/automation-command", "visible now"],
       ["Guided Setup", "Plain-English setup planner, preview changes, apply reviewed plans, change log.", "/app/build-system", "visible"],

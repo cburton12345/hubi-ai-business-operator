@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { CalendarClock, CheckCircle2, MessageSquareReply, ShieldCheck, Smartphone } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { publicConnectPlan } from "@/lib/billing/public-plans";
@@ -24,14 +24,41 @@ export default function FerocityConnectPage() {
     <main className="public-page">
       <section className="public-shell">
         <PublicNav />
-        <section className="public-hero">
-          <p className="eyebrow">Ferocity Connect</p>
-          <h1>Let Ferocity text through your Android business phone.</h1>
-          <p className="muted">{publicConnectPlan.fit} Messages still require the right consent and authority. Ferocity watches delivery health and stops unsafe sending instead of treating “accepted” as “received.”</p>
-          <div className="button-row">
-            <Link className="button" href="/subscribe?plan=ferocity_connect">Start Connect — {publicConnectPlan.price}</Link>
-            <Link className="button secondary-button" href="/login?next=/app/integrations/ferocity-connect">Subscriber setup &amp; download</Link>
-            <Link className="button secondary-button" href="/pricing">Compare full plans</Link>
+        <section className="connect-hero">
+          <div className="connect-hero-copy">
+            <p className="eyebrow">Ferocity Connect</p>
+            <h1>Put your business texting on autopilot—without changing your number.</h1>
+            <p className="connect-lead">{publicConnectPlan.fit} Ferocity can send approved follow-ups and reminders, capture replies, and tell you when a message needs attention.</p>
+            <div className="button-row">
+              <Link className="button" href="/subscribe?plan=ferocity_connect">Start Connect — {publicConnectPlan.price}</Link>
+              <Link className="button secondary-button" href="/login?next=/app/integrations/ferocity-connect">Subscriber setup &amp; download</Link>
+              <Link className="button secondary-button" href="/pricing">Compare full plans</Link>
+            </div>
+            <div className="connect-trust-strip" aria-label="Ferocity Connect safeguards">
+              <span><ShieldCheck size={16} /> Consent and STOP enforced</span>
+              <span><Smartphone size={16} /> Private workspace pairing</span>
+              <span><CheckCircle2 size={16} /> Delivery health tracked</span>
+            </div>
+          </div>
+
+          <div className="connect-device" aria-label="Example Ferocity Connect activity">
+            <div className="connect-device-top"><span /><strong>Ferocity Connect</strong><span /></div>
+            <div className="connect-device-status"><i /> Paired and ready</div>
+            <div className="connect-message-card">
+              <CalendarClock size={18} />
+              <div><strong>Invoice reminder</strong><span>Scheduled for 9:15 AM</span></div>
+              <b>Queued</b>
+            </div>
+            <div className="connect-message-card">
+              <CheckCircle2 size={18} />
+              <div><strong>Estimate follow-up</strong><span>Sent from your business phone</span></div>
+              <b className="connect-success">Sent</b>
+            </div>
+            <div className="connect-reply">
+              <MessageSquareReply size={18} />
+              <div><span>New reply</span><strong>“Yes, Tuesday works.”</strong></div>
+            </div>
+            <p>Conversation updated · no extra inbox</p>
           </div>
         </section>
 
@@ -39,7 +66,7 @@ export default function FerocityConnectPage() {
           <article className="panel">
             <p className="eyebrow">What it handles</p>
             <h2>Connected texting, not a second inbox to babysit.</h2>
-            <ul className="plain-list">
+            <ul className="plain-list connect-capability-list">
               {capabilities.map((item) => <li key={item}><CheckCircle2 size={16} /><span>{item}</span></li>)}
             </ul>
           </article>
@@ -55,7 +82,7 @@ export default function FerocityConnectPage() {
           <div>
             <ShieldCheck size={24} />
             <h2>Built with real safeguards.</h2>
-            <p className="muted">Ferocity applies per-device and recipient pacing, quiet hours, consent and suppression checks, retry limits, idempotency, delivery tracking, and an emergency sending switch.</p>
+            <p className="muted">Ferocity checks consent, quiet hours, pacing, duplicate sends, delivery health, and opt-outs before an automation keeps moving.</p>
           </div>
           <div>
             <h2>Important limits</h2>

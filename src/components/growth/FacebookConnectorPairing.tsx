@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 type ConnectorDevice = {
   id: string; name: string; status: string; connectorVersion?: string | null;
-  expiresAt: string; lastSeenAt?: string | null;
+  expiresAt: string; lastSeenAt?: string | null; transport?: string;
+  runtimeState?: string | null; browserState?: string | null;
 };
 
 export function FacebookConnectorPairing({ identityId }: { identityId: string }) {
@@ -62,6 +63,7 @@ export function FacebookConnectorPairing({ identityId }: { identityId: string })
   return <div>
     <div className="inline-actions">
       <a className="mini-button" href="/downloads/ferocity-facebook-connector-0.1.0.zip" download>Download connector</a>
+      <a className="mini-button" href="/downloads/ferocity-marketplace-worker-0.3.0.zip" download>Download Windows worker</a>
       <button className="mini-button" type="button" disabled={busy} onClick={createCode}>{busy ? "Creating…" : "Create pairing code"}</button>
       {code ? <code aria-label="Facebook connector pairing code">{code}</code> : null}
       {message ? <small className="muted">{message}</small> : null}
@@ -69,7 +71,7 @@ export function FacebookConnectorPairing({ identityId }: { identityId: string })
     <p className="muted">Starts in observe mode. Ferocity may prepare replies, but nothing is sent until your workspace approves sending.</p>
     {devices.length ? <ul className="list compact-list" aria-label="Paired Facebook connector devices">
       {devices.map((device) => <li key={device.id}>
-        <span>{device.name} · {device.status}{device.lastSeenAt ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}` : ""}</span>
+        <span>{device.name} · {device.transport === "windows_worker" ? "Windows worker" : device.transport === "hosted_worker" ? "Hosted worker" : "Browser extension"} · {device.status}{device.runtimeState ? ` · ${device.runtimeState}` : ""}{device.browserState ? ` · browser ${device.browserState}` : ""}{device.lastSeenAt ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}` : ""}</span>
         {device.status === "active" ? <button className="mini-button" type="button" disabled={busy} onClick={() => void revoke(device.id)}>Revoke</button> : null}
       </li>)}
     </ul> : null}

@@ -11,6 +11,16 @@ export type VideoPlanInput = {
   audience?: string | null;
   sourceAssets?: string | null;
   variantCount?: number;
+  quality?: "economy" | "balanced" | "premium";
+  contentStyle?: "brand_story" | "ugc" | "product_demo" | "customer_proof";
+  brandContext?: {
+    companyName?: string | null;
+    websiteUrl?: string | null;
+    brandVoice?: string | null;
+    idealCustomers?: string | null;
+    competitiveAdvantages?: unknown;
+    approvedAssets?: Array<{ id: string; title: string; type: string }>;
+  } | null;
 };
 
 export type CreativeIssue = {
@@ -83,6 +93,12 @@ function aspectRatiosFor(platform: VideoPlatform): VideoDeliverable["aspectRatio
   if (platform === "youtube" || platform === "ctv") return ["16:9", "9:16"];
   if (platform === "multi_platform") return ["16:9", "9:16", "1:1"];
   return ["9:16", "1:1", "4:5"];
+}
+
+export function extractVideoReferenceUrls(value?: string | null) {
+  if (!value) return [];
+  const matches = value.match(/https?:\/\/[^\s,;]+/gi) ?? [];
+  return Array.from(new Set(matches.map((url) => url.replace(/[)\]}>.,]+$/, "")))).slice(0, 3);
 }
 
 export function videoDeliverablesFor(platform: VideoPlatform): VideoDeliverable[] {
@@ -214,6 +230,22 @@ function buildBasePlan(input: VideoPlanInput, direction?: AiCreativeDirection): 
     risks: stringList(direction?.risks),
     generatedBy: direction ? "ai_creative_director" : "deterministic_fallback"
   };
+  const contentStyle = input.contentStyle ?? "brand_story";
+  const ugcPlan = contentStyle === "ugc" ? {
+    format: "credible_first_person_story",
+    hookWindowSeconds: 2,
+    performanceDirection: "Natural phone-camera delivery with specific language, imperfect human pacing, and no fake testimonial claims.",
+    actorPolicy: "Use an approved real spokesperson, disclosed synthetic spokesperson, or licensed AI actor. Never imply a fabricated customer endorsement.",
+    productionStages: [
+      "select the audience problem and strongest evidence-led hook",
+      "write spoken-language script and three opening variations",
+      "generate or select approved footage and voice",
+      "lip-sync or assemble only when the selected provider and rights allow it",
+      "add exact captions, brand, CTA, and disclosure during finishing",
+      "quality review before approval or publishing"
+    ],
+    preferredCapabilities: ["reference_consistency", "natural_voice", "lip_sync", "caption_safe_finish", "multilingual_localization"]
+  } : null;
 
   return {
     providerKey: "provider_not_selected",
@@ -230,7 +262,11 @@ function buildBasePlan(input: VideoPlanInput, direction?: AiCreativeDirection): 
       aspectRatios: deliverables.map((item) => item.aspectRatio),
       exportFormats: ["finished_video", "captioned_video", "clean_master", "captions", "provider_brief"],
       sourceAssets: input.sourceAssets ? [input.sourceAssets] : [],
-      supportedProviders: ["openai_video", "google_veo", "future_adapter"],
+      referenceAssetUrls: extractVideoReferenceUrls(input.sourceAssets),
+      supportedProviders: ["google_veo", "elevenlabs_flows_evaluated", "openai_video_legacy", "future_adapter"],
+      requestedQuality: input.quality ?? "economy",
+      contentStyle,
+      ugcPlan,
       creativeDirection,
       preflight
     },
@@ -242,6 +278,9 @@ function buildBasePlan(input: VideoPlanInput, direction?: AiCreativeDirection): 
       platform: input.platform,
       durationSeconds: input.durationSeconds,
       audience: input.audience ?? null,
+      brandContext: input.brandContext ?? null,
+      contentStyle,
+      ugcPlan,
       variantPrompts,
       creativeDirection,
       creativePreflight: preflight,
@@ -272,6 +311,9 @@ export async function directVideoMarketingAsset(input: VideoPlanInput & { tenant
     system: [
       "You are Ferocity's advertising creative director.",
       "Create a concrete, truthful, high-retention short-video concept that demonstrates an outcome instead of listing features.",
+      input.contentStyle === "ugc"
+        ? "Create credible UGC-style spoken content: natural language, an immediate evidence-led hook, specific lived context, and no fabricated customer endorsement."
+        : "Match the requested content style without making the result feel like generic AI filler.",
       "Return hook, script, voiceover, cta, rationale, risks, and 3-6 scenes.",
       "Each scene must contain seconds, goal, visual, and textOverlay.",
       "Never invent reviews, credentials, prices, guarantees, logos, customer results, or product behavior."
@@ -283,7 +325,10 @@ export async function directVideoMarketingAsset(input: VideoPlanInput & { tenant
       audience: input.audience ?? null,
       platform: input.platform,
       durationSeconds: input.durationSeconds,
-      approvedSourceAssets: input.sourceAssets ?? null
+      approvedSourceAssets: input.sourceAssets ?? null,
+      brandContext: input.brandContext ?? null,
+      requestedQuality: input.quality ?? "economy",
+      contentStyle: input.contentStyle ?? "brand_story"
     }),
     fallback: fallback.providerRequest.creativeDirection as AiCreativeDirection & Record<string, unknown>,
     temperature: 0.55,

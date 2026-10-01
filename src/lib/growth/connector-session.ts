@@ -25,11 +25,11 @@ export async function issueGrowthConnectorSession(input: {
 }
 
 export async function validateGrowthConnectorSession(input: { token: string; deviceId: string; requiredScope: string }) {
-  const result = await queryPostgres<{ tenant_id: string; brand_id: string; identity_id: string }>(`
+  const result = await queryPostgres<{ id: string; tenant_id: string; brand_id: string; identity_id: string }>(`
     update public.growth_connector_sessions set last_seen_at = now()
     where token_hash = $1 and device_id_hash = $2 and status = 'active' and expires_at > now()
       and $3 = any(scope_keys)
-    returning tenant_id, brand_id, identity_id
+    returning id, tenant_id, brand_id, identity_id
   `, [hash(input.token), hash(input.deviceId), input.requiredScope]);
   return result?.rows[0] ?? null;
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "reviewedAt": "2026-08-04",
+  "reviewedAt": "2026-09-25",
   "states": ["certified_live", "limited", "connect_account", "approval_blocked", "fallback_only", "planned"],
   "providers": {
     "email_provider": {
@@ -17,6 +17,20 @@
       "capabilities": ["send_email"],
       "fallback": "Draft and copy the message for manual sending."
     },
+    "gmail_mailbox": {
+      "label": "Gmail inbox monitoring",
+      "state": "limited",
+      "summary": "Read-only Gmail OAuth and normalized inbox sync are implemented; each customer must connect their own account and production OAuth approval may still be required.",
+      "capabilities": ["connect_mailbox", "read_mailbox", "classify_email"],
+      "fallback": "Forward important mail to the business inbox and handle it manually."
+    },
+    "microsoft_mailbox": {
+      "label": "Microsoft 365 inbox monitoring",
+      "state": "limited",
+      "summary": "Read-only Microsoft Graph mailbox OAuth and normalized inbox sync are implemented; each customer must connect their own account and tenant consent may still be required.",
+      "capabilities": ["connect_mailbox", "read_mailbox", "classify_email"],
+      "fallback": "Open the message in Outlook and handle it manually."
+    },
     "twilio": {
       "label": "Customer-owned Twilio",
       "state": "connect_account",
@@ -26,10 +40,17 @@
     },
     "twilio_shared": {
       "label": "Ferocity-managed texting",
-      "state": "approval_blocked",
+      "state": "connect_account",
       "summary": "Managed texting remains unavailable while the provider account and required compliance approvals are unresolved.",
       "capabilities": [],
       "fallback": "Use customer-owned Twilio, native SMS handoff, email, or copy-message flow."
+    },
+    "vonage_sms": {
+      "label": "Vonage managed texting",
+      "state": "connect_account",
+      "summary": "Vonage has unblocked the Ferocity account and the provider-independent SMS adapter is implemented. Live use still requires credentials, a sending number, signed webhooks, applicable US messaging registration, funding, and controlled certification.",
+      "capabilities": ["connect_account"],
+      "fallback": "Use Ferocity Connect, a customer-owned provider, email, or manual sending until Vonage certification is complete."
     },
     "voice_ai": {
       "label": "Voice AI",
@@ -62,9 +83,9 @@
     "public_web_chat": {
       "label": "Website chat",
       "state": "limited",
-      "summary": "The native public chat path exists; installation and production-site certification must be completed per website.",
+      "summary": "The native public chat, live-AI recovery, lead capture, and signup handoff pass local behavioral certification; the current release still needs production certification.",
       "capabilities": ["capture_lead", "answer_questions"],
-      "fallback": "Use a hosted lead form or contact link."
+      "fallback": "If live AI is unavailable, disclose the outage honestly and preserve the lead/contact path without pretending a scripted response is AI."
     },
     "google_calendar": {
       "label": "Google Calendar",
@@ -101,40 +122,127 @@
       "capabilities": ["authorize_read_access", "select_property", "sync_reporting"],
       "fallback": "Use Ferocity-native attribution and manually imported reports."
     },
+    "nws_weather": {
+      "label": "National Weather Service alerts",
+      "state": "limited",
+      "summary": "Active-alert monitoring and internal lead corroboration are implemented; production service-area certification remains required.",
+      "capabilities": ["read_active_alerts", "correlate_internal_demand"],
+      "fallback": "Use internal lead, capacity, schedule, and proof signals without making a weather-based demand claim."
+    },
     "google_ads": {
       "label": "Google Ads",
-      "state": "approval_blocked",
-      "summary": "Account setup foundations exist; normalized live campaign execution is not certified.",
+      "state": "connect_account",
+      "summary": "Customer OAuth authorization is available. Ad-account selection, reporting certification, and live campaign execution remain separately gated.",
       "capabilities": ["connect_account"],
+      "connectionAvailable": true,
       "fallback": "Prepare an approved campaign package for launch in Google Ads."
+    },
+    "youtube": {
+      "label": "YouTube Channel",
+      "state": "connect_account",
+      "summary": "Customer OAuth authorization and channel verification are available in read-only mode. Uploading and publishing remain separately permissioned and approval-gated.",
+      "capabilities": ["connect_account", "read_channel_identity"],
+      "connectionAvailable": true,
+      "fallback": "Prepare the approved video, title, description, thumbnail, and publishing package for manual upload."
     },
     "facebook": {
       "label": "Meta and Facebook",
-      "state": "planned",
-      "summary": "Planning and connection surfaces exist, but normalized live publishing and ad execution are not certified.",
-      "capabilities": [],
+      "state": "connect_account",
+      "summary": "Customer Business Login authorization is available. Page and ad-account selection, reporting certification, publishing, and ad execution remain separately gated.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
       "fallback": "Prepare posts and campaign packages for manual publishing."
     },
     "tiktok": {
-      "label": "TikTok",
+      "label": "TikTok Login",
       "state": "limited",
-      "summary": "Login Kit account access is distinct from the Marketing API; live ad execution remains approval-dependent.",
+      "summary": "Login Kit authorizes identity and basic profile only. It is deliberately separate from content publishing and advertising.",
       "capabilities": ["login_kit"],
-      "fallback": "Prepare campaign assets and instructions for TikTok Ads Manager."
+      "fallback": "Use the separate Content Posting or API for Business connection for live actions."
+    },
+    "tiktok_content": {
+      "label": "TikTok Content Publishing",
+      "state": "approval_blocked",
+      "summary": "The Direct Post and draft-upload adapters are implemented. TikTok product approval, creator authorization, audit, and controlled certification are still required.",
+      "capabilities": ["connect_account", "query_creator", "initialize_direct_post", "poll_publish_status"],
+      "fallback": "Export the approved content package and publish manually in TikTok."
+    },
+    "tiktok_business": {
+      "label": "TikTok Ads",
+      "state": "approval_blocked",
+      "summary": "The API for Business OAuth, advertiser discovery, campaign read, reporting, and campaign-create adapter are implemented. App approval and controlled live certification remain required.",
+      "capabilities": ["connect_account", "list_advertisers", "read_campaigns", "read_reporting"],
+      "fallback": "Prepare the approved campaign package and complete launch in TikTok Ads Manager."
     },
     "reddit": {
       "label": "Reddit Ads",
-      "state": "planned",
-      "summary": "Funding and setup do not constitute a certified campaign execution adapter.",
-      "capabilities": [],
+      "state": "connect_account",
+      "summary": "Customer OAuth identity and read authorization are available. Ad-account discovery, reporting certification, publishing, and spend remain separately gated.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
       "fallback": "Prepare a campaign package for Reddit Ads Manager."
     },
     "microsoft_ads": {
       "label": "Microsoft Advertising",
-      "state": "planned",
-      "summary": "Funding and setup do not constitute a certified campaign execution adapter.",
-      "capabilities": [],
+      "state": "connect_account",
+      "summary": "Customer Microsoft Advertising OAuth authorization is available. Account selection, reporting certification, campaign changes, and spend remain separately gated.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
       "fallback": "Prepare a campaign package for Microsoft Advertising."
+    },
+    "linkedin_ads": {
+      "label": "LinkedIn Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity models LinkedIn Ads honestly, but live management requires separate LinkedIn Marketing API product approval and customer authorization.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
+      "fallback": "Prepare an approved campaign package for LinkedIn Campaign Manager."
+    },
+    "x_ads": {
+      "label": "X Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity models X Ads honestly, but live management requires approved Ads API access and advertiser authorization.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
+      "fallback": "Prepare an approved campaign package for X Ads Manager."
+    },
+    "pinterest_ads": {
+      "label": "Pinterest Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity has a provider-neutral adapter contract, but account connection is not exposed until Ferocity owns an approved Pinterest developer app.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
+      "fallback": "Prepare an approved campaign package for Pinterest Ads Manager."
+    },
+    "snapchat_ads": {
+      "label": "Snap Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity has a provider-neutral adapter contract, but account connection is not exposed until Ferocity owns an approved Snap organization and OAuth app.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
+      "fallback": "Prepare an approved campaign package for Snapchat Ads Manager."
+    },
+    "amazon_ads": {
+      "label": "Amazon Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity has a provider-neutral adapter contract, but account connection is not exposed until Ferocity receives eligible Amazon Ads developer access.",
+      "capabilities": ["connect_account"],
+      "connectionAvailable": true,
+      "fallback": "Prepare an approved campaign package for Amazon Ads."
+    },
+    "openai_ads": {
+      "label": "ChatGPT Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity has a provider-neutral adapter contract, but no ordinary customer OAuth flow is exposed. Eligible advertiser or partner access and server-side credentials are still required.",
+      "capabilities": [],
+      "fallback": "Prepare an approved campaign package for the OpenAI Ads account."
+    },
+    "apple_search_ads": {
+      "label": "Apple Ads",
+      "state": "approval_blocked",
+      "summary": "Ferocity has a provider-neutral adapter contract for eligible App Store and Apple Maps advertisers, but onboarding requires an account role/invite and Ferocity-managed OAuth key material rather than a normal customer OAuth button.",
+      "capabilities": [],
+      "fallback": "Prepare an approved campaign package for Apple Ads."
     },
     "jobber": {
       "label": "Jobber",

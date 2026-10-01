@@ -4,6 +4,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { consumePublicRateLimit } from "@/lib/security/rate-limit";
 
 const activitySchema = z.object({
+  eventType: z.enum(["page_view", "diagnostic_start", "diagnostic_complete", "pricing_view", "plan_compare", "earn_calculator_used", "plan_selected", "signup_start", "signup_complete", "integration_connected", "permissions_configured", "first_value", "first_recommendation", "first_action_completed", "subscription_started", "earn_activated", "upgrade", "downgrade", "cancellation"]).default("page_view"),
   path: z.string().trim().min(1).max(300).regex(/^\/[A-Za-z0-9_\-/.]*$/),
   referrer: z.string().trim().max(1000).nullable().optional(),
   campaignSource: z.string().trim().max(120).nullable().optional(),
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     `insert into public.public_site_events (
        event_type, path, referrer_host, campaign_source, campaign_medium, campaign_name,
        device_class, metadata_json
-     ) values ('page_view',$1,$2,$3,$4,$5,$6,$7::jsonb)`,
+     ) values ($8,$1,$2,$3,$4,$5,$6,$7::jsonb)`,
     [
       parsed.data.path,
       referrerHost(parsed.data.referrer),
@@ -68,7 +69,8 @@ export async function POST(request: NextRequest) {
       parsed.data.campaignMedium || null,
       parsed.data.campaignName || null,
       deviceClass(userAgent),
-      JSON.stringify({ privacy: "no_raw_ip_no_cookie_id", doNotTrackRespected: true })
+      JSON.stringify({ privacy: "no_raw_ip_no_cookie_id", doNotTrackRespected: true }),
+      parsed.data.eventType
     ]
   );
 

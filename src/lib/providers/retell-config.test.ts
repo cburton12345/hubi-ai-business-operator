@@ -102,6 +102,29 @@ describe("resolveRetellConfiguration", () => {
     });
   });
 
+  it("prefers a tenant's designated Retell webhook key for signature verification", async () => {
+    resolveTenantProviderSecretsMock.mockResolvedValue([
+      { label: "retell_api_key", value: "tenant-api-key" },
+      { label: "retell_webhook_api_key", value: "tenant-webhook-key" }
+    ]);
+    queryPostgresMock
+      .mockResolvedValueOnce({
+        rows: [{
+          status: "connected",
+          credentials_status: "configured",
+          live_actions_enabled: true,
+          ownership_mode: "ferocity_managed",
+          account_type: "customer"
+        }]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await expect(resolveRetellConfiguration("tenant-1")).resolves.toMatchObject({
+      apiKey: "tenant-api-key",
+      webhookApiKey: "tenant-webhook-key"
+    });
+  });
+
   it("does not expose the platform key to a bring-your-own-provider tenant", async () => {
     queryPostgresMock.mockResolvedValueOnce({
       rows: [{

@@ -1,13 +1,16 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
-import { getOwnerNeeds, type OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
+import {
+  getOwnerNeeds,
+  type OwnerNeed,
+} from "@/lib/owner-command-center/get-owner-needs";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 import {
   getTenantCapabilityReliabilityMetrics,
   getTenantCapabilityTrustOverview,
   type CapabilityReliabilityMetrics,
-  type CapabilityTrustOverviewItem
+  type CapabilityTrustOverviewItem,
 } from "@/lib/reliability/capability-runtime";
 
 export type OwnerCommandEvent = {
@@ -30,6 +33,17 @@ export type OwnerCommandEvent = {
   occurredAt: string;
 };
 
+export type OwnerCommitment = {
+  id: string;
+  description: string;
+  status: string;
+  importance: string;
+  responsibleLabel: string | null;
+  dueAt: string | null;
+  expectedOutcome: string | null;
+  completionEvidenceRequired: boolean;
+};
+
 export type OwnerCommandCenter = {
   workspaceName: string;
   briefing: string;
@@ -43,6 +57,7 @@ export type OwnerCommandCenter = {
     collectedRevenueCents: number;
   };
   events: OwnerCommandEvent[];
+  commitments: OwnerCommitment[];
   ownerRequests: OwnerNeed[];
   needsOwner: OwnerCommandEvent[];
   criticalIssues: OwnerCommandEvent[];
@@ -65,7 +80,11 @@ export type OwnerCommandCenter = {
 };
 
 function dollars(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
 }
 
 function mapEvent(row: {
@@ -104,7 +123,7 @@ function mapEvent(row: {
     moneyCents: Number(row.money_cents ?? 0),
     riskType: row.risk_type,
     confidenceScore: Number(row.confidence_score ?? 0),
-    occurredAt: row.occurred_at.toISOString()
+    occurredAt: row.occurred_at.toISOString(),
   };
 }
 
@@ -117,12 +136,22 @@ function buildBriefing(input: {
   openPipelineCents: number;
 }) {
   const pieces = [
-    input.critical ? `${input.critical} critical issue${input.critical === 1 ? "" : "s"}` : "no critical issues",
-    input.needsOwner ? `${input.needsOwner} item${input.needsOwner === 1 ? "" : "s"} ${input.needsOwner === 1 ? "needs" : "need"} owner attention` : "nothing urgent needs owner attention",
-    input.openMoneyCents ? `${dollars(input.openMoneyCents)} in visible money opportunities or risk` : "no money amount is attached yet",
-    input.aiHandled ? `AI handled ${input.aiHandled} item${input.aiHandled === 1 ? "" : "s"}` : "AI has not marked anything handled yet",
-    input.activeAlerts ? `${input.activeAlerts} workspace alert${input.activeAlerts === 1 ? "" : "s"} ${input.activeAlerts === 1 ? "remains" : "remain"} active` : "workspace alerts are quiet",
-    `${dollars(input.openPipelineCents)} open pipeline`
+    input.critical
+      ? `${input.critical} critical issue${input.critical === 1 ? "" : "s"}`
+      : "no critical issues",
+    input.needsOwner
+      ? `${input.needsOwner} item${input.needsOwner === 1 ? "" : "s"} ${input.needsOwner === 1 ? "needs" : "need"} owner attention`
+      : "nothing urgent needs owner attention",
+    input.openMoneyCents
+      ? `${dollars(input.openMoneyCents)} in visible money opportunities or risk`
+      : "no money amount is attached yet",
+    input.aiHandled
+      ? `AI handled ${input.aiHandled} item${input.aiHandled === 1 ? "" : "s"}`
+      : "AI has not marked anything handled yet",
+    input.activeAlerts
+      ? `${input.activeAlerts} workspace alert${input.activeAlerts === 1 ? "" : "s"} ${input.activeAlerts === 1 ? "remains" : "remain"} active`
+      : "workspace alerts are quiet",
+    `${dollars(input.openPipelineCents)} open pipeline`,
   ];
 
   return pieces.join(". ") + ".";
@@ -130,7 +159,16 @@ function buildBriefing(input: {
 
 export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
   const workspace = await getCurrentWorkspace();
-  const [snapshot, report, ownerRequests, eventsResult, platformResult, capabilityTrustItems, capabilityMetrics] = await Promise.all([
+  const [
+    snapshot,
+    report,
+    ownerRequests,
+    eventsResult,
+    platformResult,
+    commitmentResult,
+    capabilityTrustItems,
+    capabilityMetrics,
+  ] = await Promise.all([
     getDashboardSnapshot(),
     getReportingDashboard(),
     getOwnerNeeds(),
@@ -165,7 +203,7 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
         occurred_at desc
       limit 60
       `,
-      [workspace.id]
+      [workspace.id],
     ),
     queryPostgres<{ platform_name: string }>(
       `
@@ -174,25 +212,61 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
       where tenant_id = $1 or tenant_id is null
       order by platform_name
       `,
-      [workspace.id]
+      [workspace.id],
+    ),
+    queryPostgres<{
+      id: string;
+      description: string;
+      status: string;
+      importance: string;
+      responsible_label: string | null;
+      due_at: Date | null;
+      expected_outcome: string | null;
+      completion_evidence_required: boolean;
+    }>(
+      `select id,description,status,importance,responsible_label,due_at,expected_outcome,completion_evidence_required
+       from public.operating_commitments
+       where tenant_id=$1 and status not in ('verified','canceled')
+       order by case status when 'overdue' then 0 when 'needs_confirmation' then 1 when 'due_soon' then 2 when 'blocked' then 3 else 4 end,
+         case importance when 'critical' then 0 when 'high' then 1 when 'normal' then 2 else 3 end,due_at nulls last
+       limit 20`,
+      [workspace.id],
     ),
     getTenantCapabilityTrustOverview(workspace.id),
-    getTenantCapabilityReliabilityMetrics(workspace.id)
+    getTenantCapabilityReliabilityMetrics(workspace.id),
   ]);
 
   const events = (eventsResult?.rows ?? []).map(mapEvent);
-  const needsOwner = events.filter((event) => event.ownerAttention || event.status === "needs_owner").slice(0, 12);
-  const criticalIssues = events.filter((event) => event.severity === "critical" || event.status === "critical").slice(0, 8);
-  const aiActions = events.filter((event) => event.aiHandled || event.status === "ai_handled").slice(0, 12);
-  const moneyRadar = events.filter((event) => event.moneyCents > 0 || event.riskType === "revenue" || event.riskType === "financial").slice(0, 12);
-  const openMoneyCents = moneyRadar.reduce((sum, event) => sum + event.moneyCents, 0);
+  const needsOwner = events
+    .filter((event) => event.ownerAttention || event.status === "needs_owner")
+    .slice(0, 12);
+  const criticalIssues = events
+    .filter(
+      (event) => event.severity === "critical" || event.status === "critical",
+    )
+    .slice(0, 8);
+  const aiActions = events
+    .filter((event) => event.aiHandled || event.status === "ai_handled")
+    .slice(0, 12);
+  const moneyRadar = events
+    .filter(
+      (event) =>
+        event.moneyCents > 0 ||
+        event.riskType === "revenue" ||
+        event.riskType === "financial",
+    )
+    .slice(0, 12);
+  const openMoneyCents = moneyRadar.reduce(
+    (sum, event) => sum + event.moneyCents,
+    0,
+  );
 
   const makeMoneyNext = [
     ...moneyRadar.slice(0, 3).map((event) => ({
       title: event.title,
       detail: event.recommendedAction ?? event.summary,
       href: event.actionHref,
-      valueCents: event.moneyCents
+      valueCents: event.moneyCents,
     })),
     ...snapshot.todayPlan
       .filter((item) => item.urgency !== "low")
@@ -201,18 +275,25 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
         title: item.title,
         detail: item.detail,
         href: item.href,
-        valueCents: 0
-      }))
+        valueCents: 0,
+      })),
   ].slice(0, 5);
 
   const metrics = {
-    needsOwner: needsOwner.length + ownerRequests.length,
+    needsOwner:
+      needsOwner.length +
+      ownerRequests.length +
+      (commitmentResult?.rows ?? []).filter(
+        (item) =>
+          item.status === "needs_confirmation" ||
+          item.importance === "critical",
+      ).length,
     critical: criticalIssues.length,
     aiHandled: aiActions.length,
     openMoneyCents,
     activeAlerts: report.activeAlerts,
     openPipelineCents: report.leadToRevenue.openPipelineCents,
-    collectedRevenueCents: report.leadToRevenue.collectedRevenueCents
+    collectedRevenueCents: report.leadToRevenue.collectedRevenueCents,
   };
 
   return {
@@ -220,19 +301,36 @@ export async function getOwnerCommandCenter(): Promise<OwnerCommandCenter> {
     briefing: buildBriefing(metrics),
     metrics,
     events,
+    commitments: (commitmentResult?.rows ?? []).map((item) => ({
+      id: item.id,
+      description: item.description,
+      status: item.status,
+      importance: item.importance,
+      responsibleLabel: item.responsible_label,
+      dueAt: item.due_at?.toISOString() ?? null,
+      expectedOutcome: item.expected_outcome,
+      completionEvidenceRequired: item.completion_evidence_required,
+    })),
     ownerRequests,
     needsOwner,
     criticalIssues,
     aiActions,
     moneyRadar,
     makeMoneyNext,
-    platformFilters: (platformResult?.rows ?? []).map((row) => row.platform_name),
+    platformFilters: (platformResult?.rows ?? []).map(
+      (row) => row.platform_name,
+    ),
     capabilityTrust: {
-      healthy: capabilityTrustItems.filter((item) => item.healthState === "healthy" && !item.emergencyPaused).length,
-      needsAttention: capabilityTrustItems.filter((item) => item.healthState !== "healthy").length,
-      paused: capabilityTrustItems.filter((item) => item.emergencyPaused).length,
+      healthy: capabilityTrustItems.filter(
+        (item) => item.healthState === "healthy" && !item.emergencyPaused,
+      ).length,
+      needsAttention: capabilityTrustItems.filter(
+        (item) => item.healthState !== "healthy",
+      ).length,
+      paused: capabilityTrustItems.filter((item) => item.emergencyPaused)
+        .length,
       items: capabilityTrustItems,
-      metrics: capabilityMetrics
-    }
+      metrics: capabilityMetrics,
+    },
   };
 }

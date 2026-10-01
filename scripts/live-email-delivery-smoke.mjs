@@ -14,12 +14,12 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const recipient = process.env.EXTERNAL_TEST_EMAIL?.trim();
+const recipient = (process.env.EXTERNAL_TEST_EMAIL || process.env.FEROCITY_NOTIFY_EMAIL)?.trim();
 const apiKey = process.env.EMAIL_API_KEY?.trim();
 const from = process.env.EMAIL_FROM_ADDRESS?.trim();
 const replyTo = process.env.EMAIL_REPLY_TO_ADDRESS?.trim() || from;
 
-if (!recipient) throw new Error("EXTERNAL_TEST_EMAIL is required.");
+if (!recipient) throw new Error("EXTERNAL_TEST_EMAIL or FEROCITY_NOTIFY_EMAIL is required.");
 if ((process.env.EMAIL_PROVIDER || "").toLowerCase() !== "resend") {
   throw new Error("EMAIL_PROVIDER must be resend.");
 }
@@ -27,6 +27,10 @@ if (!apiKey || !from) throw new Error("EMAIL_API_KEY and EMAIL_FROM_ADDRESS are 
 
 const nonce = crypto.randomBytes(8).toString("hex");
 const sentAt = new Date().toISOString();
+const [recipientLocal = "", recipientDomain = ""] = recipient.split("@");
+const recipientPreview = recipientDomain
+  ? `${recipientLocal.slice(0, 2)}***@${recipientDomain}`
+  : "redacted";
 const response = await fetch("https://api.resend.com/emails", {
   method: "POST",
   headers: {
@@ -53,4 +57,4 @@ if (!response.ok || !body?.id) {
   throw new Error(`Resend delivery request failed with HTTP ${response.status}: ${body?.message || body?.error || "unknown error"}`);
 }
 
-console.log(JSON.stringify({ ok: true, provider: "resend", messageId: body.id, recipient, sentAt }, null, 2));
+console.log(JSON.stringify({ ok: true, provider: "resend", messageId: body.id, recipient: recipientPreview, sentAt }, null, 2));

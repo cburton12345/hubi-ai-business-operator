@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { env } from "@/lib/env";
+import { quoteFinishedUgc, quoteManagedSourceRender } from "@/lib/billing/video-pricing";
 import { getVideoAdBrief, type JsonRecord } from "@/lib/marketing-os/get-video-ad-brief";
-import { getManagedVideoConfiguration } from "@/lib/providers/video-adapters";
-import { refreshVideoRenderAction, submitVideoRenderAction } from "./actions";
+import { getManagedVideoConfiguration, normalizeVideoDuration } from "@/lib/providers/video-adapters";
+import { createVideoVariationAction, refreshVideoRenderAction, submitVideoRenderAction } from "./actions";
 import { VideoQualityController } from "./VideoQualityController";
 import { VideoFinishExporter } from "./VideoFinishExporter";
 
@@ -86,9 +87,18 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
   const deliverables = recordList(finishing.deliverables ?? brief.metadata.deliverables);
   const finishedAssets = recordList(brief.metadata.finishedAssets);
   const videoConfiguration = getManagedVideoConfiguration();
-  const seconds = renderSeconds(brief.metadata.durationSeconds ?? brief.providerRequest.durationSeconds);
-  const estimatedCustomerCharge = videoConfiguration
-    ? seconds * videoConfiguration.customerPriceCentsPerSecond
+  const requestedSeconds = renderSeconds(brief.metadata.durationSeconds ?? brief.providerRequest.durationSeconds);
+  const referenceAssetUrls = listValue(brief.providerRequest.referenceAssetUrls);
+  const seconds = videoConfiguration
+    ? videoConfiguration.providerKey === "google_veo" && referenceAssetUrls.length > 0 && !videoConfiguration.model.includes("lite")
+      ? 8
+      : normalizeVideoDuration(videoConfiguration.providerKey, requestedSeconds)
+    : requestedSeconds;
+  const sourceQuote = quoteManagedSourceRender(seconds);
+  const estimatedCustomerCharge = videoConfiguration ? sourceQuote.customerChargeCents : null;
+  const contentStyle = textValue(brief.metadata.contentStyle ?? brief.providerRequest.contentStyle, "brand_story");
+  const ugcQuote = contentStyle === "ugc"
+    ? quoteFinishedUgc({ durationSeconds: Number(brief.metadata.durationSeconds ?? brief.providerRequest.durationSeconds) || 15 })
     : null;
   const canSubmit = ["needs_review", "provider_ready", "failed"].includes(brief.status) && preflight.decision !== "blocked";
   const canRefresh = ["submitted", "processing"].includes(brief.status);
@@ -145,9 +155,9 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
                     : `Estimated managed-render charge: ${moneyFromCents(estimatedCustomerCharge)} for ${seconds} seconds.`}
                 </strong>
                 <p className="muted">
-                  OpenAI accepts 4, 8, or 12 second clips. Longer briefs render as a 12-second first cut.
-                  This charge creates the source footage. Quality inspection, finishing guidance, captions, branding, and channel reframes do not trigger another premium video render.
+                  The provider renders one supported source-clip length. This charge creates the source footage. Quality inspection, finishing guidance, captions, branding, and channel reframes do not trigger another premium video render.
                 </p>
+                {ugcQuote ? <p className="muted">A complete managed UGC package is priced separately at {moneyFromCents(ugcQuote.customerChargeCents)} and is never added by this source-render approval.</p> : null}
               </div>
             </div>
             <label className="checkbox-row">
@@ -380,6 +390,25 @@ export default async function VideoAdBriefPage({ params }: { params: Promise<{ v
           </div>
         </section>
       </div>
+
+      <section className="panel form-stack">
+        <div>
+          <h2>Create A Variation</h2>
+          <p className="muted">Change the hook, scene direction, or format without spending on another provider render. The new variation stays review-first.</p>
+        </div>
+        <form action={createVideoVariationAction} className="form-stack">
+          <input type="hidden" name="videoJobId" value={brief.id} />
+          <div className="two-col">
+            <input name="variationInstruction" required placeholder="Example: open with the customer problem, then show the product in use" />
+            <select name="aspectRatio" defaultValue="9:16">
+              <option value="9:16">9:16 vertical</option>
+              <option value="16:9">16:9 landscape</option>
+              <option value="1:1">1:1 square finished cut</option>
+            </select>
+          </div>
+          <button className="button secondary-button" type="submit">Create review-first variation</button>
+        </form>
+      </section>
     </QueuePageShell>
   );
 }

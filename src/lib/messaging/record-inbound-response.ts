@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { matchInboundAcquisitionToken } from "@/lib/growth/conversation-acquisition";
 
 export type InboundResponseInput = {
   tenantId: string;
@@ -126,6 +127,20 @@ export async function recordInboundResponse(input: InboundResponseInput) {
     ),
     queryPostgres(
       `
+      update public.lifecycle_strategy_outcomes outcome
+      set customer_replied=true,
+        outcome_json=outcome.outcome_json || jsonb_build_object('replyConversationId',$2::text,'replyRecordedAt',now()),
+        last_measured_at=now(),updated_at=now()
+      from public.follow_up_workflows followup
+      where outcome.tenant_id=$1 and outcome.follow_up_workflow_id=followup.id
+        and followup.tenant_id=outcome.tenant_id
+        and (($3::uuid is not null and followup.lead_id=$3) or ($4::uuid is not null and followup.customer_id=$4))
+        and followup.created_at<=now()
+      `,
+      [input.tenantId, conversationId, input.leadId ?? null, input.customerId ?? null]
+    ),
+    queryPostgres(
+      `
       insert into public.conversation_state_events (
         tenant_id, conversation_id, event_type, actor_type, summary
       ) values ($1, $2, 'inbound_received', 'customer',
@@ -134,5 +149,13 @@ export async function recordInboundResponse(input: InboundResponseInput) {
       [input.tenantId, conversationId]
     )
   ]);
+  await matchInboundAcquisitionToken({
+    tenantId: input.tenantId,
+    body: input.body,
+    conversationId,
+    contactValue: input.from,
+    leadId: input.leadId,
+    customerId: input.customerId
+  });
   return conversationId;
 }

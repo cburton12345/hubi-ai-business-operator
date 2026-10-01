@@ -1,4 +1,6 @@
-import { GenerateVideosOperation, GoogleGenAI } from "@google/genai";
+import { GenerateVideosOperation, GoogleGenAI, VideoGenerationReferenceType } from "@google/genai";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { env } from "@/lib/env";
 import type {
   ProviderContext,
@@ -8,6 +10,19 @@ import type {
 } from "@/lib/providers/interfaces";
 
 type ManagedVideoProviderKey = "openai_video" | "google_veo";
+const OPENAI_VIDEO_API_SHUTDOWN_AT = Date.parse("2026-09-24T00:00:00Z");
+
+export type VideoProviderCapability = {
+  providerKey: ManagedVideoProviderKey | "elevenlabs_flows" | "runway" | "luma";
+  displayName: string;
+  adapterStatus: "live" | "legacy" | "evaluated";
+  textToVideo: boolean;
+  imageToVideo: boolean;
+  referenceImages: number;
+  nativeAspectRatios: string[];
+  asyncJobs: boolean;
+  notes: string;
+};
 
 type OpenAiVideoJob = {
   id?: string;
@@ -66,6 +81,7 @@ export function getManagedVideoConfiguration(): ManagedVideoConfiguration | null
     || !providerCostCentsPerSecond
     || !customerPriceCentsPerSecond
     || customerPriceCentsPerSecond <= providerCostCentsPerSecond
+    || (access.providerKey === "openai_video" && Date.now() >= OPENAI_VIDEO_API_SHUTDOWN_AT)
   ) {
     return null;
   }
@@ -82,7 +98,18 @@ export function getManagedVideoConfiguration(): ManagedVideoConfiguration | null
 function safeProviderError(status: number, body: OpenAiVideoJob) {
   if (status === 401 || status === 403) return "The video provider rejected its credentials.";
   if (status === 429) return "The video provider is busy or its rate limit was reached.";
+  const errorText = `${body.error?.code ?? ""} ${body.error?.message ?? ""}`.toLowerCase();
+  if (errorText.includes("moderation") || errorText.includes("safety") || errorText.includes("content_policy")) {
+    return "The video provider's safety review rejected this request. Revise the concept or reference assets before trying again.";
+  }
   return body.error?.message || `The video provider returned HTTP ${status}.`;
+}
+
+function providerErrorCategory(status: number, body: OpenAiVideoJob) {
+  const errorText = `${body.error?.code ?? ""} ${body.error?.message ?? ""}`.toLowerCase();
+  if (status === 429) return "provider_rate_limited";
+  if (errorText.includes("moderation") || errorText.includes("safety") || errorText.includes("content_policy")) return "provider_moderation";
+  return "provider_error";
 }
 
 export function normalizeVideoDuration(providerKey: ManagedVideoProviderKey, value?: number) {
@@ -104,6 +131,51 @@ function aspectRatioFor(value?: string) {
   return value === "16:9" ? "16:9" : "9:16";
 }
 
+function usableAssetUrls(assets?: string[]) {
+  return (assets ?? []).filter((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }).slice(0, 3);
+}
+
+function isPrivateAddress(address: string) {
+  if (address === "::1" || address === "0:0:0:0:0:0:0:1") return true;
+  if (address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80:")) return true;
+  if (!isIP(address) || address.includes(":")) return false;
+  const [a, b] = address.split(".").map(Number);
+  return a === 10
+    || a === 127
+    || a === 0
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168);
+}
+
+async function assertPublicReferenceUrl(value: string) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password) throw new Error("Reference images must use a public HTTPS URL.");
+  const addresses = await lookup(url.hostname, { all: true });
+  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error("Reference image host is not public.");
+  }
+  return url;
+}
+
+async function googleImageFromUrl(url: string) {
+  const publicUrl = await assertPublicReferenceUrl(url);
+  const response = await fetch(publicUrl, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`Reference image returned HTTP ${response.status}.`);
+  const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+  if (!mimeType.startsWith("image/")) throw new Error("Reference asset is not an image.");
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > 12 * 1024 * 1024) throw new Error("Reference image is larger than 12 MB.");
+  return { imageBytes: Buffer.from(bytes).toString("base64"), mimeType };
+}
+
 async function parseJob(response: Response) {
   return await response.json().catch(() => ({})) as OpenAiVideoJob;
 }
@@ -111,14 +183,26 @@ async function parseJob(response: Response) {
 function providerException(error: unknown) {
   const message = error instanceof Error ? error.message : "The video provider request failed.";
   const lower = message.toLowerCase();
+  const moderated = lower.includes("moderation") || lower.includes("safety") || lower.includes("content policy");
+  const timedOut = lower.includes("timeout") || lower.includes("timed out") || lower.includes("abort");
   return {
     ok: false as const,
-    errorCategory: lower.includes("429") || lower.includes("rate") ? "provider_rate_limited" : "provider_error",
+    errorCategory: moderated
+      ? "provider_moderation"
+      : timedOut
+        ? "provider_timeout"
+        : lower.includes("429") || lower.includes("rate")
+          ? "provider_rate_limited"
+          : "provider_error",
     safeMessage:
-      lower.includes("api key") || lower.includes("credential") || lower.includes("401") || lower.includes("403")
+      moderated
+        ? "The video provider's safety review rejected this request. Revise the concept or reference assets before trying again."
+        : timedOut
+          ? "The video provider timed out before completing the request. It is safe to retry."
+          : lower.includes("api key") || lower.includes("credential") || lower.includes("401") || lower.includes("403")
         ? "The video provider rejected its credentials."
         : "The video provider could not complete the request.",
-    retryable: lower.includes("429") || lower.includes("500") || lower.includes("503")
+    retryable: timedOut || lower.includes("429") || lower.includes("500") || lower.includes("503")
   };
 }
 
@@ -127,7 +211,7 @@ export class OpenAiVideoAdapter implements VideoGenerationProvider {
 
   async createVideo(
     context: ProviderContext,
-    input: { prompt: string; assets?: string[]; durationSeconds?: number; aspectRatio?: string; model?: string }
+    input: { prompt: string; assets?: string[]; durationSeconds?: number; aspectRatio?: string; model?: string; quality?: "economy" | "balanced" | "premium" }
   ): Promise<ProviderResult<{ jobId: string; status: string; usage: ProviderUsage }>> {
     const configuration = getManagedVideoConfiguration();
     if (!context.liveActionsEnabled || configuration?.providerKey !== this.providerKey) {
@@ -159,7 +243,7 @@ export class OpenAiVideoAdapter implements VideoGenerationProvider {
     if (!response.ok || !body.id) {
       return {
         ok: false,
-        errorCategory: response.status === 429 ? "provider_rate_limited" : "provider_error",
+        errorCategory: providerErrorCategory(response.status, body),
         safeMessage: safeProviderError(response.status, body),
         retryable: response.status === 429 || response.status >= 500
       };
@@ -210,7 +294,7 @@ export class OpenAiVideoAdapter implements VideoGenerationProvider {
     if (!response.ok) {
       return {
         ok: false,
-        errorCategory: response.status === 429 ? "provider_rate_limited" : "provider_error",
+        errorCategory: providerErrorCategory(response.status, body),
         safeMessage: safeProviderError(response.status, body),
         retryable: response.status === 429 || response.status >= 500
       };
@@ -224,7 +308,7 @@ export class GoogleVeoAdapter implements VideoGenerationProvider {
 
   async createVideo(
     context: ProviderContext,
-    input: { prompt: string; assets?: string[]; durationSeconds?: number; aspectRatio?: string; model?: string }
+    input: { prompt: string; assets?: string[]; durationSeconds?: number; aspectRatio?: string; model?: string; quality?: "economy" | "balanced" | "premium" }
   ): Promise<ProviderResult<{ jobId: string; status: string; usage: ProviderUsage }>> {
     const configuration = getManagedVideoConfiguration();
     if (!context.liveActionsEnabled || configuration?.providerKey !== this.providerKey) {
@@ -239,22 +323,32 @@ export class GoogleVeoAdapter implements VideoGenerationProvider {
     const seconds = normalizeVideoDuration("google_veo", input.durationSeconds);
     try {
       const ai = new GoogleGenAI({ apiKey: configuration.apiKey });
+      const assetUrls = usableAssetUrls(input.assets);
+      const images = await Promise.all(assetUrls.map(googleImageFromUrl));
+      const model = input.model || configuration.model;
+      const supportsReferenceImages = images.length > 0 && !model.includes("lite");
+      const image = !supportsReferenceImages ? images[0] : undefined;
+      const effectiveSeconds = supportsReferenceImages ? 8 : seconds;
       const operation = await ai.models.generateVideos({
-        model: input.model || configuration.model,
+        model,
         prompt: input.prompt,
+        ...(image ? { image } : {}),
         config: {
           numberOfVideos: 1,
-          durationSeconds: seconds,
+          durationSeconds: effectiveSeconds,
           aspectRatio: aspectRatioFor(input.aspectRatio),
           resolution: "720p",
-          generateAudio: true
+          generateAudio: true,
+          ...(supportsReferenceImages
+            ? { referenceImages: images.map((referenceImage) => ({ image: referenceImage, referenceType: VideoGenerationReferenceType.ASSET })) }
+            : {})
         }
       });
       if (!operation.name) return providerException("The provider did not return an operation ID.");
       return {
         ok: true,
         providerRequestId: operation.name,
-        providerCostCents: seconds * configuration.providerCostCentsPerSecond,
+        providerCostCents: effectiveSeconds * configuration.providerCostCentsPerSecond,
         data: {
           jobId: operation.name,
           status: operation.done ? "completed" : "queued",
@@ -263,13 +357,16 @@ export class GoogleVeoAdapter implements VideoGenerationProvider {
             providerResourceId: operation.name,
             featureKey: "premium_video",
             unitType: "video_second",
-            quantity: seconds,
-            providerCostCents: seconds * configuration.providerCostCentsPerSecond,
+            quantity: effectiveSeconds,
+            providerCostCents: effectiveSeconds * configuration.providerCostCentsPerSecond,
             metadata: {
-              model: input.model || configuration.model,
+              model,
               aspectRatio: aspectRatioFor(input.aspectRatio),
               resolution: "720p",
-              sourceAssetCount: input.assets?.length ?? 0
+              sourceAssetCount: assetUrls.length,
+              imageToVideo: Boolean(image),
+              referenceImageCount: supportsReferenceImages ? images.length : 0,
+              requestedQuality: input.quality ?? "economy"
             }
           }
         }
@@ -325,11 +422,66 @@ export function getVideoGenerationProvider(providerKey: string | null | undefine
 }
 
 export function listVideoGenerationProviders() {
-  return [
-    { providerKey: "openai_video", displayName: "OpenAI Video" },
-    { providerKey: "google_veo", displayName: "Google Veo" }
-  ];
+  return VIDEO_PROVIDER_CAPABILITIES;
 }
+
+export const VIDEO_PROVIDER_CAPABILITIES: VideoProviderCapability[] = [
+  {
+    providerKey: "google_veo",
+    displayName: "Google Veo 3.1",
+    adapterStatus: "live",
+    textToVideo: true,
+    imageToVideo: true,
+    referenceImages: 3,
+    nativeAspectRatios: ["16:9", "9:16"],
+    asyncJobs: true,
+    notes: "Default managed provider; square deliverables are created by Ferocity finishing from a source render."
+  },
+  {
+    providerKey: "openai_video",
+    displayName: "OpenAI Sora 2 (legacy)",
+    adapterStatus: "legacy",
+    textToVideo: true,
+    imageToVideo: true,
+    referenceImages: 1,
+    nativeAspectRatios: ["16:9", "9:16"],
+    asyncJobs: true,
+    notes: "Retained for existing jobs only; the current Sora API is scheduled to shut down September 24, 2026."
+  },
+  {
+    providerKey: "elevenlabs_flows",
+    displayName: "ElevenLabs Image & Video",
+    adapterStatus: "evaluated",
+    textToVideo: true,
+    imageToVideo: true,
+    referenceImages: 3,
+    nativeAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    asyncJobs: true,
+    notes: "Strong UGC assembly candidate for voice, lip-sync, references, and localization. API use requires a Pro workspace and certification before activation."
+  },
+  {
+    providerKey: "runway",
+    displayName: "Runway",
+    adapterStatus: "evaluated",
+    textToVideo: true,
+    imageToVideo: true,
+    referenceImages: 7,
+    nativeAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    asyncJobs: true,
+    notes: "Strong future fallback/router candidate; no additional paid dependency is required for launch."
+  },
+  {
+    providerKey: "luma",
+    displayName: "Luma Dream Machine",
+    adapterStatus: "evaluated",
+    textToVideo: true,
+    imageToVideo: true,
+    referenceImages: 2,
+    nativeAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
+    asyncJobs: true,
+    notes: "Capable future provider, but adding another credential and billing relationship is unnecessary today."
+  }
+];
 
 export async function fetchManagedVideoContent(providerKey: string, jobId: string) {
   const configuration = getManagedVideoAccessConfiguration();

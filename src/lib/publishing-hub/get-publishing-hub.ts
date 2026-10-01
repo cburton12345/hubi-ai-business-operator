@@ -21,10 +21,23 @@ export type PublishingHubDashboard = {
     seoDrafts: number;
     draftsNeedingReview: number;
     scheduledOrApproved: number;
+    canonicalPublications: number;
+    destinationPlans: number;
+    destinationsNeedingAttention: number;
   };
   primaryFormUrl: string;
   trackedFormUrl: string;
   drafts: PublishingHubDraft[];
+  recentDistributions: Array<{
+    id: string;
+    title: string;
+    publicationType: string;
+    status: string;
+    destinations: number;
+    succeeded: number;
+    needsAttention: number;
+    createdAt: string;
+  }>;
 };
 
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live";
@@ -35,7 +48,7 @@ function firstFormUrl(publicKey: string) {
 
 export async function getPublishingHubDashboard(): Promise<PublishingHubDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [forms, hostedPages, draftResult, queueResult] = await Promise.all([
+  const [forms, hostedPages, draftResult, queueResult, distributionMetrics, recentDistributions] = await Promise.all([
     getPublicFormRows(),
     getHostedGrowthPages(),
     queryPostgres<{
@@ -63,6 +76,29 @@ export async function getPublishingHubDashboard(): Promise<PublishingHubDashboar
       where tenant_id = $1 and queue_status in ('approved', 'scheduled', 'needs_approval')
       `,
       [workspaceId]
+    ),
+    queryPostgres<{ publications: string; destinations: string; needs_attention: string }>(
+      `select
+         (select count(*) from public.distribution_publications where tenant_id=$1)::text as publications,
+         (select count(*) from public.distribution_destinations where tenant_id=$1)::text as destinations,
+         (select count(*) from public.distribution_destinations where tenant_id=$1 and status in ('needs_connection','needs_approval','needs_human','failed'))::text as needs_attention`,
+      [workspaceId]
+    ),
+    queryPostgres<{
+      id: string; title: string; publication_type: string; status: string; destination_count: string;
+      succeeded_count: string; needs_attention_count: string; created_at: Date;
+    }>(
+      `select p.id,p.title,p.publication_type,p.status,p.created_at,
+         count(d.id)::text as destination_count,
+         count(d.id) filter (where d.status='succeeded')::text as succeeded_count,
+         count(d.id) filter (where d.status in ('needs_connection','needs_approval','needs_human','failed'))::text as needs_attention_count
+       from public.distribution_publications p
+       left join public.distribution_destinations d on d.publication_id=p.id and d.tenant_id=p.tenant_id
+       where p.tenant_id=$1
+       group by p.id
+       order by p.created_at desc
+       limit 10`,
+      [workspaceId]
     )
   ]);
 
@@ -88,9 +124,22 @@ export async function getPublishingHubDashboard(): Promise<PublishingHubDashboar
       seoDrafts: drafts.length,
       draftsNeedingReview: drafts.filter((draft) => draft.status === "needs_review" || draft.status === "draft").length,
       scheduledOrApproved: Number(queueResult?.rows[0]?.count ?? 0)
+      ,canonicalPublications: Number(distributionMetrics?.rows[0]?.publications ?? 0)
+      ,destinationPlans: Number(distributionMetrics?.rows[0]?.destinations ?? 0)
+      ,destinationsNeedingAttention: Number(distributionMetrics?.rows[0]?.needs_attention ?? 0)
     },
     primaryFormUrl,
     trackedFormUrl,
-    drafts
+    drafts,
+    recentDistributions: (recentDistributions?.rows ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      publicationType: row.publication_type,
+      status: row.status,
+      destinations: Number(row.destination_count),
+      succeeded: Number(row.succeeded_count),
+      needsAttention: Number(row.needs_attention_count),
+      createdAt: row.created_at.toISOString()
+    }))
   };
 }

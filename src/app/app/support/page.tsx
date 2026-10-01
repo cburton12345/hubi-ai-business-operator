@@ -29,7 +29,7 @@ export default async function WorkspaceSupportPage({
       {params.sent ? (
         <section className="success-panel section-actions">
           <h2>Support has your request.</h2>
-          <p>Reference: <strong>{params.reference}</strong>. Ferocity also emailed a copy to you.</p>
+          <p>Reference: <strong>{params.reference}</strong>. Your request is recorded and visible below; email confirmation is sent when delivery is available.</p>
         </section>
       ) : null}
       <section className="panel section-actions">

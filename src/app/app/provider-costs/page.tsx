@@ -2,7 +2,8 @@ import { AlertTriangle, BatteryCharging, Gauge, ReceiptText, ShieldCheck } from 
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getProviderFundingDashboard, type ProviderFundingAccount } from "@/lib/usage/provider-funding";
-import { approveRecommendedProviderCapAction, reconcileProviderCostAction, saveProviderFundingAccountAction } from "./actions";
+import { queryPostgres } from "@/lib/db/postgres";
+import { approveRecommendedProviderCapAction, reconcileProviderCostAction, saveEarnProviderSponsorshipAction, saveProviderFundingAccountAction, setEarnProviderSponsorshipStatusAction } from "./actions";
 
 function money(cents: number | null) {
   if (cents === null) return "not synced";
@@ -35,8 +36,23 @@ function monthBounds() {
 
 export default async function ProviderCostsPage() {
   await requirePermission("platform:manage");
-  const dashboard = await getProviderFundingDashboard();
+  const [dashboard, earnWorkspacesResult] = await Promise.all([
+    getProviderFundingDashboard(),
+    queryPostgres<{
+      tenant_id: string; tenant_name: string; sponsorship_status: string | null;
+      monthly_provider_cost_cap_cents: number | null; ends_at: Date | null; reason: string | null; written_terms: string | null;
+    }>(
+      `select t.id tenant_id,t.name tenant_name,es.status sponsorship_status,
+         es.monthly_provider_cost_cap_cents,es.ends_at,es.reason,es.written_terms
+       from public.tenants t
+       left join public.billing_subscriptions bs on bs.tenant_id=t.id
+       left join public.earn_provider_sponsorships es on es.tenant_id=t.id
+       where coalesce(bs.plan_key,t.plan_key)='earn'
+       order by (es.status='active') desc,t.name`
+    )
+  ]);
   const period = monthBounds();
+  const earnWorkspaces = earnWorkspacesResult?.rows ?? [];
 
   return (
     <QueuePageShell
@@ -81,6 +97,47 @@ export default async function ProviderCostsPage() {
           ))}
           {dashboard.activeAlerts.length === 0 ? <li className="list-row"><span className="muted">No funding alert is active.</span></li> : null}
         </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <h2>Earn Pilot Provider Sponsorships</h2>
+        <p className="muted">Standard Earn customers pay their own provider fees. Create an exception only for a named pilot workspace with written terms, a monthly cap, and an optional end date.</p>
+        <div className="grid section-actions">
+          {earnWorkspaces.map((workspace) => (
+            <section className="panel span-6" key={workspace.tenant_id}>
+              <div className="list-row flush-row">
+                <div><h3>{workspace.tenant_name}</h3><p className="muted">{workspace.tenant_id}</p></div>
+                <span className={`pill ${workspace.sponsorship_status === "active" ? "" : "medium"}`}>
+                  {workspace.sponsorship_status ?? "customer pays provider fees"}
+                </span>
+              </div>
+              {workspace.sponsorship_status ? (
+                <p className="muted">
+                  Cap {money(workspace.monthly_provider_cost_cap_cents)} / ends {workspace.ends_at ? workspace.ends_at.toLocaleDateString() : "no date recorded"}<br />
+                  {workspace.reason}
+                </p>
+              ) : null}
+              <details>
+                <summary>{workspace.sponsorship_status ? "Edit written exception" : "Create written exception"}</summary>
+                <form action={saveEarnProviderSponsorshipAction} className="form-stack section-actions">
+                  <input name="tenantId" type="hidden" value={workspace.tenant_id} />
+                  <label>Monthly Ferocity-funded provider cap ($)<input name="monthlyCap" type="number" min="0.01" max="100000" step="0.01" defaultValue={workspace.monthly_provider_cost_cap_cents ? workspace.monthly_provider_cost_cap_cents / 100 : 15} required /></label>
+                  <label>Exception ends (optional)<input name="endsAt" type="date" defaultValue={workspace.ends_at?.toISOString().slice(0, 10) ?? ""} /></label>
+                  <label>Business reason<textarea name="reason" minLength={10} maxLength={1000} defaultValue={workspace.reason ?? "Controlled Ferocity Earn pilot with owner-approved provider-cost sponsorship."} required /></label>
+                  <label>Written pilot terms<textarea name="writtenTerms" minLength={20} maxLength={3000} defaultValue={workspace.written_terms ?? "Ferocity will cover ordinary Ferocity-managed provider costs for this named pilot workspace up to the monthly cap shown here. Usage pauses for review at the cap. Advertising spend, payment processing, and optional premium third-party purchases are not included."} required /></label>
+                  <button className="mini-button" type="submit">Activate exception</button>
+                </form>
+              </details>
+              {workspace.sponsorship_status ? (
+                <div className="inline-actions section-actions">
+                  {workspace.sponsorship_status !== "active" ? <SponsorshipStatusButton tenantId={workspace.tenant_id} status="active" label="Reactivate" /> : <SponsorshipStatusButton tenantId={workspace.tenant_id} status="paused" label="Pause" />}
+                  {workspace.sponsorship_status !== "revoked" ? <SponsorshipStatusButton tenantId={workspace.tenant_id} status="revoked" label="Revoke" /> : null}
+                </div>
+              ) : null}
+            </section>
+          ))}
+          {earnWorkspaces.length === 0 ? <p className="muted">No Earn workspace exists yet. This section will populate after a customer enrolls.</p> : null}
+        </div>
       </section>
 
       <section className="panel section-actions">
@@ -139,6 +196,16 @@ export default async function ProviderCostsPage() {
         </ul>
       </section>
     </QueuePageShell>
+  );
+}
+
+function SponsorshipStatusButton({ tenantId, status, label: text }: { tenantId: string; status: "active" | "paused" | "revoked"; label: string }) {
+  return (
+    <form action={setEarnProviderSponsorshipStatusAction}>
+      <input name="tenantId" type="hidden" value={tenantId} />
+      <input name="status" type="hidden" value={status} />
+      <button className="mini-button" type="submit">{text}</button>
+    </form>
   );
 }
 

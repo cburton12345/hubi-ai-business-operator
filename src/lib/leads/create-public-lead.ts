@@ -6,6 +6,7 @@ import { logAppError } from "@/lib/observability/log-error";
 import { getPushNotificationPreferences, pushPreferencesAllowEvent, type PushSeverity } from "@/lib/push/preferences";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { evaluateQualification } from "@/lib/revenue-growth/qualification";
+import { enrollFerocitySalesProspect } from "@/lib/leads/enroll-ferocity-sales-prospect";
 
 type FormRecord = {
   id: string;
@@ -56,7 +57,21 @@ function includesAny(value: string, terms: string[]) {
   return terms.some((term) => lower.includes(term));
 }
 
+function isFerocitySalesProspect(input: PublicLeadInput) {
+  return input.source === "website_chat" && [
+    "ferocity_public_sales_chat",
+    "ferocity_public_diagnostic_plan"
+  ].includes(input.sourceDetail ?? "");
+}
+
 function classifyReceptionistLead(input: PublicLeadInput): { severity: PushSeverity; ownerAttention: boolean; reason: string } {
+  if (isFerocitySalesProspect(input)) {
+    return {
+      severity: "medium",
+      ownerAttention: false,
+      reason: "Ask Ferocity prospect opted into Ferocity-managed sales follow-up"
+    };
+  }
   const detailText = JSON.stringify(input.details ?? {});
   const text = `${input.leadType} ${input.source ?? ""} ${input.sourceDetail ?? ""} ${input.message ?? ""} ${detailText}`;
   const urgent = input.leadType === "case_intake" || includesAny(text, [
@@ -243,12 +258,19 @@ async function recordReceptionistLeadEvent({
   input: PublicLeadInput;
 }) {
   const classification = classifyReceptionistLead(input);
+  const salesProspect = isFerocitySalesProspect(input);
   const status = classification.ownerAttention ? "needs_owner" : "ai_handled";
-  const title = classification.ownerAttention ? "AI Receptionist found a lead worth interrupting you" : "AI Receptionist captured a lead";
+  const title = salesProspect
+    ? "Ferocity started working a new sales opportunity"
+    : classification.ownerAttention
+      ? "AI Receptionist found a lead worth interrupting you"
+      : "AI Receptionist captured a lead";
   const summary = [
     `${leadContactLabel(input)} came in from ${sourceLabel(input)}.`,
     input.message ? `Message: ${input.message.slice(0, 180)}` : "No message was included.",
-    classification.ownerAttention
+    salesProspect
+      ? "Ferocity saved the prospect, consent, and diagnostic context and enrolled the opportunity in guarded follow-up. It will stop on reply and only escalate when a decision needs you."
+      : classification.ownerAttention
       ? "Ferocity saved the lead and flagged it for owner review."
       : "Ferocity saved the lead, source, consent, and follow-up context without needing owner interruption."
   ].join(" ");
@@ -301,7 +323,9 @@ async function recordReceptionistLeadEvent({
         classification.ownerAttention
           ? "AI captured the lead and found enough urgency to ask for owner review."
           : "AI captured the lead and queued it for normal follow-up.",
-        classification.ownerAttention
+        salesProspect
+          ? "Let Ferocity continue qualification and follow-up. Review only if the prospect requests a person or a protected decision is required."
+          : classification.ownerAttention
           ? "Open Leads & Customers and approve the fastest useful follow-up."
           : "Review this in the next lead sweep or daily briefing.",
         actionHref,
@@ -391,6 +415,7 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     };
   }
 
+  const salesProspect = isFerocitySalesProspect(input);
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
@@ -405,8 +430,8 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
       message: input.message,
       lead_type: input.leadType,
       status: "new",
-      qualification_status: input.leadType === "case_intake" ? "needs_review" : "unqualified",
-      priority: input.leadType === "case_intake" ? "high" : "normal",
+      qualification_status: input.leadType === "case_intake" || salesProspect ? "needs_review" : "unqualified",
+      priority: input.leadType === "case_intake" || salesProspect ? "high" : "normal",
       consent_to_contact: input.consentToContact,
       metadata_json: {
         details: input.details,
@@ -489,6 +514,14 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     leadId: lead.id,
     input
   });
+  if (salesProspect) {
+    await enrollFerocitySalesProspect({
+      tenantId: form.tenant_id,
+      brandId: form.brand_id,
+      leadId: lead.id,
+      lead: input
+    });
+  }
 
   return {
     ok: true,
@@ -529,6 +562,7 @@ async function createPublicLeadWithPostgres(
     };
   }
 
+  const salesProspect = isFerocitySalesProspect(input);
   const leadResult = await queryPostgres<LeadRecord>(
     `
     insert into public.leads (
@@ -562,8 +596,8 @@ async function createPublicLeadWithPostgres(
       input.phone ?? null,
       input.message ?? null,
       input.leadType,
-      input.leadType === "case_intake" ? "needs_review" : "unqualified",
-      input.leadType === "case_intake" ? "high" : "normal",
+      input.leadType === "case_intake" || salesProspect ? "needs_review" : "unqualified",
+      input.leadType === "case_intake" || salesProspect ? "high" : "normal",
       input.consentToContact,
       JSON.stringify({
         details: input.details,
@@ -670,6 +704,14 @@ async function createPublicLeadWithPostgres(
     leadId: lead.id,
     input
   });
+  if (salesProspect) {
+    await enrollFerocitySalesProspect({
+      tenantId: form.tenant_id,
+      brandId: form.brand_id,
+      leadId: lead.id,
+      lead: input
+    });
+  }
 
   return {
     ok: true,

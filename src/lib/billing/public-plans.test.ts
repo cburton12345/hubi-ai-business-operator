@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPublicPlan, publicEarnPlan } from "./public-plans";
+import { getPublicPlan, managedVoicePricingLabel, publicEarnPlan, publicManagedSmsPricing, publicManagedVoicePricing, publicPlanPrice } from "./public-plans";
 
 describe("public Ferocity plans", () => {
   it("sells the core AI engine as part of Starter", () => {
@@ -27,9 +27,54 @@ describe("public Ferocity plans", () => {
 
   it("keeps the Earn offer in shared public pricing copy", () => {
     expect(publicEarnPlan.name).toBe("Ferocity Earn");
-    expect(publicEarnPlan.price).toBe("$0/month base");
+    expect(publicEarnPlan.price).toBe("No fixed monthly fee");
     expect(publicEarnPlan.rates).toContain("0.9%");
     expect(publicEarnPlan.rates).toContain("6%");
     expect(publicEarnPlan.eligibility).toMatch(/actually collected/i);
+    expect(publicEarnPlan.costs).toMatch(/^Provider usage.+remain separate/i);
+    expect(publicEarnPlan.costs).toMatch(/written pilot exception/i);
+  });
+
+  it("keeps the commercial reset prices and annual savings centralized", () => {
+    const expected = {
+      starter: [14900, 149000],
+      growth: [34900, 349000],
+      operator: [69900, 699000]
+    } as const;
+    for (const [key, prices] of Object.entries(expected)) {
+      const plan = getPublicPlan(key)!;
+      expect(publicPlanPrice(plan, "month").cents).toBe(prices[0]);
+      expect(publicPlanPrice(plan, "year").cents).toBe(prices[1]);
+    }
+  });
+
+  it("keeps newer intelligence capabilities represented without weakening the core plans", () => {
+    const starter = getPublicPlan("starter");
+    const growth = getPublicPlan("growth");
+    const operator = getPublicPlan("operator");
+    expect(starter?.moreFeatures.join(" ")).toMatch(/receipt.+statement intelligence/i);
+    expect(growth?.bullets.join(" ")).toMatch(/collected cash.+capacity.+margin/i);
+    expect(operator?.moreFeatures.join(" ")).toMatch(/closed-loop growth controller/i);
+    for (const plan of [starter, growth, operator]) {
+      expect(plan?.moreFeatures).toContain("One Ferocity Connect Android device included");
+    }
+  });
+
+  it("keeps managed voice allowances and overage pricing in one source of truth", () => {
+    expect(publicManagedVoicePricing.calls.includedMinutes).toBe(0);
+    expect(publicManagedVoicePricing.starter.includedMinutes).toBe(25);
+    expect(publicManagedVoicePricing.growth.includedMinutes).toBe(100);
+    expect(publicManagedVoicePricing.operator.includedMinutes).toBe(300);
+    for (const planKey of ["calls", "starter", "growth", "operator"] as const) {
+      expect(publicManagedVoicePricing[planKey].overageCentsPerCompletedMinute).toBe(25);
+      expect(managedVoicePricingLabel(planKey)).toContain("$0.25 per completed minute");
+    }
+  });
+
+  it("includes useful hosted SMS allowances without advertising unlimited provider usage", () => {
+    expect(publicManagedSmsPricing.starter.includedSegments).toBe(100);
+    expect(publicManagedSmsPricing.growth.includedSegments).toBe(300);
+    expect(publicManagedSmsPricing.operator.includedSegments).toBe(1000);
+    expect(publicManagedSmsPricing.operator.overageCentsPerSegment).toBe(4);
   });
 });

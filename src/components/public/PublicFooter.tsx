@@ -1,7 +1,13 @@
 import Link from "next/link";
+import { FerocityBrandMark } from "@/components/public/FerocityBrandMark";
 
 const complianceLinks = [
+  ["Product", "/#capability-title"],
+  ["Pricing", "/pricing"],
+  ["Ferocity Earn", "/pricing#earn"],
+  ["Ask Ferocity", "/#ask-ferocity"],
   ["Ferocity Connect", "/ferocity-connect"],
+  ["Integrations", "/integrations"],
   ["Support", "/support"],
   ["Privacy", "/privacy"],
   ["Terms", "/terms"],
@@ -17,8 +23,8 @@ export function PublicFooter() {
   return (
     <footer className="public-footer">
       <div>
-        <Link className="brand-mark" href="/">Ferocity</Link>
-        <p>AI business operating software for service businesses.</p>
+        <FerocityBrandMark compact />
+        <p>The AI operating system for running and growing a business.</p>
       </div>
       <nav aria-label="Legal and compliance">
         {complianceLinks.map(([label, href]) => (

@@ -123,8 +123,7 @@ export default async function AIMonitoringBriefingPage() {
             <Mail size={18} /> Email Watch
           </h2>
           <p className="muted">
-            Gmail, Outlook, and Microsoft 365 are prepared as provider sources. When connected, email can become a lead, task, job, vendor item,
-            financial item, or ignored spam.
+            Connect Gmail or Microsoft 365 in read-only mode. Ferocity sorts new work, customer needs, billing mail, support, and urgent issues without silently gaining permission to send.
           </p>
           <ul className="list">
             {["Leads", "Existing customers", "Vendors", "Financial mail", "Owner action", "Spam"].map((item) => (
@@ -134,6 +133,7 @@ export default async function AIMonitoringBriefingPage() {
               </li>
             ))}
           </ul>
+          <Link className="button" href="/app/email-watch">Open Email Watch</Link>
         </section>
 
         <section className="panel span-6">

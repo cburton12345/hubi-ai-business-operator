@@ -24,6 +24,7 @@ export type PhoneConnection = {
   mmsRequested: boolean;
   status: string;
   capabilities: PhoneCapability[];
+  managedNumberProvisioningApproved: boolean;
 };
 
 export type SavePhoneConnectionInput = {
@@ -39,6 +40,7 @@ export type SavePhoneConnectionInput = {
   mmsRequested?: boolean;
   phoneProviderKey?: string | null;
   phoneProviderLabel?: string | null;
+  managedNumberProvisioningApproved?: boolean;
 };
 
 const fullCapabilities: PhoneCapability[] = [
@@ -66,6 +68,14 @@ export function capabilitiesForPhonePath(path: PhoneConnectionPath): PhoneCapabi
     return fullCapabilities.filter((capability) => capability !== "number_porting" && capability !== "sip");
   }
   return [...fullCapabilities];
+}
+
+export function inferNorthAmericanAreaCode(phoneNumber: string | null | undefined) {
+  const digits = (phoneNumber ?? "").replace(/\D/g, "");
+  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (national.length !== 10) return null;
+  const areaCode = national.slice(0, 3);
+  return /^[2-9]\d{2}$/.test(areaCode) ? areaCode : null;
 }
 
 function initialStatus(path: PhoneConnectionPath) {
@@ -125,7 +135,9 @@ export async function savePhoneConnection(input: SavePhoneConnectionInput) {
       JSON.stringify({
         customerSelectedAt: new Date().toISOString(),
         customerSelectedPath: input.connectionPath,
-        providerSelectionDeferred: input.connectionPath !== "bring_own_provider"
+        providerSelectionDeferred: input.connectionPath !== "bring_own_provider",
+        managedNumberProvisioningApproved:
+          input.connectionPath === "new_ferocity_number" && input.managedNumberProvisioningApproved === true
       })
     ]
   );
@@ -170,12 +182,14 @@ export async function getPhoneConnection(tenantId: string): Promise<PhoneConnect
     mms_requested: boolean;
     status: string;
     capabilities_json: PhoneCapability[] | null;
+    managed_number_provisioning_approved: boolean;
   }>(
     `
     select id, connection_path, business_number, ferocity_number, phone_provider_key,
            phone_provider_label, voice_agent_provider_key, current_carrier,
            full_integration_method, preferred_area_code, intended_use,
-           human_transfer_number, sms_requested, mms_requested, status, capabilities_json
+           human_transfer_number, sms_requested, mms_requested, status, capabilities_json,
+           coalesce((setup_json->>'managedNumberProvisioningApproved')::boolean, false) as managed_number_provisioning_approved
     from public.phone_connections
     where tenant_id = $1
     limit 1
@@ -200,6 +214,7 @@ export async function getPhoneConnection(tenantId: string): Promise<PhoneConnect
     smsRequested: row.sms_requested,
     mmsRequested: row.mms_requested,
     status: row.status,
-    capabilities: row.capabilities_json ?? []
+    capabilities: row.capabilities_json ?? [],
+    managedNumberProvisioningApproved: row.managed_number_provisioning_approved
   };
 }

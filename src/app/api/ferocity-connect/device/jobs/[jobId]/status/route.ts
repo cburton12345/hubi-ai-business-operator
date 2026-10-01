@@ -34,7 +34,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
      returning id,attempt_count,max_attempts,metadata_json`,
     [jobId, auth.identity.tenantId, auth.identity.deviceId, parsed.data.status, parsed.data.errorCode ?? null, parsed.data.safeError ?? null]
   );
-  if (!job?.rows[0]) return NextResponse.json({ ok: false, error: "Job not found or status is final." }, { status: 404 });
+  // A device can legitimately deliver a late Android sent/delivered callback after
+  // the job reached a final state or was cleaned up. Acknowledge it so the durable
+  // device outbox does not retry the same terminal event forever.
+  if (!job?.rows[0]) {
+    return NextResponse.json({ ok: true, accepted: false, staleOrFinal: true });
+  }
   await queryPostgres(
     `insert into public.ferocity_connect_events (tenant_id,device_id,job_id,event_type,device_event_id,safe_detail,metadata_json)
      values ($1,$2,$3,$4,$5,$6,$7::jsonb) on conflict (device_id,device_event_id) do nothing`,

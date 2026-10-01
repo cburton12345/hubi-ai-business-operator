@@ -43,6 +43,8 @@ describe("voice agent business profile", () => {
     expect(prompt).toContain("create a tracked human follow-up");
     expect(prompt).toContain("Do not lead with labels such as AI");
     expect(prompt).toContain("answer honestly");
+    expect(prompt).toContain("{{call_handling_instruction}}");
+    expect(prompt).toContain("{{business_context}}");
     expect(prompt).not.toMatch(/Twilio|Vapi|Retell|Telnyx/);
   });
 

@@ -12,6 +12,7 @@ import {
   type StandardOAuthProvider
 } from "@/lib/integrations/standard-oauth";
 import { getOAuthProviderConfig } from "@/lib/integrations/oauth-providers";
+import { discoverAdvertisingAccounts } from "@/lib/integrations/advertising-account-discovery";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -23,11 +24,23 @@ function providerClient(provider: StandardOAuthProvider) {
   if (provider === "reddit") {
     return { clientId: env.REDDIT_CLIENT_ID, clientSecret: env.REDDIT_CLIENT_SECRET, redirectUri: env.REDDIT_OAUTH_REDIRECT_URI };
   }
-  if (provider === "microsoft_ads" || provider === "microsoft_calendar") {
+  if (provider === "microsoft_ads" || provider === "microsoft_calendar" || provider === "microsoft_mailbox") {
     return { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, redirectUri: env.MICROSOFT_OAUTH_REDIRECT_URI };
   }
   if (provider === "jobber") {
     return { clientId: env.JOBBER_CLIENT_ID, clientSecret: env.JOBBER_CLIENT_SECRET, redirectUri: env.JOBBER_OAUTH_REDIRECT_URI };
+  }
+  if (provider === "linkedin_ads") {
+    return { clientId: env.LINKEDIN_CLIENT_ID, clientSecret: env.LINKEDIN_CLIENT_SECRET, redirectUri: env.LINKEDIN_OAUTH_REDIRECT_URI };
+  }
+  if (provider === "pinterest_ads") {
+    return { clientId: env.PINTEREST_CLIENT_ID, clientSecret: env.PINTEREST_CLIENT_SECRET, redirectUri: env.PINTEREST_OAUTH_REDIRECT_URI };
+  }
+  if (provider === "snapchat_ads") {
+    return { clientId: env.SNAPCHAT_CLIENT_ID, clientSecret: env.SNAPCHAT_CLIENT_SECRET, redirectUri: env.SNAPCHAT_OAUTH_REDIRECT_URI };
+  }
+  if (provider === "amazon_ads") {
+    return { clientId: env.AMAZON_ADS_CLIENT_ID, clientSecret: env.AMAZON_ADS_CLIENT_SECRET, redirectUri: env.AMAZON_ADS_OAUTH_REDIRECT_URI };
   }
   return { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI };
 }
@@ -71,11 +84,11 @@ async function finishOAuthJob(jobId: string, status: "completed" | "failed", res
   );
 }
 
-async function saveCredential(input: {
+export async function saveCredential(input: {
   workspaceId: string;
   userId: string | null;
   provider: StandardOAuthProvider;
-  label: "oauth_access_token" | "oauth_refresh_token";
+  label: "oauth_access_token" | "oauth_refresh_token" | "oauth_token_secret";
   kind: "auth_token" | "refresh_token";
   secret: string;
   rotationDueAt: string;
@@ -124,7 +137,7 @@ async function saveCredential(input: {
   if (!result?.rowCount) throw new Error("Ferocity could not securely save the provider credential.");
 }
 
-async function recordConnectedProvider(input: {
+export async function recordConnectedProvider(input: {
   workspaceId: string;
   provider: StandardOAuthProvider;
   scopes: string[];
@@ -205,6 +218,13 @@ async function completeConnection(input: {
   const effectiveScopes = tokens.scopes.length > 0
     ? tokens.scopes
     : getOAuthProviderConfig(input.provider)?.scopes ?? [];
+  const discoveryProviders = ["google_ads", "reddit", "microsoft_ads", "linkedin_ads", "pinterest_ads", "snapchat_ads", "amazon_ads"] as const;
+  const discovery = discoveryProviders.includes(input.provider as (typeof discoveryProviders)[number])
+    ? await discoverAdvertisingAccounts({
+        provider: input.provider as (typeof discoveryProviders)[number],
+        accessToken: tokens.accessToken
+      })
+    : null;
   const metadata = {
     source: `${input.provider}_oauth`,
     accountId: identity.accountId,
@@ -213,7 +233,14 @@ async function completeConnection(input: {
     connectedAt: new Date().toISOString(),
     accessTokenExpiresAt: expiresAt,
     scopes: effectiveScopes,
-    liveActionsEnabled: false
+    liveActionsEnabled: false,
+    ...(discovery ? {
+      availableAccounts: discovery.accounts,
+      selectedAccountId: discovery.selectedAccountId,
+      accountSelectionRequired: discovery.selectionRequired,
+      accountDiscoveryStatus: discovery.status,
+      accountDiscoveryMessage: discovery.message
+    } : {})
   };
   await saveCredential({
     workspaceId: input.workspaceId,
@@ -238,6 +265,26 @@ async function completeConnection(input: {
     });
   }
   await recordConnectedProvider({ workspaceId: input.workspaceId, provider: input.provider, scopes: effectiveScopes, metadata });
+  if (input.provider === "gmail_mailbox" || input.provider === "microsoft_mailbox") {
+    const mailboxSaved = await queryPostgres(
+      `insert into public.mailbox_connections (
+         tenant_id, provider_key, account_external_id, account_email, display_name, status,
+         read_enabled, send_enabled, metadata_json, connected_at
+       ) values ($1,$2,$3,$4,$5,'connected',true,false,$6::jsonb,now())
+       on conflict (tenant_id, provider_key) do update set
+         account_external_id=excluded.account_external_id, account_email=excluded.account_email,
+         display_name=excluded.display_name, status='connected', read_enabled=true,
+         metadata_json=public.mailbox_connections.metadata_json || excluded.metadata_json,
+         connected_at=now(), updated_at=now()`,
+      [input.workspaceId, input.provider, identity.accountId, identity.accountName, identity.accountName, JSON.stringify(metadata)]
+    );
+    if (!mailboxSaved?.rowCount) throw new Error("Ferocity could not finish the mailbox connection.");
+    await queryPostgres(
+      `update public.ai_monitor_sources set status='connected',provider_key=$2,metadata_json=metadata_json || $3::jsonb,updated_at=now()
+       where tenant_id=$1 and source_key='email_monitor'`,
+      [input.workspaceId, input.provider, JSON.stringify({ connectedMailbox: identity.accountName, connectedAt: new Date().toISOString() })]
+    );
+  }
   await finishOAuthJob(input.jobId, "completed", {
     safeMode: true,
     provider: input.provider,

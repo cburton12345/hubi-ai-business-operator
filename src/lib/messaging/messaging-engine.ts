@@ -4,6 +4,8 @@ import { getContactCommunicationPreference } from "@/lib/preferences/contact-com
 import { getMessagingProvider, getProvidersForChannel } from "./provider-registry";
 import { estimateSmsSegments, isWithinQuietHours, localTimeInZone, smsPurpose } from "./sms-policy";
 import type { MessagingSendInput, MessagingSendResult } from "./types";
+import { isProviderUsageSponsored } from "@/lib/billing/earn-provider-sponsorship";
+import { includedManagedSmsSegments, managedSmsOverageUnits } from "@/lib/billing/managed-messaging";
 
 function normalizeContact(value: string) {
   return value.trim().toLowerCase();
@@ -148,6 +150,9 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
     recipient_hourly_sends: string | number;
     recent_failures: string | number;
     external_emergency_paused: boolean;
+    sponsorship_status: string | null;
+    sponsored_provider_cost_cap_cents: string | number | null;
+    sponsored_provider_cost_used_cents: string | number;
   }>(
     `
     select
@@ -165,6 +170,26 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
       a.per_recipient_hourly_cap,
       a.recent_failure_cap,
       a.risk_window_minutes,
+      (
+        select es.status from public.earn_provider_sponsorships es
+        where es.tenant_id=a.tenant_id and es.status='active'
+          and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now())
+        limit 1
+      ) as sponsorship_status,
+      (
+        select es.monthly_provider_cost_cap_cents
+        from public.earn_provider_sponsorships es
+        where es.tenant_id=a.tenant_id and es.status='active'
+          and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now())
+        limit 1
+      ) as sponsored_provider_cost_cap_cents,
+      (
+        select coalesce(sum(u.provider_cost_cents),0)
+        from public.usage_meter_events u
+        where u.tenant_id=a.tenant_id
+          and u.billing_period_start=date_trunc('month',now())::date
+          and u.status not in ('void','failed')
+      ) as sponsored_provider_cost_used_cents,
       (
         select coalesce(sum(u.unit_count), 0)
         from public.messaging_usage u
@@ -277,6 +302,19 @@ async function getMessagingSendDecision(input: MessagingSendInput, providerKey: 
   const estimate = estimatedMessagingUsage(input);
   const usedUnits = Number(account.used_units ?? 0);
   const usedCostCents = Number(account.used_cost_cents ?? 0);
+  if (
+    account.ownership_mode === "ferocity_managed"
+    && isProviderUsageSponsored(account.sponsorship_status)
+    && account.sponsored_provider_cost_cap_cents !== null
+    && Number(account.sponsored_provider_cost_used_cents ?? 0) + estimate.providerCostCents
+      > Number(account.sponsored_provider_cost_cap_cents)
+  ) {
+    return {
+      allowed: false,
+      reason: "This workspace reached its sponsored provider-usage safety budget. Ferocity review is required before more managed usage.",
+      category: "sponsored_provider_cost_cap"
+    };
+  }
   if (account.monthly_unit_cap !== null && usedUnits + estimate.units > account.monthly_unit_cap) {
     return { allowed: false, reason: "Monthly messaging unit cap reached.", category: "unit_cap" };
   }
@@ -544,21 +582,53 @@ async function logMessage(input: MessagingSendInput, result: MessagingSendResult
 async function logUsage(input: MessagingSendInput, result: MessagingSendResult) {
   if (!result.ok || result.status === "manual_ready") return;
   const estimate = estimatedMessagingUsage(input);
-  const accountResult = await queryPostgres<{ ownership_mode: string }>(
+  const accountResult = await queryPostgres<{
+    ownership_mode: string;
+    sponsorship_status: string | null;
+    plan_key: string | null;
+    managed_sms_units_before: string | number;
+  }>(
     `
-    select ownership_mode
-    from public.tenant_messaging_accounts
-    where tenant_id = $1 and provider_key = $2
-    order by case ownership_mode when 'customer_owned' then 0 when 'ferocity_managed' then 1 else 2 end
+    select a.ownership_mode,
+      coalesce(
+        (select plan_key from public.billing_subscriptions s
+         where s.tenant_id=a.tenant_id and s.status in ('trialing','active','past_due','manual','incomplete')
+         order by s.updated_at desc nulls last limit 1),
+        (select plan_key from public.tenants t where t.id=a.tenant_id limit 1),
+        'free'
+      ) as plan_key,
+      (select coalesce(sum(u.unit_count),0)
+       from public.messaging_usage u
+       where u.tenant_id=a.tenant_id and u.direction='outbound'
+         and u.channel='sms' and u.created_at>=date_trunc('month',now())
+         and u.metadata_json->>'ownershipMode'='ferocity_managed') as managed_sms_units_before,
+      (select es.status from public.earn_provider_sponsorships es
+       where es.tenant_id=a.tenant_id and es.status='active'
+         and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now()) limit 1) sponsorship_status
+    from public.tenant_messaging_accounts a
+    where a.tenant_id = $1 and a.provider_key = $2
+    order by case a.ownership_mode when 'customer_owned' then 0 when 'ferocity_managed' then 1 else 2 end
     limit 1
     `,
     [input.tenantId, result.providerKey]
   );
   const managed = accountResult?.rows[0]?.ownership_mode === "ferocity_managed";
-  const minimumUnitPrice = input.channel === "email" ? 0.2 : input.channel === "mms" ? 6 : 3;
-  const customerChargeCents = managed
-    ? Math.max(estimate.providerCostCents * 1.5, estimate.units * minimumUnitPrice)
+  const sponsored = isProviderUsageSponsored(accountResult?.rows[0]?.sponsorship_status);
+  const planKey = accountResult?.rows[0]?.plan_key ?? "free";
+  const managedSmsUnitsBefore = Number(accountResult?.rows[0]?.managed_sms_units_before ?? 0);
+  const isManagedSms = managed && input.channel === "sms";
+  const overageUnits = isManagedSms
+    ? managedSmsOverageUnits({ planKey, usedBefore: managedSmsUnitsBefore, newUnits: estimate.units })
+    : estimate.units;
+  const configuredManagedSmsPrice = configuredRate("MANAGED_SMS_CUSTOMER_PRICE_CENTS_PER_SEGMENT", 4);
+  const minimumUnitPrice = input.channel === "email" ? 0.2 : input.channel === "mms" ? 6 : configuredManagedSmsPrice;
+  const customerChargeCents = managed && !sponsored && overageUnits > 0
+    ? Math.max(
+      estimate.providerCostCents * 1.5 * (overageUnits / Math.max(estimate.units, 1)),
+      overageUnits * minimumUnitPrice
+    )
     : 0;
+  const billingStatus = managed && !sponsored && customerChargeCents > 0 ? "pending_review" : "included";
   const usageResult = await queryPostgres<{ id: string }>(
     `
     insert into public.messaging_usage (
@@ -576,12 +646,16 @@ async function logUsage(input: MessagingSendInput, result: MessagingSendResult) 
       estimate.units,
       estimate.providerCostCents,
       customerChargeCents,
-      managed ? "pending_review" : "included",
+      billingStatus,
       JSON.stringify({
         queueId: input.queueId ?? null,
         providerMessageId: result.providerMessageId,
         costBasis: "conservative_estimate",
-        ownershipMode: accountResult?.rows[0]?.ownership_mode ?? "unknown"
+        ownershipMode: accountResult?.rows[0]?.ownership_mode ?? "unknown",
+        sponsoredByFerocity: sponsored,
+        planKey,
+        includedManagedSmsSegments: isManagedSms ? includedManagedSmsSegments(planKey) : 0,
+        managedSmsOverageUnits: isManagedSms ? overageUnits : 0
       })
     ]
   );
@@ -615,13 +689,16 @@ async function logUsage(input: MessagingSendInput, result: MessagingSendResult) 
       estimate.units,
       estimate.providerCostCents,
       customerChargeCents,
-      managed ? "pending_review" : "included",
+      billingStatus,
       `messaging:${messagingUsageId}`,
       JSON.stringify({
         channel: input.channel,
         costBasis: "conservative_estimate",
         ownershipMode: managed ? "ferocity_managed" : "customer_owned",
-        providerCostBilledBy: managed ? "ferocity" : "customer_provider"
+        providerCostBilledBy: managed ? "ferocity" : "customer_provider",
+        planKey,
+        includedManagedSmsSegments: isManagedSms ? includedManagedSmsSegments(planKey) : 0,
+        managedSmsOverageUnits: isManagedSms ? overageUnits : 0
       })
     ]
   );
@@ -647,10 +724,16 @@ async function logUsage(input: MessagingSendInput, result: MessagingSendResult) 
     [
       input.tenantId,
       `${featureKey}:${meterId}`,
-      `${estimate.units} managed ${input.channel === "email" ? "email" : "message"} unit${estimate.units === 1 ? "" : "s"}`,
+      `${overageUnits} managed ${input.channel === "email" ? "email" : "message"} overage unit${overageUnits === 1 ? "" : "s"}`,
       meterId,
       customerChargeCents,
-      JSON.stringify({ providerKey: result.providerKey, approvalRequired: true })
+      JSON.stringify({
+        providerKey: result.providerKey,
+        approvalRequired: true,
+        planKey,
+        includedManagedSmsSegments: isManagedSms ? includedManagedSmsSegments(planKey) : 0,
+        overageUnits
+      })
     ]
   );
 }

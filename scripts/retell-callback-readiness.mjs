@@ -69,6 +69,9 @@ try {
     && ["ongoing", "ended"].includes(call?.call_status)
     && Number(call?.call_cost?.total_duration_seconds ?? 0) > 0
   );
+  const evidenceDetail = evidence?.call_id
+    ? await retell(`/v2/get-call/${encodeURIComponent(evidence.call_id)}`)
+    : null;
 
   const certified = Boolean(evidence && remoteNumber.inbound_webhook_url && fallbackAgentBound);
   if (certify && certified) {
@@ -87,11 +90,16 @@ try {
     inboundWebhookConfigured: Boolean(remoteNumber.inbound_webhook_url),
     fallbackAgentBound,
     realInboundEvidenceFound: Boolean(evidence),
+    evidenceCallId: evidence?.call_id ?? null,
     evidenceStatus: evidence?.call_status ?? null,
     evidenceDurationSeconds: evidence?.call_cost?.total_duration_seconds ?? null,
+    evidenceTranscriptPresent: Boolean(evidenceDetail?.transcript),
+    evidenceSummaryPresent: Boolean(evidenceDetail?.call_analysis?.call_summary),
     databaseUpdated: certify && certified,
     nextStep: certified
-      ? (certify ? "The caller ID is certified for production use." : "Run again with --certify to record the successful callback test.")
+      ? (certify || number.callback_status === "certified"
+          ? "The caller ID is certified for production use."
+          : "Run again with --certify to record the successful callback test.")
       : "Place a real callback to the displayed number after its carrier route is restored, then run this check again."
   }, null, 2));
 

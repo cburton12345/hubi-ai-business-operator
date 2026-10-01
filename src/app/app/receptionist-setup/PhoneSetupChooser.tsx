@@ -103,7 +103,7 @@ export function PhoneSetupChooser({ connection }: { connection: PhoneConnection 
       {path === "new_ferocity_number" ? (
         <div className="grid">
           <label className="span-6">
-            Preferred area code
+            Preferred local area code
             <input
               name="preferredAreaCode"
               inputMode="numeric"
@@ -111,6 +111,7 @@ export function PhoneSetupChooser({ connection }: { connection: PhoneConnection 
               defaultValue={connection?.preferredAreaCode ?? ""}
               placeholder="702"
             />
+            <small>Optional. If blank, Ferocity requests the area code from your U.S. transfer number. Provider inventory can vary, so Ferocity confirms the number it actually receives.</small>
           </label>
           <label className="span-6">
             What will this number be used for?
@@ -121,6 +122,19 @@ export function PhoneSetupChooser({ connection }: { connection: PhoneConnection 
               <option value="department">Department or secondary line</option>
             </select>
           </label>
+          <label className="span-12 checkbox-row">
+            <input
+              name="managedNumberProvisioningApproved"
+              type="checkbox"
+              value="true"
+              defaultChecked={connection?.connectionPath === "new_ferocity_number" && connection.managedNumberProvisioningApproved}
+              required
+            />
+            <span>
+              Provision my included managed number when my voice agents and billing are ready. Ferocity will show it here and verify routing before outbound customer calls are enabled.
+            </span>
+          </label>
+          <p className="span-12 muted">A verified transfer destination in international format (for example, +17155551234) is required before Ferocity can provision the number.</p>
         </div>
       ) : null}
 
@@ -156,8 +170,11 @@ export function PhoneSetupChooser({ connection }: { connection: PhoneConnection 
             name="humanTransferNumber"
             type="tel"
             defaultValue={connection?.humanTransferNumber ?? ""}
-            placeholder="Owner, office, or on-call phone"
+            placeholder={path === "new_ferocity_number" ? "+17155551234" : "Owner, office, or on-call phone"}
+            pattern="\\+[1-9][0-9]{7,14}"
+            required={path === "new_ferocity_number"}
           />
+          <small>Use full international format, such as +17155551234. This is the human Ferocity transfers callers to for this business.</small>
         </label>
         <div className="span-6 form-stack">
           <p className="muted">

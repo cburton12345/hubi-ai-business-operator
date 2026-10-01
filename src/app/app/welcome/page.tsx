@@ -128,9 +128,9 @@ export default async function WelcomePage() {
 
         <article className="panel span-6">
           <Bot size={20} />
-          <h2>Use the AI Workforce</h2>
+          <h2>Start with Ask Ferocity</h2>
           <p className="muted">
-            Use the AI Workforce when you want Ferocity to prepare replies, follow-up, content, reviews, setup work, and next actions for approval.
+            Describe the outcome in normal words. Ferocity uses the Business Brain and the right operating department to prepare replies, follow-up, content, reviews, setup work, and next actions for approval.
           </p>
           <Link className="mini-button" href="/app/ai-workforce">
             AI Workforce

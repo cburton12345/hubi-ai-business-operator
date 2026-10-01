@@ -3,6 +3,11 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { missingEnvVars } from "@/lib/env";
 import { getOAuthProviderConfig } from "@/lib/integrations/oauth-providers";
 import { connectorExecutionMode, type ConnectorExecutionMode } from "@/lib/integrations/connector-runtime";
+import {
+  deriveProviderCertificationStatus,
+  providerCertificationLabel,
+  type ProviderCertificationStatus
+} from "@/lib/integrations/provider-certification";
 
 export type IntegrationRow = {
   id: string;
@@ -14,6 +19,9 @@ export type IntegrationRow = {
   notes: string;
   envVars: string[];
   setupItems: string[];
+  customerSetupItems: string[];
+  platformSetupItems: string[];
+  platformManagedAuthorization: boolean;
   callbackPath: string | null;
   riskLevel: string;
   missingEnvVars: string[];
@@ -26,6 +34,22 @@ export type IntegrationRow = {
   setupMode: string;
   liveActionRule: string;
   executionMode: ConnectorExecutionMode;
+  certificationStatus: ProviderCertificationStatus;
+  certificationLabel: string;
+  certificationEvidence: string | null;
+  certifiedAt: string | null;
+  availableAccounts: Array<{
+    id: string;
+    name: string;
+    kind: "ad_account" | "page" | "business";
+    parentId?: string;
+    status?: string;
+    currency?: string;
+  }>;
+  selectedAdAccountId: string | null;
+  selectedPageId: string | null;
+  accountSelectionRequired: boolean;
+  accountDiscoveryMessage: string | null;
 };
 
 export const plannedConnections = [
@@ -176,19 +200,53 @@ export const plannedConnections = [
   },
   {
     provider: "tiktok",
-    displayName: "TikTok",
-    notes: "Prepared for TikTok creator/content workflows, short-form ad briefs, and reporting. Drafts and creative plans work now; live posting and spend require approved provider access.",
+    displayName: "TikTok Login",
+    notes: "Connects a TikTok identity and basic profile only. Content publishing and advertising use separate, permission-specific connections.",
     envVars: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"],
     setupItems: [
-      "Create a TikTok developer or business API app",
+      "Create a TikTok developer app",
       "Configure the deployed Ferocity callback URL",
-      "Start with creative drafts, scripts, content calendars, and reporting",
-      "Keep posting, creator actions, campaign creation, and ad spend approval-gated"
+      "Use this connection only for identity and basic profile access",
+      "Connect TikTok Content Publishing and TikTok Ads separately when needed"
     ],
     callbackPath: "/api/integrations/tiktok/oauth/callback",
     riskLevel: "high",
     setupMode: "oauth",
-    liveActionRule: "Creative drafts, scripts, and reporting first. Posting, creator actions, campaign creation, and spend require approval."
+    liveActionRule: "This connection never authorizes posting or ad spend."
+  },
+  {
+    provider: "tiktok_content",
+    displayName: "TikTok Content Publishing",
+    notes: "Uploads drafts or publishes approved videos after TikTok product review, creator authorization, current creator checks, and explicit per-post consent.",
+    envVars: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_CONTENT_REDIRECT_URI"],
+    setupItems: [
+      "Add TikTok's Content Posting API product to the developer app",
+      "Request video.upload and video.publish scopes",
+      "Configure the dedicated Ferocity content callback URL",
+      "Complete TikTok's audit before allowing public Direct Post",
+      "Keep each post behind content quality and owner approval"
+    ],
+    callbackPath: "/api/integrations/tiktok_content/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth_approval_gated",
+    liveActionRule: "Every post requires approved content, current creator settings, explicit consent, and a certified provider connection."
+  },
+  {
+    provider: "tiktok_business",
+    displayName: "TikTok Ads",
+    notes: "Uses TikTok API for Business for authorized advertiser discovery, reporting, and approval-gated campaign operations. Login Kit is not treated as ad authorization.",
+    envVars: ["TIKTOK_BUSINESS_APP_ID", "TIKTOK_BUSINESS_APP_SECRET", "TIKTOK_BUSINESS_REDIRECT_URI"],
+    setupItems: [
+      "Register and approve a TikTok API for Business developer app",
+      "Request advertiser, reporting, campaign, ad group, creative, and ad permissions needed by Ferocity",
+      "Configure the dedicated Ferocity Business API callback",
+      "Authorize the intended ad account and verify read-only reporting",
+      "Certify campaign creation with customer approval and hard budget caps before enabling writes"
+    ],
+    callbackPath: "/api/integrations/tiktok-business/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth_approval_gated",
+    liveActionRule: "Reporting may run after authorization. Campaign writes and spend require explicit approval, provider certification, and hard budget controls."
   },
   {
     provider: "premium_video_rendering",
@@ -221,12 +279,28 @@ export const plannedConnections = [
     provider: "google_ads",
     displayName: "Google Ads",
     notes: "Campaign planning and read-only readiness are available now. Reporting, campaign creation, and budget changes require Google Ads credentials and approval rules.",
-    envVars: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
-    setupItems: ["Create Ads developer token", "Connect manager account", "Request OAuth consent", "Require approval for budget changes"],
+    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
+    setupItems: ["Enable Google Ads API access for Ferocity's Google Cloud project", "Complete OAuth brand verification", "Configure the Ferocity redirect URI", "Require approval for budget changes"],
     callbackPath: "/api/integrations/google/oauth/callback",
     riskLevel: "high",
     setupMode: "oauth",
     liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
+  },
+  {
+    provider: "youtube",
+    displayName: "YouTube Channel",
+    notes: "Connect the business YouTube channel for channel context and future provider-neutral publishing. YouTube advertising remains part of Google Ads; organic channel publishing is a separate permission.",
+    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
+    setupItems: [
+      "Enable the YouTube Data API for Ferocity's Google Cloud project",
+      "Connect the customer's Google account through Ferocity OAuth",
+      "Verify the selected YouTube channel",
+      "Keep uploads and public publishing disabled until separately authorized and certified"
+    ],
+    callbackPath: "/api/integrations/google/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read channel identity and context only. Uploading and publishing require a separate owner authorization and approval policy."
   },
   {
     provider: "reddit",
@@ -263,18 +337,107 @@ export const plannedConnections = [
   {
     provider: "yahoo_ads",
     displayName: "Yahoo / Native Ads",
-    notes: "Prepared for native ad reporting and campaign attribution. Live sync requires provider credentials and approval.",
-    envVars: ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"],
+    notes: "Yahoo DSP access is seat-based and requires Yahoo to enable API access for the advertiser or partner. Ferocity does not present ordinary Yahoo identity login as ad-account authorization.",
+    envVars: ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET"],
     setupItems: [
-      "Confirm the Yahoo or native ads provider",
-      "Create provider credentials",
-      "Configure the deployed Ferocity callback URL",
+      "Confirm the business has an eligible Yahoo DSP seat",
+      "Have Yahoo enable DSP API access for the seat user",
+      "Activate and securely store the seat's DSP API credentials",
       "Keep reporting read-only before any publishing or spend actions"
     ],
-    callbackPath: "/api/integrations/yahoo/oauth/callback",
+    callbackPath: null,
+    riskLevel: "high",
+    setupMode: "seat_api_access",
+    liveActionRule: "Reporting and attribution first. Publishing and spend require approval."
+  },
+  {
+    provider: "linkedin_ads",
+    displayName: "LinkedIn Ads",
+    notes: "Customers sign in with LinkedIn and select their Campaign Manager account. Ferocity owns the developer application; customers never paste API credentials.",
+    envVars: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_OAUTH_REDIRECT_URI"],
+    setupItems: ["Approve Ferocity for LinkedIn Marketing APIs", "Configure the production callback", "Connect read-only reporting first", "Require approval for publishing or spend"],
+    callbackPath: "/api/integrations/linkedin_ads/oauth/callback",
     riskLevel: "high",
     setupMode: "oauth",
-    liveActionRule: "Reporting and attribution first. Publishing and spend require approval."
+    liveActionRule: "Read reporting first. Campaign publishing, audience changes, and spend require approval."
+  },
+  {
+    provider: "x_ads",
+    displayName: "X Ads",
+    notes: "Customers authorize their X account through Ferocity's approved OAuth 1.0a application, then select an advertiser account. They never paste developer credentials.",
+    envVars: ["X_ADS_CONSUMER_KEY", "X_ADS_CONSUMER_SECRET", "X_ADS_OAUTH_REDIRECT_URI"],
+    setupItems: ["Obtain X Ads API access for Ferocity", "Configure the OAuth callback", "Discover advertiser accounts read-only first", "Require approval for publishing or spend"],
+    callbackPath: "/api/integrations/x_ads/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth1",
+    liveActionRule: "Read advertiser accounts and reporting first. Campaign changes and spend require approval."
+  },
+  {
+    provider: "pinterest_ads",
+    displayName: "Pinterest Ads",
+    notes: "Customers sign in with Pinterest and select their ad account through Ferocity-managed OAuth.",
+    envVars: ["PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET", "PINTEREST_OAUTH_REDIRECT_URI"],
+    setupItems: ["Approve the Ferocity Pinterest app", "Configure the production callback", "Connect ads:read first", "Request write scopes only when publishing is certified"],
+    callbackPath: "/api/integrations/pinterest_ads/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Read reporting first. Publishing, campaign changes, and spend require separate approval."
+  },
+  {
+    provider: "snapchat_ads",
+    displayName: "Snap Ads",
+    notes: "Customers sign in with Snapchat and select their organization and ad account; Ferocity keeps platform credentials separate.",
+    envVars: ["SNAPCHAT_CLIENT_ID", "SNAPCHAT_CLIENT_SECRET", "SNAPCHAT_OAUTH_REDIRECT_URI"],
+    setupItems: ["Create the Ferocity OAuth app in Snap Business Manager", "Configure the production callback", "Complete Snap Marketing API approval", "Require approval for campaign or spend changes"],
+    callbackPath: "/api/integrations/snapchat_ads/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Discover organizations and accounts first. Campaign changes and spend require approval."
+  },
+  {
+    provider: "amazon_ads",
+    displayName: "Amazon Ads",
+    notes: "Eligible advertisers authorize Ferocity and select an advertising profile. Ferocity owns the approved developer application.",
+    envVars: ["AMAZON_ADS_CLIENT_ID", "AMAZON_ADS_CLIENT_SECRET", "AMAZON_ADS_OAUTH_REDIRECT_URI"],
+    setupItems: ["Complete Amazon Ads partner/developer approval", "Configure Login with Amazon callback", "Discover eligible advertiser profiles", "Require approval for campaign or spend changes"],
+    callbackPath: "/api/integrations/amazon_ads/oauth/callback",
+    riskLevel: "high",
+    setupMode: "oauth",
+    liveActionRule: "Discover eligible profiles first. Campaign changes and spend require approval."
+  },
+  {
+    provider: "openai_ads",
+    displayName: "ChatGPT Ads",
+    notes: "Eligible ChatGPT advertisers can connect Ferocity through an ad-account-scoped Advertiser API key. OpenAI does not currently expose an ordinary multi-tenant OAuth authorization flow, so Ferocity uses a guided, encrypted tenant-secret setup instead of pretending there is a one-click connection.",
+    envVars: [],
+    setupItems: [
+      "Create or open the business's ChatGPT Ads Manager account",
+      "Generate an Advertiser API key scoped to that ad account",
+      "Store the key in Ferocity's encrypted tenant credential vault",
+      "Verify ad-account identity and review status read-only",
+      "Keep campaigns paused and spending disabled until the owner approves a budget"
+    ],
+    callbackPath: null,
+    riskLevel: "high",
+    setupMode: "guided_tenant_secret",
+    liveActionRule: "Account verification and reporting first. Campaign creation, activation, budget changes, and spend require explicit owner approval."
+  },
+  {
+    provider: "apple_search_ads",
+    displayName: "Apple Ads",
+    notes: "Apple Ads can cover eligible App Store acquisition and Apple Maps business advertising. Apple uses account roles plus Ferocity-managed OAuth key material rather than an ordinary customer OAuth button.",
+    envVars: [],
+    setupItems: [
+      "Confirm whether the business needs App Store or Apple Maps advertising",
+      "Invite the minimum Ferocity API role from the eligible Apple Ads organization",
+      "Generate and securely store Ferocity's private/public key material",
+      "Discover the authorized organization and ad accounts read-only",
+      "Verify the delegated app or business-brand resource before enabling campaign actions"
+    ],
+    callbackPath: null,
+    riskLevel: "high",
+    setupMode: "provider_account_invite",
+    liveActionRule: "Read account eligibility and reporting first. Campaign creation, activation, budget changes, and spend require explicit owner approval."
   },
   {
     provider: "marketplacepro",
@@ -325,6 +488,28 @@ export const plannedConnections = [
     riskLevel: "high",
     setupMode: "api_key",
     liveActionRule: "Email sends require approved templates, sender compliance, and plan limits. Inbound replies can be recorded in conversations."
+  },
+  {
+    provider: "gmail_mailbox",
+    displayName: "Gmail Inbox",
+    notes: "Read-only customer-owned inbox monitoring for leads, customer needs, billing messages, and urgent issues.",
+    envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
+    setupItems: ["Connect the business Gmail account", "Approve read-only inbox access", "Run the first bounded sync", "Enable sending separately only if wanted"],
+    callbackPath: "/api/integrations/google/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read and organize inbox messages only. Sending requires separate owner authorization."
+  },
+  {
+    provider: "microsoft_mailbox",
+    displayName: "Microsoft 365 Inbox",
+    notes: "Read-only customer-owned Outlook mailbox monitoring through Microsoft Graph.",
+    envVars: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"],
+    setupItems: ["Connect the business Microsoft account", "Approve Mail.Read access", "Run the first bounded sync", "Enable sending separately only if wanted"],
+    callbackPath: "/api/integrations/microsoft_mailbox/oauth/callback",
+    riskLevel: "medium",
+    setupMode: "oauth_read_first",
+    liveActionRule: "Read and organize inbox messages only. Sending requires separate owner authorization."
   },
   {
     provider: "twilio",
@@ -422,6 +607,19 @@ export const plannedConnections = [
   }
 ];
 
+export function customerOAuthSetupItems(provider: string, label: string) {
+  const accountSelection = provider === "tiktok_content"
+    ? "Select the TikTok profile Ferocity should use."
+    : `Select the ${label} business or advertising account Ferocity should use.`;
+  return [
+    `Click Connect ${label}.`,
+    `Sign in directly with ${label}; Ferocity never asks for that password.`,
+    "Review and grant the requested permissions.",
+    accountSelection,
+    "Ferocity securely saves this workspace's authorization and begins a read-only sync."
+  ];
+}
+
 export async function ensurePlannedIntegrationConnections() {
   const workspaceId = await getCurrentWorkspaceId();
   for (const connection of plannedConnections) {
@@ -472,6 +670,15 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       liveActionsEnabled?: boolean;
       setupMode?: string;
       liveActionRule?: string;
+      certificationStatus?: ProviderCertificationStatus;
+      certificationEvidence?: string;
+      certifiedAt?: string;
+      availableAccounts?: IntegrationRow["availableAccounts"];
+      selectedAccountId?: string;
+      selectedAdAccountId?: string;
+      selectedPageId?: string;
+      accountSelectionRequired?: boolean;
+      accountDiscoveryMessage?: string;
     } | null;
   }>(
     `
@@ -524,8 +731,17 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       ? []
       : missingEnvVars(envVars as Parameters<typeof missingEnvVars>[0]);
     const oauthConfig = getOAuthProviderConfig(row.provider);
+    const platformSetupItems = row.metadata_json?.setupItems ?? [];
+    const platformManagedAuthorization = Boolean(oauthConfig) || ["x_ads", "tiktok_business"].includes(row.provider);
     const envCredentialsReady = missing.length === 0 && envVars.length > 0;
 
+    const liveActionsEnabled = account?.live_actions_enabled ?? row.metadata_json?.liveActionsEnabled === true;
+    const certificationStatus = deriveProviderCertificationStatus({
+      explicitStatus: row.metadata_json?.certificationStatus,
+      integrationStatus: row.status,
+      accountStatus: account?.status,
+      liveActionsEnabled
+    });
     return {
       id: row.id,
       provider: row.provider,
@@ -535,19 +751,39 @@ export async function getIntegrationRows(): Promise<IntegrationRow[]> {
       ownershipMode: account?.ownership_mode ?? (row.provider.endsWith("_shared") ? "ferocity_managed" : "workspace"),
       notes: row.metadata_json?.notes ?? "Prepared for provider connection and approval-gated live actions.",
       envVars,
-      setupItems: row.metadata_json?.setupItems ?? [],
+      setupItems: platformManagedAuthorization
+        ? customerOAuthSetupItems(row.provider, row.display_name)
+        : platformSetupItems,
+      customerSetupItems: platformManagedAuthorization
+        ? customerOAuthSetupItems(row.provider, row.display_name)
+        : platformSetupItems,
+      platformSetupItems,
+      platformManagedAuthorization,
       callbackPath: row.metadata_json?.callbackPath ?? null,
       riskLevel: row.metadata_json?.riskLevel ?? "medium",
       missingEnvVars: missing,
       configuredEnvVars: envVars.filter((key) => !missing.includes(key as never)),
-      liveActionsEnabled: account?.live_actions_enabled ?? row.metadata_json?.liveActionsEnabled === true,
+      liveActionsEnabled,
       accountStatus: account?.status ?? null,
       routeActions: routes.filter((route) => route.default_provider_key === row.provider).map((route) => route.action_type),
       fallbackForActions: routes.filter((route) => route.fallback_provider_key === row.provider).map((route) => route.action_type),
-      oauthStartPath: oauthConfig ? `/api/integrations/${row.provider}/oauth/start` : null,
+      oauthStartPath: row.provider === "tiktok_business"
+        ? "/api/integrations/tiktok-business/oauth/start"
+        : row.provider === "x_ads"
+          ? "/api/integrations/x_ads/oauth/start"
+        : oauthConfig ? `/api/integrations/${row.provider}/oauth/start` : null,
       setupMode: row.metadata_json?.setupMode ?? (oauthConfig ? "oauth" : "manual"),
       liveActionRule: row.metadata_json?.liveActionRule ?? "Live actions stay disabled until reviewed.",
-      executionMode: connectorExecutionMode(row.provider)
+      executionMode: connectorExecutionMode(row.provider),
+      certificationStatus,
+      certificationLabel: providerCertificationLabel(certificationStatus),
+      certificationEvidence: row.metadata_json?.certificationEvidence ?? null,
+      certifiedAt: row.metadata_json?.certifiedAt ?? null,
+      availableAccounts: Array.isArray(row.metadata_json?.availableAccounts) ? row.metadata_json.availableAccounts : [],
+      selectedAdAccountId: row.metadata_json?.selectedAdAccountId ?? row.metadata_json?.selectedAccountId ?? null,
+      selectedPageId: row.metadata_json?.selectedPageId ?? null,
+      accountSelectionRequired: row.metadata_json?.accountSelectionRequired === true,
+      accountDiscoveryMessage: row.metadata_json?.accountDiscoveryMessage ?? null
     };
   });
 }

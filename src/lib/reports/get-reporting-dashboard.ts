@@ -229,8 +229,12 @@ export async function getReportingDashboard(): Promise<ReportingDashboard> {
       from public.integration_connections
       where tenant_id = $1
         and (
-          status in ('not_connected', 'planned', 'error')
-          or credentials_status in ('not_configured', 'missing', 'error')
+          status in ('error', 'needs_attention')
+          or credentials_status in ('missing', 'error', 'revoked')
+          or (
+            status = 'not_connected'
+            and coalesce((metadata_json->>'requestedByOwner')::boolean, false) = true
+          )
         )
       order by
         case provider

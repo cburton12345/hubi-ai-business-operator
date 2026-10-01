@@ -8,6 +8,8 @@ const publicRoutes = [
   { path: "/growth-system", priority: 0.98 },
   { path: "/business-health-score", priority: 0.95 },
   { path: "/features", priority: 0.9 },
+  { path: "/platforms", priority: 0.9 },
+  { path: "/ask-ferocity", priority: 0.85 },
   { path: "/demo", priority: 0.85 },
   { path: "/demo/tour", priority: 0.8 },
   { path: "/demo/acme-roofing", priority: 0.75 },

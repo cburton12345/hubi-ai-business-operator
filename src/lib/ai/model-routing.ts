@@ -7,14 +7,17 @@ const economyRunTypes = new Set([
 const balancedRunTypes = new Set([
   "construction_field_log",
   "owner_command_event_triage",
-  "public_website_chat_reply",
+  "public_website_chat_reply_recovery",
   "setup_guidance",
   "weekly_marketing_plan"
 ]);
 
 const advancedRunTypes = new Set([
   "adapter_factory_manifest",
-  "growth_funnel_strategy"
+  "expense_allocation_reasoning_advanced",
+  "growth_funnel_strategy",
+  "public_website_chat_reply",
+  "video_creative_direction"
 ]);
 
 export function workloadTierForRunType(runType: string): AiWorkloadTier {

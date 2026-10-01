@@ -94,6 +94,31 @@ export function normalizeTwilioDeliveryReceipt(input: {
   };
 }
 
+export function normalizeVonageDeliveryReceipt(input: {
+  status: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const rawStatus = (input.status ?? "unknown").trim().toLowerCase();
+  let normalizedStatus: NormalizedDeliveryStatus;
+  if (["accepted", "queued"].includes(rawStatus)) normalizedStatus = "queued";
+  else if (["submitted", "sent"].includes(rawStatus)) normalizedStatus = "sent";
+  else if (["delivered", "read"].includes(rawStatus)) normalizedStatus = "delivered";
+  else if (["undeliverable", "undelivered"].includes(rawStatus)) normalizedStatus = "undelivered";
+  else if (["rejected", "expired"].includes(rawStatus)) normalizedStatus = "rejected";
+  else if (rawStatus === "failed") normalizedStatus = "failed";
+  else if (rawStatus === "unknown") normalizedStatus = "unknown";
+  else normalizedStatus = "unknown";
+  return {
+    normalizedStatus,
+    rawStatus,
+    errorCode: input.errorCode?.trim() || null,
+    safeReason: input.errorMessage?.trim() || null,
+    suspectedFiltered: false,
+    isFinal: isFinalDeliveryStatus(normalizedStatus)
+  };
+}
+
 export function normalizeResendDeliveryReceipt(input: {
   status: string | null;
   errorCode?: string | null;

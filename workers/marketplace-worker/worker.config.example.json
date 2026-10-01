@@ -1,0 +1,27 @@
+{
+  "apiBase": "https://ferocity.live/api/integrations/facebook-connector",
+  "deviceId": "replace-after-pairing",
+  "deviceName": "Office Marketplace worker",
+  "runtime": "windows_worker",
+  "browser": {
+    "profileDir": ".facebook-profile",
+    "inboxUrl": "https://www.facebook.com/messages/requests",
+    "headless": false,
+    "channel": "chrome",
+    "maxThreadsPerSweep": 12,
+    "groupsFeedUrl": "https://www.facebook.com/groups/feed/",
+    "maxCommunitiesPerSweep": 8
+  },
+  "scheduling": {
+    "controlPollSeconds": 20,
+    "inboundSweepSeconds": 300,
+    "communitySweepSeconds": 21600,
+    "idleTimeoutSeconds": 60,
+    "healthReportSeconds": 300,
+    "manualAttentionTimeoutSeconds": 1800,
+    "restartDelaySeconds": 10,
+    "maxRestartDelaySeconds": 300
+  },
+  "sendEnabled": false,
+  "communityDiscoveryEnabled": false
+}

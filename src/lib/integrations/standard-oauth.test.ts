@@ -33,6 +33,18 @@ describe("standard OAuth token exchange", () => {
     expect(tokens.refreshToken).toBe("refresh-token");
   });
 
+  it("verifies the connected YouTube channel without granting publish access", async () => {
+    const identity = await verifyStandardOAuthIdentity({
+      provider: "youtube",
+      accessToken: "access-token",
+      fetchImpl: vi.fn(async (input: RequestInfo | URL) => {
+        expect(String(input)).toContain("youtube/v3/channels?part=id,snippet&mine=true");
+        return new Response(JSON.stringify({ items: [{ id: "UC-ferocity", snippet: { title: "Ferocity" } }] }), { status: 200 });
+      }) as typeof fetch
+    });
+    expect(identity).toEqual({ accountId: "UC-ferocity", accountName: "Ferocity", reportingVerified: true });
+  });
+
   it("uses Reddit basic client authentication and verifies identity", async () => {
     let requestOptions: RequestInit | undefined;
     const exchangeFetch = vi.fn(async (_input: RequestInfo | URL, options?: RequestInit) => {
@@ -62,6 +74,30 @@ describe("standard OAuth token exchange", () => {
     expect(requestUrl).toBe("https://login.microsoftonline.com/common/oauth2/v2.0/token");
     expect(String(requestOptions?.body)).toContain("offline_access");
     expect(String(requestOptions?.body)).toContain("msads.manage");
+  });
+
+  it.each([
+    ["linkedin_ads", "https://www.linkedin.com/oauth/v2/accessToken"],
+    ["snapchat_ads", "https://accounts.snapchat.com/login/oauth2/access_token"],
+    ["amazon_ads", "https://api.amazon.com/auth/o2/token"]
+  ] as const)("exchanges %s authorization codes server-side", async (provider, endpoint) => {
+    let requestUrl = "";
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      requestUrl = String(input);
+      return tokenResponse();
+    }) as typeof fetch;
+    await exchangeStandardOAuthAuthorizationCode({ provider, code: "code", client, fetchImpl });
+    expect(requestUrl).toBe(endpoint);
+  });
+
+  it("uses Pinterest Basic client authentication", async () => {
+    let requestOptions: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, options?: RequestInit) => {
+      requestOptions = options;
+      return tokenResponse();
+    }) as typeof fetch;
+    await exchangeStandardOAuthAuthorizationCode({ provider: "pinterest_ads", code: "code", client, fetchImpl });
+    expect(String((requestOptions?.headers as Record<string, string>).authorization)).toMatch(/^Basic /);
   });
 
   it("uses Jobber's token endpoint with PKCE and verifies the connected account", async () => {

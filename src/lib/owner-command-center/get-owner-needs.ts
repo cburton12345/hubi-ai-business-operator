@@ -43,7 +43,11 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   const tenantId = await getCurrentWorkspaceId();
   const needs: OwnerNeed[] = [];
 
-  const [ops, ownerEvents, reports, integrationGaps, activeSmsRoute] = await Promise.all([
+  const [tenant, ops, ownerEvents, reports, integrationGaps, activeSmsRoute] = await Promise.all([
+    queryPostgres<{ account_type: string }>(
+      `select account_type from public.tenants where id = $1 limit 1`,
+      [tenantId]
+    ),
     queryPostgres<{
       ops_review: string;
       field_proof: string;
@@ -71,12 +75,14 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
       needs_owner: string;
       critical: string;
       low_confidence: string;
+      growth_approvals: string;
     }>(
       `
       select
         (select count(*) from public.owner_command_events where (tenant_id = $1 or tenant_id is null) and (owner_attention = true or status = 'needs_owner'))::text as needs_owner,
         (select count(*) from public.owner_command_events where (tenant_id = $1 or tenant_id is null) and (severity = 'critical' or status = 'critical'))::text as critical,
-        (select count(*) from public.owner_command_events where (tenant_id = $1 or tenant_id is null) and confidence_score < 60 and status not in ('resolved','ai_handled'))::text as low_confidence
+        (select count(*) from public.owner_command_events where (tenant_id = $1 or tenant_id is null) and confidence_score < 60 and status not in ('resolved','ai_handled'))::text as low_confidence,
+        (select count(*) from public.marketing_campaign_recommendations where tenant_id = $1 and execution_status = 'waiting_approval' and status not in ('dismissed','paused'))::text as growth_approvals
       `,
       [tenantId]
     ),
@@ -99,8 +105,12 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
       from public.integration_connections
       where tenant_id = $1
         and (
-          status in ('not_connected', 'planned', 'error')
-          or credentials_status in ('not_configured', 'missing', 'error')
+          status in ('error', 'needs_attention')
+          or credentials_status in ('missing', 'error', 'revoked')
+          or (
+            status = 'not_connected'
+            and coalesce((metadata_json->>'requestedByOwner')::boolean, false) = true
+          )
         )
       `,
       [tenantId]
@@ -122,6 +132,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
   const opsRow = ops?.rows[0];
   const ownerRow = ownerEvents?.rows[0];
   const reportRow = reports?.rows[0];
+  const isInternalWorkspace = tenant?.rows[0]?.account_type === "internal";
   const gaps = n(integrationGaps?.rows[0]?.provider_gaps);
   const hasActiveSmsRoute = n(activeSmsRoute?.rows[0]?.active_sms_route) > 0;
 
@@ -156,6 +167,17 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
     actionLabel: "Check",
     href: "/app/owner-command-center",
     count: n(ownerRow?.low_confidence)
+  });
+
+  pushIf(needs, n(ownerRow?.growth_approvals) > 0, {
+    id: "growth-approvals",
+    title: "A growth move is ready for your decision",
+    detail: `${n(ownerRow?.growth_approvals)} prioritized growth action(s) are waiting because they involve publishing, outreach, spend, or another decision Ferocity should not make silently.`,
+    category: "Growth",
+    priority: "high",
+    actionLabel: "Review growth actions",
+    href: "/app/growth",
+    count: n(ownerRow?.growth_approvals)
   });
 
   pushIf(needs, n(opsRow?.customer_drafts) > 0, {
@@ -224,7 +246,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
     count: n(opsRow?.location_alerts)
   });
 
-  pushIf(needs, n(reportRow?.upgrade_requests) > 0, {
+  pushIf(needs, isInternalWorkspace && n(reportRow?.upgrade_requests) > 0, {
     id: "growth-report-requests",
     title: "Business Grader follow-up is waiting",
     detail: `${n(reportRow?.upgrade_requests)} Blueprint or subscription follow-up request(s) need a sales or onboarding step.`,
@@ -235,7 +257,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
     count: n(reportRow?.upgrade_requests)
   });
 
-  pushIf(needs, n(reportRow?.new_reports) > 0, {
+  pushIf(needs, isInternalWorkspace && n(reportRow?.new_reports) > 0, {
     id: "new-business-grader-reports",
     title: "New Business Grader reports came in",
     detail: `${n(reportRow?.new_reports)} recent report${n(reportRow?.new_reports) === 1 ? "" : "s"} can become outreach, onboarding, or a follow-up sequence.`,
@@ -257,7 +279,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
     count: gaps
   });
 
-  const envNeeds = [
+  const envNeeds = isInternalWorkspace ? [
     envNeed("email-env", "Email sending needs keys", missingEnvVars(["EMAIL_PROVIDER", "EMAIL_API_KEY", "EMAIL_FROM_ADDRESS"]), "/app/credentials"),
     hasActiveSmsRoute
       ? null
@@ -265,7 +287,7 @@ export async function getOwnerNeeds(): Promise<OwnerNeed[]> {
     envNeed("stripe-env", "Checkout and paid reports need Stripe keys", missingEnvVars(["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]), "/app/billing"),
     envNeed("owner-intake-env", "Connected platform intake needs a token", missingEnvVars(["OWNER_COMMAND_CENTER_TOKEN"]), "/app/lifeops-connections"),
     envNeed("workforce-intake-env", "Worker app intake needs a token", missingEnvVars(["WORKFORCE_INTAKE_TOKEN"]), "/app/operations-workforce")
-  ].filter((need): need is OwnerNeed => Boolean(need));
+  ].filter((need): need is OwnerNeed => Boolean(need)) : [];
 
   needs.push(...envNeeds);
 

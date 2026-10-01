@@ -1,6 +1,7 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
+import { isProviderUsageSponsored } from "@/lib/billing/earn-provider-sponsorship";
 
 type VoiceAccessRow = {
   account_status: string;
@@ -18,6 +19,9 @@ type VoiceAccessRow = {
   policy_metadata: Record<string, unknown> | null;
   monthly_minutes: string | number;
   monthly_provider_cost_cents: string | number;
+  monthly_all_provider_cost_cents: string | number;
+  sponsorship_status: string | null;
+  sponsored_provider_cost_cap_cents: string | number | null;
   monthly_customer_charge_cents: string | number;
   active_calls: string | number;
   monthly_provider_cost_cap_cents: string | number | null;
@@ -101,14 +105,21 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
       order by (p.tenant_id is not null) desc
       limit 1
     ),
+    sponsorship as (
+      select status,monthly_provider_cost_cap_cents
+      from public.earn_provider_sponsorships
+      where tenant_id=$1 and status='active'
+        and starts_at<=now() and (ends_at is null or ends_at>now())
+      limit 1
+    ),
     usage as (
       select
-        coalesce(sum(quantity), 0) as monthly_minutes,
-        coalesce(sum(provider_cost_cents), 0) as monthly_provider_cost_cents,
-        coalesce(sum(customer_charge_cents), 0) as monthly_customer_charge_cents
+        coalesce(sum(quantity) filter (where feature_key = 'ai_receptionist'), 0) as monthly_minutes,
+        coalesce(sum(provider_cost_cents) filter (where feature_key = 'ai_receptionist'), 0) as monthly_provider_cost_cents,
+        coalesce(sum(customer_charge_cents) filter (where feature_key = 'ai_receptionist'), 0) as monthly_customer_charge_cents,
+        coalesce(sum(provider_cost_cents), 0) as monthly_all_provider_cost_cents
       from public.usage_meter_events
       where tenant_id = $1
-        and feature_key = 'ai_receptionist'
         and billing_period_start = date_trunc('month', now())::date
         and status not in ('void', 'failed')
     ),
@@ -183,6 +194,9 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
       p.metadata_json as policy_metadata,
       u.monthly_minutes,
       u.monthly_provider_cost_cents,
+      u.monthly_all_provider_cost_cents,
+      s.status as sponsorship_status,
+      s.monthly_provider_cost_cap_cents as sponsored_provider_cost_cap_cents,
       u.monthly_customer_charge_cents,
       ac.active_calls,
       l.monthly_provider_cost_cap_cents,
@@ -199,6 +213,7 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
     from account a
     cross join tenant_plan tp
     left join policy p on true
+    left join sponsorship s on true
     cross join usage u
     cross join active ac
     left join tenant_limit l on true
@@ -281,8 +296,18 @@ export async function evaluateVoiceAccess(input: {
   if (hardLimit !== null && usedMinutes >= hardLimit) {
     return { allowed: false, reason: "Monthly AI receptionist limit reached.", errorCategory: "hard_usage_limit", maxDurationSeconds: 0, ownershipMode };
   }
+  const sponsored = isProviderUsageSponsored(row.sponsorship_status);
   if (
     ownershipMode === "ferocity_managed"
+    && sponsored
+    && row.sponsored_provider_cost_cap_cents !== null
+    && numeric(row.monthly_all_provider_cost_cents) >= numeric(row.sponsored_provider_cost_cap_cents)
+  ) {
+    return { allowed: false, reason: "This pilot reached its Ferocity-sponsored provider-cost budget and needs review.", errorCategory: "sponsored_provider_cost_cap", maxDurationSeconds: 0, ownershipMode };
+  }
+  if (
+    ownershipMode === "ferocity_managed"
+    && !sponsored
     && row.monthly_provider_cost_cap_cents !== null
     && numeric(row.monthly_provider_cost_cents) >= numeric(row.monthly_provider_cost_cap_cents)
   ) {
@@ -351,7 +376,7 @@ export async function recordVoiceUsage(input: {
   );
   if (existing?.rows[0]) {
     const pricing = await queryPostgres<{
-      ownership_mode: string; plan_key: string | null; included_quantity: string | number | null;
+      ownership_mode: string; plan_key: string | null; sponsorship_status: string | null; included_quantity: string | number | null;
       overage_unit_price_cents: string | number | null; metadata_json: Record<string, unknown> | null;
       other_minutes: string | number;
     }>(
@@ -364,7 +389,10 @@ export async function recordVoiceUsage(input: {
            and (p.tenant_id=$1 or (p.tenant_id is null and p.plan_key=tp.plan_key))
          order by (p.tenant_id is not null) desc limit 1
        )
-       select a.ownership_mode,tp.plan_key,p.included_quantity,p.overage_unit_price_cents,p.metadata_json,
+       select a.ownership_mode,tp.plan_key,
+         (select status from public.earn_provider_sponsorships es where es.tenant_id=$1 and es.status='active'
+           and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now()) limit 1) sponsorship_status,
+         p.included_quantity,p.overage_unit_price_cents,p.metadata_json,
          (select coalesce(sum(u.quantity),0) from public.usage_meter_events u
           where u.tenant_id=$1 and u.feature_key='ai_receptionist'
             and u.billing_period_start=date_trunc('month',now())::date
@@ -375,7 +403,8 @@ export async function recordVoiceUsage(input: {
     );
     const price = pricing?.rows[0];
     const managed = managedOwnership(price?.ownership_mode);
-    const revisedCharge = managed && price
+    const sponsored = isProviderUsageSponsored(price?.sponsorship_status);
+    const revisedCharge = managed && price && !sponsored
       ? calculateManagedVoiceCharge({
           priorMinutes: numeric(price.other_minutes), callMinutes: minutes,
           includedMinutes: numeric(price.included_quantity), unitPriceCents: numeric(price.overage_unit_price_cents)
@@ -404,7 +433,7 @@ export async function recordVoiceUsage(input: {
         minutes,
         revisedCharge,
         meterStatus,
-        JSON.stringify({ providerCostFinalized: input.providerCostCents > 0, usageReconciledAt: new Date().toISOString() })
+        JSON.stringify({ providerCostFinalized: input.providerCostCents > 0, usageReconciledAt: new Date().toISOString(), sponsoredByFerocity: sponsored })
       ]
     );
     await queryPostgres(
@@ -433,6 +462,7 @@ export async function recordVoiceUsage(input: {
   const contextResult = await queryPostgres<{
     ownership_mode: string;
     plan_key: string | null;
+    sponsorship_status: string | null;
     included_quantity: string | number | null;
     hard_limit_quantity: string | number | null;
     overage_unit_price_cents: string | number | null;
@@ -459,6 +489,8 @@ export async function recordVoiceUsage(input: {
     select
       a.ownership_mode,
       tp.plan_key,
+      (select status from public.earn_provider_sponsorships es where es.tenant_id=$1 and es.status='active'
+        and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now()) limit 1) sponsorship_status,
       p.included_quantity,
       p.hard_limit_quantity,
       p.overage_unit_price_cents,
@@ -483,7 +515,8 @@ export async function recordVoiceUsage(input: {
   if (!context) return { recorded: false, customerChargeCents: 0 };
 
   const managed = managedOwnership(context.ownership_mode);
-  const charge = managed
+  const sponsored = isProviderUsageSponsored(context.sponsorship_status);
+  const charge = managed && !sponsored
     ? calculateManagedVoiceCharge({
         priorMinutes: numeric(context.prior_minutes),
         callMinutes: minutes,
@@ -530,7 +563,8 @@ export async function recordVoiceUsage(input: {
         managedVoice: managed,
         billableMinutes: charge.billableMinutes,
         overageUnitPriceCents: numeric(context.overage_unit_price_cents),
-        autoApproved
+        autoApproved,
+        sponsoredByFerocity: sponsored
       })
     ]
   );

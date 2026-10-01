@@ -18,6 +18,7 @@ import {
   createVideoJobAction,
   refreshBusinessProfileMemoryAction,
   requestWebsiteImportAction,
+  saveOrganicPublishingSettingsAction,
   saveAdvertisingDestinationAction
 } from "./actions";
 
@@ -28,7 +29,7 @@ export default async function MarketingOsPage() {
     <QueuePageShell
       eyebrow="AI Marketing Department"
       title="Create Demand And Turn Proof Into Booked Work"
-      description="Ferocity uses Business Info, leads, jobs, proof, reviews, service areas, and results to recommend campaigns, create assets, and keep publishing or ad spend under review."
+      description="Ferocity turns real business activity into useful organic content and campaign assets. Organic publishing is opt-in and quality-gated; paid promotion and ad spend are separate decisions."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -119,6 +120,45 @@ export default async function MarketingOsPage() {
           <Metric label="Platform playbooks" value={dashboard.metrics.platformPlaybooks} />
           <Metric label="Custom destinations" value={dashboard.metrics.advertisingDestinations} />
         </div>
+      </section>
+
+      <section className="panel feature-split">
+        <div>
+          <p className="eyebrow">Included organic publishing</p>
+          <h2>One strong idea, adapted to the profiles where it belongs.</h2>
+        </div>
+        <p className="muted">Ferocity prioritizes completed work, client outcomes, expertise, useful answers, approved reviews, timely offers, and verified opportunities. It will not publish invented proof, repetitive filler, unsupported claims, or a paid campaign without separate approval and budget.</p>
+      </section>
+
+      <section className="panel form-stack" aria-label="Organic publishing controls">
+        <div>
+          <p className="eyebrow">Your organic publishing rhythm</p>
+          <h2>Choose where Ferocity may prepare and schedule approved work.</h2>
+          <p className="muted">Nothing turns on until you opt in. Ferocity counts one original idea as one weekly moment even when it creates different versions for several profiles. Paid promotion is never included in this permission.</p>
+        </div>
+        {dashboard.brands.map((brand) => (
+          <form action={saveOrganicPublishingSettingsAction} className="form-stack" key={brand.id}>
+            <input type="hidden" name="brandId" value={brand.id} />
+            <strong>{brand.name}</strong>
+            <label className="checkbox-row">
+              <input name="enabled" type="checkbox" defaultChecked={brand.organicPublishingEnabled} />
+              <span>Let Ferocity maintain an organic publishing rhythm for this brand</span>
+            </label>
+            <label>
+              Publishing moments per week
+              <input name="weeklyMomentTarget" type="number" min="0" max="14" defaultValue={brand.organicWeeklyMomentTarget || 2} />
+            </label>
+            <div className="checkbox-grid">
+              {["website", "google_business_profile", "facebook", "instagram", "linkedin"].map((channel) => (
+                <label className="checkbox-row" key={channel}>
+                  <input name="channels" type="checkbox" value={channel} defaultChecked={brand.organicChannels.includes(channel)} />
+                  <span>{channel.replaceAll("_", " ")}</span>
+                </label>
+              ))}
+            </div>
+            <button className="button secondary-button" type="submit">Save organic publishing</button>
+          </form>
+        ))}
       </section>
 
       <div className="grid section-actions">
@@ -336,9 +376,23 @@ export default async function MarketingOsPage() {
                 <option value="5">5 variants</option>
               </select>
             </div>
-            <textarea name="sourceAssets" rows={3} placeholder="Approved photos, reviews, before/after clips, proof, offer details, or product shots to use" />
+            <div className="two-col">
+              <select name="contentStyle" defaultValue="brand_story">
+                <option value="brand_story">Brand story</option>
+                <option value="ugc">UGC-style spokesperson</option>
+                <option value="product_demo">Product or service demo</option>
+                <option value="customer_proof">Customer proof story</option>
+              </select>
+              <select name="quality" defaultValue="economy">
+                <option value="economy">Economy concept render</option>
+                <option value="balanced">Balanced quality</option>
+                <option value="premium">Premium quality preference</option>
+              </select>
+            </div>
+            <p className="muted">Ferocity chooses the approved provider behind the scenes, builds a truthful platform-native concept, and shows the exact cost before rendering. UGC-style work includes human-sounding scripting, actor/voice rights checks, captions, CTA, and quality review—not a generic AI avatar pasted onto an ad.</p>
+            <textarea name="sourceAssets" rows={3} placeholder="Describe approved photos or product shots, and paste up to 3 direct image URLs when you want image-guided video" />
             <p className="muted">Briefs are included in Marketing OS. Actual rendered videos should use credits or a paid production add-on.</p>
-            <button className="button" type="submit">Prepare video ad brief</button>
+            <button className="button" type="submit">Let Ferocity build the video concept</button>
           </form>
         </section>
       </div>

@@ -222,6 +222,11 @@ export async function getSetupGuidance(): Promise<SetupGuidance> {
       select provider, display_name, status, credentials_status
       from public.integration_connections
       where tenant_id = $1
+        and (
+          status <> 'planned'
+          or credentials_status = 'configured'
+          or provider in ('resend_shared', 'email_provider')
+        )
       order by provider
       `,
       [workspace.id]
@@ -229,11 +234,20 @@ export async function getSetupGuidance(): Promise<SetupGuidance> {
     queryPostgres<LatestReport>(
       `
       select website_url, score, grade_label, findings_json, recommended_steps_json, created_at
-      from public.website_grader_reports
-      where status = 'completed'
+      from public.website_grader_reports r
+      where r.status = 'completed'
+        and exists (
+          select 1
+          from public.tenant_users tu
+          join public.users u on u.id = tu.user_id
+          where tu.tenant_id = $1
+            and tu.status = 'active'
+            and lower(u.email) = lower(r.email)
+        )
       order by created_at desc
       limit 1
-      `
+      `,
+      [workspace.id]
     )
   ]);
 

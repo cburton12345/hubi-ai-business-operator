@@ -1,11 +1,15 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { prepareContextAwareLeadFollowUps } from "./prepare-context-aware-followups";
+import { refreshLifecycleLearning } from "./refresh-lifecycle-learning";
 
 export type CustomerLifecycleSyncResult = {
   missedCallRecoveries: number;
   estimateFollowups: number;
   nurtureTouches: number;
   databaseReactivations: number;
+  leadFollowupsSkippedForActiveConversation: number;
+  leadFollowupsCappedForReview: number;
   referralRequests: number;
   lifetimeValueCampaigns: number;
 };
@@ -89,61 +93,7 @@ export async function syncCustomerLifecycleForTenant(tenantId: string): Promise<
     [tenantId]
   );
 
-  const nurture = await queryPostgres(
-    `
-    insert into public.follow_up_workflows (
-      tenant_id, brand_id, lead_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
-    )
-    select l.tenant_id, l.brand_id, l.id, 'nurture',
-      case when l.phone is not null then 'sms' when l.email is not null then 'email' else 'manual' end,
-      'open', now(),
-      'Check in with one useful answer, proof point, or next step based on the original request. Stop if they reply, opt out, book, or buy.',
-      jsonb_build_object('createdByAgent', 'customer_lifecycle_agent', 'lifecycleStage', 'short_term_nurture', 'liveCustomerSend', false)
-    from public.leads l
-    where l.tenant_id = $1 and l.status in ('new','contacted','qualified')
-      and l.consent_to_contact = true
-      and l.updated_at between now() - interval '60 days' and now() - interval '7 days'
-      and (l.phone is not null or l.email is not null)
-      and not exists (
-        select 1 from public.follow_up_workflows f
-        where f.tenant_id = l.tenant_id and f.lead_id = l.id
-          and f.workflow_type in ('nurture','database_reactivation')
-          and f.created_at >= now() - interval '14 days'
-          and f.status in ('open','scheduled','completed')
-      )
-    order by l.updated_at
-    limit 50
-    `,
-    [tenantId]
-  );
-
-  const reactivation = await queryPostgres(
-    `
-    insert into public.follow_up_workflows (
-      tenant_id, brand_id, lead_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
-    )
-    select l.tenant_id, l.brand_id, l.id, 'database_reactivation',
-      case when l.phone is not null then 'sms' when l.email is not null then 'email' else 'manual' end,
-      'open', now(),
-      'Reconnect with context from the original request. Offer a useful update or simple next step, not a generic blast. Stop on reply, opt-out, booking, or sale.',
-      jsonb_build_object('createdByAgent', 'customer_lifecycle_agent', 'lifecycleStage', 'database_reactivation', 'liveCustomerSend', false)
-    from public.leads l
-    where l.tenant_id = $1 and l.status in ('new','contacted','lost')
-      and l.consent_to_contact = true
-      and l.updated_at < now() - interval '90 days'
-      and (l.phone is not null or l.email is not null)
-      and not exists (
-        select 1 from public.follow_up_workflows f
-        where f.tenant_id = l.tenant_id and f.lead_id = l.id
-          and f.workflow_type = 'database_reactivation'
-          and f.created_at >= now() - interval '180 days'
-          and f.status in ('open','scheduled','completed')
-      )
-    order by l.updated_at
-    limit 100
-    `,
-    [tenantId]
-  );
+  const intelligentLeadFollowups = await prepareContextAwareLeadFollowUps(tenantId);
 
   await queryPostgres(
     `
@@ -275,12 +225,16 @@ export async function syncCustomerLifecycleForTenant(tenantId: string): Promise<
   const result = {
     missedCallRecoveries: count(missedCalls),
     estimateFollowups: count(estimates),
-    nurtureTouches: count(nurture),
-    databaseReactivations: count(reactivation),
+    nurtureTouches: intelligentLeadFollowups.preparedNurture,
+    databaseReactivations: intelligentLeadFollowups.preparedReactivation,
+    leadFollowupsSkippedForActiveConversation: intelligentLeadFollowups.skippedActiveConversation,
+    leadFollowupsCappedForReview: intelligentLeadFollowups.cappedForReview,
     referralRequests: count(referrals),
     lifetimeValueCampaigns: count(lifetimeValue)
   };
-  const total = Object.values(result).reduce((sum, value) => sum + value, 0);
+  const total = result.missedCallRecoveries + result.estimateFollowups + result.nurtureTouches
+    + result.databaseReactivations + result.referralRequests + result.lifetimeValueCampaigns;
+  await refreshLifecycleLearning(tenantId);
   if (total > 0) {
     await queryPostgres(
       `

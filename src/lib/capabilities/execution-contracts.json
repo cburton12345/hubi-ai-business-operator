@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-09-12",
+  "states": ["certified_live", "limited", "source_ready", "blocked", "planned"],
+  "callHandlingStrategies": {
+    "ai_first": "certified_live",
+    "simultaneous": "limited",
+    "owner_first": "limited",
+    "important_only": "limited",
+    "ai_unless_requested": "limited",
+    "schedule_based": "limited",
+    "presence_based": "limited",
+    "custom": "limited"
+  },
+  "contracts": {
+    "calls.ai_first": {
+      "state": "certified_live",
+      "control": "Office Manager call mode",
+      "storedState": "call_handling_modes.handling_strategy",
+      "executor": "Retell inbound agent binding and inbound call context",
+      "limitation": "The tenant still needs an active number and agent configuration.",
+      "evidence": "Controlled inbound and outbound Retell calls completed with tenant-specific agent binding."
+    },
+    "calls.simultaneous": {
+      "state": "limited",
+      "control": "Office Manager call mode",
+      "storedState": "call_handling_modes.handling_strategy",
+      "executor": "Carrier multi-leg routing when supported; otherwise Retell screens first",
+      "limitation": "A Ferocity-managed Retell number cannot ring the owner and AI simultaneously by itself.",
+      "evidence": "UI and call context disclose the limitation; live carrier certification remains required."
+    },
+    "calls.owner_first": {
+      "state": "limited",
+      "control": "Office Manager call mode",
+      "storedState": "call_handling_modes.handling_strategy",
+      "executor": "Carrier routing when supported; otherwise Retell transfers promptly",
+      "limitation": "A direct Retell-managed number reaches AI before a transfer and cannot truthfully promise owner-first ringing.",
+      "evidence": "UI and call context disclose the limitation; live carrier certification remains required."
+    },
+    "calls.important_only": {
+      "state": "limited",
+      "control": "Office Manager call mode and importance thresholds",
+      "storedState": "call_handling_modes thresholds and transfer categories",
+      "executor": "Retell conversation context plus post-call call-management decision engine",
+      "limitation": "Pre-answer importance cannot be known on a direct Retell number; transfer happens after screening.",
+      "evidence": "Classification tests pass; a live tenant transfer is not yet certified."
+    },
+    "calls.ai_unless_requested": {
+      "state": "limited",
+      "control": "Office Manager call mode",
+      "storedState": "call_handling_modes.handling_strategy",
+      "executor": "Retell transfer tool after caller request",
+      "limitation": "Requires a verified tenant transfer destination and a successful provider transfer tool call.",
+      "evidence": "Transfer tool is configured; a live tenant transfer is not yet certified."
+    },
+    "calls.schedule_based": {
+      "state": "limited",
+      "control": "Office Manager call mode and schedule",
+      "storedState": "call_handling_modes.active_when_json",
+      "executor": "Workspace-timezone mode resolver and Retell call context",
+      "limitation": "Owner-first periods still inherit the active carrier's routing limitation.",
+      "evidence": "Deterministic schedule resolution is implemented; carrier behavior remains capability-dependent."
+    },
+    "calls.presence_based": {
+      "state": "limited",
+      "control": "Owner attention state",
+      "storedState": "owner_attention_state",
+      "executor": "Call-management resolver and Retell call context",
+      "limitation": "Presence changes transfer policy but cannot add carrier features the connected number lacks.",
+      "evidence": "Attention-state resolution is implemented; live transfer remains to be certified."
+    },
+    "calls.custom": {
+      "state": "limited",
+      "control": "Custom call mode",
+      "storedState": "call_handling_modes rules, thresholds, categories and schedule",
+      "executor": "Call-management resolver and Retell call context",
+      "limitation": "Only rules supported by the connected carrier and agent tools can execute live.",
+      "evidence": "Rule persistence and decision logic are implemented; UI now states the carrier boundary."
+    },
+    "calls.transfer": {
+      "state": "limited",
+      "control": "Receptionist transfer destination and call mode",
+      "storedState": "tenant voice-agent transfer configuration",
+      "executor": "Retell transfer tool",
+      "limitation": "Disabled until the tenant has a verified transfer destination; a live tenant transfer is still required.",
+      "evidence": "Provisioning requires a synchronized tenant destination."
+    },
+    "calls.managed_number": {
+      "state": "limited",
+      "control": "Receptionist Setup managed-number selection and provisioning approval",
+      "storedState": "phone connection, subscription and number-lifecycle records",
+      "executor": "Idempotent managed-number lifecycle worker and Retell number adapter",
+      "limitation": "A number is purchased only after explicit selection, eligible billing, synchronized voice agents, a verified transfer destination and provider activation. The requested local area code is subject to provider inventory.",
+      "evidence": "One isolated QA number was provisioned; full two-tenant lifecycle certification remains open."
+    },
+    "integrations.customer_revoke": {
+      "state": "source_ready",
+      "control": "Disconnect account on customer-owned integration cards",
+      "storedState": "integration, provider, lane, credential-vault, route, queue and mailbox state",
+      "executor": "Tenant-scoped disconnect action",
+      "limitation": "Ferocity access is revoked locally and credential material is erased; providers without a safe revocation API may still require removal from their own authorized-apps page.",
+      "evidence": "The disconnect path is included in local release checks and awaits the authorized deployment."
+    },
+    "messaging.ferocity_connect": {
+      "state": "source_ready",
+      "control": "Messaging and Ferocity Connect service controls",
+      "storedState": "device, consent, queue and service-control records",
+      "executor": "Paired Android worker",
+      "limitation": "Final release requires physical outbound, inbound, STOP/START/HELP, offline and replacement certification.",
+      "evidence": "Focused automated tests pass; physical certification remains open."
+    },
+    "messaging.scheduled_sms": {
+      "state": "source_ready",
+      "control": "Scheduled text composer",
+      "storedState": "outbound message queue with workspace timezone",
+      "executor": "Ferocity Connect queue worker",
+      "limitation": "The source awaits the authorized deploy and one physical delayed-send test.",
+      "evidence": "Scheduling, consent, quiet-hours and idempotency tests pass."
+    },
+    "social.tiktok_login": {
+      "state": "certified_live",
+      "control": "TikTok integration connect",
+      "storedState": "encrypted tenant OAuth connection",
+      "executor": "TikTok Login Kit",
+      "limitation": "This authorizes identity/basic profile only, not publishing or advertising.",
+      "evidence": "Production OAuth completed for the isolated QA workspace."
+    },
+    "social.tiktok_publish": {
+      "state": "source_ready",
+      "control": "Provider certification status",
+      "storedState": "provider certification and live-action gates",
+      "executor": "TikTok Content Posting API adapter with creator-info and status checks",
+      "limitation": "TikTok product approval, public-post audit, authorization and controlled production certification are incomplete.",
+      "evidence": "Direct Post initialization, creator validation, status polling and approval gates are implemented locally."
+    },
+    "social.tiktok_ads": {
+      "state": "blocked",
+      "control": "Provider certification status and campaign approval",
+      "storedState": "provider certification, approval and budget gates",
+      "executor": "No certified advertising executor",
+      "limitation": "The Ads Manager account and billing are ready, but the API for Business app still needs approval, authorization and controlled campaign certification.",
+      "evidence": "Business OAuth, advertiser discovery, campaign reads, reporting and a gated campaign-create adapter are implemented locally; live ad actions remain off."
+    },
+    "social.facebook_marketplace": {
+      "state": "source_ready",
+      "control": "Facebook connector pairing and approvals",
+      "storedState": "tenant-specific device, session, queue and health records",
+      "executor": "Deployment-independent Windows Marketplace worker",
+      "limitation": "Meta review, final deploy and physical worker recovery certification remain open.",
+      "evidence": "Worker recovery tests pass; production certification is not complete."
+    },
+    "email.mailbox_read": {
+      "state": "source_ready",
+      "control": "Gmail or Microsoft mailbox connection",
+      "storedState": "encrypted tenant mailbox OAuth credentials and normalized messages",
+      "executor": "Mailbox sync functions",
+      "limitation": "External OAuth scopes/consent and one real connection per provider still require certification.",
+      "evidence": "Local implementation and release gate pass."
+    },
+    "email.mailbox_send": {
+      "state": "planned",
+      "control": "No customer mailbox send control is released",
+      "storedState": "Not applicable",
+      "executor": "No customer-owned mailbox send executor",
+      "limitation": "Sending needs separate opt-in scopes, sender identity, audit, consent, rate limits and approval controls.",
+      "evidence": "Read-only mailbox access is intentionally separate from transactional Resend email."
+    },
+    "marketing.organic_publish": {
+      "state": "limited",
+      "control": "Marketing OS cadence and publishing queue",
+      "storedState": "brand opt-in, quality review, approvals and publishing queue",
+      "executor": "Only certified connected provider adapters",
+      "limitation": "Uncertified destinations produce drafts/exports and cannot publish live.",
+      "evidence": "Quality and provider gates pass locally; controlled multi-channel production certification remains open."
+    },
+    "marketing.paid_spend": {
+      "state": "limited",
+      "control": "Campaign approval and budget limits",
+      "storedState": "approval, provider, budget and service-control records",
+      "executor": "Only certified ad-provider adapters",
+      "limitation": "Each destination needs a funded approved account, explicit limits and live certification.",
+      "evidence": "No unsupported provider is allowed to execute spend."
+    },
+  "expenses.document_intelligence": {
+      "state": "source_ready",
+      "control": "Expense document upload, batch and email intake",
+      "storedState": "shared document intelligence, extraction, allocation and review records",
+      "executor": "Reusable OCR/document-intelligence workflow",
+      "limitation": "Real receipt, statement, duplicate, Money allocation and tenant-isolation certification awaits deployment.",
+      "evidence": "Local receipt-intelligence readiness and release gates pass."
+    }
+  }
+}

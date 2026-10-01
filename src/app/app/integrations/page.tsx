@@ -4,6 +4,11 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getCurrentActor } from "@/lib/auth/require-permission";
 import { getAdapterBuildsForTenant } from "@/lib/integrations/adapter-factory";
 import { connectorExecutionLabel } from "@/lib/integrations/connector-runtime";
+import {
+  getProviderCapabilityTruth,
+  providerApprovalIsBlocked,
+  providerTruthLabel
+} from "@/lib/integrations/capability-truth";
 import { getIntegrationRows } from "@/lib/integrations/get-integrations";
 import { getProviderIntegrationRequests } from "@/lib/integrations/get-provider-requests";
 import {
@@ -14,9 +19,12 @@ import {
 } from "@/lib/integrations/provider-lane-readiness";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import {
+  disconnectCustomerIntegrationAction,
   releaseAdapterBuildAction,
   requestProviderIntegrationAction,
   reviewAdapterBuildAction,
+  selectProviderAccountAction,
+  updateProviderCertificationAction,
   updateIntegrationReadinessAction
 } from "./actions";
 
@@ -90,6 +98,9 @@ export default async function IntegrationsPage({
             </Link>
             <Link className="button secondary-button" href="/app/integrations/calendar">
               <CalendarDays size={16} /> Calendars
+            </Link>
+            <Link className="button secondary-button" href="/app/email-watch">
+              Email Watch
             </Link>
             <Link className="button secondary-button" href="/app/integrations/business-profile">
               <MapPin size={16} /> Google Business Profile
@@ -387,7 +398,7 @@ export default async function IntegrationsPage({
         </div>
         <div className="grid">
           {managed.map((row) => (
-            <ProviderCard row={row} key={row.id} />
+            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} key={row.id} />
           ))}
         </div>
       </section>
@@ -404,7 +415,7 @@ export default async function IntegrationsPage({
         </div>
         <div className="grid">
           {customerOwned.map((row) => (
-            <ProviderCard row={row} key={row.id} />
+            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} key={row.id} />
           ))}
         </div>
       </section>
@@ -441,10 +452,15 @@ function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }
   );
 }
 
-function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number] }) {
+function ProviderCard({ row, isPlatformAdmin }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number]; isPlatformAdmin: boolean }) {
+  const providerTruth = getProviderCapabilityTruth(row.provider);
+  const providerApprovalBlocked = providerApprovalIsBlocked(row.provider, row.certificationStatus);
   const canMarkReady = row.missingEnvVars.length === 0 && ["executable_adapter", "native_fallback"].includes(row.executionMode);
   const activeRoutes = row.routeActions.length > 0 ? row.routeActions.join(", ") : "Not used by default";
   const fallbackRoutes = row.fallbackForActions.length > 0 ? row.fallbackForActions.join(", ") : "No backup use";
+  const platformReady = row.missingEnvVars.length === 0;
+  const adAccounts = row.availableAccounts.filter((account) => account.kind === "ad_account");
+  const pages = row.availableAccounts.filter((account) => account.kind === "page");
 
   return (
     <section className="span-4">
@@ -460,7 +476,7 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
         <li className="list-row">
           <strong>Working path</strong>
           <span className={`pill ${row.executionMode === "setup_only" ? "medium" : ""}`}>
-            {connectorExecutionLabel(row.executionMode)}
+            {providerApprovalBlocked ? providerTruthLabel(providerTruth.state) : connectorExecutionLabel(row.executionMode)}
           </span>
         </li>
         <li className="list-row">
@@ -472,8 +488,12 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
           <span className="pill">{plainConnectionStatus(row.accountStatus ?? row.status)}</span>
         </li>
         <li className="list-row">
+          <strong>Certification</strong>
+          <span className={`pill ${row.certificationStatus === "certified_live" ? "low" : row.certificationStatus === "suspended" ? "high" : "medium"}`}>{row.certificationLabel}</span>
+        </li>
+        <li className="list-row">
           <strong>Connection</strong>
-          <span className="pill">{row.envVars.length === 0 ? "No extra setup needed" : plainConnectionStatus(row.credentialsStatus)}</span>
+          <span className="pill">{row.platformManagedAuthorization && !platformReady ? "Ferocity setup pending" : row.envVars.length === 0 ? "No extra setup needed" : plainConnectionStatus(row.credentialsStatus)}</span>
         </li>
         <li className="list-row">
           <strong>Setup</strong>
@@ -490,31 +510,67 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
       </ul>
       <div className="form-stack section-actions">
         <p className="muted">Rule: {row.liveActionRule}</p>
-        <p className="muted">Setup steps</p>
+        <p className="muted">Your connection steps</p>
         <ul className="list">
-          {row.setupItems.map((item) => (
+          {row.customerSetupItems.map((item) => (
             <li className="list-row" key={item}>
               <ArrowRight size={14} />
               <span>{item}</span>
             </li>
           ))}
         </ul>
-        <p className="muted">Missing connection steps: {row.missingEnvVars.length > 0 ? row.missingEnvVars.length : "None"}</p>
+        <p className="muted">{row.platformManagedAuthorization
+          ? platformReady
+            ? "Ferocity's secure provider connection is ready for account authorization."
+            : "Ferocity is finishing its provider approval and secure connection. You will not be asked for developer credentials."
+          : `Missing connection steps: ${row.missingEnvVars.length > 0 ? row.missingEnvVars.length : "None"}`}</p>
         <p className="muted">Can receive updates: {row.callbackPath ? "Yes" : "Not yet"}</p>
+        {row.accountDiscoveryMessage ? <p className="muted">{row.accountDiscoveryMessage}</p> : null}
+        {adAccounts.length > 0 ? (
+          <form action={selectProviderAccountAction} className="form-stack subtle-panel">
+            <input name="connectionId" type="hidden" value={row.id} />
+            <input name="accountKind" type="hidden" value="ad_account" />
+            <label htmlFor={`${row.id}-ad-account`}>Advertising account</label>
+            <select id={`${row.id}-ad-account`} name="accountId" defaultValue={row.selectedAdAccountId ?? ""} required>
+              <option disabled value="">Choose an account</option>
+              {adAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}{account.currency ? ` (${account.currency})` : ""}</option>)}
+            </select>
+            <button className="mini-button" type="submit">Use this ad account</button>
+          </form>
+        ) : null}
+        {pages.length > 0 ? (
+          <form action={selectProviderAccountAction} className="form-stack subtle-panel">
+            <input name="connectionId" type="hidden" value={row.id} />
+            <input name="accountKind" type="hidden" value="page" />
+            <label htmlFor={`${row.id}-page`}>Facebook Page</label>
+            <select id={`${row.id}-page`} name="accountId" defaultValue={row.selectedPageId ?? ""} required>
+              <option disabled value="">Choose a Page</option>
+              {pages.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+            </select>
+            <button className="mini-button" type="submit">Use this Page</button>
+          </form>
+        ) : null}
         <div className="button-row">
-          {row.oauthStartPath && row.executionMode !== "setup_only" ? (
+          {row.oauthStartPath && row.executionMode !== "setup_only" && platformReady ? (
             <Link className="mini-button" href={row.oauthStartPath}>
               Connect Account
             </Link>
           ) : null}
-          {row.executionMode === "setup_only" ? (
+          {row.platformManagedAuthorization && (providerApprovalBlocked || (row.executionMode !== "setup_only" && !platformReady)) ? (
+            <button className="mini-button" type="button" disabled>
+              Provider approval pending
+            </button>
+          ) : null}
+          {row.executionMode === "setup_only" && !providerApprovalBlocked ? (
             <Link className="mini-button secondary-button" href="#request-provider">
               Request adapter
             </Link>
           ) : null}
-          <Link className="mini-button secondary-button" href="/app/credentials">
-            Finish setup
-          </Link>
+          {!row.platformManagedAuthorization || isPlatformAdmin ? (
+            <Link className="mini-button secondary-button" href="/app/credentials">
+              {isPlatformAdmin && row.platformManagedAuthorization ? "Platform credentials" : "Finish setup"}
+            </Link>
+          ) : null}
         </div>
         <form action={updateIntegrationReadinessAction} className="inline-actions">
           <input name="connectionId" type="hidden" value={row.id} />
@@ -529,9 +585,53 @@ function ProviderCard({ row }: { row: Awaited<ReturnType<typeof getIntegrationRo
             Mark ready
           </button>
           <span className="muted">{row.liveActionsEnabled ? "Live actions on" : "Live actions off"}</span>
-          {row.executionMode === "setup_only" ? <span className="muted">Connection can be planned, but not marked ready until its adapter is built.</span> : null}
-          {row.executionMode === "connection_only" ? <span className="muted">The account can be authorized now, but Ferocity will not claim reporting is live until property selection and data sync pass certification.</span> : null}
+          {row.executionMode === "setup_only" && !providerApprovalBlocked ? <span className="muted">Connection can be planned, but not marked ready until its adapter is built.</span> : null}
+          {providerApprovalBlocked ? <span className="muted">The adapter is built. Customer sign-in will open after Ferocity receives the provider&apos;s production approval and credentials.</span> : null}
+          {row.executionMode === "connection_only" && !providerApprovalBlocked ? <span className="muted">The account can be authorized now, but Ferocity will not claim reporting is live until account selection and data sync pass certification.</span> : null}
         </form>
+        {row.ownershipMode !== "ferocity_managed" && (row.status === "connected" || row.accountStatus === "connected") ? (
+          <details className="subtle-panel section-actions">
+            <summary><Unplug size={14} /> Disconnect account</summary>
+            <p className="muted">This immediately disables Ferocity access, clears its stored credential material, pauses routes using this provider, and blocks queued live actions. Some providers may continue showing Ferocity in their own authorized-apps page until you revoke the remote grant there too.</p>
+            <form action={disconnectCustomerIntegrationAction}>
+              <input name="connectionId" type="hidden" value={row.id} />
+              <button className="mini-button danger-button" type="submit">Disconnect and revoke Ferocity access</button>
+            </form>
+          </details>
+        ) : null}
+        {row.certificationEvidence ? <p className="muted">Evidence: {row.certificationEvidence}</p> : null}
+        {isPlatformAdmin ? (
+          <details className="panel subtle-panel section-actions">
+            <summary>Platform certification</summary>
+            <p className="muted">Ferocity-side developer setup. Never ask a normal customer to complete these steps or provide these secrets.</p>
+            <ul className="list">
+              {row.platformSetupItems.map((item) => <li className="list-row" key={item}><ShieldCheck size={14} /><span>{item}</span></li>)}
+            </ul>
+            <form action={updateProviderCertificationAction} className="form-stack">
+              <input name="connectionId" type="hidden" value={row.id} />
+              <label>
+                Certification state
+                <select name="certificationStatus" defaultValue={row.certificationStatus}>
+                  <option value="setup_required">Setup required</option>
+                  <option value="awaiting_provider">Waiting for provider approval</option>
+                  <option value="connected_unverified">Connected, testing required</option>
+                  <option value="certified_limited">Certified with limits</option>
+                  <option value="certified_live">Certified live</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </label>
+              <label>
+                Evidence or reason
+                <textarea name="evidenceNote" defaultValue={row.certificationEvidence ?? ""} placeholder="Provider approval, test evidence, limits, suspension reason, or next required step." required />
+              </label>
+              <label className="checkbox-row">
+                <input name="liveActionsEnabled" type="checkbox" value="true" defaultChecked={row.liveActionsEnabled} />
+                <span>Enable live actions only if the released adapter, credentials, and certification all pass.</span>
+              </label>
+              <button className="mini-button" type="submit">Save certification</button>
+            </form>
+          </details>
+        ) : null}
       </div>
     </section>
   );

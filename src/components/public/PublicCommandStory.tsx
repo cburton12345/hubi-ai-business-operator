@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 
 const examples = [
+  "What's the biggest bottleneck in my business right now?",
   "What needs my attention today?",
   "Follow up with every estimate we're about to lose.",
   "Collect everything that's overdue.",
@@ -9,22 +11,22 @@ const examples = [
   "Why did profit fall last month?"
 ];
 
-export function PublicCommandStory() {
+export function PublicCommandStory({ children }: { children?: ReactNode }) {
   return (
-    <section className="panel public-command-story">
+    <section className="panel public-command-story" id="ask-ferocity">
       <div>
-        <p className="eyebrow">One front door to your entire business</p>
-        <h2>Just tell Ferocity what you need.</h2>
+        <p className="eyebrow">See how Ferocity would help your business</p>
+        <h2>Tell Ferocity what you run. Get a practical first plan.</h2>
         <p className="muted">
-          You shouldn’t have to remember which screen, employee, AI agent, automation, or piece of software handles something. Ask for the outcome in normal words. Ferocity uses the shared Business Brain to coordinate the right people, AI employees, and systems.
+          Describe the business, a goal, a weak spot, or a capability you wish you had. Ferocity will identify the most useful first moves, explain what it could improve or build, and show where it can begin—without making you choose a tool first.
         </p>
         <div className="public-command-examples" aria-label="Example Ferocity commands">
           {examples.map((example) => <span key={example}>{example}</span>)}
         </div>
-        <p className="public-command-outcome">You ask for the outcome. Ferocity figures out how to get there.</p>
+        <p className="public-command-outcome">No form first. No sales call required. Just ask the question.</p>
       </div>
 
-      <div className="public-command-preview" aria-label="Example Ask Ferocity result">
+      {children ?? <div className="public-command-preview" aria-label="Example Ask Ferocity result">
         <div className="public-command-label"><Sparkles size={16} /> Ask or tell Ferocity</div>
         <div className="public-command-prompt">
           Follow up with every estimate we&apos;re about to lose, within our rules.
@@ -36,9 +38,9 @@ export function PublicCommandStory() {
           <span><CheckCircle2 size={15} /> 2 decisions routed to the owner</span>
         </div>
         <Link className="mini-button" href="/demo">
-          See Ferocity run the full loop <ArrowRight size={14} />
+          Explore how Ferocity works <ArrowRight size={14} />
         </Link>
-      </div>
+      </div>}
     </section>
   );
 }

@@ -110,7 +110,8 @@ export async function getPromiseAudit(): Promise<PromiseAuditSummary> {
     live: features.filter((feature) => feature.state === "live_now").length,
     approval: features.filter((feature) => feature.state === "approval_first").length,
     connection: features.filter((feature) => feature.state === "needs_connection").length,
-    higherPlan: features.filter((feature) => feature.state === "higher_plan").length
+    higherPlan: features.filter((feature) => feature.state === "higher_plan").length,
+    unavailable: features.filter((feature) => feature.state === "unavailable").length
   };
   const stripeReady = billing.readiness.some((item) => item.label.toLowerCase().includes("stripe") && item.status === "ready");
   const connectReady = billing.readiness.some((item) => item.label.toLowerCase().includes("connect") && item.status === "ready");
@@ -122,7 +123,7 @@ export async function getPromiseAudit(): Promise<PromiseAuditSummary> {
       question: "Are we promising live functionality or only a future idea?",
       status: featureCounts.connection > 0 ? "watch" : "strong",
       answer: "Ferocity separates live tools, approval-required work, higher-plan features, and provider-gated features.",
-      proof: `${featureCounts.live} live, ${featureCounts.approval} approval-required, ${featureCounts.connection} need connection, ${featureCounts.higherPlan} higher-plan.`,
+      proof: `${featureCounts.live} live, ${featureCounts.approval} approval-required, ${featureCounts.connection} need connection, ${featureCounts.higherPlan} higher-plan, ${featureCounts.unavailable} unavailable.`,
       nextAction: "Keep public pages tied to the same readiness language and never sell provider-gated actions as live.",
       href: "/app/feature-readiness"
     },

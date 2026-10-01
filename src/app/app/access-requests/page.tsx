@@ -99,7 +99,7 @@ export default async function AccessRequestsPage({
                   <form action={createInviteFromAccessRequestAction}>
                     <input name="requestId" type="hidden" value={row.id} />
                     <input name="role" type="hidden" value="owner" />
-                    <button className="mini-button" type="submit">Create invite</button>
+                    <button className="mini-button" type="submit">Approve &amp; create customer portal</button>
                   </form>
                   <form action={updateAccessRequestStatusAction}>
                     <input name="requestId" type="hidden" value={row.id} />

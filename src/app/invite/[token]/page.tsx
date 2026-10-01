@@ -20,7 +20,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <p className="muted">
             {invite.invitePurpose === "employee"
               ? `Create the secure login for ${invite.email}. This connects only your own schedule and field records.`
-              : `Create your account for ${invite.email}. Your role will be ${invite.role}.`}
+              : `Your email address (${invite.email}) will be your username. Create your private password below. Your role will be ${invite.role}.`}
           </p>
         </div>
         <form action={acceptInviteAction} className="panel form-stack auth-panel">
@@ -33,7 +33,11 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             Password
             <input name="password" type="password" minLength={8} autoComplete="new-password" required />
           </label>
-          <button className="button" type="submit">{invite.invitePurpose === "employee" ? "Create employee login" : "Accept invite"}</button>
+          <label>
+            Confirm password
+            <input name="confirmPassword" type="password" minLength={8} autoComplete="new-password" required />
+          </label>
+          <button className="button" type="submit">{invite.invitePurpose === "employee" ? "Create employee login" : "Create account and open my workspace"}</button>
           <Link className="button secondary-button" href="/login">Back to login</Link>
         </form>
       </section>

@@ -34,7 +34,10 @@ async function applyServiceControl(input: {
     `
     update public.workspace_feature_entitlements
     set status = $3,
-        usage_limit = $4,
+        usage_limit = case
+          when feature_key = 'publishing_queue' and $4::int is null then usage_limit
+          else $4::int
+        end,
         metadata_json = metadata_json || $5::jsonb,
         updated_at = now()
     where tenant_id = $1 and feature_key = $2

@@ -1,11 +1,10 @@
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
-import { env } from "@/lib/env";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { isAllowedH4rCallbackUrl } from "@/lib/integrations/h4r/callback";
 import { normalizePhoneForSmsConsent } from "@/lib/sms/public-consent";
+import { claimH4rBridgeNonce, verifyH4rSignedRequest } from "@/lib/integrations/h4r/request-auth";
 
 const bodySchema = z.object({
   workspace_id: z.string().uuid(),
@@ -25,13 +24,6 @@ const bodySchema = z.object({
   })
 });
 
-function timingSafeHexEqual(left: string, right: string) {
-  if (!/^[a-f0-9]+$/i.test(left) || !/^[a-f0-9]+$/i.test(right)) return false;
-  const leftBuffer = Buffer.from(left, "hex");
-  const rightBuffer = Buffer.from(right, "hex");
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
 function safePayload(payload: unknown) {
   if (!payload || typeof payload !== "object") return {};
   const clone = { ...(payload as Record<string, unknown>) };
@@ -40,37 +32,6 @@ function safePayload(payload: unknown) {
   }
   if (typeof clone.body === "string") clone.body = "[redacted]";
   return clone;
-}
-
-function verifyRequest(request: Request, rawBody: string) {
-  const secret = env.H4R_SMS_BRIDGE_SECRET;
-  if (!secret) return { ok: false as const, status: 503, error: "H4R SMS bridge secret is not configured." };
-
-  const timestamp = request.headers.get("x-h4r-timestamp")?.trim() || "";
-  const nonce = request.headers.get("x-h4r-nonce")?.trim() || "";
-  const signature = (request.headers.get("x-h4r-signature") || "").replace(/^sha256=/i, "").trim();
-  if (!timestamp || !nonce || !signature) return { ok: false as const, status: 401, error: "Missing bridge signature." };
-
-  const timestampMs = Number(timestamp) * 1000;
-  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000) {
-    return { ok: false as const, status: 401, error: "Stale bridge signature." };
-  }
-
-  const expected = crypto.createHmac("sha256", secret).update(`${timestamp}.${nonce}.${rawBody}`, "utf8").digest("hex");
-  if (!timingSafeHexEqual(expected, signature)) return { ok: false as const, status: 401, error: "Invalid bridge signature." };
-  return { ok: true as const, nonce };
-}
-
-async function claimNonce(nonce: string) {
-  await queryPostgres(`delete from public.h4r_ferocity_bridge_nonces where expires_at < now()`);
-  const result = await queryPostgres<{ nonce: string }>(
-    `insert into public.h4r_ferocity_bridge_nonces (nonce,expires_at)
-     values ($1,now()+interval '10 minutes')
-     on conflict (nonce) do nothing
-     returning nonce`,
-    [nonce]
-  );
-  return Boolean(result?.rows[0]);
 }
 
 async function recordBridgeEvent(input: {
@@ -109,9 +70,9 @@ async function recordBridgeEvent(input: {
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
-  const verified = verifyRequest(request, rawBody);
+  const verified = verifyH4rSignedRequest(request, rawBody);
   if (!verified.ok) return NextResponse.json({ ok: false, error: verified.error }, { status: verified.status });
-  if (!(await claimNonce(verified.nonce))) {
+  if (!(await claimH4rBridgeNonce(verified.nonce))) {
     return NextResponse.json({ ok: false, error: "Duplicate bridge nonce." }, { status: 409 });
   }
 

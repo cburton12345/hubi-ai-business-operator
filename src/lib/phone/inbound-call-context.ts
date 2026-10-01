@@ -25,6 +25,7 @@ export function composeInboundCallVariables(input: {
   serviceAreas?: string[];
   businessHours?: string | null;
   transferRules?: string[];
+  callHandlingInstruction?: string | null;
 }) {
   const facts = compact(input.contactFacts ?? [], 10);
   const services = compact(input.services ?? [], 12);
@@ -43,6 +44,7 @@ export function composeInboundCallVariables(input: {
     verified_services: services.join("; ").slice(0, 2_000) || "No verified service catalog is available. Do not invent services or prices.",
     verified_service_areas: areas.join("; ").slice(0, 1_500) || "Service area has not been configured. Collect the location and flag it for confirmation.",
     business_hours: clean(input.businessHours, 500) || "Business hours have not been configured. Offer to take a message or schedule only after availability is verified.",
+    call_handling_instruction: clean(input.callHandlingInstruction, 1_000) || "AI answers first, handles routine needs, and transfers only through a verified tool when requested or required by the business rules.",
     transfer_rules: transferRules.join("; ").slice(0, 1_500) || "Transfer only when an attached Ferocity tool confirms an allowed destination; otherwise take a complete message.",
     allowed_next_steps: "Answer only from verified context. Qualify the need, update the contact through tools, check availability before booking, and transfer only through a confirmed Ferocity tool. Never claim an action succeeded unless its tool confirms success."
   } satisfies Record<string, string>;
@@ -115,10 +117,10 @@ export async function prepareInboundCallContext(input: {
       [input.tenantId, brand.id]
     ),
     queryPostgres<{
-      display_name: string; active_when_json: Record<string, unknown>; transfer_categories_json: string[];
+      display_name: string; handling_strategy: string; active_when_json: Record<string, unknown>; transfer_categories_json: string[];
       minimum_transfer_score: number; minimum_sales_value_cents: number;
     }>(
-      `select display_name,active_when_json,transfer_categories_json,minimum_transfer_score,minimum_sales_value_cents
+      `select display_name,handling_strategy,active_when_json,transfer_categories_json,minimum_transfer_score,minimum_sales_value_cents
          from public.call_handling_modes
         where tenant_id=$1 and status='active' and (brand_id=$2 or brand_id is null)
         order by case when brand_id=$2 then 0 else 1 end,is_default desc,created_at limit 1`,
@@ -171,6 +173,17 @@ export async function prepareInboundCallContext(input: {
         mode.minimum_sales_value_cents > 0 ? `High-value threshold: $${(mode.minimum_sales_value_cents / 100).toFixed(2)}` : ""
       ]
     : [];
+  const callHandlingInstruction = mode?.handling_strategy === "owner_first"
+    ? "This managed AI line reaches Ferocity before it can transfer. Greet briefly, then promptly offer the verified human destination; if the transfer is unavailable, continue helping and create a tracked callback instead of pretending the owner was rung first."
+    : mode?.handling_strategy === "simultaneous"
+      ? "This managed AI line cannot ring AI and a person simultaneously. Answer immediately, explain important context, and transfer promptly through the verified human destination when requested or required."
+      : mode?.handling_strategy === "important_only"
+        ? "Handle routine calls without interruption. Transfer only when the verified category or importance rules require a person, or when the caller clearly asks for one."
+        : mode?.handling_strategy === "ai_unless_requested"
+          ? "Handle the call unless the caller asks for a person; then transfer promptly through the verified destination."
+          : mode?.handling_strategy === "schedule_based" || mode?.handling_strategy === "presence_based"
+            ? `Follow the active ${mode.display_name} rules in the transfer guidance. Never claim a human is ringing unless the transfer tool was actually invoked.`
+            : "AI answers first, handles routine needs, and transfers only through a verified tool when requested or required by the business rules.";
 
   return {
     brandId: brand.id,
@@ -187,7 +200,8 @@ export async function prepareInboundCallContext(input: {
       services: (servicesResult?.rows ?? []).map((service) => `${service.name}${service.description ? `: ${service.description}` : ""}`),
       serviceAreas: (areasResult?.rows ?? []).map((area) => area.label),
       businessHours: `Configured schedule uses weekdays ${weekdays}, ${startHour}:00-${endHour}:00. Confirm timezone and availability through Ferocity before booking.`,
-      transferRules
+      transferRules,
+      callHandlingInstruction
     })
   };
 }

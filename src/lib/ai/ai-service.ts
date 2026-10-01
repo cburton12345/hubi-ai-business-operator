@@ -34,6 +34,7 @@ type AiBudgetDecision = {
 
 const defaultCoreAiCostCapsCents: Record<PlanKey, number> = {
   free: 50,
+  earn: 5000,
   ferocity_connect: 100,
   calls: 250,
   job_tracker: 100,
@@ -77,6 +78,7 @@ function maxConcurrentAiRequests() {
 export type AiVisionJsonRequest<T> = Omit<AiJsonRequest<T>, "user" | "requestType"> & {
   userText: string;
   imageUrl: string;
+  imageUrls?: string[];
   mimeType?: string | null;
 };
 
@@ -108,6 +110,16 @@ function safeErrorCategory(error: unknown) {
   if (message.includes("unauthorized") || message.includes("401")) return "provider_auth";
   if (message.includes("json")) return "invalid_provider_json";
   return "provider_error";
+}
+
+function safeRecordedMetadata(metadata?: Record<string, unknown>) {
+  if (!metadata) return {};
+  // Vision URLs may be short-lived private links or large data URLs. They are
+  // request transport, not durable audit data, and must never be persisted.
+  const { imageUrl: _imageUrl, imageUrls: _imageUrls, ...safe } = metadata;
+  void _imageUrl;
+  void _imageUrls;
+  return safe;
 }
 
 async function getAiBudgetDecision(tenantId: string, aiCategory: AiCategory): Promise<AiBudgetDecision> {
@@ -354,7 +366,7 @@ async function handleFallback<T extends Record<string, unknown>>(
         reason,
         ownershipMode: config.ownershipMode,
         byoAiUsed: config.providerKey === "openai_byok",
-        ...(metadata ?? input.metadata ?? {})
+        ...safeRecordedMetadata(metadata ?? input.metadata)
       }
     })
   ]);
@@ -406,13 +418,22 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
   activeAiRequests += 1;
 
   try {
-    const userContent =
-      requestType === "vision_json" && typeof input.metadata?.imageUrl === "string"
-        ? [
-            { type: "text", text: input.user },
-            { type: "image_url", image_url: { url: input.metadata.imageUrl } }
-          ]
-        : input.user;
+    const visionUrls = requestType === "vision_json"
+      ? (Array.isArray(input.metadata?.imageUrls)
+          ? input.metadata.imageUrls.filter((value): value is string => typeof value === "string" && value.length > 0)
+          : typeof input.metadata?.imageUrl === "string" ? [input.metadata.imageUrl] : [])
+      : [];
+    const userContent = visionUrls.length
+      ? [
+          { type: "text", text: input.user },
+          ...visionUrls.map((url) => ({ type: "image_url", image_url: { url } }))
+        ]
+      : input.user;
+    const usesAstra = /^gpt-6-astra(?:-|$)/i.test(config.model);
+    const configuredAstraEffort = process.env.AI_REASONING_EFFORT_ADVANCED;
+    const astraEffort = ["low", "medium", "high", "xhigh", "max"].includes(configuredAstraEffort ?? "")
+      ? configuredAstraEffort
+      : "low";
 
     const response = await resilientFetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
@@ -422,14 +443,16 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
       },
       body: JSON.stringify({
         model: config.model,
-        temperature: input.temperature ?? 0.4,
+        // GPT-6 Astra rejects temperature/top-p controls. Low is the official
+        // migration starting point when the previous model had no reasoning.
+        ...(usesAstra ? { reasoning_effort: astraEffort } : { temperature: input.temperature ?? 0.4 }),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: ensureJsonInstruction(input.system) },
           { role: "user", content: userContent }
         ]
       })
-    }, { timeoutMs: input.timeoutMs ?? 18_000 });
+    }, { timeoutMs: input.timeoutMs ?? (usesAstra ? 60_000 : 18_000) });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -472,7 +495,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
         fallbackUsed: false,
         ownershipMode: config.ownershipMode,
         metadata: {
-          ...input.metadata,
+          ...safeRecordedMetadata(input.metadata),
           ownershipMode: config.ownershipMode,
           byoAiUsed: config.providerKey === "openai_byok",
           providerCostBilledBy: config.ownershipMode === "workspace" ? "customer_provider" : "ferocity"
@@ -483,7 +506,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
     return parsed;
   } catch (error) {
     return handleFallback(input, "failed", error instanceof Error ? error.message : "AI provider call failed.", {
-      ...input.metadata,
+      ...safeRecordedMetadata(input.metadata),
       errorCategory: safeErrorCategory(error),
       latencyMs: Date.now() - startedAt
     }, config);
@@ -504,6 +527,7 @@ export async function generateVisionJsonWithAiService<T extends Record<string, u
     metadata: {
       ...input.metadata,
       imageUrl: input.imageUrl,
+      imageUrls: input.imageUrls,
       imageUrlPresent: Boolean(input.imageUrl),
       mimeType: input.mimeType ?? null
     },

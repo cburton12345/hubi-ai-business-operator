@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { authenticateConnectDevice } from "@/lib/ferocity-connect/device-auth";
+import { ferocityConnectInboundMessageSchema } from "@/lib/ferocity-connect/inbound-message";
 import { queryPostgres } from "@/lib/db/postgres";
 import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
@@ -8,15 +8,10 @@ import { classifySmsKeyword, normalizeSmsKeyword } from "@/lib/messaging/sms-pol
 import { prepareInboundReply } from "@/lib/messaging/prepare-inbound-reply";
 import { postH4rCallback } from "@/lib/integrations/h4r/callback";
 
-const schema = z.object({
-  eventId: z.string().min(8).max(160), sender: z.string().min(7).max(32), recipient: z.string().max(32).nullable().optional(),
-  body: z.string().max(5000), receivedAt: z.string().datetime(), subscriptionId: z.number().int().nullable().optional()
-});
-
 export async function POST(request: Request) {
   const auth = await authenticateConnectDevice(request);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  const parsed = schema.safeParse(await request.json().catch(() => null));
+  const parsed = ferocityConnectInboundMessageSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ ok: false, error: "Invalid inbound message." }, { status: 400 });
   const event = await queryPostgres<{ id: string }>(
     `insert into public.ferocity_connect_events (tenant_id,device_id,event_type,device_event_id,safe_detail,metadata_json)
@@ -73,6 +68,20 @@ export async function POST(request: Request) {
     externalConversationRef: `ferocity-connect:${auth.identity.deviceId}:${sender}`,
     from: sender, to: parsed.data.recipient ?? null, body: parsed.data.body, subject: "SMS conversation"
   });
+  if (h4rMetadata?.source === "h4r") {
+    await queryPostgres(
+      `update public.messages
+       set metadata_json=metadata_json || $3::jsonb
+       where tenant_id=$1 and source_message_id=$2`,
+      [auth.identity.tenantId, parsed.data.eventId, JSON.stringify({
+        source: "h4r",
+        h4rWorkspaceId: h4rMetadata.h4rWorkspaceId ?? null,
+        h4rConversationId: h4rMetadata.h4rConversationId ?? null,
+        h4rProspectId: h4rMetadata.h4rProspectId ?? null,
+        h4rSmsOutboxId: h4rMetadata.h4rSmsOutboxId ?? null,
+      })]
+    );
+  }
   await queryPostgres(
     `insert into public.messaging_usage (tenant_id,provider_key,channel,direction,unit_type,unit_count,provider_cost_cents,customer_charge_cents,billing_status,metadata_json)
      values ($1,'ferocity_connect','sms','inbound','message',1,0,0,'included',$2::jsonb)`,

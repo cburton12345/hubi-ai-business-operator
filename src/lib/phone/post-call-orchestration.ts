@@ -1,6 +1,10 @@
 import { queryPostgres } from "@/lib/db/postgres";
-import { getPushNotificationPreferences, pushPreferencesAllowEvent } from "@/lib/push/preferences";
+import {
+  getPushNotificationPreferences,
+  pushPreferencesAllowEvent,
+} from "@/lib/push/preferences";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
+import { captureCommitmentsFromActionItems } from "@/lib/operations/commitment-engine";
 
 export async function orchestrateCompletedCall(input: {
   tenantId: string;
@@ -15,17 +19,37 @@ export async function orchestrateCompletedCall(input: {
   shouldInterruptOwner: boolean;
   estimatedValueCents: number;
 }) {
-  const needsAttention = input.shouldInterruptOwner
-    || ["missed", "failed"].includes(input.status)
-    || ["followup_needed", "unresolved", "failed"].includes(input.outcome ?? "")
-    || ["hot", "warm"].includes(input.qualification)
-    || input.actionItems.length > 0;
-  if (!needsAttention) return { created: false, pushed: false };
-  const severity = input.status === "failed" || input.qualification === "hot" ? "high" : "medium";
-  const title = input.status === "missed"
-    ? "A caller needs a response"
-    : input.qualification === "hot" ? "A high-intent caller needs attention" : "Call follow-up is ready";
-  const body = `${input.callerNumber ?? "A caller"}: ${input.summary}`.slice(0, 500);
+  const commitments = await captureCommitmentsFromActionItems({
+    tenantId: input.tenantId,
+    sourceType: "voice_call",
+    sourceTable: "receptionist_calls",
+    sourceId: input.callId,
+    sourceReference: input.providerCallId,
+    relatedEntityType: "receptionist_call",
+    relatedEntityId: input.callId,
+    actionItems: input.actionItems,
+  });
+  const needsAttention =
+    input.shouldInterruptOwner ||
+    ["missed", "failed"].includes(input.status) ||
+    ["followup_needed", "unresolved", "failed"].includes(input.outcome ?? "") ||
+    ["hot", "warm"].includes(input.qualification) ||
+    input.actionItems.length > 0;
+  if (!needsAttention) return { created: false, pushed: false, commitments };
+  const severity =
+    input.status === "failed" || input.qualification === "hot"
+      ? "high"
+      : "medium";
+  const title =
+    input.status === "missed"
+      ? "A caller needs a response"
+      : input.qualification === "hot"
+        ? "A high-intent caller needs attention"
+        : "Call follow-up is ready";
+  const body = `${input.callerNumber ?? "A caller"}: ${input.summary}`.slice(
+    0,
+    500,
+  );
   const event = await queryPostgres<{ id: string }>(
     `insert into public.owner_command_events (
        tenant_id,platform_key,platform_name,external_event_id,event_type,title,summary,
@@ -35,20 +59,41 @@ export async function orchestrateCompletedCall(input: {
        'Review the call and complete or authorize its next step.',$6,'customer',95,$7::jsonb)
      on conflict (tenant_id,platform_key,external_event_id) where external_event_id is not null do nothing
      returning id`,
-    [input.tenantId, `post-call:${input.providerCallId}`, title, body, severity, `/app/calls/${input.callId}`,
-      JSON.stringify({ callId: input.callId, providerCallId: input.providerCallId, status: input.status, outcome: input.outcome, actionItems: input.actionItems })]
+    [
+      input.tenantId,
+      `post-call:${input.providerCallId}`,
+      title,
+      body,
+      severity,
+      `/app/calls/${input.callId}`,
+      JSON.stringify({
+        callId: input.callId,
+        providerCallId: input.providerCallId,
+        status: input.status,
+        outcome: input.outcome,
+        actionItems: input.actionItems,
+      }),
+    ],
   );
-  if (!event?.rows[0]) return { created: false, pushed: false };
+  if (!event?.rows[0]) return { created: false, pushed: false, commitments };
   const preferences = await getPushNotificationPreferences(input.tenantId);
   const allowed = pushPreferencesAllowEvent({
-    preferences, severity, status: input.status, ownerAttention: true,
-    moneyCents: input.estimatedValueCents, riskType: input.qualification === "hot" ? "revenue" : "customer"
+    preferences,
+    severity,
+    status: input.status,
+    ownerAttention: true,
+    moneyCents: input.estimatedValueCents,
+    riskType: input.qualification === "hot" ? "revenue" : "customer",
   });
-  if (!allowed) return { created: true, pushed: false };
+  if (!allowed) return { created: true, pushed: false, commitments };
   const push = await sendWorkspacePushNotifications({
-    tenantId: input.tenantId, eventType: "call.follow_up_ready", title, body,
-    url: `/app/calls/${input.callId}`, tag: `call:${input.callId}`,
-    metadata: { callId: input.callId, providerCallId: input.providerCallId }
+    tenantId: input.tenantId,
+    eventType: "call.follow_up_ready",
+    title,
+    body,
+    url: `/app/calls/${input.callId}`,
+    tag: `call:${input.callId}`,
+    metadata: { callId: input.callId, providerCallId: input.providerCallId },
   });
-  return { created: true, pushed: push.sent > 0 };
+  return { created: true, pushed: push.sent > 0, commitments };
 }

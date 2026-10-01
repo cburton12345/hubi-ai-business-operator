@@ -7,7 +7,7 @@ import { recordMessageDeliveryReceipt } from "@/lib/messaging/message-health";
 
 type CompletedAction = {
   id: string; brand_id: string; objective_id: string | null; opportunity_id: string | null;
-  queue_id: string; action_key: string; conversation_id: string | null; body: string | null; recipient_label: string | null;
+  community_id: string | null; queue_id: string; action_key: string; conversation_id: string | null; body: string | null; recipient_label: string | null;
 };
 
 export async function POST(request: Request) {
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
         failure_code = $6, failure_message = $7,
         result_json = result_json || $8::jsonb, completed_at = now()
       where tenant_id = $1 and identity_id = $2 and id = $3 and channel_key = 'facebook' and status = 'running'
-      returning id, brand_id, objective_id, opportunity_id, queue_id, action_key
+      returning id, brand_id, objective_id, community_id, opportunity_id, queue_id, action_key
     ), updated_queue as (
       update public.outbound_action_queue q set status = $9, last_error = $7,
         processed_at = now(),
@@ -45,8 +45,21 @@ export async function POST(request: Request) {
     await queryPostgres(`update public.growth_opportunities set status = $3, updated_at = now() where tenant_id = $1 and id = $2`,
       [auth.tenant_id, action.opportunity_id, success ? "responded" : "blocked"]);
   }
+  if (success && action.action_key === "publish_group_post" && action.community_id) {
+    await queryPostgres(`
+      update public.growth_communities set last_posted_at=now(),updated_at=now()
+      where tenant_id=$1 and id=$2
+    `, [auth.tenant_id, action.community_id]);
+  }
+  if (success && action.action_key === "request_group_join" && action.community_id) {
+    await queryPostgres(`
+      update public.growth_communities
+      set metadata_json=metadata_json || '{"membershipState":"join_requested"}'::jsonb,updated_at=now()
+      where tenant_id=$1 and id=$2
+    `, [auth.tenant_id, action.community_id]);
+  }
   const providerReference = parsed.data.providerReference || action.id;
-  if (action.conversation_id && action.body) {
+  if (!["publish_group_post", "request_group_join"].includes(action.action_key) && action.conversation_id && action.body) {
     await queryPostgres(`
       insert into public.messages (
         tenant_id,conversation_id,direction,channel,provider_key,provider_message_ref,
@@ -79,7 +92,7 @@ export async function POST(request: Request) {
   }
   const eventType: GrowthEventType = success ? "publish_succeeded" : "publish_failed";
   await recordGrowthEvent({ tenantId: auth.tenant_id, brandId: action.brand_id, identityId: auth.identity_id,
-    objectiveId: action.objective_id, opportunityId: action.opportunity_id, actionAttemptId: action.id,
+    objectiveId: action.objective_id, communityId: action.community_id, opportunityId: action.opportunity_id, actionAttemptId: action.id,
     eventType, channelKey: "facebook", actionType: action.action_key, automationMode: "assisted_browser",
     outcome: parsed.data.outcome, failureReason: parsed.data.failureMessage,
     dimensions: { providerReference, observedUrl: parsed.data.observedUrl },

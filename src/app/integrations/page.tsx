@@ -1,158 +1,106 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { PublicNav } from "@/components/public/PublicNav";
 
 export const metadata: Metadata = {
   title: "Ferocity Integrations",
-  description:
-    "Connect Ferocity with voice, SMS, video, email, payments, calendars, ads, reviews, marketplace sources, app alerts, and bring-your-own providers.",
-  alternates: {
-    canonical: "/integrations"
-  }
+  description: "Connect the customer, communication, work, money, and growth systems your business already uses—without making your team manage the plumbing.",
+  alternates: { canonical: "/integrations" }
 };
 
-const connectionGroups = [
-  {
-    status: "Works now",
-    detail: "No outside provider is required for these paths.",
-    providers: [
-      "App alerts and task queues",
-      "Manual text and call drafts",
-      "Private calendar feeds",
-      "Accounting, tax, and campaign exports",
-      "Hosted forms, pages, and website lead capture"
-    ]
-  },
-  {
-    status: "Connect a supported account",
-    detail: "These adapters can execute after the business finishes its provider setup.",
-    providers: [
-      "Stripe online invoice payments and bank payouts",
-      "Customer-connected Twilio business texting",
-      "Retell outbound AI voice, with other voice engines added through tested adapters",
-      "Resend email",
-      "Google Calendar and Microsoft Outlook Calendar",
-      "Google Search Console and Google Analytics read-only reporting",
-      "Jobber read-only business sync",
-      "Marketplace and partner lead sources",
-      "Ferocity Facebook browser connector with paired-session health checks",
-      "Premium video rendering and secure webhooks"
-    ]
-  },
-  {
-    status: "Prepare and export now",
-    detail: "Ferocity can create the work now; direct provider execution stays off until that adapter is activated.",
-    providers: [
-      "Google Business Profile drafts and ad-platform launch packages",
-      "Facebook / Meta, Reddit, Microsoft Ads, TikTok, and Yahoo",
-      "Website and external publishing packages",
-      "Video briefs, scripts, scenes, and voiceover drafts"
-    ]
-  },
-  {
-    status: "Request another provider",
-    detail: "A guarded adapter request starts review without exposing credentials or changing the core workflow.",
-    providers: [
-      "Additional voice, SMS, email, video, advertising, marketplace, or industry providers",
-      "Generic webhook and API-based services",
-      "Secure bring-your-own credentials after adapter approval"
-    ]
-  }
+const outcomes = [
+  ["Customers and sales", "Bring inquiries, contacts, conversations, estimates, appointments, and existing customer history into one operating context."],
+  ["Calls, text, and email", "Keep customer communication connected to the person, opportunity, job, invoice, and next responsible action."],
+  ["Work and scheduling", "Coordinate calendars, service systems, marketplace sources, assignments, field updates, and delivery without rebuilding the business around Ferocity."],
+  ["Money and reporting", "Connect payments, invoices, expenses, attribution, analytics, and exports so the owner can see what actually produced revenue."],
+  ["Marketing and reputation", "Coordinate websites, local presence, reviews, content, social channels, and advertising through the same customer and revenue history."],
+  ["AI and specialist providers", "Use Ferocity's native intelligence or approved outside services while Ferocity keeps authority, context, and traceability in one place."]
+];
+
+const connectionTruth = [
+  ["Available without another account", "App alerts, task queues, hosted forms and pages, private calendar feeds, drafts, and approved exports."],
+  ["Connect through normal sign-in", "Supported customer accounts use the provider's authorization screen. Customers should not need to understand developer keys or app secrets."],
+  ["Assisted when direct access is limited", "Ferocity can prepare a reviewed package, use a permitted connector, or guide the minimum manual step rather than pretending direct automation exists."],
+  ["Request another system", "A reviewed connection request can extend Ferocity without exposing credentials or changing the core business workflow."]
 ];
 
 export default function PublicIntegrationsPage() {
   return (
-    <main className="public-page">
+    <main className="public-page public-integrations-page">
       <section className="public-shell">
         <PublicNav />
-        <section className="public-hero">
-          <p className="eyebrow">Integrations</p>
-          <h1>Keep the tools that work. Give them one intelligence for what happens next.</h1>
+        <section className="public-hero integrations-hero">
+          <p className="eyebrow">Connected business—not integration homework</p>
+          <h1>Keep the systems that work. Stop making people carry the context between them.</h1>
           <p className="muted">
-            Keep trusted systems for payments, email, SMS, voice, video, calendars, ads, marketplace leads, and public profiles.
-            Ferocity organizes the work around them instead of forcing every business into one provider.
+            Ferocity connects the business around customers, work, money, communication, and growth. You choose the outcome; Ferocity guides the accounts that matter and keeps unsupported paths honest.
           </p>
           <div className="button-row">
-            <Link className="button" href="/start?source=integrations">
-              Start setup
-            </Link>
-            <Link className="button secondary-button" href="/pricing">
-              View plans
-            </Link>
-            <Link className="button secondary-button" href="/install">
-              Install app
-            </Link>
+            <Link className="button" href="/start?source=integrations">Start guided setup <ArrowRight size={16} /></Link>
+            <Link className="button secondary-button" href="/#ask-ferocity">Ask about compatibility</Link>
+            <Link className="button secondary-button" href="/ferocity-connect">See Ferocity Connect</Link>
           </div>
         </section>
-        <section className="section-actions">
-          <p className="eyebrow">Connection paths</p>
-          <h2>Know what works now, what needs an account, and what uses an export.</h2>
-          <div className="public-grid">
-            {connectionGroups.map((group) => (
-              <article className="panel value-card" key={group.status}>
-                <span className="pill">{group.status}</span>
-                <p className="muted">{group.detail}</p>
-                <ul className="plain-list">
-                  {group.providers.map((provider) => <li key={provider}>{provider}</li>)}
-                </ul>
+
+        <section aria-labelledby="integration-outcomes-title">
+          <div className="section-actions">
+            <p className="eyebrow">What becomes connected</p>
+            <h2 id="integration-outcomes-title">The result matters more than the provider list.</h2>
+            <p className="muted">Start with one broken handoff. Add only the accounts needed to make that outcome work.</p>
+          </div>
+          <div className="integration-outcome-grid">
+            {outcomes.map(([title, body]) => (
+              <article className="integration-outcome-card" key={title}>
+                <CheckCircle2 size={18} />
+                <div><strong>{title}</strong><p>{body}</p></div>
               </article>
             ))}
           </div>
         </section>
-        <section className="public-grid">
-          <div className="panel">
-            <h2>Safe by default</h2>
-            <p className="muted">Customer messages, publishing, ad changes, and payment actions require the right connected account and review controls.</p>
-          </div>
-          <div className="panel">
-            <h2>Bring your own provider</h2>
-            <p className="muted">Connect a supported account now, or request a reviewed adapter for another service. Adding credentials alone never pretends an adapter exists.</p>
-          </div>
-          <div className="panel">
-            <h2>Optional modules</h2>
-            <p className="muted">A business can start with marketing, automations, operations, or reporting without connecting every outside tool at once.</p>
-          </div>
-        </section>
-        <section className="source-tracking-band">
+
+        <section className="integration-connection-story" aria-label="How connecting an account works">
           <div>
-            <p className="eyebrow">Lead source tracking</p>
-            <h2>Every connected channel should feed one lead history.</h2>
-            <p className="muted">
-              Ferocity keeps source, source detail, UTM values, campaign, service, city, and form context with the lead so reporting
-              can connect marketing activity to jobs, invoices, and reviews.
-            </p>
+            <p className="eyebrow">A normal customer experience</p>
+            <h2>Choose the account. Sign in. Grant access. Keep moving.</h2>
+            <p className="muted">Ferocity owns the platform-level developer work where providers allow it. Your business keeps control of its own accounts and can revoke access.</p>
+          </div>
+          <ol>
+            <li><span>1</span><div><strong>Choose the outcome</strong><small>Ferocity identifies which connection is actually needed.</small></div></li>
+            <li><span>2</span><div><strong>Authorize the account</strong><small>Use the provider&apos;s familiar sign-in and permission screen.</small></div></li>
+            <li><span>3</span><div><strong>Verify before live work</strong><small>Ferocity checks access, capability, authority, and the first real result.</small></div></li>
+          </ol>
+        </section>
+
+        <details className="panel integration-readiness-details">
+          <summary>See connection methods and readiness rules</summary>
+          <p className="muted">Exact availability depends on the provider, the customer&apos;s account, provider approval, requested permissions, and successful certification. Ferocity shows the live status during setup.</p>
+          <div className="public-grid">
+            {connectionTruth.map(([title, body]) => <article key={title}><strong>{title}</strong><p className="muted">{body}</p></article>)}
+          </div>
+        </details>
+
+        <section className="source-tracking-band integration-proof-band">
+          <div>
+            <p className="eyebrow">The connection should prove its value</p>
+            <h2>Follow the result from the first signal to collected revenue.</h2>
+            <p className="muted">Ferocity keeps source and campaign context attached as an inquiry becomes a conversation, estimate, scheduled work, invoice, payment, review, repeat customer, or referral.</p>
           </div>
           <div className="source-step-grid">
-            {[
-              ["Website connector", "Quote buttons, embedded forms, and a small tracking helper attach page and campaign data to leads."],
-              ["Forms", "Website and hosted forms capture source, referrer, and UTM data."],
-              ["Marketplace", "Marketplace and partner requests map into the same lead flow."],
-              ["Manual sources", "Calls, referrals, and walk-ins can be entered without losing attribution."],
-              ["Reporting", "Sources roll up into lead, job, revenue, and review reports."]
-            ].map(([title, body]) => (
-              <div key={title}>
-                <strong>{title}</strong>
-                <span>{body}</span>
-              </div>
-            ))}
+            {["Signal captured", "Customer identified", "Next step owned", "Revenue attributed", "Outcome improves the next decision"].map((item) => <div key={item}><ShieldCheck size={16} /><strong>{item}</strong></div>)}
           </div>
         </section>
+
         <section className="final-cta">
           <div>
-            <p className="eyebrow">Ready path</p>
-            <h2>Start with the business workflow. Connect tools when they matter.</h2>
-            <p>
-              Ferocity can start with lead capture, setup planning, or follow-up before every integration is connected.
-            </p>
+            <p className="eyebrow">Connect only what helps</p>
+            <h2>Tell Ferocity the result you want. Let setup follow the business problem.</h2>
+            <p>No giant technical checklist. No pretending every provider supports the same actions.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/start?source=integrations_bottom">
-              Start setup
-            </Link>
-            <Link className="button secondary-button" href="/pricing">
-              Compare plans
-            </Link>
+            <Link className="button" href="/start?source=integrations_bottom">Start guided setup</Link>
+            <Link className="button secondary-button" href="/pricing">Compare plans</Link>
           </div>
         </section>
         <PublicFooter />

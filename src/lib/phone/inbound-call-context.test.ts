@@ -14,10 +14,12 @@ describe("inbound call context", () => {
       contactFacts: ["Existing customer: Jamie", "Open estimate: Roof repair"],
       services: ["Roof repair"],
       serviceAreas: ["Eau Claire, WI"],
-      businessHours: "Monday-Friday, 8:00-17:00"
+      businessHours: "Monday-Friday, 8:00-17:00",
+      callHandlingInstruction: "Handle routine calls and transfer emergencies."
     });
     expect(variables.caller_status).toBe("customer");
     expect(variables.caller_context).toContain("Open estimate");
     expect(variables.allowed_next_steps).toContain("Never claim an action succeeded");
+    expect(variables.call_handling_instruction).toContain("transfer emergencies");
   });
 });

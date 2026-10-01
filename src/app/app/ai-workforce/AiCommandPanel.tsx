@@ -213,14 +213,16 @@ function pickPlan(input: string) {
 
 export function AiCommandPanel({
   title = "Ask Ferocity Anything. Tell It What To Do.",
-  description = "Ask a question about the business or describe the outcome you want in normal words. Ferocity reads the Business Brain, routes the request to the right AI employees and systems, prepares safe work, and tells you what needs approval or more information.",
+  description = "Ask a question about the business or describe the outcome you want in normal words. Ferocity reads the Business Brain, coordinates the right department and systems, advances authorized work, and tells you what needs approval or more information.",
   initialCommand = "Show me what needs attention today, follow up with estimates losing momentum, and tell me what needs my approval.",
-  submitLabel = "Prepare work in Ferocity"
+  submitLabel = "Prepare work in Ferocity",
+  compact = false
 }: {
   title?: string;
   description?: string;
   initialCommand?: string;
   submitLabel?: string;
+  compact?: boolean;
 }) {
   const [command, setCommand] = useState(initialCommand);
   const [executeState, executeAction, executePending] = useActionState(executeAiWorkforceCommandAction, { ok: false });
@@ -235,12 +237,19 @@ export function AiCommandPanel({
         </div>
         <span className="pill">preview first</span>
       </div>
-      <form action={executeAction} className="two-col">
+      <form action={executeAction} className={compact ? "form-stack" : "two-col"}>
         <label>
           Your question or command
-          <textarea name="command" value={command} onChange={(event) => setCommand(event.target.value)} rows={5} />
+          <textarea name="command" value={command} onChange={(event) => setCommand(event.target.value)} rows={compact ? 3 : 5} />
         </label>
-        <div className="panel form-stack">
+        {compact ? (
+          <div className="button-row">
+            <button className="button" type="submit" disabled={executePending}>
+              {executePending ? "Preparing your starting point..." : submitLabel}
+            </button>
+            <span className="muted">Ferocity prepares safe work first. Sending, publishing, spending, and payments still follow your approval rules.</span>
+          </div>
+        ) : <div className="panel form-stack">
           <h3>
             <Eye size={16} /> Preview Plan
           </h3>
@@ -255,7 +264,7 @@ export function AiCommandPanel({
             {executePending ? "Preparing..." : submitLabel}
           </button>
           <p className="muted">Creates reviewed setup, reminder, receipt, job, marketing, SEO, or action records where appropriate. Live posting, spending, and sending still obey provider and approval controls.</p>
-        </div>
+        </div>}
       </form>
       {executeState.message ? (
         <section className={`panel ${executeState.ok ? "success-panel" : ""}`}>
@@ -292,7 +301,7 @@ export function AiCommandPanel({
           ) : null}
         </section>
       ) : null}
-      <div className="grid">
+      {!compact ? <div className="grid">
         <section className="panel span-6">
           <h3>What Ferocity Would Prepare</h3>
           <ul className="list">
@@ -317,7 +326,7 @@ export function AiCommandPanel({
             ))}
           </ul>
         </section>
-      </div>
+      </div> : null}
     </section>
   );
 }

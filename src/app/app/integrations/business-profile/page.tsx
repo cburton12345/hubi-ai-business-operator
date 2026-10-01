@@ -19,7 +19,7 @@ export default async function BusinessProfileIntegrationPage({ searchParams }: {
   );
   const connected = connection?.rows[0]?.status === "connected";
   return <QueuePageShell eyebrow="Reputation" title="Google Business Profile" description="Monitor the location customers already see on Google. Ferocity reads locations and reviews first; public replies and profile changes remain approval-gated.">
-    <div className="button-row section-actions"><Link className="button secondary-button" href="/app/integrations">All integrations</Link><Link className="button secondary-button" href="/app/review">Review requests</Link></div>
+    <div className="button-row section-actions"><Link className="button secondary-button" href="/app/integrations">All integrations</Link><Link className="button secondary-button" href="/app/local-presence">Local Presence</Link><Link className="button secondary-button" href="/app/review">Review requests</Link></div>
     {params.locations ? <section className="panel"><strong>Found {params.locations} business location(s).</strong></section> : null}
     {params.reviews ? <section className="panel"><strong>Review sync complete.</strong><p className="muted">Refreshed {params.reviews} review(s) without posting or replying.</p></section> : null}
     <section className="panel form-stack">

@@ -2,7 +2,7 @@ import {
   getServiceUsage,
   getWorkspacePlanKey,
   minimumPlanForFeature,
-  planMeetsMinimum,
+  planAllowsFeature,
   planName,
   type OveragePolicy,
   type PlanKey,
@@ -102,7 +102,7 @@ export async function getServiceControls() {
       const remaining = row.usage_limit === null ? null : Math.max(row.usage_limit - currentUsage, 0);
       const metadata = row.metadata_json ?? {};
       const minimumPlanKey = minimumPlanForFeature(row.feature_key);
-      const planAllowed = planMeetsMinimum(currentPlanKey, minimumPlanKey);
+      const planAllowed = planAllowsFeature(currentPlanKey, row.feature_key);
 
       return {
         featureKey: row.feature_key,

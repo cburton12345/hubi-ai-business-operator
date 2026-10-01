@@ -221,10 +221,10 @@ export default async function FullAppDashboardPage() {
             <Link className="button" href={attention.direction.href}>Open next action</Link>
           </div>
           <div className="grid section-actions">
-            <Metric label="Needs owner" value={attention.metrics.ownerNeeds} detail="Decisions, approvals, or issues" href="/app/attention-command" icon={<BellRing size={16} />} tone={attention.metrics.ownerNeeds ? "high" : ""} />
+            <Metric label="Needs owner" value={attention.metrics.ownerNeeds} detail="Decisions, approvals, or issues" href="/app/attention-command#owner-queue" icon={<BellRing size={16} />} tone={attention.metrics.ownerNeeds ? "high" : ""} />
             <Metric label="AI handled" value={attention.metrics.aiHandled} detail="Actions already logged" href="/app/automation-timeline" icon={<Bot size={16} />} />
             <Metric label="Money moves" value={attention.moneyMoves.length} detail="Revenue actions ready" href="/app/cash-collection" icon={<CircleDollarSign size={16} />} tone={attention.moneyMoves.length ? "medium" : ""} />
-            <Metric label="Connection gaps" value={attention.metrics.providerGaps} detail="Keeps work manual" href="/app/integrations" icon={<PlugZap size={16} />} tone={attention.metrics.providerGaps ? "medium" : ""} />
+            <Metric label="Connection gaps" value={attention.metrics.providerGaps} detail="Keeps work manual" href="/app/attention-command#missing-connections" icon={<PlugZap size={16} />} tone={attention.metrics.providerGaps ? "medium" : ""} />
           </div>
         </section>
 

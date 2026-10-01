@@ -5,8 +5,9 @@ import { recordGrowthEvent } from "@/lib/growth/growth-events";
 
 type ClaimedAction = {
   id: string; brand_id: string; objective_id: string | null; opportunity_id: string | null;
-  queue_id: string; action_key: string; payload_json: Record<string, unknown>;
+  community_id: string | null; queue_id: string; action_key: string; payload_json: Record<string, unknown>;
   queue_payload: Record<string, unknown>; recipient_label: string | null;
+  community_url: string | null; rules_checked_at: string | null; rules_fingerprint: string | null;
 };
 
 export async function POST(request: Request) {
@@ -19,12 +20,29 @@ export async function POST(request: Request) {
       from public.growth_action_attempts a
       join public.growth_distribution_identities i on i.id = a.identity_id and i.tenant_id = a.tenant_id
       join public.outbound_action_queue q on q.id = a.queue_id and q.tenant_id = a.tenant_id
+      left join public.growth_communities c on c.id=a.community_id and c.tenant_id=a.tenant_id
       where a.tenant_id = $1 and a.identity_id = $2 and a.channel_key = 'facebook'
         and a.execution_mode = 'assisted_browser' and a.status = 'approved' and q.status = 'approved'
         and i.authorization_status = 'connected' and i.risk_state = 'healthy'
         and i.verification_status in ('verified','not_required')
         and (i.cooldown_until is null or i.cooldown_until <= now())
         and coalesce(a.next_attempt_at, now()) <= now()
+        and (a.action_key <> 'publish_group_post' or (
+          c.id is not null and c.status='active' and c.posting_policy in ('approval_required','autopilot_allowed')
+          and nullif(trim(c.rules_text),'') is not null and c.rules_checked_at >= now() - interval '30 days'
+          and coalesce(c.metadata_json->>'membershipState','unknown')='joined'
+          and (c.last_posted_at is null or c.last_posted_at + make_interval(hours => coalesce((c.metadata_json->>'minimumHoursBetweenPosts')::int,72)) <= now())
+          and not exists (
+            select 1 from public.growth_action_attempts recent
+            where recent.tenant_id=a.tenant_id and recent.identity_id=a.identity_id
+              and recent.action_key='publish_group_post' and recent.status='succeeded'
+              and recent.completed_at >= now() - interval '8 hours'
+          )
+        ))
+        and (a.action_key <> 'request_group_join' or (
+          c.id is not null and c.status='active'
+          and coalesce(c.metadata_json->>'membershipState','unknown') in ('available','unknown')
+        ))
         and exists (
           select 1 from public.growth_policies p
           where p.tenant_id = a.tenant_id and p.brand_id = a.brand_id and p.status = 'active' and p.rollout_stage >= 3
@@ -40,9 +58,11 @@ export async function POST(request: Request) {
       from action_update a where q.id = a.queue_id
       returning q.id, q.payload_json, q.recipient_label
     )
-    select a.id, a.brand_id, a.objective_id, a.opportunity_id, a.queue_id, a.action_key,
-      a.payload_json, q.payload_json as queue_payload, q.recipient_label
+    select a.id, a.brand_id, a.objective_id, a.community_id, a.opportunity_id, a.queue_id, a.action_key,
+      a.payload_json, q.payload_json as queue_payload, q.recipient_label,
+      c.url community_url,c.rules_checked_at::text,md5(coalesce(c.rules_text,'')) rules_fingerprint
     from action_update a join queue_update q on q.id = a.queue_id
+    left join public.growth_communities c on c.id=a.community_id and c.tenant_id=a.tenant_id
   `, [auth.tenant_id, auth.identity_id]);
   const action = claimed?.rows[0];
   if (!action) return NextResponse.json({ ok: true, action: null, message: "No approved Facebook action is ready." }, { headers: { "Cache-Control": "no-store" } });
@@ -56,9 +76,13 @@ export async function POST(request: Request) {
     ok: true,
     action: {
       id: action.id, actionKey: action.action_key, destination: action.recipient_label,
-      sourceUrl: action.queue_payload.sourceUrl ?? null, body: action.queue_payload.body ?? null,
+      sourceUrl: action.community_url ?? action.queue_payload.sourceUrl ?? null, body: action.queue_payload.body ?? null,
+      communityId: action.community_id, rulesCheckedAt: action.rules_checked_at,
+      rulesFingerprint: action.rules_fingerprint,
       requiresHumanConfirmation: true,
-      instruction: "Open the legitimate destination, review the prepared text, complete the action, then confirm the actual outcome."
+      instruction: action.action_key === "request_group_join"
+        ? "Open the legitimate group and request membership once. Never invent answers to membership questions."
+        : "Open the legitimate destination, review the prepared text, complete the action, then confirm the actual outcome."
     }
   }, { headers: { "Cache-Control": "no-store" } });
 }

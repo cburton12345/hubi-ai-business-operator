@@ -19,10 +19,19 @@ export type JsonGenerationInput<T> = {
   user: string;
   fallback: T;
   timeoutMs?: number;
+  recoveryRunType?: string;
+  recoveryTimeoutMs?: number;
 };
 
 export async function generateJsonWithProvider<T extends Record<string, unknown>>(input: JsonGenerationInput<T>): Promise<T> {
-  return generateJsonWithAiService(input);
+  const primary = await generateJsonWithAiService(input);
+  if (!input.recoveryRunType || primary !== input.fallback) return primary;
+
+  return generateJsonWithAiService({
+    ...input,
+    runType: input.recoveryRunType,
+    timeoutMs: input.recoveryTimeoutMs ?? input.timeoutMs
+  });
 }
 
 export { recordAiGenerationRun };

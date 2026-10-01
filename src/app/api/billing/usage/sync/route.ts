@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasAdminSession } from "@/lib/auth/admin-session";
-import { getCurrentAppSession } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { logAppError } from "@/lib/observability/log-error";
-import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type UsageCharge = {
   id: string;
@@ -93,10 +91,7 @@ async function createStripeInvoiceItem(input: {
 }
 
 export async function POST(request: NextRequest) {
-  const [adminSession, appSession] = await Promise.all([hasAdminSession(), getCurrentAppSession()]);
-  if (!adminSession && !appSession) {
-    return result(request, { ok: false, status: "login_required", message: "Login required." }, 401);
-  }
+  const actor = await requirePermission("billing:manage");
 
   if (!usageBillingEnabled()) {
     return result(request, {
@@ -110,7 +105,7 @@ export async function POST(request: NextRequest) {
     return result(request, { ok: false, status: "stripe_not_ready", message: "Missing STRIPE_SECRET_KEY." }, 409);
   }
 
-  const workspaceId = await getCurrentWorkspaceId();
+  const workspaceId = actor.workspace.id;
   const subscriptionResult = await queryPostgres<BillingSubscription>(
     `
     select external_customer_ref, external_subscription_ref, status
@@ -187,7 +182,7 @@ export async function POST(request: NextRequest) {
           workspaceId,
           stripeItem.id ?? "",
           stripeItem.invoice ?? "",
-          JSON.stringify({ stripeInvoiceItemCreatedAt: new Date().toISOString(), syncedBy: adminSession ? "admin" : appSession?.userId ?? "app_session" }),
+          JSON.stringify({ stripeInvoiceItemCreatedAt: new Date().toISOString(), syncedBy: actor.userId }),
           charge.id
         ]
       );

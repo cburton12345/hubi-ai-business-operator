@@ -6,6 +6,7 @@ describe("growth distribution engine", () => {
   it("reports assisted platforms honestly", () => {
     expect(getGrowthChannel("facebook")?.defaultMode).toBe("assisted_browser");
     expect(supportedCapabilities("facebook")).toContain("community_rules");
+    expect(getGrowthChannel("facebook")?.capabilities.publish).toBe("assisted");
     expect(getGrowthChannel("reddit")?.capabilities.publish).toBe("manual");
     expect(resolveDistributionRoute("facebook", "comment").requiresHumanControl).toBe(true);
     expect(assistedHandoff("facebook", "comment", "Review and post in the signed-in account.").status).toBe("needs_human");

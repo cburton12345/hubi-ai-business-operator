@@ -2,6 +2,8 @@
 
 This is the standalone, independently buildable Android transport for the Ferocity messaging engine. It is not a general bulk-SMS utility. A phone must be paired to one Ferocity workspace and all work remains subject to Ferocity authorization, consent, suppression, pacing, health, and kill-switch controls.
 
+Paired users can also compose, review, and cancel scheduled one-to-one texts directly in the app. The phone does not keep its own alarm-based send queue: schedules are stored in Ferocity's server-side outbound action queue so they survive phone restarts and are visible from both the app and web workspace. At execution time Ferocity rechecks consent, suppression, quiet hours, provider/device health, duplicate protection, and workspace authorization before handing the message to the paired phone.
+
 ## Build and signing
 
 1. Install Android Studio Quail 3 / Android SDK 36 and JDK 17.
@@ -21,6 +23,7 @@ AGP 9.3 requires Gradle 9.5. The repository includes the official Gradle 9.5.0 w
 - Network loss during inbound/status upload; local queue survives process death and flushes after reconnect.
 - Reboot recovery and foreground service notification.
 - Permission denial and revocation; credential expiry/rotation/revocation; device pause and global kill switch.
+- Scheduled-message creation, timezone conversion, cancellation, phone restart, offline-at-send recovery, and cross-device/web visibility.
 - Two devices racing for one job; lease expiration; retry ceiling and dead letter.
 - Cross-tenant credential, job id, and event id attacks.
 

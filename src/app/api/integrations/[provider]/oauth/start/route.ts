@@ -5,7 +5,7 @@ import { env, missingEnvVars } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getOAuthProviderConfig, getOAuthRequiredEnv } from "@/lib/integrations/oauth-providers";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
-import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
+import { connectorCanConnectAccount } from "@/lib/integrations/connector-runtime";
 import { encryptSecret, hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { createOAuthPkcePair } from "@/lib/integrations/standard-oauth";
 
@@ -25,7 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   if (!config) {
     return appRedirect(request, { provider, setup: "unsupported" });
   }
-  if (!connectorCanBeMarkedReady(config.provider)) {
+  if (!connectorCanConnectAccount(config.provider)) {
     return appRedirect(request, { provider: config.provider, setup: "unsupported" });
   }
 
@@ -34,7 +34,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     ...(useTikTokSandbox
       ? missingEnvVars(["TIKTOK_SANDBOX_CLIENT_KEY", "TIKTOK_SANDBOX_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"])
       : missingEnvVars(requiredEnv)),
-    ...((config.provider === "tiktok" || config.pkce) && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
+    ...((config.provider === "tiktok" || config.provider === "tiktok_content" || config.pkce) && !hasCredentialEncryptionKey() ? ["CREDENTIAL_ENCRYPTION_KEY"] : [])
   ];
   const workspaceId = await getCurrentWorkspaceId();
   const state = randomUUID();

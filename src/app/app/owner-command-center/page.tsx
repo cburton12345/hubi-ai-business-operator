@@ -1,17 +1,35 @@
 import Link from "next/link";
-import { AlertTriangle, Bot, BriefcaseBusiness, CheckCircle2, DollarSign, Radar, ShieldAlert, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  BriefcaseBusiness,
+  CheckCircle2,
+  DollarSign,
+  Radar,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { getOwnerCommandCenter, type OwnerCommandEvent } from "@/lib/owner-command-center/get-owner-command-center";
+import {
+  getOwnerCommandCenter,
+  type OwnerCommandEvent,
+  type OwnerCommitment,
+} from "@/lib/owner-command-center/get-owner-command-center";
 import type { OwnerNeed } from "@/lib/owner-command-center/get-owner-needs";
 import {
   setCapabilityEmergencyPauseAction,
   syncFerocityActivityToOwnerCommandAction,
   updateCapabilityTrustAction,
-  updateOwnerCommandEventAction
+  updateOperatingCommitmentAction,
+  updateOwnerCommandEventAction,
 } from "./actions";
 
 function money(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
 }
 
 function severityClass(severity: string) {
@@ -42,90 +60,245 @@ export default async function OwnerCommandCenterPage() {
               <Sparkles size={18} /> Daily Briefing
             </h2>
             <p className="muted">{center.briefing}</p>
-            <p className="muted">This is Layer 1. Operations and builder controls stay one click away.</p>
+            <p className="muted">
+              This is Layer 1. Operations and builder controls stay one click
+              away.
+            </p>
           </div>
           <div className="button-row">
             <form action={syncFerocityActivityToOwnerCommandAction}>
-              <button className="button" type="submit">Sync Ferocity Activity</button>
+              <button className="button" type="submit">
+                Sync Ferocity Activity
+              </button>
             </form>
-            <Link className="button" href="/app/business-brain">Business Info</Link>
-            <Link className="button" href="/app/automation-timeline">Automation Timeline</Link>
-            <Link className="button" href="/app/ai-monitoring">Daily Brief</Link>
-            <Link className="button secondary-button" href="/app/lifeops-connections">Connected Systems</Link>
-            <Link className="button secondary-button" href="/app/personal-ops">Private Owner Tasks</Link>
-            <Link className="button" href="/app/ai-workforce">AI Workforce</Link>
-            <Link className="button secondary-button" href="/app/operator">Operations</Link>
-            <Link className="button secondary-button" href="/app/reports">Reports</Link>
+            <Link className="button" href="/app/business-brain">
+              Business Info
+            </Link>
+            <Link className="button" href="/app/automation-timeline">
+              Automation Timeline
+            </Link>
+            <Link className="button" href="/app/ai-monitoring">
+              Daily Brief
+            </Link>
+            <Link
+              className="button secondary-button"
+              href="/app/lifeops-connections"
+            >
+              Connected Systems
+            </Link>
+            <Link className="button secondary-button" href="/app/personal-ops">
+              Private Owner Tasks
+            </Link>
+            <Link className="button" href="/app/ai-workforce">
+              AI Workforce
+            </Link>
+            <Link className="button secondary-button" href="/app/operator">
+              Operations
+            </Link>
+            <Link className="button secondary-button" href="/app/reports">
+              Reports
+            </Link>
           </div>
         </div>
         <div className="inline-actions">
           {center.platformFilters.map((platform) => (
-            <span className="pill" key={platform}>{platform}</span>
+            <span className="pill" key={platform}>
+              {platform}
+            </span>
           ))}
         </div>
-      </section>
-
-      <section className="grid section-actions">
-        <Metric label="Needs owner" value={center.metrics.needsOwner} icon={<AlertTriangle size={18} />} tone={center.metrics.needsOwner ? "high" : ""} />
-        <Metric label="Critical issues" value={center.metrics.critical} icon={<ShieldAlert size={18} />} tone={center.metrics.critical ? "high" : ""} />
-        <Metric label="AI handled" value={center.metrics.aiHandled} icon={<Bot size={18} />} />
-        <Metric label="Money radar" value={money(center.metrics.openMoneyCents)} icon={<DollarSign size={18} />} />
-        <Metric label="Open pipeline" value={money(center.metrics.openPipelineCents)} icon={<Radar size={18} />} />
-        <Metric label="Collected" value={money(center.metrics.collectedRevenueCents)} icon={<BriefcaseBusiness size={18} />} />
       </section>
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2><ShieldAlert size={18} /> Operational Trust</h2>
-            <p className="muted">Capability-specific health and trust. A connected provider is not treated as proof that every action completed.</p>
+            <h2>
+              <CheckCircle2 size={18} /> Promises Ferocity Is Following
+            </h2>
+            <p className="muted">
+              Who promised what, by when, and whether the intended result
+              actually happened. Routine follow-through stays with Ferocity;
+              only unclear or critical exceptions come back to you.
+            </p>
+          </div>
+          <span className="pill">{center.commitments.length} open</span>
+        </div>
+        <ul className="list">
+          {center.commitments.map((commitment) => (
+            <CommitmentRow commitment={commitment} key={commitment.id} />
+          ))}
+          {center.commitments.length === 0 ? (
+            <li className="list-row">
+              <span className="muted">
+                No open commitments need follow-through.
+              </span>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+
+      <section className="grid section-actions">
+        <Metric
+          label="Needs owner"
+          value={center.metrics.needsOwner}
+          icon={<AlertTriangle size={18} />}
+          tone={center.metrics.needsOwner ? "high" : ""}
+        />
+        <Metric
+          label="Critical issues"
+          value={center.metrics.critical}
+          icon={<ShieldAlert size={18} />}
+          tone={center.metrics.critical ? "high" : ""}
+        />
+        <Metric
+          label="AI handled"
+          value={center.metrics.aiHandled}
+          icon={<Bot size={18} />}
+        />
+        <Metric
+          label="Money radar"
+          value={money(center.metrics.openMoneyCents)}
+          icon={<DollarSign size={18} />}
+        />
+        <Metric
+          label="Open pipeline"
+          value={money(center.metrics.openPipelineCents)}
+          icon={<Radar size={18} />}
+        />
+        <Metric
+          label="Collected"
+          value={money(center.metrics.collectedRevenueCents)}
+          icon={<BriefcaseBusiness size={18} />}
+        />
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>
+              <ShieldAlert size={18} /> Operational Trust
+            </h2>
+            <p className="muted">
+              Capability-specific health and trust. A connected provider is not
+              treated as proof that every action completed.
+            </p>
           </div>
           <div className="inline-actions">
-            <span className="pill">{center.capabilityTrust.healthy} healthy</span>
-            <span className={`pill ${center.capabilityTrust.needsAttention ? "high" : ""}`}>{center.capabilityTrust.needsAttention} need attention</span>
+            <span className="pill">
+              {center.capabilityTrust.healthy} healthy
+            </span>
+            <span
+              className={`pill ${center.capabilityTrust.needsAttention ? "high" : ""}`}
+            >
+              {center.capabilityTrust.needsAttention} need attention
+            </span>
             <span className="pill">{center.capabilityTrust.paused} paused</span>
-            <Link className="mini-button" href="/app/automation-timeline">View evidence</Link>
+            <Link className="mini-button" href="/app/automation-timeline">
+              View evidence
+            </Link>
           </div>
         </div>
         <div className="inline-actions">
-          <span className="pill">30 days: {center.capabilityTrust.metrics.actions} actions</span>
-          <span className="pill">{center.capabilityTrust.metrics.successRate}% verified success</span>
-          <span className={`pill ${center.capabilityTrust.metrics.providerFailureRate ? "medium" : ""}`}>{center.capabilityTrust.metrics.providerFailureRate}% failed</span>
-          <span className="pill">{center.capabilityTrust.metrics.retries} retries</span>
-          <span className="pill">{center.capabilityTrust.metrics.fallbacks} fallbacks</span>
-          <span className="pill">{center.capabilityTrust.metrics.ownerCorrections} meaningful corrections</span>
+          <span className="pill">
+            30 days: {center.capabilityTrust.metrics.actions} actions
+          </span>
+          <span className="pill">
+            {center.capabilityTrust.metrics.successRate}% verified success
+          </span>
+          <span
+            className={`pill ${center.capabilityTrust.metrics.providerFailureRate ? "medium" : ""}`}
+          >
+            {center.capabilityTrust.metrics.providerFailureRate}% failed
+          </span>
+          <span className="pill">
+            {center.capabilityTrust.metrics.retries} retries
+          </span>
+          <span className="pill">
+            {center.capabilityTrust.metrics.fallbacks} fallbacks
+          </span>
+          <span className="pill">
+            {center.capabilityTrust.metrics.ownerCorrections} meaningful
+            corrections
+          </span>
         </div>
         <ul className="list">
           {center.capabilityTrust.items.slice(0, 9).map((item) => (
             <li className="list-row" key={item.capabilityKey}>
               <div>
                 <h3>{item.displayName}</h3>
-                <p className="muted">{item.lastRegressionReason ?? (item.blockerCount ? `${item.blockerCount} required dependenc${item.blockerCount === 1 ? "y is" : "ies are"} not healthy.` : "Verification is still in progress.")}</p>
+                <p className="muted">
+                  {item.lastRegressionReason ??
+                    (item.blockerCount
+                      ? `${item.blockerCount} required dependenc${item.blockerCount === 1 ? "y is" : "ies are"} not healthy.`
+                      : "Verification is still in progress.")}
+                </p>
               </div>
               <div className="inline-actions">
-                <span className={`pill ${item.healthState === "healthy" ? "" : "high"}`}>{item.healthState.replaceAll("_", " ")}</span>
+                <span
+                  className={`pill ${item.healthState === "healthy" ? "" : "high"}`}
+                >
+                  {item.healthState.replaceAll("_", " ")}
+                </span>
                 <span className="pill">{item.trustLevel}</span>
-                {item.emergencyPaused ? <span className="pill high">paused</span> : null}
+                {item.emergencyPaused ? (
+                  <span className="pill high">paused</span>
+                ) : null}
                 {item.recommendedTrustLevel !== item.trustLevel ? (
                   <form action={updateCapabilityTrustAction}>
-                    <input name="capabilityKey" type="hidden" value={item.capabilityKey} />
-                    <input name="nextLevel" type="hidden" value={item.recommendedTrustLevel} />
-                    <button className="mini-button secondary-button" type="submit">Use {item.recommendedTrustLevel}</button>
+                    <input
+                      name="capabilityKey"
+                      type="hidden"
+                      value={item.capabilityKey}
+                    />
+                    <input
+                      name="nextLevel"
+                      type="hidden"
+                      value={item.recommendedTrustLevel}
+                    />
+                    <button
+                      className="mini-button secondary-button"
+                      type="submit"
+                    >
+                      Use {item.recommendedTrustLevel}
+                    </button>
                   </form>
                 ) : null}
                 <form action={setCapabilityEmergencyPauseAction}>
-                  <input name="capabilityKey" type="hidden" value={item.capabilityKey} />
-                  <input name="paused" type="hidden" value={item.emergencyPaused ? "false" : "true"} />
-                  <button className={`mini-button ${item.emergencyPaused ? "" : "secondary-button"}`} type="submit">{item.emergencyPaused ? "Resume" : "Pause"}</button>
+                  <input
+                    name="capabilityKey"
+                    type="hidden"
+                    value={item.capabilityKey}
+                  />
+                  <input
+                    name="paused"
+                    type="hidden"
+                    value={item.emergencyPaused ? "false" : "true"}
+                  />
+                  <button
+                    className={`mini-button ${item.emergencyPaused ? "" : "secondary-button"}`}
+                    type="submit"
+                  >
+                    {item.emergencyPaused ? "Resume" : "Pause"}
+                  </button>
                 </form>
               </div>
             </li>
           ))}
-          {center.capabilityTrust.items.length > 0 && center.capabilityTrust.needsAttention === 0 && center.capabilityTrust.paused === 0 ? (
-            <li className="list-row"><span className="muted">All intended capabilities currently report healthy dependencies.</span></li>
+          {center.capabilityTrust.items.length > 0 &&
+          center.capabilityTrust.needsAttention === 0 &&
+          center.capabilityTrust.paused === 0 ? (
+            <li className="list-row">
+              <span className="muted">
+                All intended capabilities currently report healthy dependencies.
+              </span>
+            </li>
           ) : null}
           {center.capabilityTrust.items.length === 0 ? (
-            <li className="list-row"><span className="muted">Capability verification has not started for this workspace.</span></li>
+            <li className="list-row">
+              <span className="muted">
+                Capability verification has not started for this workspace.
+              </span>
+            </li>
           ) : null}
         </ul>
       </section>
@@ -137,10 +310,14 @@ export default async function OwnerCommandCenterPage() {
               <CheckCircle2 size={18} /> Here&apos;s What I Need From You
             </h2>
             <p className="muted">
-              Ferocity only interrupts for missing access, money, risk, low confidence, failed automation, customer issues, or a decision it should not make alone.
+              Ferocity only interrupts for missing access, money, risk, low
+              confidence, failed automation, customer issues, or a decision it
+              should not make alone.
             </p>
           </div>
-          <Link className="button secondary-button" href="/app/reports">Open reports</Link>
+          <Link className="button secondary-button" href="/app/reports">
+            Open reports
+          </Link>
         </div>
         <ul className="list">
           {center.ownerRequests.slice(0, 8).map((need) => (
@@ -150,7 +327,10 @@ export default async function OwnerCommandCenterPage() {
             <li className="list-row">
               <div>
                 <h3>Nothing needs you right now</h3>
-                <p className="muted">No owner blockers were found across reports, provider setup, operations, workforce, Business Grader, or connected systems.</p>
+                <p className="muted">
+                  No owner blockers were found across reports, provider setup,
+                  operations, workforce, Business Grader, or connected systems.
+                </p>
               </div>
             </li>
           ) : null}
@@ -158,8 +338,18 @@ export default async function OwnerCommandCenterPage() {
       </section>
 
       <section className="grid section-actions">
-        <EventPanel title="Needs Owner Queue" empty="No owner decisions are waiting right now." events={center.needsOwner} allowActions />
-        <EventPanel title="Critical Issues Queue" empty="No critical issues are open." events={center.criticalIssues} allowActions />
+        <EventPanel
+          title="Needs Owner Queue"
+          empty="No owner decisions are waiting right now."
+          events={center.needsOwner}
+          allowActions
+        />
+        <EventPanel
+          title="Critical Issues Queue"
+          empty="No critical issues are open."
+          events={center.criticalIssues}
+          allowActions
+        />
       </section>
 
       <section className="grid section-actions">
@@ -169,40 +359,212 @@ export default async function OwnerCommandCenterPage() {
           </h2>
           <ul className="list">
             {center.makeMoneyNext.map((item, index) => (
-              <li className="list-row" key={`${item.title}-${item.href}-${index}`}>
+              <li
+                className="list-row"
+                key={`${item.title}-${item.href}-${index}`}
+              >
                 <div>
                   <h3>{item.title}</h3>
                   <p className="muted">{item.detail}</p>
                 </div>
                 <div className="inline-actions">
-                  {item.valueCents ? <span className="pill">{money(item.valueCents)}</span> : null}
-                  <Link className="mini-button" href={item.href}>Open</Link>
+                  {item.valueCents ? (
+                    <span className="pill">{money(item.valueCents)}</span>
+                  ) : null}
+                  <Link className="mini-button" href={item.href}>
+                    Open
+                  </Link>
                 </div>
               </li>
             ))}
-            {center.makeMoneyNext.length === 0 ? <li className="list-row"><span className="muted">No money moves are ready yet.</span></li> : null}
+            {center.makeMoneyNext.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No money moves are ready yet.</span>
+              </li>
+            ) : null}
           </ul>
         </section>
-        <EventPanel title="Money Radar" empty="No revenue or financial-risk events have arrived yet." events={center.moneyRadar} allowActions />
+        <EventPanel
+          title="Money Radar"
+          empty="No revenue or financial-risk events have arrived yet."
+          events={center.moneyRadar}
+          allowActions
+        />
       </section>
 
       <section className="grid section-actions">
-        <EventPanel title="AI Actions Feed" empty="No AI-handled events yet." events={center.aiActions} allowActions />
-        <EventPanel title="Unified Owner Event Feed" empty="No owner events yet. Connected systems can post events into the intake endpoint." events={center.events.slice(0, 12)} />
+        <EventPanel
+          title="AI Actions Feed"
+          empty="No AI-handled events yet."
+          events={center.aiActions}
+          allowActions
+        />
+        <EventPanel
+          title="Unified Owner Event Feed"
+          empty="No owner events yet. Connected systems can post events into the intake endpoint."
+          events={center.events.slice(0, 12)}
+        />
       </section>
 
       <section className="panel section-actions">
         <h2>How This Fits Ferocity</h2>
         <div className="setup-step-grid">
-          <Step number="1" title="Owner View" body="What happened, what matters, what needs attention, and what to do next." />
-          <Step number="2" title="Operations View" body="Leads, jobs, customers, marketing, reviews, revenue, and follow-up remain fully available." />
-          <Step number="3" title="Business Info" body="Services, prices, territories, team, brand voice, proof, reviews, website, documents, integrations, and customer history feed the AI helpers." />
-          <Step number="4" title="Builder View" body="AI Workforce, workflows, integrations, rules, prompt systems, and automation controls stay available for power users." />
-          <Step number="5" title="Automation Timeline" body="Prepared work, approvals, blocked items, sent items, syncs, and owner decisions stay visible in one trust feed." />
-          <Step number="6" title="Safe Escalation" body="Revenue, risk, disputes, legal, safety, failures, low confidence, and approval needs rise to the owner." />
+          <Step
+            number="1"
+            title="Owner View"
+            body="What happened, what matters, what needs attention, and what to do next."
+          />
+          <Step
+            number="2"
+            title="Operations View"
+            body="Leads, jobs, customers, marketing, reviews, revenue, and follow-up remain fully available."
+          />
+          <Step
+            number="3"
+            title="Business Info"
+            body="Services, prices, territories, team, brand voice, proof, reviews, website, documents, integrations, and customer history feed the AI helpers."
+          />
+          <Step
+            number="4"
+            title="Operating Departments"
+            body="The AI Workforce coordinates specialized roles through one Business Brain. Workflows, integrations, rules, and advanced controls remain available for power users."
+          />
+          <Step
+            number="5"
+            title="Automation Timeline"
+            body="Prepared work, approvals, blocked items, sent items, syncs, and owner decisions stay visible in one trust feed."
+          />
+          <Step
+            number="6"
+            title="Safe Escalation"
+            body="Revenue, risk, disputes, legal, safety, failures, low confidence, and approval needs rise to the owner."
+          />
         </div>
       </section>
     </QueuePageShell>
+  );
+}
+
+function CommitmentRow({ commitment }: { commitment: OwnerCommitment }) {
+  const due = commitment.dueAt
+    ? new Intl.DateTimeFormat("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(commitment.dueAt))
+    : "Deadline needs confirmation";
+  return (
+    <li className="list-row">
+      <div>
+        <h3>{commitment.description}</h3>
+        <p className="muted">
+          {commitment.responsibleLabel ??
+            "Responsible party needs confirmation"}{" "}
+          · {due}
+        </p>
+        {commitment.expectedOutcome ? (
+          <p className="muted">Expected result: {commitment.expectedOutcome}</p>
+        ) : null}
+      </div>
+      <div className="inline-actions">
+        <span className={`pill ${priorityClass(commitment.importance)}`}>
+          {commitment.importance}
+        </span>
+        <span
+          className={`pill ${commitment.status === "overdue" ? "high" : commitment.status === "due_soon" || commitment.status === "needs_confirmation" ? "medium" : ""}`}
+        >
+          {commitment.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      {commitment.status === "needs_confirmation" ? (
+        <div className="inline-actions">
+          <details>
+            <summary className="mini-button">Confirm details</summary>
+            <form
+              action={updateOperatingCommitmentAction}
+              className="stack-form"
+            >
+              <input name="commitmentId" type="hidden" value={commitment.id} />
+              <input name="nextStatus" type="hidden" value="active" />
+              <label>
+                Responsible party
+                <select defaultValue="user" name="responsibleType">
+                  <option value="user">Owner or team member</option>
+                  <option value="employee">Employee</option>
+                  <option value="vendor">Vendor</option>
+                  <option value="customer">Customer</option>
+                  <option value="ai">AI worker</option>
+                  <option value="ferocity">Ferocity</option>
+                </select>
+              </label>
+              <label>
+                Name
+                <input
+                  defaultValue={commitment.responsibleLabel ?? ""}
+                  name="responsibleLabel"
+                  required
+                />
+              </label>
+              <label>
+                Deadline
+                <input name="dueAt" required type="datetime-local" />
+              </label>
+              <button className="mini-button" type="submit">
+                Start follow-through
+              </button>
+            </form>
+          </details>
+          <CommitmentCancelButton commitmentId={commitment.id} />
+        </div>
+      ) : null}
+      {["active", "due_soon", "overdue", "blocked"].includes(
+        commitment.status,
+      ) ? (
+        <div className="inline-actions">
+          <form
+            action={updateOperatingCommitmentAction}
+            className="inline-actions"
+          >
+            <input name="commitmentId" type="hidden" value={commitment.id} />
+            <input name="nextStatus" type="hidden" value="completed" />
+            <input
+              aria-label="Completion note or evidence"
+              name="note"
+              placeholder={
+                commitment.completionEvidenceRequired
+                  ? "Evidence required"
+                  : "Outcome note (optional)"
+              }
+              required={commitment.completionEvidenceRequired}
+            />
+            <button className="mini-button" type="submit">
+              Mark completed
+            </button>
+          </form>
+          <CommitmentCancelButton commitmentId={commitment.id} />
+        </div>
+      ) : null}
+      {commitment.status === "completed" ? (
+        <form action={updateOperatingCommitmentAction}>
+          <input name="commitmentId" type="hidden" value={commitment.id} />
+          <input name="nextStatus" type="hidden" value="verified" />
+          <button className="mini-button" type="submit">
+            Verify outcome
+          </button>
+        </form>
+      ) : null}
+    </li>
+  );
+}
+
+function CommitmentCancelButton({ commitmentId }: { commitmentId: string }) {
+  return (
+    <form action={updateOperatingCommitmentAction}>
+      <input name="commitmentId" type="hidden" value={commitmentId} />
+      <input name="nextStatus" type="hidden" value="canceled" />
+      <button className="mini-button secondary-button" type="submit">
+        Cancel
+      </button>
+    </form>
   );
 }
 
@@ -215,15 +577,29 @@ function OwnerNeedRow({ need }: { need: OwnerNeed }) {
         <p className="muted">{need.category}</p>
       </div>
       <div className="inline-actions">
-        <span className={`pill ${priorityClass(need.priority)}`}>{need.priority}</span>
+        <span className={`pill ${priorityClass(need.priority)}`}>
+          {need.priority}
+        </span>
         <span className="pill">{need.count}</span>
-        <Link className="mini-button" href={need.href}>{need.actionLabel}</Link>
+        <Link className="mini-button" href={need.href}>
+          {need.actionLabel}
+        </Link>
       </div>
     </li>
   );
 }
 
-function Metric({ label, value, icon, tone = "" }: { label: string; value: number | string; icon: React.ReactNode; tone?: string }) {
+function Metric({
+  label,
+  value,
+  icon,
+  tone = "",
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+  tone?: string;
+}) {
   return (
     <section className="panel span-4 metric">
       <span className="muted">{label}</span>
@@ -233,7 +609,17 @@ function Metric({ label, value, icon, tone = "" }: { label: string; value: numbe
   );
 }
 
-function EventPanel({ title, empty, events, allowActions = false }: { title: string; empty: string; events: OwnerCommandEvent[]; allowActions?: boolean }) {
+function EventPanel({
+  title,
+  empty,
+  events,
+  allowActions = false,
+}: {
+  title: string;
+  empty: string;
+  events: OwnerCommandEvent[];
+  allowActions?: boolean;
+}) {
   return (
     <section className="panel span-6">
       <h2>{title}</h2>
@@ -244,44 +630,77 @@ function EventPanel({ title, empty, events, allowActions = false }: { title: str
               <h3>{event.title}</h3>
               <p>{event.summary}</p>
               <p className="muted">
-                {event.platformName} / {event.eventType} / confidence {event.confidenceScore}%
+                {event.platformName} / {event.eventType} / confidence{" "}
+                {event.confidenceScore}%
               </p>
-              {event.aiSummary ? <p className="muted">AI: {event.aiSummary}</p> : null}
+              {event.aiSummary ? (
+                <p className="muted">AI: {event.aiSummary}</p>
+              ) : null}
             </div>
             <div className="inline-actions">
-              <span className={`pill ${severityClass(event.severity)}`}>{event.severity}</span>
+              <span className={`pill ${severityClass(event.severity)}`}>
+                {event.severity}
+              </span>
               <span className="pill">{event.status.replaceAll("_", " ")}</span>
-              {event.moneyCents ? <span className="pill">{money(event.moneyCents)}</span> : null}
-              <Link className="mini-button" href={event.actionHref}>Open</Link>
+              {event.moneyCents ? (
+                <span className="pill">{money(event.moneyCents)}</span>
+              ) : null}
+              <Link className="mini-button" href={event.actionHref}>
+                Open
+              </Link>
             </div>
             {allowActions ? (
               <div className="button-row">
                 <form action={updateOwnerCommandEventAction}>
                   <input name="eventId" type="hidden" value={event.id} />
                   <input name="nextStatus" type="hidden" value="watching" />
-                  <button className="mini-button secondary-button" type="submit">Watch</button>
+                  <button
+                    className="mini-button secondary-button"
+                    type="submit"
+                  >
+                    Watch
+                  </button>
                 </form>
                 <form action={updateOwnerCommandEventAction}>
                   <input name="eventId" type="hidden" value={event.id} />
                   <input name="nextStatus" type="hidden" value="ai_handled" />
-                  <button className="mini-button secondary-button" type="submit">AI handled</button>
+                  <button
+                    className="mini-button secondary-button"
+                    type="submit"
+                  >
+                    AI handled
+                  </button>
                 </form>
                 <form action={updateOwnerCommandEventAction}>
                   <input name="eventId" type="hidden" value={event.id} />
                   <input name="nextStatus" type="hidden" value="resolved" />
-                  <button className="mini-button" type="submit">Resolve</button>
+                  <button className="mini-button" type="submit">
+                    Resolve
+                  </button>
                 </form>
               </div>
             ) : null}
           </li>
         ))}
-        {events.length === 0 ? <li className="list-row"><span className="muted">{empty}</span></li> : null}
+        {events.length === 0 ? (
+          <li className="list-row">
+            <span className="muted">{empty}</span>
+          </li>
+        ) : null}
       </ul>
     </section>
   );
 }
 
-function Step({ number, title, body }: { number: string; title: string; body: string }) {
+function Step({
+  number,
+  title,
+  body,
+}: {
+  number: string;
+  title: string;
+  body: string;
+}) {
   return (
     <div className="setup-step-card">
       <span className="step-dot">{number}</span>

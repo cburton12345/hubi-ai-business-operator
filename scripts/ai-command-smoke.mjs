@@ -76,4 +76,5 @@ if (failed > 0) {
   process.exit(1);
 }
 
-console.log("AI command smoke passed.");
+console.log("AI command source-contract guard passed.");
+console.log("This verifies required implementation markers exist; it does not prove end-to-end command execution.");

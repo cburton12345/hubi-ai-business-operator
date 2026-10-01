@@ -7,9 +7,12 @@ type RefreshableProvider =
   | "google_calendar"
   | "google_business_profile"
   | "google_ads"
+  | "youtube"
   | "search_console"
   | "analytics"
   | "microsoft_calendar"
+  | "gmail_mailbox"
+  | "microsoft_mailbox"
   | "jobber"
   | "tiktok";
 
@@ -28,7 +31,7 @@ function clientConfig(provider: RefreshableProvider) {
   if (provider === "jobber") {
     return { clientId: env.JOBBER_CLIENT_ID, clientSecret: env.JOBBER_CLIENT_SECRET, tokenUrl: "https://api.getjobber.com/api/oauth/token" };
   }
-  return provider !== "microsoft_calendar"
+  return provider !== "microsoft_calendar" && provider !== "microsoft_mailbox"
     ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, tokenUrl: "https://oauth2.googleapis.com/token" }
     : { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token" };
 }
@@ -86,12 +89,23 @@ export async function getFreshProviderAccessToken(tenantId: string, provider: Re
       refresh_token: refreshToken,
       client_id: config.clientId,
       client_secret: config.clientSecret,
-      ...(provider === "microsoft_calendar" ? { scope: "offline_access openid profile User.Read Calendars.ReadWrite" } : {})
+      ...(provider === "microsoft_calendar" ? { scope: "offline_access openid profile User.Read Calendars.ReadWrite" } : {}),
+      ...(provider === "microsoft_mailbox" ? { scope: "offline_access openid profile User.Read Mail.Read" } : {})
     }),
     cache: "no-store"
   });
-  const body = await response.json().catch(() => null) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string } | null;
-  if (!response.ok || !body?.access_token) throw new Error(body?.error_description || "The provider token refresh failed.");
+  const body = await response.json().catch(() => null) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+    message?: string;
+  } | null;
+  if (!response.ok || !body?.access_token) {
+    const providerReason = body?.error_description || body?.message || body?.error;
+    throw new Error(providerReason ? `The provider token refresh failed: ${providerReason}` : `The provider token refresh failed (HTTP ${response.status}).`);
+  }
   const newExpiresAt = new Date(Date.now() + Math.max(300, Number(body.expires_in ?? 3600)) * 1000).toISOString();
   await storeToken(tenantId, provider, "oauth_access_token", body.access_token, newExpiresAt);
   if (body.refresh_token) {

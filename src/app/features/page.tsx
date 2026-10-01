@@ -15,9 +15,9 @@ import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
 
 export const metadata: Metadata = {
-  title: "Ferocity Features | AI Workforce for Business",
+  title: "Ferocity Features | AI Operating System for Business",
   description:
-    "Ferocity gives businesses an AI workforce for leads, follow-up, jobs, payments, reviews, marketing, daily priorities, and approved automation.",
+    "Ferocity connects shared business context and governed execution across leads, work, money, customers, and growth.",
   alternates: { canonical: "/features" }
 };
 
@@ -111,6 +111,14 @@ export default function FeaturesPage() {
             </Link>
             <Link className="button secondary-button" href="/demo">See it work</Link>
           </div>
+        </section>
+
+        <section className="panel section-actions">
+          <p className="eyebrow">Not limited to contractors</p>
+          <h2>Ferocity coordinates knowledge work, client work, field work, and the business work surrounding all of it.</h2>
+          <p className="muted">
+            A professional firm may call it an engagement, account, appointment, campaign, case, or project. A trade may call it a work order or job. Ferocity follows the organization’s language, roles, authority, and operating path while keeping conversations, delivery, money, and growth connected.
+          </p>
         </section>
 
         <section className="panel section-actions">

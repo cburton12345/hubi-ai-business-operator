@@ -15,6 +15,7 @@ import {
   retryMessageAction,
   updateInboundSmsReplyModeAction
 } from "./actions";
+import { ScheduledTextPanel } from "./ScheduledTextPanel";
 
 function statusTone(status: string) {
   if (["active", "ready", "available", "configured"].includes(status)) return "";
@@ -24,6 +25,14 @@ function statusTone(status: string) {
 
 export default async function MessagingPage() {
   const dashboard = await getMessagingDashboard();
+  const providerOptions = dashboard.providers.flatMap((provider) => {
+    if (!provider.capabilities.includes("SMS")) return [];
+    const ready = dashboard.accounts.some((account) => account.providerKey === provider.providerKey
+      && ["active", "configured"].includes(account.connectionStatus) && account.credentialsStatus === "configured"
+      && account.liveSendingEnabled && account.outboundEnabled && !account.emergencyPaused);
+    return ready ? [{ key: provider.providerKey, label: provider.displayName }] : [];
+  });
+  const localHour = Number(new Intl.DateTimeFormat("en", { timeZone: dashboard.workspaceTimezone, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
 
   return (
     <QueuePageShell
@@ -57,6 +66,13 @@ export default async function MessagingPage() {
         <Metric label="Opt-outs" value={dashboard.metrics.optOuts} />
         <Metric label="Delivery problems" value={dashboard.metrics.deliveryProblems} />
       </div>
+
+      <ScheduledTextPanel
+        lateNow={localHour >= 20 || localHour < 7}
+        providers={providerOptions}
+        scheduledTexts={dashboard.scheduledTexts}
+        timezone={dashboard.workspaceTimezone}
+      />
 
       <section className="panel section-actions">
         <div className="list-row flush-row">

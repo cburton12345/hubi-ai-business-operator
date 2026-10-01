@@ -5,6 +5,7 @@ import { encryptSecret, hasCredentialEncryptionKey } from "@/lib/credentials/cre
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { discoverAdvertisingAccounts } from "@/lib/integrations/advertising-account-discovery";
 
 type MetaTokenResponse = {
   access_token?: string;
@@ -114,6 +115,7 @@ async function saveEncryptedAccessToken(input: {
   accessToken: string;
   expiresAt: string;
   profile: MetaProfileResponse;
+  discovery: Awaited<ReturnType<typeof discoverAdvertisingAccounts>>;
 }) {
   const encrypted = encryptSecret(input.accessToken);
   if (!encrypted) throw new Error("Encrypted credential storage is not configured.");
@@ -123,7 +125,12 @@ async function saveEncryptedAccessToken(input: {
     metaUserName: input.profile.name,
     expiresAt: input.expiresAt,
     scopes: ["pages_read_engagement", "pages_show_list", "business_management", "ads_read"],
-    liveActionsEnabled: false
+    liveActionsEnabled: false,
+    availableAccounts: input.discovery.accounts,
+    selectedAccountId: input.discovery.selectedAccountId,
+    accountSelectionRequired: input.discovery.selectionRequired,
+    accountDiscoveryStatus: input.discovery.status,
+    accountDiscoveryMessage: input.discovery.message
   };
 
   const saved = await queryPostgres(
@@ -275,6 +282,7 @@ export async function GET(request: Request) {
     const extendedToken = await exchangeForLongLivedToken(initialToken.access_token!);
     const token = extendedToken ?? initialToken;
     const profile = await fetchMetaProfile(token.access_token!);
+    const discovery = await discoverAdvertisingAccounts({ provider: "facebook", accessToken: token.access_token! });
     const session = await getCurrentAppSession();
     const expiresAt = new Date(Date.now() + Math.max(300, token.expires_in ?? 5_184_000) * 1000).toISOString();
     const metadata = await saveEncryptedAccessToken({
@@ -282,7 +290,8 @@ export async function GET(request: Request) {
       userId: session?.userId ?? null,
       accessToken: token.access_token!,
       expiresAt,
-      profile
+      profile,
+      discovery
     });
     await recordConnectedAccount(workspaceId, profile, metadata);
     await finishOAuthJob(job.id, "completed", {

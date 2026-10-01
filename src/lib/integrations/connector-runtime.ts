@@ -21,3 +21,13 @@ export function connectorCanBeMarkedReady(providerKey: string) {
   const mode = connectorExecutionMode(providerKey);
   return mode === "executable_adapter" || mode === "native_fallback";
 }
+
+/**
+ * Account authorization is intentionally weaker than execution readiness.
+ * A customer may grant read/account access before Ferocity has certified
+ * reporting or any write/spend action for that provider.
+ */
+export function connectorCanConnectAccount(providerKey: string) {
+  const mode = connectorExecutionMode(providerKey);
+  return mode === "connection_only" || mode === "executable_adapter";
+}

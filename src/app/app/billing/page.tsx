@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { approveUsageChargeAction, saveManagedVoiceLimitAction, voidUsageChargeAction } from "./actions";
+import {
+  approveUsageChargeAction,
+  saveManagedVoiceLimitAction,
+  voidUsageChargeAction,
+} from "./actions";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { checkLeadIntakeLimits } from "@/lib/billing/plan-limits";
 import { getBillingOverview } from "@/lib/billing/get-billing-overview";
@@ -16,9 +20,15 @@ function percentLabel(bps: number) {
   return `${(bps / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 }
 
-function feeLabel(policy: { feeType: string; percentageBps: number; flatFeeCents: number }) {
-  if (policy.feeType === "pass_through") return "Pass-through / no Ferocity markup";
-  if (policy.feeType === "flat") return `$${(policy.flatFeeCents / 100).toFixed(0)}`;
+function feeLabel(policy: {
+  feeType: string;
+  percentageBps: number;
+  flatFeeCents: number;
+}) {
+  if (policy.feeType === "pass_through")
+    return "Pass-through / no Ferocity markup";
+  if (policy.feeType === "flat")
+    return `$${(policy.flatFeeCents / 100).toFixed(0)}`;
   if (policy.feeType === "custom") return "Custom";
   return percentLabel(policy.percentageBps);
 }
@@ -29,7 +39,11 @@ function capLabel(cents: number | null) {
 }
 
 function money(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
 }
 
 function storage(bytes: number) {
@@ -44,15 +58,21 @@ function providerLabel(providerKey: string) {
     meta_ads: "Meta/Facebook",
     tiktok_ads: "TikTok",
     reddit_ads: "Reddit",
-    microsoft_ads: "Microsoft Ads"
+    microsoft_ads: "Microsoft Ads",
   };
   return labels[providerKey] ?? providerKey.replaceAll("_", " ");
 }
 
 export default async function BillingPage() {
-  const [billing, workspaceId, actor] = await Promise.all([getBillingOverview(), getCurrentWorkspaceId(), getCurrentActor()]);
+  const [billing, workspaceId, actor] = await Promise.all([
+    getBillingOverview(),
+    getCurrentWorkspaceId(),
+    getCurrentActor(),
+  ]);
   const leadLimits = await checkLeadIntakeLimits(workspaceId);
-  const currentPlan = billing.subscription?.planKey ?? leadLimits.planKey ?? "free";
+  const isPlatformAdmin = can(actor, "platform:manage");
+  const currentPlan =
+    billing.subscription?.planKey ?? leadLimits.planKey ?? "free";
   const leadUsage =
     leadLimits.monthlyLeadLimit === null
       ? `${leadLimits.monthlyLeadsUsed.toLocaleString()} this month`
@@ -65,21 +85,23 @@ export default async function BillingPage() {
   return (
     <QueuePageShell
       eyebrow="Billing"
-      title="Plan, Limits, And Upgrade Path"
-      description="See what is included, what needs connection, what costs extra, and what changes when the business upgrades."
+      title="Your Plan And Costs"
+      description="See what is included, review usage, manage payment details, and change plans without digging through technical settings."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
             <h2>Current Plan</h2>
             <p className="muted">
-              The workspace keeps its data when it upgrades. Email, app alerts, Stripe payment links, publishing, and provider sync stay governed by
-              connected accounts and review rules.
+              Your workspace, history, and business data stay with you if you
+              change plans.
             </p>
           </div>
           <div className="inline-actions">
             <span className="pill">{currentPlan}</span>
-            <span className={`pill ${leadLimits.ok ? "" : "high"}`}>{leadLimits.ok ? "accepting leads" : "limit reached"}</span>
+            <span className={`pill ${leadLimits.ok ? "" : "high"}`}>
+              {leadLimits.ok ? "accepting leads" : "limit reached"}
+            </span>
           </div>
         </div>
         <div className="grid section-actions">
@@ -88,30 +110,58 @@ export default async function BillingPage() {
           <Metric label="Seats" value={billing.subscription?.seats ?? 1} />
         </div>
         <div className="inline-actions">
-          <Link className="button" href="/app/billing/earn">Open Ferocity Earn</Link>
-          <Link className="button" href="/pricing">View public plans</Link>
-          <Link className="button secondary-button" href="/start?source=billing_upgrade">Request upgrade help</Link>
-          <Link className="button secondary-button" href="/app/ai-usage">AI usage</Link>
-          <Link className="mini-button" href="/app/controls">Control limits</Link>
-          {can(actor, "platform:manage") ? <Link className="mini-button" href="/app/provider-costs">Provider costs</Link> : null}
+          <Link className="button" href="/pricing">
+            Compare plans
+          </Link>
+          <Link className="button secondary-button" href="/app/billing/earn">
+            Explore Ferocity Earn
+          </Link>
+          <Link
+            className="button secondary-button"
+            href="/start?source=billing_upgrade"
+          >
+            Request upgrade help
+          </Link>
+          {isPlatformAdmin ? (
+            <Link className="mini-button" href="/app/ai-usage">
+              AI usage
+            </Link>
+          ) : null}
+          {isPlatformAdmin ? (
+            <Link className="mini-button" href="/app/controls">
+              Control limits
+            </Link>
+          ) : null}
+          {isPlatformAdmin ? (
+            <Link className="mini-button" href="/app/provider-costs">
+              Provider costs
+            </Link>
+          ) : null}
         </div>
         <details className="panel subtle-panel">
           <summary>Connect online invoice payments</summary>
           <p className="muted">
-            This opens Stripe-hosted onboarding for the business, including its payout bank account. When Stripe confirms charges and payouts are
-            active, customer invoice payments go directly into that business&apos;s Stripe balance while Ferocity records payment state, fees, ledger
-            entries, and follow-up.
+            This opens Stripe-hosted onboarding for the business, including its
+            payout bank account. When Stripe confirms charges and payouts are
+            active, customer invoice payments go directly into that
+            business&apos;s Stripe balance while Ferocity records payment state,
+            fees, ledger entries, and follow-up.
           </p>
           <form action="/api/integrations/stripe-connect/onboard" method="post">
             <input name="country" type="hidden" value="US" />
-            <p className="muted">Available for United States businesses during launch.</p>
-            <button className="mini-button" type="submit">Connect Stripe and payout bank</button>
+            <p className="muted">
+              Available for United States businesses during launch.
+            </p>
+            <button className="mini-button" type="submit">
+              Connect Stripe and payout bank
+            </button>
           </form>
         </details>
         <details className="panel subtle-panel">
           <summary>Subscription account tools</summary>
           <p className="muted">
-            Stripe handles card updates, invoices, plan changes, and cancellation. This keeps payment security outside Ferocity.
+            Stripe handles card updates, invoices, plan changes, and
+            cancellation. This keeps payment security outside Ferocity.
           </p>
           {billing.subscription?.hasStripeCustomer ? (
             <form action="/api/billing/portal" method="post">
@@ -120,7 +170,10 @@ export default async function BillingPage() {
               </button>
             </form>
           ) : (
-            <p className="muted">No Stripe customer is attached to this workspace yet. Start checkout before portal tools appear.</p>
+            <p className="muted">
+              No Stripe customer is attached to this workspace yet. Start
+              checkout before portal tools appear.
+            </p>
           )}
         </details>
       </section>
@@ -130,41 +183,94 @@ export default async function BillingPage() {
           <div>
             <p className="eyebrow">Optional pricing model</p>
             <h2>Ferocity Earn</h2>
-            <p className="muted">$0/month base. 0.9% on eligible collected revenue your business brings Ferocity to manage, or 6% when Ferocity creates the opportunity. Existing fixed plans remain available.</p>
+            <p className="muted">
+              $0/month base. 0.9% on eligible collected revenue your business
+              brings Ferocity to manage, or 6% when Ferocity creates the
+              opportunity. Existing fixed plans remain available.
+            </p>
           </div>
-          <Link className="button" href="/app/billing/earn">Review Earn</Link>
+          <Link className="button" href="/app/billing/earn">
+            Review Earn
+          </Link>
         </div>
       </section>
 
-      <div className="grid section-actions">
-        <Metric label="Brands" value={billing.usage.brands} />
-        <Metric label="Users" value={billing.usage.users} />
-        <Metric label="Leads this month" value={billing.usage.leadsThisMonth} />
-        <Metric label="Active forms" value={billing.usage.activeForms} />
-        <Metric label="AI runs this month" value={billing.usage.aiRunsThisMonth} />
-        <Metric label="SEO drafts this month" value={billing.usage.seoDraftsThisMonth} />
-        <Metric label="Publishing queue" value={billing.usage.publishingQueueItems} />
-        <Metric label="Review requests" value={billing.usage.reviewRequestsThisMonth} />
-        <Metric label="Worker requests" value={billing.usage.laborRequestsThisMonth} />
-        <Metric label="Worker intake" value={billing.usage.workerIntakeThisMonth} />
-        <Metric label="Labor matches" value={billing.usage.laborMatchesThisMonth} />
-      </div>
-
       <section className="panel section-actions">
-        <h2>Billing Readiness</h2>
-        <p className="muted">This tells the operator why a paid or live action is allowed, blocked, or waiting on keys.</p>
-        <ul className="list">
-          {billing.readiness.map((item) => (
-            <li className="list-row" key={item.label}>
-              <div>
-                <h3>{item.label}</h3>
-                <p className="muted">{item.detail}</p>
-              </div>
-              <span className={`pill ${item.status === "blocked" ? "high" : item.status === "needs_setup" ? "medium" : ""}`}>{item.status}</span>
-            </li>
-          ))}
-        </ul>
+        <div>
+          <p className="eyebrow">This month</p>
+          <h2>Plan usage</h2>
+          <p className="muted">
+            The numbers most likely to affect your plan or next bill.
+          </p>
+        </div>
+        <div className="grid">
+          <Metric label="Leads" value={billing.usage.leadsThisMonth} />
+          <Metric label="Active forms" value={billing.usage.activeForms} />
+          <Metric label="Team members" value={billing.usage.users} />
+          <Metric
+            label="File storage"
+            value={`${storage(billing.storage.usedBytes)} / ${storage(billing.storage.maxBytes)}`}
+          />
+        </div>
+        {isPlatformAdmin ? (
+          <details className="subtle-panel">
+            <summary>Internal usage detail</summary>
+            <div className="grid section-actions">
+              <Metric label="Brands" value={billing.usage.brands} />
+              <Metric label="AI runs" value={billing.usage.aiRunsThisMonth} />
+              <Metric
+                label="SEO drafts"
+                value={billing.usage.seoDraftsThisMonth}
+              />
+              <Metric
+                label="Publishing queue"
+                value={billing.usage.publishingQueueItems}
+              />
+              <Metric
+                label="Review requests"
+                value={billing.usage.reviewRequestsThisMonth}
+              />
+              <Metric
+                label="Worker requests"
+                value={billing.usage.laborRequestsThisMonth}
+              />
+              <Metric
+                label="Worker intake"
+                value={billing.usage.workerIntakeThisMonth}
+              />
+              <Metric
+                label="Labor matches"
+                value={billing.usage.laborMatchesThisMonth}
+              />
+            </div>
+          </details>
+        ) : null}
       </section>
+
+      {isPlatformAdmin ? (
+        <section className="panel section-actions">
+          <h2>Billing Readiness</h2>
+          <p className="muted">
+            This tells the operator why a paid or live action is allowed,
+            blocked, or waiting on keys.
+          </p>
+          <ul className="list">
+            {billing.readiness.map((item) => (
+              <li className="list-row" key={item.label}>
+                <div>
+                  <h3>{item.label}</h3>
+                  <p className="muted">{item.detail}</p>
+                </div>
+                <span
+                  className={`pill ${item.status === "blocked" ? "high" : item.status === "needs_setup" ? "medium" : ""}`}
+                >
+                  {item.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {billing.managedVoice ? (
         <section className="panel section-actions">
@@ -172,33 +278,52 @@ export default async function BillingPage() {
             <div>
               <h2>Managed AI Phone Usage</h2>
               <p className="muted">
-                Calling continues after the included minutes at the disclosed usage price. Add a monthly charge limit only if the business wants one;
-                leaving it blank keeps calling available while normal billing and platform safety protections remain active.
+                Calling continues after the included minutes at the disclosed
+                usage price. Add a monthly charge limit only if the business
+                wants one; leaving it blank keeps calling available while normal
+                billing and platform safety protections remain active.
               </p>
             </div>
             <span className="pill">
-              {billing.managedVoice.usedMinutes.toLocaleString()} / {billing.managedVoice.includedMinutes.toLocaleString()} included minutes
+              {billing.managedVoice.usedMinutes.toLocaleString()} /{" "}
+              {billing.managedVoice.includedMinutes.toLocaleString()} included
+              minutes
             </span>
           </div>
           <div className="grid section-actions">
-            <Metric label="Included each month" value={`${billing.managedVoice.includedMinutes.toLocaleString()} minutes`} />
-            <Metric label="After included usage" value={`$${(billing.managedVoice.overageUnitPriceCents / 100).toFixed(2)}/completed minute`} />
+            <Metric
+              label="Included each month"
+              value={`${billing.managedVoice.includedMinutes.toLocaleString()} minutes`}
+            />
+            <Metric
+              label="After included usage"
+              value={`$${(billing.managedVoice.overageUnitPriceCents / 100).toFixed(2)}/completed minute`}
+            />
             <Metric
               label="Optional charge limit"
-              value={billing.managedVoice.optionalMonthlyChargeLimitCents === null
-                ? "No customer limit"
-                : money(billing.managedVoice.optionalMonthlyChargeLimitCents)}
+              value={
+                billing.managedVoice.optionalMonthlyChargeLimitCents === null
+                  ? "No customer limit"
+                  : money(billing.managedVoice.optionalMonthlyChargeLimitCents)
+              }
             />
           </div>
           {can(actor, "billing:manage") ? (
             <div className="inline-actions">
-              <form action={saveManagedVoiceLimitAction} className="inline-actions">
+              <form
+                action={saveManagedVoiceLimitAction}
+                className="inline-actions"
+              >
                 <label>
                   Optional monthly voice overage limit ($)
                   <input
-                    defaultValue={billing.managedVoice.optionalMonthlyChargeLimitCents === null
-                      ? ""
-                      : billing.managedVoice.optionalMonthlyChargeLimitCents / 100}
+                    defaultValue={
+                      billing.managedVoice.optionalMonthlyChargeLimitCents ===
+                      null
+                        ? ""
+                        : billing.managedVoice.optionalMonthlyChargeLimitCents /
+                          100
+                    }
                     min="1"
                     max="100000"
                     name="monthlyLimitDollars"
@@ -207,125 +332,212 @@ export default async function BillingPage() {
                     type="number"
                   />
                 </label>
-                <button className="mini-button" type="submit">Save limit</button>
+                <button className="mini-button" type="submit">
+                  Save limit
+                </button>
               </form>
               <form action={saveManagedVoiceLimitAction}>
                 <input name="monthlyLimitDollars" type="hidden" value="" />
-                <button className="mini-button secondary-button" type="submit">Remove limit</button>
+                <button className="mini-button secondary-button" type="submit">
+                  Remove limit
+                </button>
               </form>
             </div>
           ) : null}
         </section>
       ) : null}
 
-      <section className="panel section-actions">
-        <div className="list-row flush-row">
-          <div>
-            <h2>Payment Collection Modes</h2>
-            <p className="muted">
-              Ferocity can track offline payments now. Secure online checkout becomes available after the business completes Stripe onboarding and
-              Stripe confirms both charging and bank payouts are active.
-            </p>
+      {isPlatformAdmin ? (
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Payment Collection Modes</h2>
+              <p className="muted">
+                Ferocity can track offline payments now. Secure online checkout
+                becomes available after the business completes Stripe onboarding
+                and Stripe confirms both charging and bank payouts are active.
+              </p>
+            </div>
+            <Link className="mini-button" href="/app/cash-collection">
+              Open money board
+            </Link>
           </div>
-          <Link className="mini-button" href="/app/cash-collection">Open money board</Link>
-        </div>
-        <div className="grid">
-          {[
-            ["Manual payment tracking", "available", "Record payments made by cash, check, Zelle, outside Stripe, or other methods. No processing fee applies because Ferocity is only tracking the record."],
-            ["Business Stripe and bank payouts", "connect in Ferocity", "Stripe-hosted onboarding connects the business and its payout bank. Customer payments are direct charges to the business, and Ferocity tracks invoice requests, payment state, ledger entries, and follow-up."],
-            ["Platform fee", "controlled setting", "If enabled and disclosed, Ferocity can collect an application fee while the remaining payment stays in the business Stripe balance. Stripe processing, refunds, disputes, and payouts remain governed by Stripe and the connected business."]
-          ].map(([title, status, detail]) => (
-            <section className="panel span-4" key={title}>
-              <span className="pill">{status}</span>
-              <h3>{title}</h3>
-              <p className="muted">{detail}</p>
-            </section>
-          ))}
-        </div>
-      </section>
+          <div className="grid">
+            {[
+              [
+                "Manual payment tracking",
+                "available",
+                "Record payments made by cash, check, Zelle, outside Stripe, or other methods. No processing fee applies because Ferocity is only tracking the record.",
+              ],
+              [
+                "Business Stripe and bank payouts",
+                "connect in Ferocity",
+                "Stripe-hosted onboarding connects the business and its payout bank. Customer payments are direct charges to the business, and Ferocity tracks invoice requests, payment state, ledger entries, and follow-up.",
+              ],
+              [
+                "Platform fee",
+                "controlled setting",
+                "If enabled and disclosed, Ferocity can collect an application fee while the remaining payment stays in the business Stripe balance. Stripe processing, refunds, disputes, and payouts remain governed by Stripe and the connected business.",
+              ],
+            ].map(([title, status, detail]) => (
+              <section className="panel span-4" key={title}>
+                <span className="pill">{status}</span>
+                <h3>{title}</h3>
+                <p className="muted">{detail}</p>
+              </section>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-      <section className="panel section-actions">
-        <div className="list-row flush-row">
-          <div>
-            <h2>Managed Services And Money Movement</h2>
-            <p className="muted">
-              Customer invoice money uses direct Stripe charges to the connected business. Ferocity does not silently fall back to holding a
-              tenant&apos;s customer payment when that business has not completed payout onboarding.
-            </p>
+      {isPlatformAdmin ? (
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Managed Services And Money Movement</h2>
+              <p className="muted">
+                Customer invoice money uses direct Stripe charges to the
+                connected business. Ferocity does not silently fall back to
+                holding a tenant&apos;s customer payment when that business has
+                not completed payout onboarding.
+              </p>
+            </div>
+            <span className="pill">direct-to-business design</span>
           </div>
-          <span className="pill">direct-to-business design</span>
-        </div>
-        <div className="grid">
-          {[
-            [
-              "Managed SEO and marketing",
-              "possible with controls",
-              "Ferocity can prepare work using its own AI/search/email infrastructure, then bill for service, usage, or management. Publishing, ad spend, and customer sends still need approval and limits."
-            ],
-            [
-              "Connected business payments",
-              "preferred online path",
-              "The business completes Stripe-hosted onboarding and adds its payout bank. Ferocity can then prepare branded payment links, track invoices, update ledgers, and show follow-up."
-            ],
-            [
-              "No silent Ferocity-held fallback",
-              "safety rule",
-              "If the business payout account is not ready, Ferocity keeps the request in manual tracking instead of charging the customer on Ferocity’s platform balance."
-            ]
-          ].map(([title, status, detail]) => (
-            <section className="panel span-4" key={title}>
-              <span className={`pill ${status === "safety rule" ? "high" : status === "possible with controls" ? "medium" : ""}`}>{status}</span>
-              <h3>{title}</h3>
-              <p className="muted">{detail}</p>
-            </section>
-          ))}
-        </div>
-      </section>
+          <div className="grid">
+            {[
+              [
+                "Managed SEO and marketing",
+                "possible with controls",
+                "Ferocity can prepare work using its own AI/search/email infrastructure, then bill for service, usage, or management. Publishing, ad spend, and customer sends still need approval and limits.",
+              ],
+              [
+                "Connected business payments",
+                "preferred online path",
+                "The business completes Stripe-hosted onboarding and adds its payout bank. Ferocity can then prepare branded payment links, track invoices, update ledgers, and show follow-up.",
+              ],
+              [
+                "No silent Ferocity-held fallback",
+                "safety rule",
+                "If the business payout account is not ready, Ferocity keeps the request in manual tracking instead of charging the customer on Ferocity’s platform balance.",
+              ],
+            ].map(([title, status, detail]) => (
+              <section className="panel span-4" key={title}>
+                <span
+                  className={`pill ${status === "safety rule" ? "high" : status === "possible with controls" ? "medium" : ""}`}
+                >
+                  {status}
+                </span>
+                <h3>{title}</h3>
+                <p className="muted">{detail}</p>
+              </section>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
             <h2>Advertising Budget</h2>
             <p className="muted">
-              Choose how much the business wants available for advertising. Ferocity keeps campaigns inside that budget and handles the provider,
-              balance checks, and safety limits in the background.
+              Choose how much the business wants available for advertising.
+              Ferocity keeps campaigns inside that budget and handles the
+              provider, balance checks, and safety limits in the background.
             </p>
           </div>
-          <Link className="mini-button" href="/app/integrations">Open connections</Link>
+          <Link className="mini-button" href="/app/integrations">
+            Open connections
+          </Link>
         </div>
         <div className="grid section-actions">
           {billing.managedAdBudgets.map((budget) => (
             <section className="panel span-4" key={budget.id}>
               <div className="list-row flush-row">
                 <div>
-                  <span className="eyebrow">{providerLabel(budget.providerKey)}</span>
+                  <span className="eyebrow">
+                    {providerLabel(budget.providerKey)}
+                  </span>
                   <h3>{money(budget.availableCents)} available</h3>
                 </div>
-                <span className={`pill ${budget.readinessStatus === "allowed" ? "" : "medium"}`}>
+                <span
+                  className={`pill ${budget.readinessStatus === "allowed" ? "" : "medium"}`}
+                >
                   {budget.readinessStatus.replaceAll("_", " ")}
                 </span>
               </div>
               <p className="muted">{budget.readinessReason}</p>
-              <p className="muted">{money(budget.monthlySpentCents)} used this month</p>
+              <p className="muted">
+                {money(budget.monthlySpentCents)} used this month
+              </p>
               {can(actor, "billing:manage") ? (
                 <section className="subtle-panel section-actions">
                   <h4>Add advertising budget</h4>
-                  <p className="muted">Choose an amount and finish in Stripe. The budget appears here as soon as payment is confirmed.</p>
-                  <form action="/api/billing/ad-wallet/checkout" className="inline-actions" method="post">
-                    <input name="providerKey" type="hidden" value={budget.providerKey} />
-                    <button className="mini-button" name="amount" type="submit" value="100">Add $100</button>
-                    <button className="mini-button" name="amount" type="submit" value="250">Add $250</button>
-                    <button className="mini-button" name="amount" type="submit" value="500">Add $500</button>
+                  <p className="muted">
+                    Choose an amount and finish in Stripe. The budget appears
+                    here as soon as payment is confirmed.
+                  </p>
+                  <form
+                    action="/api/billing/ad-wallet/checkout"
+                    className="inline-actions"
+                    method="post"
+                  >
+                    <input
+                      name="providerKey"
+                      type="hidden"
+                      value={budget.providerKey}
+                    />
+                    <button
+                      className="mini-button"
+                      name="amount"
+                      type="submit"
+                      value="100"
+                    >
+                      Add $100
+                    </button>
+                    <button
+                      className="mini-button"
+                      name="amount"
+                      type="submit"
+                      value="250"
+                    >
+                      Add $250
+                    </button>
+                    <button
+                      className="mini-button"
+                      name="amount"
+                      type="submit"
+                      value="500"
+                    >
+                      Add $500
+                    </button>
                   </form>
                   <details>
                     <summary>Choose another amount</summary>
-                    <form action="/api/billing/ad-wallet/checkout" className="inline-actions" method="post">
-                      <input name="providerKey" type="hidden" value={budget.providerKey} />
+                    <form
+                      action="/api/billing/ad-wallet/checkout"
+                      className="inline-actions"
+                      method="post"
+                    >
+                      <input
+                        name="providerKey"
+                        type="hidden"
+                        value={budget.providerKey}
+                      />
                       <label>
                         Amount
-                        <input defaultValue="1000" min="25" max="50000" name="amount" step="1" type="number" />
+                        <input
+                          defaultValue="1000"
+                          min="25"
+                          max="50000"
+                          name="amount"
+                          step="1"
+                          type="number"
+                        />
                       </label>
-                      <button className="mini-button" type="submit">Continue to secure payment</button>
+                      <button className="mini-button" type="submit">
+                        Continue to secure payment
+                      </button>
                     </form>
                   </details>
                 </section>
@@ -333,20 +545,66 @@ export default async function BillingPage() {
               <details className="subtle-panel">
                 <summary>How Ferocity protects this budget</summary>
                 <ul className="list section-actions">
-                  <li className="list-row"><strong>Pending campaign reservations</strong><span className="pill">{money(budget.reservedCents)}</span></li>
-                  <li className="list-row"><strong>Daily safeguard</strong><span className="pill">{budget.dailyCapCents > 0 ? money(budget.dailyCapCents) : "applied at campaign setup"}</span></li>
-                  <li className="list-row"><strong>Monthly safeguard</strong><span className="pill">{budget.monthlyCapCents > 0 ? money(budget.monthlyCapCents) : "applied at campaign setup"}</span></li>
-                  <li className="list-row"><strong>Emergency stop</strong><span className="pill">{budget.stopLossCents > 0 ? money(budget.stopLossCents) : "automatic before launch"}</span></li>
-                  <li className="list-row"><strong>Campaign approval</strong><span className={`pill ${budget.approvedByCustomer ? "" : "medium"}`}>{budget.approvedByCustomer ? "approved" : "needed"}</span></li>
-                  <li className="list-row"><strong>Advertising status</strong><span className={`pill ${budget.liveSpendEnabled ? "high" : ""}`}>{budget.liveSpendEnabled ? "running" : "off"}</span></li>
-                  <li className="list-row"><strong>Management fee</strong><span className="pill">{percentLabel(budget.managementFeeBps)}</span></li>
+                  <li className="list-row">
+                    <strong>Pending campaign reservations</strong>
+                    <span className="pill">{money(budget.reservedCents)}</span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Daily safeguard</strong>
+                    <span className="pill">
+                      {budget.dailyCapCents > 0
+                        ? money(budget.dailyCapCents)
+                        : "applied at campaign setup"}
+                    </span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Monthly safeguard</strong>
+                    <span className="pill">
+                      {budget.monthlyCapCents > 0
+                        ? money(budget.monthlyCapCents)
+                        : "applied at campaign setup"}
+                    </span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Emergency stop</strong>
+                    <span className="pill">
+                      {budget.stopLossCents > 0
+                        ? money(budget.stopLossCents)
+                        : "automatic before launch"}
+                    </span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Campaign approval</strong>
+                    <span
+                      className={`pill ${budget.approvedByCustomer ? "" : "medium"}`}
+                    >
+                      {budget.approvedByCustomer ? "approved" : "needed"}
+                    </span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Advertising status</strong>
+                    <span
+                      className={`pill ${budget.liveSpendEnabled ? "high" : ""}`}
+                    >
+                      {budget.liveSpendEnabled ? "running" : "off"}
+                    </span>
+                  </li>
+                  <li className="list-row">
+                    <strong>Management fee</strong>
+                    <span className="pill">
+                      {percentLabel(budget.managementFeeBps)}
+                    </span>
+                  </li>
                 </ul>
               </details>
             </section>
           ))}
           {billing.managedAdBudgets.length === 0 ? (
             <section className="panel span-12">
-              <p className="muted">Managed advertising is not ready yet. Finish its budget and safety setup before offering it.</p>
+              <p className="muted">
+                Managed advertising is not ready yet. Finish its budget and
+                safety setup before offering it.
+              </p>
             </section>
           ) : null}
         </div>
@@ -357,21 +615,30 @@ export default async function BillingPage() {
           <div>
             <h2>Rebilling And Markup Rules</h2>
             <p className="muted">
-              Cheap plans can stay cheap because some optional or performance-tied work has a transparent fee. Higher plans reduce or remove
-              required tracked-growth percentages so customers are not punished for upgrading.
+              Cheap plans can stay cheap because some optional or
+              performance-tied work has a transparent fee. Higher plans reduce
+              or remove required tracked-growth percentages so customers are not
+              punished for upgrading.
             </p>
           </div>
           <span className="pill medium">disclose before live use</span>
         </div>
         <div className="grid section-actions">
           {billing.rebillingPolicies.map((policy) => (
-            <section className="panel span-4" key={`${policy.planKey ?? "default"}-${policy.feeKey}`}>
+            <section
+              className="panel span-4"
+              key={`${policy.planKey ?? "default"}-${policy.feeKey}`}
+            >
               <div className="list-row flush-row">
                 <div>
-                  <span className="eyebrow">{policy.planKey?.replaceAll("_", " ") ?? "default"}</span>
+                  <span className="eyebrow">
+                    {policy.planKey?.replaceAll("_", " ") ?? "default"}
+                  </span>
                   <h3>{policy.feeLabel}</h3>
                 </div>
-                <span className={`pill ${policy.status === "planned" ? "medium" : policy.required ? "high" : ""}`}>
+                <span
+                  className={`pill ${policy.status === "planned" ? "medium" : policy.required ? "high" : ""}`}
+                >
                   {feeLabel(policy)}
                 </span>
               </div>
@@ -379,14 +646,27 @@ export default async function BillingPage() {
               <p className="muted">{policy.disclosure}</p>
               <div className="inline-actions">
                 <span className="pill">{policy.status}</span>
-                <span className="pill">{policy.required ? "required on plan" : policy.included ? "included" : "optional"}</span>
-                {capLabel(policy.monthlyCapCents) ? <span className="pill">{capLabel(policy.monthlyCapCents)}</span> : null}
+                <span className="pill">
+                  {policy.required
+                    ? "required on plan"
+                    : policy.included
+                      ? "included"
+                      : "optional"}
+                </span>
+                {capLabel(policy.monthlyCapCents) ? (
+                  <span className="pill">
+                    {capLabel(policy.monthlyCapCents)}
+                  </span>
+                ) : null}
               </div>
             </section>
           ))}
           {billing.rebillingPolicies.length === 0 ? (
             <section className="panel span-12">
-              <p className="muted">Customer usage pricing has not been configured. Finish billing setup before launch.</p>
+              <p className="muted">
+                Customer usage pricing has not been configured. Finish billing
+                setup before launch.
+              </p>
             </section>
           ) : null}
         </div>
@@ -397,19 +677,39 @@ export default async function BillingPage() {
           <div>
             <h2>Usage Charges For Next Invoice</h2>
             <p className="muted">
-              Pay-as-you-go fees should not force customers through checkout over and over. Approved charges are queued to the next Stripe
-              subscription invoice. Pending charges stay in review until an owner/admin approves them.
+              Pay-as-you-go fees should not force customers through checkout
+              over and over. Approved charges are queued to the next Stripe
+              subscription invoice. Pending charges stay in review until an
+              owner/admin approves them.
             </p>
           </div>
-          <form action="/api/billing/usage/sync" method="post">
-            <button className="mini-button" type="submit">Sync approved charges</button>
-          </form>
+          {isPlatformAdmin ? (
+            <form action="/api/billing/usage/sync" method="post">
+              <button className="mini-button" type="submit">
+                Sync approved charges
+              </button>
+            </form>
+          ) : null}
         </div>
         <div className="grid section-actions">
-          <Metric label="Pending review" value={money(billing.usageCharges.pendingReviewCents)} />
-          <Metric label="Approved to sync" value={money(billing.usageCharges.approvedCents)} />
-          <Metric label="Queued in Stripe" value={money(billing.usageCharges.queuedCents)} />
-          <Metric label="Storage used" value={`${storage(billing.storage.usedBytes)} / ${storage(billing.storage.maxBytes)}`} />
+          <Metric
+            label="Pending review"
+            value={money(billing.usageCharges.pendingReviewCents)}
+          />
+          <Metric
+            label="Approved to sync"
+            value={money(billing.usageCharges.approvedCents)}
+          />
+          <Metric
+            label="Queued in Stripe"
+            value={money(billing.usageCharges.queuedCents)}
+          />
+          {isPlatformAdmin ? (
+            <Metric
+              label="Storage used"
+              value={`${storage(billing.storage.usedBytes)} / ${storage(billing.storage.maxBytes)}`}
+            />
+          ) : null}
         </div>
         <ul className="list">
           {billing.usageCharges.recent.map((charge) => (
@@ -417,23 +717,41 @@ export default async function BillingPage() {
               <div>
                 <h3>{charge.description}</h3>
                 <p className="muted">
-                  {charge.feeFamily.replaceAll("_", " ")} / {charge.chargeKey} / {charge.stripeInvoiceItemId ? `Stripe item ${charge.stripeInvoiceItemId}` : "not synced"}
+                  {isPlatformAdmin
+                    ? `${charge.feeFamily.replaceAll("_", " ")} / ${charge.chargeKey} / ${charge.stripeInvoiceItemId ? `Stripe item ${charge.stripeInvoiceItemId}` : "not synced"}`
+                    : "Usage outside your included plan allowance"}
                 </p>
-                {charge.lastError ? <p className="muted">{charge.lastError}</p> : null}
+                {isPlatformAdmin && charge.lastError ? (
+                  <p className="muted">{charge.lastError}</p>
+                ) : null}
               </div>
               <div className="inline-actions">
                 <span className="pill">{money(charge.amountCents)}</span>
-                <span className={`pill ${charge.status === "failed" ? "high" : charge.status === "pending_review" ? "medium" : ""}`}>{charge.status.replaceAll("_", " ")}</span>
-                {charge.status === "pending_review" ? (
+                <span
+                  className={`pill ${charge.status === "failed" ? "high" : charge.status === "pending_review" ? "medium" : ""}`}
+                >
+                  {charge.status.replaceAll("_", " ")}
+                </span>
+                {isPlatformAdmin && charge.status === "pending_review" ? (
                   <form action={approveUsageChargeAction}>
                     <input type="hidden" name="chargeId" value={charge.id} />
-                    <button className="mini-button" type="submit">Approve</button>
+                    <button className="mini-button" type="submit">
+                      Approve
+                    </button>
                   </form>
                 ) : null}
-                {["pending_review", "approved", "failed"].includes(charge.status) ? (
+                {isPlatformAdmin &&
+                ["pending_review", "approved", "failed"].includes(
+                  charge.status,
+                ) ? (
                   <form action={voidUsageChargeAction}>
                     <input type="hidden" name="chargeId" value={charge.id} />
-                    <button className="mini-button secondary-button" type="submit">Void</button>
+                    <button
+                      className="mini-button secondary-button"
+                      type="submit"
+                    >
+                      Void
+                    </button>
                   </form>
                 ) : null}
               </div>
@@ -441,56 +759,100 @@ export default async function BillingPage() {
           ))}
           {billing.usageCharges.recent.length === 0 ? (
             <li className="list-row">
-              <span className="muted">No usage, tracked-growth, managed-payment, or managed-service charges have been recorded yet.</span>
+              <span className="muted">
+                No usage, tracked-growth, managed-payment, or managed-service
+                charges have been recorded yet.
+              </span>
             </li>
           ) : null}
         </ul>
       </section>
 
-      <section className="panel section-actions">
-        <div className="list-row flush-row">
-          <div>
-            <h2>Feature Gates</h2>
-            <p className="muted">Usage and limits are visible now so paid tiers can be enforced cleanly.</p>
+      {isPlatformAdmin ? (
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Feature Gates</h2>
+              <p className="muted">
+                Usage and limits are visible now so paid tiers can be enforced
+                cleanly.
+              </p>
+            </div>
+            <Link className="mini-button" href="/app/controls">
+              Open controls
+            </Link>
           </div>
-          <Link className="mini-button" href="/app/controls">Open controls</Link>
-        </div>
-        <ul className="list">
-          {billing.featureGates.map((gate) => (
-            <li className="list-row" key={gate.featureKey}>
-              <div>
-                <h3>{gate.label}</h3>
-                <p className="muted">{gate.featureKey} / {gate.usagePeriod ?? "monthly"} / used {gate.currentUsage.toLocaleString()}</p>
-              </div>
-              <div className="inline-actions">
-                <span className="pill">{gate.status}</span>
-                <span className="pill">{gate.usageLimit === null ? "unlimited" : `${gate.remaining?.toLocaleString()} left`}</span>
-              </div>
-            </li>
-          ))}
-          {billing.featureGates.length === 0 ? <li className="list-row"><span className="muted">No feature gates configured yet.</span></li> : null}
-        </ul>
-      </section>
+          <ul className="list">
+            {billing.featureGates.map((gate) => (
+              <li className="list-row" key={gate.featureKey}>
+                <div>
+                  <h3>{gate.label}</h3>
+                  <p className="muted">
+                    {gate.featureKey} / {gate.usagePeriod ?? "monthly"} / used{" "}
+                    {gate.currentUsage.toLocaleString()}
+                  </p>
+                </div>
+                <div className="inline-actions">
+                  <span className="pill">{gate.status}</span>
+                  <span className="pill">
+                    {gate.usageLimit === null
+                      ? "unlimited"
+                      : `${gate.remaining?.toLocaleString()} left`}
+                  </span>
+                </div>
+              </li>
+            ))}
+            {billing.featureGates.length === 0 ? (
+              <li className="list-row">
+                <span className="muted">No feature gates configured yet.</span>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+      ) : null}
 
-      <div className="grid">
-        {billing.plans.map((plan) => (
-          <section className="panel span-4" key={plan.id}>
-            <h2>{plan.name}</h2>
-            <p className="metric"><strong>{dollars(plan.monthlyPriceCents)}</strong></p>
-            <ul className="list">
-              <li className="list-row"><strong>Brands</strong><span className="pill">{plan.includedBrands}</span></li>
-              <li className="list-row"><strong>Everyday AI assistance</strong><span className="pill">Included</span></li>
-            </ul>
-            <form action="/api/billing/checkout" method="post">
-              <input name="plan" type="hidden" value={plan.planKey} />
-              <input name="source" type="hidden" value="app_billing" />
-              <button className="mini-button" disabled={plan.planKey === currentPlan} type="submit">
-                {plan.planKey === currentPlan ? "Current plan" : "Choose plan"}
-              </button>
-            </form>
-          </section>
-        ))}
-      </div>
+      <section className="section-actions">
+        <div>
+          <p className="eyebrow">Plans</p>
+          <h2>Choose the level that fits now</h2>
+          <p className="muted">
+            You can change plans without rebuilding your workspace.
+          </p>
+        </div>
+        <div className="grid">
+          {billing.plans.map((plan) => (
+            <section className="panel span-4" key={plan.id}>
+              <h2>{plan.name}</h2>
+              <p className="metric">
+                <strong>{dollars(plan.monthlyPriceCents)}</strong>
+              </p>
+              <ul className="list">
+                <li className="list-row">
+                  <strong>Brands</strong>
+                  <span className="pill">{plan.includedBrands}</span>
+                </li>
+                <li className="list-row">
+                  <strong>Everyday AI assistance</strong>
+                  <span className="pill">Included</span>
+                </li>
+              </ul>
+              <form action="/api/billing/checkout" method="post">
+                <input name="plan" type="hidden" value={plan.planKey} />
+                <input name="source" type="hidden" value="app_billing" />
+                <button
+                  className="mini-button"
+                  disabled={plan.planKey === currentPlan}
+                  type="submit"
+                >
+                  {plan.planKey === currentPlan
+                    ? "Current plan"
+                    : "Choose plan"}
+                </button>
+              </form>
+            </section>
+          ))}
+        </div>
+      </section>
     </QueuePageShell>
   );
 }
@@ -499,7 +861,9 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <section className="panel span-4 metric">
       <span className="muted">{label}</span>
-      <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
+      <strong>
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </strong>
     </section>
   );
 }

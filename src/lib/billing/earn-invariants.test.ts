@@ -9,6 +9,10 @@ describe("Ferocity Earn V1 billing invariants", () => {
   const serviceActions = fs.readFileSync(path.join(process.cwd(), "src/app/app/service/actions.ts"), "utf8");
   const settlementRunner = fs.readFileSync(path.join(process.cwd(), "src/lib/billing/earn-settlement.ts"), "utf8");
   const automationRunner = fs.readFileSync(path.join(process.cwd(), "src/lib/automation/run-business-automation.ts"), "utf8");
+  const voiceUsage = fs.readFileSync(path.join(process.cwd(), "src/lib/usage/managed-voice.ts"), "utf8");
+  const messagingUsage = fs.readFileSync(path.join(process.cwd(), "src/lib/messaging/messaging-engine.ts"), "utf8");
+  const providerCostActions = fs.readFileSync(path.join(process.cwd(), "src/app/app/provider-costs/actions.ts"), "utf8");
+  const providerCostPage = fs.readFileSync(path.join(process.cwd(), "src/app/app/provider-costs/page.tsx"), "utf8");
 
   it("keeps fixed plans and requires explicit prospective enrollment", () => {
     expect(migration).toContain("It does not enroll existing tenants or assess historical payments");
@@ -53,9 +57,24 @@ describe("Ferocity Earn V1 billing invariants", () => {
     expect(migration).toContain("grant execute on function public.adjust_earn_for_refund(uuid,integer,text,text) to service_role");
   });
 
-  it("keeps provider usage separate from the Earn ledger", () => {
-    expect(migration).toContain('"providerUsageSeparate":true');
+  it("keeps sponsored provider cost visible but out of the customer Earn settlement", () => {
+    const sponsorship = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/216_earn_sponsored_provider_usage.sql"), "utf8");
+    expect(sponsorship).toContain('"providerUsageSponsoredByDefault": false');
+    expect(sponsorship).toContain("create table if not exists public.earn_provider_sponsorships");
+    expect(sponsorship).toContain("monthly_provider_cost_cap_cents");
+    expect(sponsorship).toContain("No row means provider usage remains customer-paid");
+    expect(sponsorship).toContain("overage_unit_price_cents=25");
     expect(migration).not.toContain("references public.billing_usage_charges");
+    expect(voiceUsage).toContain("isProviderUsageSponsored");
+    expect(voiceUsage).toContain("sponsoredByFerocity: sponsored");
+    expect(messagingUsage).toContain("isProviderUsageSponsored");
+    expect(messagingUsage).toContain('category: "sponsored_provider_cost_cap"');
+    expect(actions).toContain("usage_meter_events");
+    expect(actions).toContain("l.managed_earn+l.originated_earn");
+    expect(providerCostActions).toContain('requirePermission("platform:manage")');
+    expect(providerCostActions).toContain("saveEarnProviderSponsorshipAction");
+    expect(providerCostActions).toContain("setEarnProviderSponsorshipStatusAction");
+    expect(providerCostPage).toContain("Standard Earn customers pay their own provider fees");
   });
 
   it("keeps external settlement disabled by default and webhook-confirmed", () => {

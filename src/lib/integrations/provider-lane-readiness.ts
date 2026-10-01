@@ -87,6 +87,11 @@ const capabilityLabels: Record<string, { label: string; description: string; sor
     description: "Customer ad account or Ferocity-managed ad service when approved.",
     sort: 60
   },
+  youtube: {
+    label: "YouTube Channel",
+    description: "Customer YouTube channel context now; organic publishing only after separate authorization and certification.",
+    sort: 65
+  },
   meta_ads: {
     label: "Meta and Facebook",
     description: "Customer page/ad account or Ferocity-managed ad service when approved.",
@@ -107,6 +112,13 @@ const capabilityLabels: Record<string, { label: string; description: string; sor
     description: "Customer Microsoft Ads or Ferocity-managed Microsoft campaigns when approved.",
     sort: 100
   },
+  linkedin_ads: { label: "LinkedIn Ads", description: "Customer LinkedIn ad account or Ferocity-managed campaigns after Marketing API approval.", sort: 110 },
+  x_ads: { label: "X Ads", description: "Customer X ad account or Ferocity-managed campaigns after Ads API approval.", sort: 120 },
+  pinterest_ads: { label: "Pinterest Ads", description: "Customer Pinterest ad account or Ferocity-managed campaigns after authorization.", sort: 130 },
+  snapchat_ads: { label: "Snap Ads", description: "Customer Snap ad account or Ferocity-managed campaigns after Marketing API authorization.", sort: 140 },
+  amazon_ads: { label: "Amazon Ads", description: "Eligible Amazon advertiser profiles with approved API access.", sort: 150 },
+  openai_ads: { label: "ChatGPT Ads", description: "Approved OpenAI advertiser accounts with Advertiser API access.", sort: 160 },
+  apple_search_ads: { label: "Apple Ads", description: "Eligible Apple Ads account for app-focused campaigns.", sort: 170 },
   marketplacepro: {
     label: "MarketplacePro events",
     description: "MarketplacePro account events and Ferocity owner-event receiver.",

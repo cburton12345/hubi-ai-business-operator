@@ -8,6 +8,10 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { findUnverifiedClaims, getGrowthChannel, scoreGrowthOpportunity, supportedCapabilities } from "@/lib/growth/distribution-engine";
 import { recordGrowthEvent } from "@/lib/growth/growth-events";
+import { runAiGrowthDepartment } from "@/lib/growth/ai-growth-department";
+import { prepareAiContentPackage } from "@/lib/marketing/ai-content-production";
+import { buildReverseRevenuePlan } from "@/lib/growth/reverse-revenue-plan";
+import { createConversationAcquisitionLink } from "@/lib/growth/conversation-acquisition";
 
 const qualityReviewSchema = z.object({
   reviewId: z.string().min(1),
@@ -47,6 +51,16 @@ const objectiveSchema = z.object({
   geography: z.string().trim().max(240).optional(),
   targetLeads: z.coerce.number().int().min(0).max(100000).optional(),
   targetRevenueDollars: z.coerce.number().min(0).max(100000000).optional(),
+  targetCollectedRevenueDollars: z.coerce.number().min(0).max(100000000).optional(),
+  targetGrossProfitDollars: z.coerce.number().min(0).max(100000000).optional(),
+  averageJobValueDollars: z.coerce.number().positive().max(100000000).optional(),
+  costPerLeadDollars: z.coerce.number().min(0).max(1000000).optional(),
+  grossMarginTargetPercent: z.coerce.number().min(0).max(100).optional(),
+  minimumGrossMarginPercent: z.coerce.number().min(0).max(100).optional(),
+  maximumCacDollars: z.coerce.number().min(0).max(10000000).optional(),
+  minimumRoas: z.coerce.number().min(0).max(1000).optional(),
+  monthlyJobCapacity: z.coerce.number().int().min(0).max(100000).optional(),
+  maximumBacklogJobs: z.coerce.number().int().min(0).max(100000).optional(),
   timeHorizonDays: z.coerce.number().int().min(1).max(730),
   autonomyLevel: z.enum(["suggest", "approve", "autopilot"])
 });
@@ -60,6 +74,82 @@ const identitySchema = z.object({
   autonomyLevel: z.enum(["suggest", "approve", "autopilot"])
 });
 
+const conversationLinkSchema = z.object({
+  brandId: z.string().uuid(),
+  name: z.string().trim().min(3).max(120),
+  preferredChannel: z.enum(["sms", "mms", "whatsapp", "rcs", "apple_business_chat", "meta_messenger", "instagram", "website_chat", "phone"]),
+  destination: z.string().trim().max(500).optional(),
+  prefilledMessage: z.string().trim().min(2).max(1200),
+  source: z.string().trim().max(120).optional(),
+  campaign: z.string().trim().max(200).optional(),
+  adReference: z.string().trim().max(200).optional(),
+  fallbackUrl: z.string().trim().url().max(1000).optional().or(z.literal(""))
+});
+
+const conversionFeedbackDestinationSchema = z.object({
+  brandId: z.string().uuid(),
+  pixelId: z.string().trim().regex(/^\d{5,30}$/),
+  apiVersion: z.string().trim().regex(/^v\d{2,3}\.\d$/),
+  requestedStatus: z.enum(["active", "paused"]),
+  requiresManualApproval: z.enum(["true", "false"])
+});
+
+export async function configureMetaConversionFeedbackAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = conversionFeedbackDestinationSchema.parse(Object.fromEntries(formData));
+  const workspaceId = await getCurrentWorkspaceId();
+  const [brand, credentials] = await Promise.all([
+    queryPostgres<{ id: string }>(`select id from public.brands where tenant_id=$1 and id=$2 and status='active' limit 1`, [workspaceId, parsed.brandId]),
+    queryPostgres<{ ready: boolean }>(
+      `select exists(select 1 from public.tenant_provider_credentials
+        where tenant_id=$1 and provider_key='facebook' and credential_label='capi_access_token' and status='configured') ready`,
+      [workspaceId]
+    )
+  ]);
+  if (!brand?.rows[0]) throw new Error("Business not found in this workspace.");
+  const credentialReady = Boolean(credentials?.rows[0]?.ready);
+  const status = parsed.requestedStatus === "paused" ? "paused" : credentialReady ? "active" : "configured";
+  const supportedEventTypes = ["conversation_started", "reply_received", "qualified_lead", "appointment_booked", "estimate_sent", "estimate_accepted", "sale_closed", "job_completed", "payment_collected", "review_created"];
+  await queryPostgres(
+    `insert into public.conversion_feedback_destinations
+      (tenant_id,brand_id,provider_key,status,supported_event_types,requires_manual_approval,config_json,last_verified_at,last_error)
+     values ($1,$2,'meta',$3,$4,$5,$6::jsonb,case when $7 then now() else null end,
+       case when $7 then null else 'Save a facebook / capi_access_token credential in the encrypted vault before activation.' end)
+     on conflict (tenant_id,brand_id,provider_key) do update set status=excluded.status,
+       supported_event_types=excluded.supported_event_types,requires_manual_approval=excluded.requires_manual_approval,
+       config_json=excluded.config_json,last_verified_at=excluded.last_verified_at,last_error=excluded.last_error,updated_at=now()`,
+    [workspaceId, parsed.brandId, status, supportedEventTypes, parsed.requiresManualApproval === "true",
+      JSON.stringify({ pixelId: parsed.pixelId, apiVersion: parsed.apiVersion }), credentialReady]
+  );
+  revalidatePath("/app/growth");
+}
+
+export async function createConversationAcquisitionLinkAction(formData: FormData) {
+  await requirePermission("brand:manage");
+  const parsed = conversationLinkSchema.parse(Object.fromEntries(formData));
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const brand = await queryPostgres<{ id: string }>(
+    `select id from public.brands where tenant_id=$1 and id=$2 and status='active' limit 1`,
+    [workspaceId, parsed.brandId]
+  );
+  if (!brand?.rows[0]) throw new Error("Business not found in this workspace.");
+  await createConversationAcquisitionLink({
+    tenantId: workspaceId,
+    brandId: parsed.brandId,
+    userId: session?.userId ?? null,
+    name: parsed.name,
+    preferredChannel: parsed.preferredChannel,
+    destination: parsed.destination || null,
+    prefilledMessage: parsed.prefilledMessage,
+    source: parsed.source || null,
+    campaign: parsed.campaign || null,
+    adReference: parsed.adReference || null,
+    fallbackUrl: parsed.fallbackUrl || null
+  });
+  revalidatePath("/app/growth");
+}
+
 const communitySchema = z.object({
   brandId: z.string().uuid(),
   channelKey: z.string().trim().min(1).max(80),
@@ -69,6 +159,13 @@ const communitySchema = z.object({
   relevanceScore: z.coerce.number().int().min(0).max(100),
   rulesText: z.string().trim().max(5000).optional()
 });
+
+const communityPostSchema = z.object({
+  communityId: z.string().uuid(),
+  body: z.string().trim().min(20).max(10_000)
+});
+
+const communityJoinSchema = z.object({ communityId: z.string().uuid() });
 
 const opportunitySchema = z.object({
   brandId: z.string().uuid(),
@@ -121,7 +218,7 @@ async function insertTimeline(input: {
 
 export async function scanGrowthLoopAction() {
   await requirePermission("ai:queue");
-  const workspaceId = await getCurrentWorkspaceId();
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
 
   const counts = await queryPostgres<{
     stale_leads: string;
@@ -473,6 +570,10 @@ export async function scanGrowthLoopAction() {
       'not_connected',
       jsonb_build_object('createdByScan', 'growth_loop', 'providerReadyOnly', true)
     from public.ai_drafts d
+    join public.content_quality_reviews quality
+      on quality.tenant_id = d.tenant_id
+     and quality.draft_id = d.id
+     and quality.quality_status = 'passed'
     where d.tenant_id = $1
       and d.status = 'approved'
       and not exists (select 1 from public.publishing_queue q where q.draft_id = d.id)
@@ -554,8 +655,34 @@ export async function scanGrowthLoopAction() {
     metadata: row ?? {}
   });
 
+  const department = await runAiGrowthDepartment({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    maxActions: 5
+  });
+
+  await insertTimeline({
+    tenantId: workspaceId,
+    family: "marketing",
+    type: "ai_growth_department_scan",
+    title: `Ferocity found ${department.worthwhile} worthwhile growth actions`,
+    body: `${department.handledAutomatically} handled safely, ${department.needsApproval} need approval, and ${department.needsOwner} need the owner personally.`,
+    metadata: { ...department, actions: department.actions.map(({ key, title, ownerInvolvement }) => ({ key, title, ownerInvolvement })) }
+  });
+
   revalidatePath("/app/growth");
   revalidatePath("/app/alerts");
+}
+
+export async function prepareGrowthContentPackageAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const recommendationId = z.string().uuid().safeParse(formData.get("recommendationId"));
+  if (!recommendationId.success) return;
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  const result = await prepareAiContentPackage({ tenantId: workspaceId, recommendationId: recommendationId.data, userId: session?.userId ?? null });
+  await insertTimeline({ tenantId: workspaceId, family: "marketing", type: "organic_content_package_prepared", title: result.created ? `Prepared an organic content package with ${result.outputs} concepts` : "Organic content package already exists", body: "Ferocity used the Growth Department's evidence, Brand Voice, approved assets, customer signals, and platform context. Every concept remains in review; no content was published and no ad spend was authorized.", entityType: "content_campaign", entityId: result.campaignId, sourceTable: "content_studio_campaigns", sourceId: result.campaignId, metadata: { organicFirst: true, noPaidSpendAuthorized: true } });
+  revalidatePath("/app/growth");
+  revalidatePath("/app/marketing-os");
 }
 
 export async function updateContentQualityReviewAction(formData: FormData) {
@@ -639,6 +766,15 @@ export async function updatePublishingQueueAction(formData: FormData) {
         published_at = case when $3 = 'published_manually' then coalesce(published_at, now()) else published_at end,
         updated_at = now()
     where tenant_id = $1 and id = $2
+      and (
+        $3 not in ('approved', 'scheduled')
+        or exists (
+          select 1 from public.content_quality_reviews quality
+          where quality.tenant_id = public.publishing_queue.tenant_id
+            and quality.draft_id = public.publishing_queue.draft_id
+            and quality.quality_status = 'passed'
+        )
+      )
     returning brand_id, draft_id
     `,
     [workspaceId, parsed.data.queueId, parsed.data.queueStatus, scheduledFor]
@@ -757,20 +893,53 @@ export async function createGrowthObjectiveAction(formData: FormData) {
     brandId: formData.get("brandId"), name: formData.get("name"), serviceFocus: formData.get("serviceFocus") || undefined,
     geography: formData.get("geography") || undefined, targetLeads: formData.get("targetLeads") || undefined,
     targetRevenueDollars: formData.get("targetRevenueDollars") || undefined, timeHorizonDays: formData.get("timeHorizonDays"),
+    targetCollectedRevenueDollars: formData.get("targetCollectedRevenueDollars") || undefined,
+    targetGrossProfitDollars: formData.get("targetGrossProfitDollars") || undefined,
+    averageJobValueDollars: formData.get("averageJobValueDollars") || undefined,
+    costPerLeadDollars: formData.get("costPerLeadDollars") || undefined,
+    grossMarginTargetPercent: formData.get("grossMarginTargetPercent") || undefined,
+    minimumGrossMarginPercent: formData.get("minimumGrossMarginPercent") || undefined,
+    maximumCacDollars: formData.get("maximumCacDollars") || undefined,
+    minimumRoas: formData.get("minimumRoas") || undefined,
+    monthlyJobCapacity: formData.get("monthlyJobCapacity") || undefined,
+    maximumBacklogJobs: formData.get("maximumBacklogJobs") || undefined,
     autonomyLevel: formData.get("autonomyLevel")
   });
   if (!parsed.success) return;
   const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  const collectedTargetCents = parsed.data.targetCollectedRevenueDollars == null
+    ? (parsed.data.targetRevenueDollars == null ? 0 : Math.round(parsed.data.targetRevenueDollars * 100))
+    : Math.round(parsed.data.targetCollectedRevenueDollars * 100);
+  const initialPlan = buildReverseRevenuePlan({
+    targetCollectedRevenueCents: collectedTargetCents,
+    targetGrossProfitCents: parsed.data.targetGrossProfitDollars == null ? null : Math.round(parsed.data.targetGrossProfitDollars * 100),
+    averageCollectedJobCents: parsed.data.averageJobValueDollars == null ? null : Math.round(parsed.data.averageJobValueDollars * 100),
+    grossMarginRate: parsed.data.grossMarginTargetPercent == null ? null : parsed.data.grossMarginTargetPercent / 100,
+    costPerLeadCents: parsed.data.costPerLeadDollars == null ? null : Math.round(parsed.data.costPerLeadDollars * 100),
+    availableJobCapacity: parsed.data.monthlyJobCapacity
+  });
   const row = await queryPostgres<{ id: string }>(`
     insert into public.growth_objectives (
       tenant_id, brand_id, name, service_focus, geography_json, target_leads, target_revenue_cents,
-      time_horizon_days, autonomy_level, status, created_by_user_id
-    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, 'active', $10)
+      target_collected_revenue_cents, target_gross_profit_cents, average_job_value_cents, cost_per_lead_cents,
+      gross_margin_target_bps, minimum_gross_margin_bps, maximum_cac_cents, minimum_roas_milli,
+      monthly_job_capacity, maximum_backlog_jobs, time_horizon_days, autonomy_level, status, created_by_user_id, metadata_json
+    ) values ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'active',$20,$21::jsonb)
     returning id
   `, [workspaceId, parsed.data.brandId, parsed.data.name, parsed.data.serviceFocus ?? null,
     JSON.stringify(parsed.data.geography ? { description: parsed.data.geography } : {}), parsed.data.targetLeads ?? null,
     parsed.data.targetRevenueDollars == null ? null : Math.round(parsed.data.targetRevenueDollars * 100),
-    parsed.data.timeHorizonDays, parsed.data.autonomyLevel, session?.userId ?? null]);
+    collectedTargetCents || null,
+    parsed.data.targetGrossProfitDollars == null ? null : Math.round(parsed.data.targetGrossProfitDollars * 100),
+    parsed.data.averageJobValueDollars == null ? null : Math.round(parsed.data.averageJobValueDollars * 100),
+    parsed.data.costPerLeadDollars == null ? null : Math.round(parsed.data.costPerLeadDollars * 100),
+    parsed.data.grossMarginTargetPercent == null ? null : Math.round(parsed.data.grossMarginTargetPercent * 100),
+    parsed.data.minimumGrossMarginPercent == null ? null : Math.round(parsed.data.minimumGrossMarginPercent * 100),
+    parsed.data.maximumCacDollars == null ? null : Math.round(parsed.data.maximumCacDollars * 100),
+    parsed.data.minimumRoas == null ? null : Math.round(parsed.data.minimumRoas * 1000),
+    parsed.data.monthlyJobCapacity ?? null, parsed.data.maximumBacklogJobs ?? null,
+    parsed.data.timeHorizonDays, parsed.data.autonomyLevel, session?.userId ?? null,
+    JSON.stringify({ initialReversePlan: initialPlan, planGeneratedAt: new Date().toISOString() })]);
   if (row?.rows[0]) await insertTimeline({
     tenantId: workspaceId, brandId: parsed.data.brandId, family: "marketing", type: "growth_objective_created",
     title: `Growth objective started: ${parsed.data.name}`, body: "Ferocity can now rank growth work against this objective.",
@@ -829,10 +998,12 @@ export async function addGrowthCommunityAction(formData: FormData) {
       tenant_id, brand_id, channel_key, name, url, geography_json, relevance_score, rules_text,
       rules_checked_at, posting_policy, status, metadata_json
     ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, case when $8 is null then null else now() end,
-      'suggest_only', 'active', '{"provenance":"owner_supplied"}'::jsonb)
+      case when $8 is null then 'suggest_only' else 'approval_required' end, 'active', '{"provenance":"owner_supplied"}'::jsonb)
     on conflict (tenant_id, brand_id, channel_key, name) do update set
       url = excluded.url, geography_json = excluded.geography_json, relevance_score = excluded.relevance_score,
-      rules_text = excluded.rules_text, rules_checked_at = excluded.rules_checked_at, updated_at = now()
+      rules_text = excluded.rules_text, rules_checked_at = excluded.rules_checked_at,
+      posting_policy = case when excluded.rules_text is not null and public.growth_communities.posting_policy='suggest_only'
+        then 'approval_required' else public.growth_communities.posting_policy end, updated_at = now()
     returning id
   `, [workspaceId, parsed.data.brandId, parsed.data.channelKey, parsed.data.name, parsed.data.url || null,
     JSON.stringify(parsed.data.geography ? { description: parsed.data.geography } : {}), parsed.data.relevanceScore,
@@ -850,6 +1021,152 @@ export async function addGrowthCommunityAction(formData: FormData) {
       dimensions: { ruleLength: parsed.data.rulesText.length }, idempotencyKey: `community-rules:${communityId}:${parsed.data.rulesText.length}` });
   }
   revalidatePath("/app/growth");
+}
+
+export async function queueFacebookCommunityPostAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = communityPostSchema.safeParse({ communityId: formData.get("communityId"), body: formData.get("body") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const context = await queryPostgres<{
+    id: string; brand_id: string; identity_id: string; name: string; url: string; rules_checked_at: string; rules_text: string;
+  }>(`
+    select c.id,c.brand_id,i.id identity_id,c.name,c.url,c.rules_checked_at::text,c.rules_text
+    from public.growth_communities c
+    join lateral (
+      select id from public.growth_distribution_identities
+      where tenant_id=c.tenant_id and brand_id=c.brand_id and channel_key='facebook'
+        and authorization_status='connected' and risk_state='healthy'
+        and verification_status in ('verified','not_required')
+      order by case when id=c.identity_id then 0 else 1 end,updated_at desc limit 1
+    ) i on true
+    where c.tenant_id=$1 and c.id=$2 and c.channel_key='facebook' and c.status='active'
+      and c.posting_policy in ('approval_required','autopilot_allowed')
+      and c.url like 'https://%facebook.com/groups/%'
+      and nullif(trim(c.rules_text),'') is not null
+      and c.rules_checked_at >= now() - interval '30 days'
+      and coalesce(c.metadata_json->>'membershipState','unknown')='joined'
+      and (c.last_posted_at is null or c.last_posted_at + make_interval(hours => coalesce((c.metadata_json->>'minimumHoursBetweenPosts')::int,72)) <= now())
+      and not exists (
+        select 1 from public.growth_action_attempts recent
+        where recent.tenant_id=c.tenant_id and recent.identity_id=i.id
+          and recent.action_key='publish_group_post' and recent.status='succeeded'
+          and recent.completed_at >= now() - interval '8 hours'
+      )
+      and not exists (
+        select 1 from public.outbound_action_queue q
+        where q.tenant_id=c.tenant_id and q.channel='facebook' and q.action_type='publish_content'
+          and lower(trim(q.payload_json->>'body'))=lower(trim($3))
+          and q.created_at >= now() - interval '90 days'
+          and q.status not in ('failed','canceled')
+      )
+  `, [workspaceId, parsed.data.communityId, parsed.data.body]);
+  const row = context?.rows[0];
+  if (!row) return;
+
+  const queued = await queryPostgres<{ action_id: string }>(`
+    with queued_action as (
+      insert into public.outbound_action_queue (
+        tenant_id,brand_id,action_type,provider_key,status,risk_level,target_type,target_id,
+        subject,recipient_label,payload_json,metadata_json
+      ) values ($1,$2,'publish_content','facebook','needs_review','high','growth_community',$3,
+        'Facebook group post',$4,$5::jsonb,$6::jsonb)
+      returning id
+    ), attempt as (
+      insert into public.growth_action_attempts (
+        tenant_id,brand_id,identity_id,community_id,queue_id,channel_key,action_key,execution_mode,
+        status,risk_state,idempotency_key,strategy_version,payload_json
+      ) select $1,$2,$7,$3,id,'facebook','publish_group_post','assisted_browser',
+        'needs_approval','healthy',$8,'facebook-groups-assisted-v1',$9::jsonb from queued_action
+      returning id
+    ), requested as (
+      insert into public.approvals (tenant_id,brand_id,target_type,target_id,status,risk_level,notes)
+      select $1,$2,'growth_action',id,'pending','high',$10 from attempt
+    ) select id action_id from attempt
+  `, [workspaceId, row.brand_id, row.id, row.name, JSON.stringify({
+    channelKey: "facebook", body: parsed.data.body, sourceUrl: row.url, rulesCheckedAt: row.rules_checked_at
+  }), JSON.stringify({ executionMode: "assisted_browser", communityId: row.id, approvalFirst: true }), row.identity_id,
+    `facebook-group-post:${row.id}:${crypto.randomUUID()}`, JSON.stringify({ rulesCheckedAt: row.rules_checked_at }),
+    `Facebook group: ${row.name}\nRules checked: ${row.rules_checked_at}\n\nPrepared post:\n${parsed.data.body.slice(0, 2000)}\n\nSaved group rules:\n${row.rules_text.slice(0, 2000)}`]);
+  const action = queued?.rows[0];
+  if (action) {
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id, identityId: row.identity_id,
+      communityId: row.id, actionAttemptId: action.action_id, eventType: "publish_queued", channelKey: "facebook",
+      actionType: "publish_group_post", automationMode: "approve", outcome: "needs_approval",
+      idempotencyKey: `facebook-group-post-queued:${action.action_id}` });
+    await insertTimeline({ tenantId: workspaceId, brandId: row.brand_id, family: "marketing", type: "facebook_group_post_queued",
+      title: `Facebook group post prepared for ${row.name}`,
+      body: "Nothing was posted. The content is waiting in Approvals with the saved group rules and destination.",
+      entityType: "growth_action", entityId: action.action_id, sourceTable: "growth_communities", sourceId: row.id });
+  }
+  revalidatePath("/app/growth");
+  revalidatePath("/app/approvals");
+}
+
+export async function queueFacebookCommunityJoinAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const parsed = communityJoinSchema.safeParse({ communityId: formData.get("communityId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const context = await queryPostgres<{ id: string; brand_id: string; identity_id: string; name: string; url: string }>(`
+    select c.id,c.brand_id,i.id identity_id,c.name,c.url
+    from public.growth_communities c
+    join lateral (
+      select id from public.growth_distribution_identities
+      where tenant_id=c.tenant_id and brand_id=c.brand_id and channel_key='facebook'
+        and authorization_status='connected' and risk_state='healthy'
+        and verification_status in ('verified','not_required')
+      order by updated_at desc limit 1
+    ) i on true
+    where c.tenant_id=$1 and c.id=$2 and c.channel_key='facebook' and c.status='active'
+      and c.url like 'https://%facebook.com/groups/%'
+      and coalesce(c.metadata_json->>'membershipState','unknown') in ('available','unknown')
+      and not exists (
+        select 1 from public.growth_action_attempts a
+        where a.tenant_id=c.tenant_id and a.community_id=c.id and a.action_key='request_group_join'
+          and a.status in ('needs_approval','approved','queued','running','succeeded')
+      )
+  `, [workspaceId, parsed.data.communityId]);
+  const row = context?.rows[0];
+  if (!row) return;
+  const queued = await queryPostgres<{ action_id: string }>(`
+    with queued_action as (
+      insert into public.outbound_action_queue (
+        tenant_id,brand_id,action_type,channel,status,risk_level,target_type,target_id,
+        recipient_label,payload_json,metadata_json
+      ) values ($1,$2,'publish_content','facebook','needs_review','high','growth_community',$3,
+        $4,$5::jsonb,$6::jsonb)
+      returning id
+    ), attempt as (
+      insert into public.growth_action_attempts (
+        tenant_id,brand_id,identity_id,community_id,queue_id,channel_key,action_key,execution_mode,
+        status,risk_state,idempotency_key,strategy_version,payload_json
+      ) select $1,$2,$7,$3,id,'facebook','request_group_join','assisted_browser',
+        'needs_approval','healthy',$8,'facebook-community-participation-v1',$9::jsonb from queued_action
+      returning id
+    ), requested as (
+      insert into public.approvals (tenant_id,brand_id,target_type,target_id,status,risk_level,notes)
+      select $1,$2,'growth_action',id,'pending','high',$10 from attempt
+    ) select id action_id from attempt
+  `, [workspaceId, row.brand_id, row.id, row.name,
+    JSON.stringify({ channelKey: "facebook", sourceUrl: row.url }),
+    JSON.stringify({ executionMode: "assisted_browser", communityId: row.id, approvalFirst: true }),
+    row.identity_id, `facebook-group-join:${row.id}:${crypto.randomUUID()}`,
+    JSON.stringify({ ownerApprovedJoinRequired: true }),
+    `Facebook group join request: ${row.name}\n${row.url}\n\nApproval permits Ferocity to click Join once. If Facebook asks membership questions, account-owner input is required; Ferocity will not invent answers.`]);
+  const action = queued?.rows[0];
+  if (action) {
+    await recordGrowthEvent({ tenantId: workspaceId, brandId: row.brand_id, identityId: row.identity_id,
+      communityId: row.id, actionAttemptId: action.action_id, eventType: "publish_queued", channelKey: "facebook",
+      actionType: "request_group_join", automationMode: "approve", outcome: "needs_approval",
+      idempotencyKey: `facebook-group-join-queued:${action.action_id}` });
+    await insertTimeline({ tenantId: workspaceId, brandId: row.brand_id, family: "marketing", type: "facebook_group_join_queued",
+      title: `Join request prepared for ${row.name}`,
+      body: "Nothing was joined automatically. The request is waiting in Approvals.",
+      entityType: "growth_action", entityId: action.action_id, sourceTable: "growth_communities", sourceId: row.id });
+  }
+  revalidatePath("/app/growth");
+  revalidatePath("/app/approvals");
 }
 
 export async function captureGrowthOpportunityAction(formData: FormData) {

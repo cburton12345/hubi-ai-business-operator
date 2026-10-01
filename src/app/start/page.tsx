@@ -56,9 +56,12 @@ const websiteConnectionOptions = [
 export default async function StartPage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string; source?: string; plan?: string; billing?: string }>;
+  searchParams: Promise<{ error?: string; source?: string; plan?: string; billing?: string; chatSession?: string }>;
 }) {
   const params = await searchParams;
+  const chatSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.chatSession ?? "")
+    ? params.chatSession
+    : null;
   const plan = ["earn", "ferocity_connect", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
   const billingMessage =
     params.billing === "stripe_not_ready"
@@ -75,17 +78,17 @@ export default async function StartPage({
         <PublicNav />
 
         <section className="public-hero">
-          <p className="eyebrow">Start simple</p>
-          <h1>Tell Ferocity what outcome you want first.</h1>
+          <p className="eyebrow">Guided setup</p>
+          <h1>Start with the outcome—not a wall of configuration.</h1>
           <p className="muted">
-            You do not need to understand every feature or integration before starting. Give Ferocity one outcome, create the workspace, and finish the important choices through guided setup.
+            Not sure which plan fits? Give Ferocity one outcome and we will shape the starting path. If you already know the fixed plan you want, choose it on Pricing and continue directly to secure checkout.
           </p>
           <div className="button-row">
-            <Link className="button" href="/business-health-score">
-              Run free grader first
+            <Link className="button" href="#start-request">
+              Start guided setup
             </Link>
             <Link className="button secondary-button" href="/pricing">
-              Compare plans
+              Choose a plan and checkout
             </Link>
           </div>
         </section>
@@ -108,16 +111,17 @@ export default async function StartPage({
 
         <section className="start-grid">
           <form action="/api/access-requests" method="post" className="panel form-stack span-7" id="start-request">
-            <input name="sourceDetail" type="hidden" value={params.source ?? "start_page"} />
+            <input name="sourceDetail" type="hidden" value={chatSession ? "ask_ferocity_chat" : params.source ?? "start_page"} />
+            {chatSession ? <input name="chatSessionId" type="hidden" value={chatSession} /> : null}
             <label className="hidden-field">
               Website
               <input name="website" tabIndex={-1} autoComplete="off" />
             </label>
 
             <div>
-              <p className="eyebrow">Create your workspace</p>
-              <h2>Create the workspace. Ferocity will guide the rest.</h2>
-              <p className="muted">Only your email and consent are required. The rest can wait until guided setup.</p>
+              <p className="eyebrow">Tell us where to start</p>
+              <h2>Give Ferocity the minimum. Finish the important choices with guidance.</h2>
+              <p className="muted">Only your email and consent are required. Earn can create a safe-mode workspace; other guided requests are reviewed before activation or billing.</p>
             </div>
 
             {params.error ? (
@@ -128,6 +132,11 @@ export default async function StartPage({
               </p>
             ) : null}
             {billingMessage ? <p className="success-panel">{billingMessage}</p> : null}
+            {chatSession ? (
+              <p className="success-panel">
+                Your Ferocity conversation is attached. Use the same email or phone you saved in chat so setup can continue from that diagnosis.
+              </p>
+            ) : null}
 
             <label>
               Work email
@@ -246,7 +255,7 @@ export default async function StartPage({
               <span>I agree Ferocity can contact me about setup and access. This form does not turn on customer messaging.</span>
             </label>
             <button className="button" type="submit">
-              Continue <ArrowRight size={16} />
+              Continue with guided setup <ArrowRight size={16} />
             </button>
           </form>
 
@@ -274,6 +283,14 @@ export default async function StartPage({
               </div>
             </div>
           </aside>
+        </section>
+        <section className="panel start-grader-option">
+          <div>
+            <p className="eyebrow">Want a quick outside-in review first?</p>
+            <h2>Use the free grader if you are still deciding what needs attention.</h2>
+            <p className="muted">It can evaluate visible business signals, but it cannot replace the connected diagnosis Ferocity builds from real company data.</p>
+          </div>
+          <Link className="button secondary-button" href="/business-health-score">Run the free grader</Link>
         </section>
         <PublicFooter />
       </section>

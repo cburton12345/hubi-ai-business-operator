@@ -179,7 +179,7 @@ def main():
     if not FFMPEG.exists():
         raise FileNotFoundError(f"FFmpeg not found: {FFMPEG}")
 
-    story_frame("demo-tour.png", "Ferocity notices", "There is demand the business is positioned to win.", "Capacity, season, service area, past customers, and approved proof point to the next growth move.", 1, "01-opportunity.png")
+    story_frame("demo-tour.png", "Ferocity notices", "A verified weather alert overlaps an area the business serves.", "Ferocity checks capacity, incoming leads, service area, past customers, and approved proof before recommending the next growth move.", 1, "01-opportunity.png")
     story_frame("acme-dashboard.png", "Ferocity creates", "The campaign starts feeding the business loop.", "Ads, search content, landing pages, and customer reactivation are prepared and published only through approved connected channels.", 2, "02-campaign.png")
     story_frame("demo-top.png", "Ferocity answers", "A prospect responds. The business is already ready.", "Phone, chat, text, email, and forms become one remembered conversation with qualification and the next action prepared.", 3, "03-lead.png")
     story_frame("demo-flow.png", "Ferocity advances", "The estimate does not become another forgotten task.", "The opportunity, pricing context, follow-up, and approved next step continue moving without losing the customer thread.", 4, "04-estimate.png")
@@ -193,7 +193,7 @@ def main():
     end_card("06-end.png", "MOST SOFTWARE TRACKS WORK.", "FEROCITY KEEPS IT MOVING.")
 
     flagship_text = (
-        "Ferocity notices an opportunity: demand is rising, the schedule has room, and approved project proof is ready. "
+        "Ferocity notices an opportunity: a verified weather alert overlaps the service area, the schedule has room, and approved project proof is ready. "
         "It builds the campaign, improves the search content, and publishes through connected channels within the owner's rules. "
         "A customer responds. Ferocity answers, qualifies the job, prepares the estimate, and keeps the opportunity moving. "
         "Once approved, it schedules the crew, updates the customer, and watches materials, time, and job progress. "

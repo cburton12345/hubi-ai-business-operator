@@ -2,6 +2,29 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export const EARN_AGREEMENT_VERSION = "earn-v1-2026-08-16";
+
+export async function ensureEarnFeatureEntitlements(tenantId: string) {
+  await queryPostgres(
+    `insert into public.workspace_feature_entitlements (
+       tenant_id,feature_key,status,usage_limit,usage_period,metadata_json,updated_at
+     )
+     select $1,feature_key,'enabled',null,'monthly',
+       metadata_json || jsonb_build_object(
+         'provisionedFromPlan','earn',
+         'entitlementReferencePlan','operator',
+         'pricingModel','earned_revenue',
+         'approvalMode',coalesce(metadata_json->>'approvalMode','review_required'),
+         'providerUsageSeparate',true
+       ),now()
+     from public.plan_feature_matrix
+     where plan_key='operator' and included=true
+     on conflict (tenant_id,feature_key) do update
+     set status='enabled',
+         metadata_json=public.workspace_feature_entitlements.metadata_json || excluded.metadata_json,
+         updated_at=now()`,
+    [tenantId]
+  );
+}
 export const EARN_RATES_BPS = {
   CUSTOMER_ORIGINATED_FEROCITY_MANAGED: 90,
   FEROCITY_ORIGINATED: 600,
@@ -65,6 +88,8 @@ export type EarnDashboard = {
     disputedCents: number;
     currentBalanceCents: number;
     providerUsageCents: number;
+    providerCostCoveredCents: number;
+    providerUsageSponsored: boolean;
   };
   lifetimeOriginatedRevenueCents: number;
   opportunities: Array<{
@@ -127,9 +152,14 @@ export async function getEarnDashboard(): Promise<EarnDashboard> {
        where tenant_id=$1`,
       [tenantId]
     ),
-    queryPostgres<{ provider_usage_cents: string }>(
-      `select coalesce(sum(amount_cents),0)::text provider_usage_cents from public.billing_usage_charges
-       where tenant_id=$1 and created_at>=date_trunc('month',now()) and status not in ('void','failed')`,
+    queryPostgres<{ provider_usage_cents: string; provider_cost_cents: string; sponsorship_status: string | null }>(
+      `select
+         (select coalesce(sum(amount_cents),0)::text from public.billing_usage_charges
+          where tenant_id=$1 and created_at>=date_trunc('month',now()) and status not in ('void','failed')) provider_usage_cents,
+         (select ceil(coalesce(sum(provider_cost_cents),0))::text from public.usage_meter_events
+          where tenant_id=$1 and billing_period_start=date_trunc('month',now())::date and status not in ('void','failed')) provider_cost_cents,
+         (select status from public.earn_provider_sponsorships
+          where tenant_id=$1 and status='active' and starts_at<=now() and (ends_at is null or ends_at>now()) limit 1) sponsorship_status`,
       [tenantId]
     ),
     queryPostgres<{
@@ -185,7 +215,9 @@ export async function getEarnDashboard(): Promise<EarnDashboard> {
       adjustmentsCents: Number(summary?.adjustments_cents ?? 0),
       disputedCents: Number(summary?.disputed_cents ?? 0),
       currentBalanceCents: Number(summary?.current_balance_cents ?? 0),
-      providerUsageCents: Number(provider?.provider_usage_cents ?? 0)
+      providerUsageCents: Number(provider?.provider_usage_cents ?? 0),
+      providerCostCoveredCents: provider?.sponsorship_status === "active" ? Number(provider.provider_cost_cents ?? 0) : 0,
+      providerUsageSponsored: provider?.sponsorship_status === "active"
     },
     lifetimeOriginatedRevenueCents: Number(summary?.lifetime_originated_revenue_cents ?? 0),
     opportunities: (opportunitiesResult?.rows ?? []).map((row) => ({

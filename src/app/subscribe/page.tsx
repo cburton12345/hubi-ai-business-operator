@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
-import { getPublicPlan, publicEarnPlan, publicPlans } from "@/lib/billing/public-plans";
+import { getPublicPlan, publicEarnPlan, publicPlans, publicPlanPrice, type BillingInterval } from "@/lib/billing/public-plans";
 
 const planDisplayOrder = ["starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
 const orderedPublicPlans = [...publicPlans].sort(
@@ -12,17 +12,19 @@ const orderedPublicPlans = [...publicPlans].sort(
 
 export const metadata: Metadata = {
   title: "Start Ferocity | Choose Your Operating Level",
-  description: "Choose how much of the organization Ferocity should coordinate, pay securely, and activate the shared Business Brain for your human and AI workforce.",
+  description: "Choose how much of the organization Ferocity should coordinate, pay securely, and activate one shared operating system for the business.",
   alternates: { canonical: "/subscribe" }
 };
 
 export default async function SubscribePage({
   searchParams
 }: {
-  searchParams: Promise<{ plan?: string; error?: string }>;
+  searchParams: Promise<{ plan?: string; error?: string; billing?: string }>;
 }) {
   const params = await searchParams;
   const plan = getPublicPlan(params.plan ?? "");
+  const interval: BillingInterval = params.billing === "annual" && plan?.annualPrice ? "year" : "month";
+  const displayedPrice = plan ? publicPlanPrice(plan, interval) : null;
   const isCallsPlan = plan?.key === "calls";
   const planGuidance = {
     ferocity_connect: "Turn an Android business phone into a Ferocity-controlled texting line.",
@@ -44,7 +46,7 @@ export default async function SubscribePage({
           <p className="muted">
             {plan
               ? `${plan.fit} Enter the account details below, then continue to secure checkout.`
-              : "Every plan starts with connected business memory and real AI guidance. Higher levels coordinate more people, AI employees, departments, providers, and operating loops."}
+              : "Every plan starts with connected business memory and practical guidance. Higher levels coordinate more people, departments, providers, and operating loops."}
           </p>
           <div className="trust-strip" aria-label="Ferocity activation assurances">
             <span><ShieldCheck size={15} /> Secure Stripe checkout</span>
@@ -71,7 +73,7 @@ export default async function SubscribePage({
             {orderedPublicPlans.map((option) => (
               <Link className="panel plan-choice" href={`/subscribe?plan=${option.key}`} key={option.key}>
                 <span>
-                  <span className="eyebrow">{option.featured ? "Most popular · " : ""}{option.name}</span>
+                  <span className="eyebrow">{option.featured ? "Recommended · " : ""}{option.name}</span>
                   <strong>{option.price}</strong>
                 </span>
                 <small>{planGuidance[option.key]}</small>
@@ -85,12 +87,13 @@ export default async function SubscribePage({
           <section className="start-grid">
             <form action="/api/billing/checkout" method="post" className="panel form-stack span-7">
               <input name="plan" type="hidden" value={plan.key} />
+              <input name="billingInterval" type="hidden" value={interval} />
               <input name="source" type="hidden" value="public_subscribe" />
 
               <div>
                 <p className="eyebrow">Account details</p>
                 <h2>Where should Ferocity create the workspace?</h2>
-                <p className="muted">{plan.name} · {plan.price} · <Link href="/pricing#plans">Change plan</Link></p>
+                <p className="muted">{plan.name} · {displayedPrice?.label} · <Link href="/pricing#plans">Change plan</Link></p>
               </div>
 
               {params.error ? (
@@ -126,7 +129,7 @@ export default async function SubscribePage({
               <p className="muted">
                 {isCallsPlan
                   ? "Renews monthly until canceled, plus $0.25 per completed voice minute. Phone behavior is configured after checkout."
-                  : "Renews monthly until canceled. Business rules and AI authority are configured after checkout and can be changed later."}
+                  : interval === "year" ? "Renews annually until canceled. Business rules and AI authority can be changed later." : "Renews monthly until canceled. Business rules and AI authority are configured after checkout and can be changed later."}
               </p>
             </form>
 

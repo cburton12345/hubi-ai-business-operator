@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { QueueTable } from "@/components/admin/QueueTable";
 import { decideApproval } from "@/app/app/approvals/actions";
@@ -22,7 +23,8 @@ export default async function ApprovalsPage() {
             render: (row) => (
               <>
                 <strong>{row.targetType}</strong>
-                <span className="muted">{row.notes || "No notes provided."}</span>
+                <span className="muted" style={{ whiteSpace: "pre-wrap" }}>{row.notes || "No notes provided."}</span>
+                {row.targetType === "growth_action" ? <Link href="/app/growth">Review in Growth</Link> : null}
               </>
             )
           },

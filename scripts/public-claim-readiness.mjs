@@ -10,15 +10,16 @@ const files = {
 };
 
 const required = [
-  ["home", "authorize routine actions"],
+  ["home", "Authorized routine work moves automatically within your rules"],
   ["demo", "authorized work"],
-  ["pricing", "Routine work prepared or executed when the required provider, consent, and authority are in place"],
-  ["pricing", "manual export remains available"],
+  ["pricing", "Routine work is prepared or executed only when the required provider, consent, and authority are in place"],
+  ["pricing", "other third-party costs stay separate"],
   ["commandStory", "approved follow-ups prepared"],
   ["commandStory", "decisions routed to the owner"],
   ["featuredDemo", "ferocity-demo-walkthrough.svg"],
-  ["integrations", "Google Search Console and Google Analytics read-only reporting"],
-  ["integrations", "Retell outbound AI voice"]
+  ["integrations", "keeps unsupported paths honest"],
+  ["integrations", "can revoke access"],
+  ["integrations", "Assisted when direct access is limited"]
 ];
 
 const forbidden = [

@@ -46,6 +46,23 @@ export const ferocityGoals: FerocityGoal[] = [
   }
 ];
 
+export const ferocityOnboardingGoals: FerocityGoal[] = [
+  {
+    key: "attention",
+    label: "Find my biggest bottleneck",
+    description: "Analyze where work, money, customers, or decisions are getting stuck.",
+    command: "Run the safe business scans across every connected area. Find all evidence-backed bottlenecks and opportunities Ferocity can currently verify, rank them by value, urgency, effort, confidence, and risk, then prepare or perform every safe authorized fix. Bring me only the three items that matter first and any decisions I must make. Do not invent problems when data is missing; identify the source or evidence needed to confirm them."
+  },
+  ferocityGoals.find((goal) => goal.key === "money")!,
+  {
+    key: "operations",
+    label: "Show me what is worth automating",
+    description: "Find repetitive work where automation would save meaningful time or prevent missed revenue.",
+    command: "Review this business's recurring work, delays, handoffs, and connected systems. Recommend only the automations that would create meaningful value, rank them by impact and risk, and prepare approval-safe next steps. Do not recommend automation merely because Ferocity has a feature for it."
+  },
+  ferocityGoals.find((goal) => goal.key === "setup")!
+];
+
 export const moneyOutcomes = [
   "Find the fastest revenue opportunities",
   "Create a plan to bring in new customers",

@@ -38,10 +38,9 @@ export async function ingestGrowthEngagement(input: InboundGrowthEngagement) {
     insert into public.messaging_conversations (
       tenant_id, brand_id, channel, provider_key, external_conversation_ref, subject, status,
       unread_count, last_message_at, last_inbound_at, metadata_json
-    ) values ($1,$2,$3,$4,$5,'Growth conversation','open',1,now(),now(),$6::jsonb)
+    ) values ($1,$2,$3,$4,$5,'Growth conversation','open',0,now(),null,$6::jsonb)
     on conflict (tenant_id, provider_key, external_conversation_ref) do update set
-      unread_count = public.messaging_conversations.unread_count + 1,
-      last_message_at = now(), last_inbound_at = now(), updated_at = now(),
+      updated_at = now(),
       metadata_json = public.messaging_conversations.metadata_json || excluded.metadata_json
     returning id
   `, [input.tenantId, input.brandId, messagingChannel[input.channelKey] ?? "internal", channel.providerKey,
@@ -68,6 +67,14 @@ export async function ingestGrowthEngagement(input: InboundGrowthEngagement) {
     on conflict (tenant_id, idempotency_key) do nothing returning id
   `, [input.tenantId, conversationId, messagingChannel[input.channelKey] ?? "internal", channel.providerKey,
     input.providerEventId, input.body, eventKey, JSON.stringify({ sourceUrl: input.sourceUrl, growthIdentityId: input.identityId })]);
+
+  if (message?.rows[0]) {
+    await queryPostgres(`
+      update public.messaging_conversations
+      set unread_count=unread_count + 1,last_message_at=now(),last_inbound_at=now(),updated_at=now()
+      where tenant_id=$1 and id=$2
+    `, [input.tenantId, conversationId]);
+  }
 
   await queryPostgres(`
     insert into public.growth_contact_identities (

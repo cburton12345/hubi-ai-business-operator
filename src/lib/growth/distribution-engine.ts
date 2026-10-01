@@ -73,7 +73,7 @@ export const growthChannels: Record<string, ChannelDefinition> = {
     label: "Facebook",
     providerKey: "facebook",
     defaultMode: "assisted_browser",
-    capabilities: { ...manualPublishing, community_rules: "assisted", comment: "assisted", reply: "assisted", receive_comment: "assisted" },
+    capabilities: { ...manualPublishing, discover: "assisted", read: "assisted", publish: "assisted", community_rules: "assisted", comment: "assisted", reply: "assisted", receive_comment: "assisted" },
     note: "Ferocity prepares and assists legitimate customer-owned Page and Group work; it does not evade Meta controls."
   },
   instagram: {

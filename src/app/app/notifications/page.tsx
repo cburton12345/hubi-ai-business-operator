@@ -28,6 +28,7 @@ function notificationSource(value: string) {
   if (value === "approval") return "Approval";
   if (value === "provider_request") return "Provider request";
   if (value === "funding_alert") return "Provider spending";
+  if (value === "marketing_recommendation") return "Growth opportunity";
   return "Ferocity";
 }
 
@@ -122,7 +123,7 @@ export default async function NotificationsPage({
             <p className="eyebrow">In-app notification center</p>
             <h2>Everything important stays here—even without SMS.</h2>
             <p className="muted">
-              AI work, approvals, failures, urgent customer issues, provider requests, and spending warnings use their existing Ferocity records. This feed brings them together without duplicating them.
+              AI work, approvals, failures, urgent customer issues, verified growth opportunities, provider requests, and spending warnings use their existing Ferocity records. This feed brings them together without duplicating them.
             </p>
           </div>
           <div className="button-row">

@@ -61,7 +61,10 @@ export function createConstructionFieldLogFallback(rawNote: string): Constructio
   const procurement = includesAny(lower, ["delivery", "material", "materials", "supplier", "backorder", "stockout", "missing parts"]);
   const conflict = includesAny(lower, ["conflict", "blocked", "doesn't fit", "does not fit", "mismatch", "rfi"]);
   const change = includesAny(lower, ["extra work", "change order", "hidden", "additional", "not in scope", "unforeseen"]);
-  const safety = includesAny(lower, ["unsafe", "injury", "injured", "accident", "hazard", "fall", "ppe"]);
+  const safety = includesAny(lower, [
+    "unsafe", "injury", "injured", "accident", "hazard", "fall", "ppe",
+    "electrical", "electric", "standing water", "temporary panel"
+  ]);
   const weather = includesAny(lower, ["rain", "snow", "wind", "weather", "heat", "storm", "freeze"]);
 
   if (safety) {
@@ -71,7 +74,7 @@ export function createConstructionFieldLogFallback(rawNote: string): Constructio
       title: "Possible safety issue reported",
       detail: "The field note contains safety-related language. A qualified person must confirm the facts and response."
     });
-    suggestedActions.push("Stop affected work if needed and have the responsible safety lead review the original note immediately.");
+    suggestedActions.push("Keep people away from the affected area, stop affected work if needed, and escalate to the responsible qualified safety or electrical lead; do not direct an unqualified person to inspect or touch the hazard.");
   }
   if (change) {
     riskFlags.push({

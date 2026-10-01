@@ -12,7 +12,8 @@ describe("model-aware AI pricing", () => {
     delete process.env.AI_INPUT_USD_PER_MILLION;
     delete process.env.AI_OUTPUT_USD_PER_MILLION;
     expect(estimateTextCostCents("gpt-5-nano", { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 })).toBe(45);
-    expect(estimateTextCostCents("gpt-5.6-luna", { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 })).toBe(700);
+    expect(estimateTextCostCents("gpt-5.6-luna", { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 })).toBe(140);
+    expect(estimateTextCostCents("gpt-6-astra", { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 })).toBe(6000);
   });
 
   it("applies the lower cached-input rate only to cached tokens", () => {
@@ -20,7 +21,7 @@ describe("model-aware AI pricing", () => {
       prompt_tokens: 1_000_000,
       completion_tokens: 0,
       prompt_tokens_details: { cached_tokens: 500_000 }
-    })).toBe(55);
+    })).toBe(11);
   });
 
   it("keeps explicit emergency pricing overrides", () => {

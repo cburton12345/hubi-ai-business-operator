@@ -17,6 +17,7 @@ describe("BYO AI boundaries", () => {
   it("keeps proprietary orchestration and public agents on Ferocity-managed AI", () => {
     expect(isByoAiEligibleRunType("owner_command_event_triage")).toBe(false);
     expect(isByoAiEligibleRunType("public_website_chat_reply")).toBe(false);
+    expect(isByoAiEligibleRunType("public_website_chat_reply_recovery")).toBe(false);
   });
 
   it("routes managed AI through the Netlify AI Gateway when it is available", () => {

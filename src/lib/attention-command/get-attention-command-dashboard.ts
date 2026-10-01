@@ -7,6 +7,7 @@ import { getOwnerNeeds } from "@/lib/owner-command-center/get-owner-needs";
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import { getOwnerRemindersDashboard } from "@/lib/reminders/owner-reminders";
 import { getSafetyReadinessDashboard } from "@/lib/safety-readiness/get-safety-readiness-dashboard";
+import { buildBusinessOpportunityBrief, type BusinessOpportunityBrief, type OpportunityCandidate } from "./business-opportunity-diagnostic";
 
 export type AttentionCommandAction = {
   title: string;
@@ -31,6 +32,7 @@ export type AttentionCommandDashboard = {
   workspaceName: string;
   briefing: string;
   direction: AttentionCommandAction;
+  opportunityBrief: BusinessOpportunityBrief;
   nudges: AttentionCommandNudge[];
   metrics: {
     ownerNeeds: number;
@@ -106,6 +108,12 @@ export async function getAttentionCommandDashboard(): Promise<AttentionCommandDa
       href: need.href,
       urgency: need.priority
     })),
+    ...ownerCenter.needsOwner.slice(0, 4).map((event) => ({
+      title: event.title,
+      detail: event.recommendedAction ?? event.summary,
+      href: event.actionHref,
+      urgency: event.severity === "critical" ? ("critical" as const) : ("high" as const)
+    })),
     ...ownerCenter.criticalIssues.slice(0, 3).map((event) => ({
       title: event.title,
       detail: event.recommendedAction ?? event.summary,
@@ -129,7 +137,10 @@ export async function getAttentionCommandDashboard(): Promise<AttentionCommandDa
         }
       : null
   ];
-  const doFirst = doFirstRaw.filter((item): item is AttentionCommandAction => Boolean(item)).slice(0, 8);
+  const doFirst = doFirstRaw
+    .filter((item): item is AttentionCommandAction => Boolean(item))
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.title === item.title && candidate.href === item.href) === index)
+    .slice(0, 8);
 
   const moneyMovesRaw: Array<AttentionCommandAction | null> = [
     ...ownerCenter.makeMoneyNext.slice(0, 4).map((item) => ({
@@ -312,13 +323,43 @@ export async function getAttentionCommandDashboard(): Promise<AttentionCommandDa
     reports.providerGaps.length ? `${reports.providerGaps.length} provider gap${reports.providerGaps.length === 1 ? "" : "s"} ${reports.providerGaps.length === 1 ? "keeps" : "keep"} some work manual.` : "Provider gaps are clear."
   ].join(" ");
 
+  const opportunityCandidates: OpportunityCandidate[] = [
+    ...doFirst.map((item) => ({
+      ...item,
+      evidence: "Detected in current workspace records, queues, or safety checks.",
+      confidence: item.urgency === "critical" ? 96 : item.urgency === "high" ? 91 : 84,
+      handling: item.href === "/app/integrations"
+        ? ("connection_required" as const)
+        : item.urgency === "critical" || /owner|approval|decision|review/i.test(`${item.title} ${item.detail}`)
+          ? ("owner_decision" as const)
+          : ("ferocity_can_prepare" as const)
+    })),
+    ...moneyMoves.map((item) => ({
+      ...item,
+      evidence: "Detected from current leads, estimates, invoices, payments, or attributed pipeline records.",
+      confidence: 92,
+      handling: "ferocity_can_prepare" as const
+    })),
+    ...reports.providerGaps.slice(0, 8).map((gap) => ({
+      title: `${gap.displayName} connection needs attention`,
+      detail: gap.nextStep,
+      href: "/app/integrations",
+      urgency: "medium" as const,
+      evidence: `Current provider status: ${gap.status}.`,
+      confidence: 97,
+      handling: "connection_required" as const
+    }))
+  ];
+  const opportunityBrief = buildBusinessOpportunityBrief(opportunityCandidates);
+
   return {
     workspaceName: ownerCenter.workspaceName,
     briefing,
     direction,
+    opportunityBrief,
     nudges,
     metrics: {
-      ownerNeeds: ownerNeeds.length + ownerCenter.needsOwner.length,
+      ownerNeeds: ownerNeeds.length,
       criticalIssues: ownerCenter.criticalIssues.length,
       blockedActions,
       needsReview,

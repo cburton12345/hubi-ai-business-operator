@@ -231,7 +231,7 @@ export default async function AiWorkforcePage({
     <QueuePageShell
       eyebrow="AI Workforce"
       title="Ask Ferocity"
-      description="Ask anything about the business or tell Ferocity what you want done. It routes the request to the right AI employees and systems, reads the Business Brain, prepares or completes authorized work, and logs what happened."
+      description="Ask anything about the business or name the outcome you want. Ferocity reads the shared Business Brain, coordinates the right operating department and systems, advances authorized work, and logs what happened."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -419,10 +419,10 @@ export default async function AiWorkforcePage({
               <form action={updateAiAgentWorkflowAction} className="form-stack compact-form">
                 <input name="workflowId" type="hidden" value={workflow.id} />
                 <details>
-                  <summary>Customize this AI employee</summary>
+                  <summary>Customize this department role</summary>
                   <div className="form-stack section-actions">
                     <label>
-                      Employee name
+                      Role name
                       <input name="agentName" defaultValue={workflow.agentName} required maxLength={100} />
                     </label>
                     <label>
@@ -549,7 +549,7 @@ export default async function AiWorkforcePage({
             ))}
             {agentDashboard.outputs.length === 0 ? (
               <li className="list-row">
-                <span className="muted">Run an AI employee to create outputs here.</span>
+                <span className="muted">Run a department workflow to create outputs here.</span>
               </li>
             ) : null}
           </ul>
@@ -678,7 +678,7 @@ export default async function AiWorkforcePage({
             <h2>
               <ShieldCheck size={18} /> Safety Rules
             </h2>
-            <p className="muted">The AI Workforce can prepare and recommend. Messages, public posts, payment requests, ads, and other important actions still need the right approvals.</p>
+            <p className="muted">The AI Workforce operates inside Ferocity&apos;s shared business context. Messages, public posts, payment requests, ads, and other protected actions still follow the business&apos;s approvals.</p>
           </div>
           <Link className="mini-button" href="/app/go-live">Go Live scan</Link>
         </div>
@@ -689,7 +689,7 @@ export default async function AiWorkforcePage({
             ["Draft-first marketing", "SEO pages, GBP posts, social content, ads, and review responses stay reviewable."],
             ["Connected tools", "Email, app alerts, payments, calendars, ads, and other tools follow approval and spending rules."],
             ["Traditional mode stays", "Power users can still use every normal page, setting, and dashboard."],
-            ["Easy to expand", "New AI employees should be data/config additions, not another duplicate app."]
+            ["Replaceable execution", "Ferocity owns business context, authority, and outcomes; the underlying AI runtime can change without rebuilding the operating system."]
           ].map(([title, body]) => (
             <div className="status-card" key={title}>
               <div>

@@ -112,11 +112,11 @@ export async function POST(request: NextRequest) {
     moneyCents:
       amountCents ||
       (selectedPlan === "growth"
-        ? 19900
+        ? 34900
         : selectedPlan === "operator"
-          ? 39900
+          ? 69900
           : selectedPlan === "starter"
-            ? 7900
+            ? 14900
             : selectedPlan === "job_tracker"
               ? 3900
               : 0),

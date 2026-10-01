@@ -35,7 +35,24 @@ class GatewayService : Service() {
     }
     private fun flushPending(api: ApiClient) {
         val store = EventStore(this)
-        store.pending().forEach { event -> runCatching { api.postEvent(event.path, event.payload); store.acknowledge(event.id) }.onFailure { store.failed(event.id); return } }
+        store.pending().forEach { event ->
+            try {
+                api.postEvent(event.path, event.payload)
+                store.acknowledge(event.id)
+            } catch (error: ApiRequestException) {
+                // Invalid or already-final durable events can never succeed on a
+                // later retry. Drop only those terminal responses; retain auth,
+                // rate-limit, and server failures for recovery.
+                if (error.statusCode in setOf(400, 404, 409, 410)) store.acknowledge(event.id)
+                else {
+                    store.failed(event.id)
+                    return
+                }
+            } catch (_: Exception) {
+                store.failed(event.id)
+                return
+            }
+        }
     }
     private fun send(job: JSONObject) {
         val jobId = job.getString("id")

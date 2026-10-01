@@ -4,6 +4,7 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type MessagingDashboard = {
   webhookUrl: string;
+  workspaceTimezone: string;
   inboundReplyMode: "off" | "review" | "automatic";
   providers: Array<{
     providerKey: string;
@@ -98,6 +99,14 @@ export type MessagingDashboard = {
     manualHref: string | null;
     events: Array<{ status: string; rawStatus: string | null; reason: string | null; at: string }>;
   }>;
+  scheduledTexts: Array<{
+    id: string;
+    providerKey: string;
+    recipient: string;
+    body: string;
+    status: string;
+    scheduledFor: string;
+  }>;
 };
 
 function envAppUrl() {
@@ -126,7 +135,7 @@ function capabilities(row: {
 
 export async function getMessagingDashboard(): Promise<MessagingDashboard> {
   const tenantId = await getCurrentWorkspaceId();
-  const [providerResult, accountResult, registrationResult, metricResult, failureResult, conversationResult, messageHealthResult, inboundReplyPolicy] = await Promise.all([
+  const [providerResult, accountResult, registrationResult, metricResult, failureResult, conversationResult, messageHealthResult, inboundReplyPolicy, workspaceSettings, scheduledTextResult] = await Promise.all([
     queryPostgres<{
       id: string;
       provider_key: string;
@@ -372,13 +381,34 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
       `select status,requires_human_approval from public.live_action_policies
        where tenant_id=$1 and action_key='inbound_sms_reply' and provider_key='ferocity_connect' limit 1`,
       [tenantId]
+    ),
+    queryPostgres<{ timezone: string }>(
+      "select coalesce(timezone,'America/Los_Angeles') as timezone from public.workspace_settings where tenant_id=$1 limit 1",
+      [tenantId]
+    ),
+    queryPostgres<{
+      id: string;
+      provider_key: string;
+      recipient_label: string;
+      body: string;
+      status: string;
+      scheduled_for: Date;
+    }>(
+      `select id,provider_key,recipient_label,coalesce(payload_json->>'body','') as body,status,scheduled_for
+       from public.outbound_action_queue
+       where tenant_id=$1 and action_type='sms_send' and target_type='scheduled_message'
+         and status in ('needs_review','approved','queued','failed','blocked')
+       order by scheduled_for asc limit 50`,
+      [tenantId]
     )
   ]);
 
   const metricRow = metricResult?.rows[0];
+  const workspaceTimezone = workspaceSettings?.rows[0]?.timezone ?? "America/Los_Angeles";
 
   return {
     webhookUrl: `${envAppUrl().replace(/\/$/, "")}/api/messaging/webhooks/{provider}`,
+    workspaceTimezone,
     inboundReplyMode: inboundReplyPolicy?.rows[0]?.status === "live" && !inboundReplyPolicy.rows[0].requires_human_approval
       ? "automatic" : inboundReplyPolicy?.rows[0]?.status === "disabled" ? "off" : "review",
     providers: (providerResult?.rows ?? []).map((row) => {
@@ -484,6 +514,16 @@ export async function getMessagingDashboard(): Promise<MessagingDashboard> {
       retryAttempt: row.retry_attempt,
       manualHref: row.manual_href,
       events: Array.isArray(row.events_json) ? row.events_json : []
+    })),
+    scheduledTexts: (scheduledTextResult?.rows ?? []).map((row) => ({
+      id: row.id,
+      providerKey: row.provider_key,
+      recipient: row.recipient_label,
+      body: row.body,
+      status: row.status,
+      scheduledFor: new Intl.DateTimeFormat("en", {
+        dateStyle: "medium", timeStyle: "short", timeZone: workspaceTimezone
+      }).format(row.scheduled_for)
     }))
   };
 }

@@ -195,7 +195,7 @@ for (const header of ["X-Content-Type-Options", "X-Frame-Options", "Referrer-Pol
 }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-for (const scriptName of ["public:guard", "ui:guard", "features:integrated", "predeploy:local", "launch:smoke", "labor:smoke", "provider:lanes:smoke"]) {
+for (const scriptName of ["public:guard", "capability:truth", "ui:guard", "features:integrated", "predeploy:local", "launch:smoke", "labor:smoke", "provider:lanes:smoke"]) {
   if (!packageJson.scripts?.[scriptName]) {
     throw new Error(`package.json is missing required script: ${scriptName}`);
   }

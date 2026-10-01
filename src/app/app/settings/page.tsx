@@ -1,9 +1,18 @@
+import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { can } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/require-permission";
-import { getFeaturedDemo, getPublicCopy, publicCopyKeys } from "@/lib/public-site/featured-demo";
+import { getFeaturedDemo, getPublicCopyEditorState, publicCopyKeys } from "@/lib/public-site/featured-demo";
 import { getWorkspaceSettings } from "@/lib/workspace/get-workspace-settings";
-import { updateChecklistAction, updateFeaturedDemoAction, updatePublicCopyAction, updateWorkspaceSettingsAction } from "./actions";
+import {
+  discardPublicCopyDraftAction,
+  publishPublicCopyAction,
+  restorePublicCopyRevisionAction,
+  savePublicCopyDraftAction,
+  updateChecklistAction,
+  updateFeaturedDemoAction,
+  updateWorkspaceSettingsAction,
+} from "./actions";
 
 const publicCopyLabels = {
   home_hero: "Homepage headline",
@@ -18,7 +27,7 @@ export default async function WorkspaceSettingsPage({ searchParams }: { searchPa
     getWorkspaceSettings(),
     getCurrentActor(),
     getFeaturedDemo(),
-    ...publicCopyKeys.map((key) => getPublicCopy(key))
+    ...publicCopyKeys.map((key) => getPublicCopyEditorState(key))
   ]);
   const canManagePublicSite = can(actor, "platform:manage");
   const checklistText = settings.onboardingChecklist.map((item) => `${item.done ? "[x]" : "[ ]"} ${item.label}`).join("\n");
@@ -149,26 +158,65 @@ export default async function WorkspaceSettingsPage({ searchParams }: { searchPa
               <h2>Headlines and calls to action</h2>
               <p className="muted">Edit the highest-impact public wording without changing layouts or deploying code. Every saved revision is retained.</p>
             </div>
-            {query.content === "saved" ? <p className="success-message">The public wording was updated.</p> : null}
+            {query.content === "draft_saved" ? <p className="success-message">Draft saved. Nothing public changed yet.</p> : null}
+            {query.content === "published" ? <p className="success-message">The approved wording is now public.</p> : null}
+            {query.content === "restored" ? <p className="success-message">That published revision was restored.</p> : null}
+            {query.content === "discarded" ? <p className="success-message">The draft was discarded. The public wording did not change.</p> : null}
             {query.content === "invalid" ? <p className="error-message">That wording could not be saved. Keep links inside Ferocity and stay within the field limits.</p> : null}
             <div className="grid">
               {publicCopyKeys.map((key, index) => {
-                const slot = copySlots[index];
+                const state = copySlots[index];
+                const slot = state.draft?.value ?? state.published;
                 return (
-                  <form action={updatePublicCopyAction} className="panel span-6 form-stack" key={key}>
-                    <input name="contentKey" type="hidden" value={key} />
+                  <article className="panel span-6 form-stack" key={key}>
                     <h3>{publicCopyLabels[key]}</h3>
-                    <label>Small label<input name="eyebrow" defaultValue={slot.eyebrow} /></label>
-                    <label>Headline<input name="headline" defaultValue={slot.headline} /></label>
-                    <label>Description<textarea name="body" rows={4} defaultValue={slot.body} /></label>
-                    <div className="form-grid two">
-                      <label>Primary button<input name="ctaLabel" defaultValue={slot.ctaLabel} /></label>
-                      <label>Primary destination<input name="ctaHref" defaultValue={slot.ctaHref} /></label>
-                      <label>Second button<input name="secondaryCtaLabel" defaultValue={slot.secondaryCtaLabel} /></label>
-                      <label>Second destination<input name="secondaryCtaHref" defaultValue={slot.secondaryCtaHref} /></label>
-                    </div>
-                    <button className="button" type="submit">Save {publicCopyLabels[key].toLowerCase()}</button>
-                  </form>
+                    <p className="muted">{state.draft ? "Editing a private draft. The published page is unchanged." : "No unpublished changes."}</p>
+                    <form action={savePublicCopyDraftAction} className="form-stack">
+                      <input name="contentKey" type="hidden" value={key} />
+                      <label>Small label<input name="eyebrow" defaultValue={slot.eyebrow} /></label>
+                      <label>Headline<input name="headline" defaultValue={slot.headline} /></label>
+                      <label>Description<textarea name="body" rows={4} defaultValue={slot.body} /></label>
+                      <div className="form-grid two">
+                        <label>Primary button<input name="ctaLabel" defaultValue={slot.ctaLabel} /></label>
+                        <label>Primary destination<input name="ctaHref" defaultValue={slot.ctaHref} /></label>
+                        <label>Second button<input name="secondaryCtaLabel" defaultValue={slot.secondaryCtaLabel} /></label>
+                        <label>Second destination<input name="secondaryCtaHref" defaultValue={slot.secondaryCtaHref} /></label>
+                      </div>
+                      <button className="button secondary-button" type="submit">Save private draft</button>
+                    </form>
+                    {state.draft ? (
+                      <div className="button-row">
+                        <Link className="button secondary-button" href={`/app/settings/public-preview?slot=${key}`}>Preview draft</Link>
+                        <form action={publishPublicCopyAction}>
+                          <input name="contentKey" type="hidden" value={key} />
+                          <input name="revisionId" type="hidden" value={state.draft.id} />
+                          <button className="button" type="submit">Publish draft</button>
+                        </form>
+                        <form action={discardPublicCopyDraftAction}>
+                          <input name="contentKey" type="hidden" value={key} />
+                          <input name="revisionId" type="hidden" value={state.draft.id} />
+                          <button className="mini-button" type="submit">Discard draft</button>
+                        </form>
+                      </div>
+                    ) : null}
+                    {state.revisions.length ? (
+                      <details>
+                        <summary>Published history ({state.revisions.length})</summary>
+                        <div className="stacked-list">
+                          {state.revisions.map((revision) => (
+                            <div className="list-row" key={revision.id}>
+                              <span><strong>{revision.value.headline}</strong><br /><small>{new Date(revision.createdAt).toLocaleString()}</small></span>
+                              <form action={restorePublicCopyRevisionAction}>
+                                <input name="contentKey" type="hidden" value={key} />
+                                <input name="revisionId" type="hidden" value={revision.id} />
+                                <button className="mini-button" type="submit">Restore</button>
+                              </form>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </article>
                 );
               })}
             </div>

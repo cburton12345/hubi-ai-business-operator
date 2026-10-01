@@ -26,7 +26,8 @@ export async function discoverBusinessProfileLocations(tenantId: string, fetchIm
        address_text=excluded.address_text,primary_category=excluded.primary_category,verification_state=excluded.verification_state,
        metadata_json=excluded.metadata_json,source_updated_at=now(),updated_at=now()`,
       [tenantId, connection, location.accountName, location.name, location.title, location.storeCode, location.websiteUri,
-        location.primaryPhone, location.addressText, location.primaryCategory, location.verificationState, JSON.stringify(location.metadata)]
+        location.primaryPhone, location.addressText, location.primaryCategory, location.verificationState,
+        JSON.stringify({ ...location.metadata, profile: location.profile })]
     );
   }
   await queryPostgres(

@@ -8,6 +8,9 @@ import type { PhoneConnection } from "@/lib/phone/phone-connections";
 import {
   activateVoiceAssistantAction,
   placeVoiceTestCallAction,
+  requestManagedNumberPortOutAction,
+  removeHumanTransferDestinationAction,
+  saveHumanTransferDestinationAction,
   selectVoiceProviderRouteAction,
   syncVoiceAssistantAction
 } from "./actions";
@@ -137,6 +140,63 @@ export default async function ReceptionistSetupPage() {
         ))}
       </section>
 
+      <section className="panel section-actions" id="human-routing">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Human handoff</p>
+            <h2>Choose who receives transferred calls</h2>
+            <p className="muted">Add owners, office staff, departments, or an on-call teammate. Ferocity selects the appropriate verified destination from the caller’s request and your escalation rules.</p>
+          </div>
+          <span className="pill">Tenant-specific routing</span>
+        </div>
+        <ul className="list">
+          {dashboard.transferDestinations.map((destination) => (
+            <li className="list-row" key={destination.id}>
+              <div>
+                <h3>{destination.label}{destination.isPrimary ? " — primary" : ""}</h3>
+                <p className="muted">{destination.role.replaceAll("_", " ")} · {destination.phoneNumber} · priority {destination.priority}</p>
+                <p className="muted">
+                  {destination.availableStart && destination.availableEnd
+                    ? `${destination.availableStart}-${destination.availableEnd}, weekdays ${destination.weekdays.join(", ")} (${destination.timezone})`
+                    : "Available without a narrower schedule"}
+                </p>
+              </div>
+              <form action={removeHumanTransferDestinationAction}>
+                <input name="destinationId" type="hidden" value={destination.id} />
+                <button className="button secondary-button" type="submit">Remove</button>
+              </form>
+            </li>
+          ))}
+          {!dashboard.transferDestinations.length ? <li className="list-row"><span className="muted">No team destinations yet. The primary fallback saved above remains available.</span></li> : null}
+        </ul>
+        <details className="panel subtle-panel section-actions">
+          <summary>Add a human or department</summary>
+          <form action={saveHumanTransferDestinationAction} className="form-grid section-actions">
+            <label>Name or department<input name="label" placeholder="Office, Chris, Sales, On-call tech" required /></label>
+            <label>Routes for<select name="routingRole" defaultValue="general">
+              <option value="general">General human requests</option><option value="owner">Owner</option>
+              <option value="office">Office</option><option value="sales">Sales</option>
+              <option value="service">Service</option><option value="billing">Billing</option>
+              <option value="emergency">Emergency</option><option value="on_call">On call</option>
+            </select></label>
+            <label>Phone number<input name="phoneNumber" type="tel" pattern="\+[1-9][0-9]{7,14}" placeholder="+17155551234" required /></label>
+            <label>Priority<input name="priority" type="number" min="1" max="999" defaultValue="100" /></label>
+            <label>Available from<input name="availableStart" type="time" /></label>
+            <label>Available until<input name="availableEnd" type="time" /></label>
+            <label>Timezone<input name="timezone" defaultValue="America/Chicago" required /></label>
+            <fieldset className="span-12"><legend>Available days</legend><div className="button-row">
+              {[[0, "Sun"], [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"]].map(([day, name]) => (
+                <label key={day}><input name={`weekday:${day}`} type="checkbox" defaultChecked={Number(day) >= 1 && Number(day) <= 5} />{name}</label>
+              ))}
+            </div></fieldset>
+            <label className="checkbox-row"><input name="isPrimary" type="checkbox" /><span>Use as the primary general handoff</span></label>
+            <label className="checkbox-row span-12"><input name="authorizationConfirmed" type="checkbox" required /><span>I confirm this business is authorized to transfer calls to this number.</span></label>
+            <button className="button" type="submit">Add and synchronize routing</button>
+          </form>
+        </details>
+        <p className="muted">If no appropriate person is available, Ferocity keeps helping or records a complete callback request. True simultaneous ringing requires a connected carrier with multi-leg routing.</p>
+      </section>
+
       <section className="panel section-actions" id="numbers">
         <div className="list-row flush-row">
           <div>
@@ -156,6 +216,17 @@ export default async function ReceptionistSetupPage() {
                 <span className="pill">{label(number.status)}</span>
                 <span className="pill">{number.inboundEnabled ? "inbound on" : "inbound off"}</span>
                 <span className="pill">{number.outboundEnabled ? "outbound on" : "outbound off"}</span>
+                <span className={`pill ${number.callbackStatus === "certified" ? "" : "medium"}`}>
+                  callback {label(number.callbackStatus)}
+                </span>
+                {number.retainUntil ? <span className="pill medium">protected until {new Date(number.retainUntil).toLocaleDateString("en-US")}</span> : null}
+                {number.portOutRequested ? <span className="pill medium">port-out protected</span> : null}
+                {number.numberMode === "ferocity_managed" && number.status !== "released" && !number.portOutRequested ? (
+                  <form action={requestManagedNumberPortOutAction}>
+                    <input type="hidden" name="numberId" value={number.id} />
+                    <button className="button secondary-button" type="submit">Protect for port-out</button>
+                  </form>
+                ) : null}
               </div>
             </li>
           ))}

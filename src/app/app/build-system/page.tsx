@@ -147,6 +147,7 @@ export default async function BuildSystemPage() {
   const [{ logs, latestAppliedId, assets, readiness, integrations }, guidance] = await Promise.all([getBuildSystemData(), getSetupGuidance()]);
   const nextActions = buildNextActions(readiness, integrations, latestAppliedId);
   const readinessItems = buildReadinessItems(readiness, integrations);
+  const firstOpenAction = nextActions.find((item) => !item.done);
 
   return (
     <QueuePageShell
@@ -154,7 +155,34 @@ export default async function BuildSystemPage() {
       title="Let Ferocity Help Set Up The Business"
       description="Tell Ferocity what the business needs. It will suggest the first useful steps and keep you in control."
     >
-      <section className="panel section-actions">
+      <section className="panel section-actions setup-coach-first-step">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Your first step</p>
+            <h2>{firstOpenAction?.title ?? "Your foundation is ready"}</h2>
+            <p>{firstOpenAction?.body ?? "Ferocity has enough information to start helping. Ask it what will make the biggest difference next."}</p>
+            <p className="muted">Do this one thing first. The rest can wait.</p>
+          </div>
+          <div className="button-row">
+            {firstOpenAction ? <Link className="button" href={firstOpenAction.href}>{firstOpenAction.button}</Link> : null}
+            <Link className="button secondary-button" href="/app/ferocity?command=Walk%20me%20through%20setting%20up%20my%20business%20one%20step%20at%20a%20time.%20Choose%20the%20best%20place%20to%20start%20and%20do%20not%20overwhelm%20me.">
+              Ask Ferocity to lead me
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <AiCommandPanel
+        title="Or let Ferocity choose and prepare the starting point"
+        description="Press the button as written, or change the sentence if there is one result you care about most."
+        initialCommand="Choose the single best place to start for this business. Prepare the safe setup work you can, then tell me only the next decision I need to make."
+        submitLabel="Start setting up my business"
+        compact
+      />
+
+      <details className="panel section-actions">
+        <summary>See why Ferocity chose this and view the rest of the setup plan</summary>
+        <div className="section-actions">
         <div className="list-row flush-row">
           <div>
             <p className="eyebrow">{guidance.aiUsed ? "AI setup coach" : "Setup coach"}</p>
@@ -189,14 +217,12 @@ export default async function BuildSystemPage() {
             </li>
           ))}
         </ul>
-      </section>
+        </div>
+      </details>
 
-      <AiCommandPanel
-        title="Tell Ferocity What To Set Up"
-        description="Use this like a setup coach. Ferocity should tell you what will help first, what can wait, and what to do next."
-        initialCommand="Tell me the fastest way Ferocity can help this business. Keep it simple and show the next best steps."
-        submitLabel="Show my simple setup path"
-      />
+      <details className="panel section-actions">
+        <summary>Advanced setup and detailed progress</summary>
+        <div className="section-actions">
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -439,6 +465,8 @@ export default async function BuildSystemPage() {
           ) : null}
         </ul>
       </section>
+        </div>
+      </details>
     </QueuePageShell>
   );
 }

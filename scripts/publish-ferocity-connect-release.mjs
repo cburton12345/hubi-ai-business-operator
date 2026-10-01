@@ -13,10 +13,10 @@ if (fs.existsSync(".env.local")) {
 }
 
 const publish = process.argv.includes("--publish");
-const versionName = "1.0.1";
-const versionCode = 2;
+const versionName = "1.0.2";
+const versionCode = 3;
 const artifactPath = path.resolve("output", `Ferocity-Connect-${versionName}-production-signed.apk`);
-const expectedSha256 = "6A4FD1FD52ADA1D4E6461001FAB4374C290657E5958B0A83FCE171B24A3FFDD4";
+const expectedSha256 = "ADF24D666794CF42460561B39A08D481DFB2F72D4F97F30213F6FE4B50DF0D24";
 const bucket = "ferocity-connect-releases";
 const storagePath = `android/${versionCode}/Ferocity-Connect-${versionName}.apk`;
 
@@ -54,7 +54,7 @@ try {
        version_name=excluded.version_name,storage_bucket=excluded.storage_bucket,storage_path=excluded.storage_path,
        sha256=excluded.sha256,file_size_bytes=excluded.file_size_bytes,status=excluded.status,
        published_at=excluded.published_at,release_notes=excluded.release_notes,updated_at=now()`,
-    [versionName, versionCode, bucket, storagePath, sha256, bytes.length, publish ? "published" : "draft", "Initial production-signed Ferocity Connect release."]
+    [versionName, versionCode, bucket, storagePath, sha256, bytes.length, publish ? "published" : "draft", "Stops stale final SMS status events from retrying forever and improves durable outbox recovery."]
   );
   await client.query("commit");
 } catch (error) {
@@ -65,4 +65,3 @@ try {
 }
 
 console.log(JSON.stringify({ uploaded: true, published: publish, versionName, versionCode, sha256, bytes: bytes.length, storagePath }, null, 2));
-

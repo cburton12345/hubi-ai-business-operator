@@ -41,12 +41,94 @@ const reconciliationSchema = z.object({
   notes: z.string().trim().max(1500).optional()
 });
 
+const earnSponsorshipSchema = z.object({
+  tenantId: z.string().uuid(),
+  monthlyCap: z.coerce.number().positive().max(100_000),
+  endsAt: z.union([z.literal(""), z.string().date()]).optional(),
+  reason: z.string().trim().min(10).max(1000),
+  writtenTerms: z.string().trim().min(20).max(3000)
+});
+
+const earnSponsorshipStatusSchema = z.object({
+  tenantId: z.string().uuid(),
+  status: z.enum(["active", "paused", "revoked"])
+});
+
 function formBoolean(formData: FormData, key: string) {
   return formData.get(key) === "true";
 }
 
 function nullableCents(value: number | "" | undefined) {
   return value === "" || value === undefined ? null : Math.round(value * 100);
+}
+
+export async function saveEarnProviderSponsorshipAction(formData: FormData) {
+  const actor = await requirePermission("platform:manage");
+  const parsed = earnSponsorshipSchema.safeParse({
+    tenantId: formData.get("tenantId"),
+    monthlyCap: formData.get("monthlyCap"),
+    endsAt: formData.get("endsAt") ?? "",
+    reason: formData.get("reason"),
+    writtenTerms: formData.get("writtenTerms")
+  });
+  if (!parsed.success) return;
+
+  const eligible = await queryPostgres<{ plan_key: string }>(
+    `select coalesce(s.plan_key,t.plan_key,'free') plan_key
+     from public.tenants t left join public.billing_subscriptions s on s.tenant_id=t.id
+     where t.id=$1 limit 1`,
+    [parsed.data.tenantId]
+  );
+  if (eligible?.rows[0]?.plan_key !== "earn") return;
+
+  const capCents = Math.round(parsed.data.monthlyCap * 100);
+  const actorId = actor.userId === "admin-token" ? null : actor.userId;
+  await queryPostgres(
+    `insert into public.earn_provider_sponsorships (
+       tenant_id,status,monthly_provider_cost_cap_cents,starts_at,ends_at,
+       approved_by_user_id,reason,written_terms,metadata_json,updated_at
+     ) values ($1,'active',$2,now(),nullif($3,'')::date,$4,$5,$6,$7::jsonb,now())
+     on conflict (tenant_id) do update set
+       status='active',monthly_provider_cost_cap_cents=excluded.monthly_provider_cost_cap_cents,
+       starts_at=now(),ends_at=excluded.ends_at,approved_by_user_id=excluded.approved_by_user_id,
+       reason=excluded.reason,written_terms=excluded.written_terms,
+       metadata_json=public.earn_provider_sponsorships.metadata_json || excluded.metadata_json,
+       updated_at=now()`,
+    [parsed.data.tenantId, capCents, parsed.data.endsAt ?? "", actorId, parsed.data.reason,
+      parsed.data.writtenTerms, JSON.stringify({ approvedFrom: "provider_costs_dashboard", customerUsageChargeCents: 0 })]
+  );
+  await queryPostgres(
+    `insert into public.activity_logs (tenant_id,actor_type,user_id,action,target_type,metadata_json)
+     values ($1,'user',$2,'earn_provider_sponsorship_activated','earn_provider_sponsorship',
+       jsonb_build_object('monthlyCapCents',$3,'endsAt',nullif($4,''),'reason',$5))`,
+    [parsed.data.tenantId, actorId, capCents, parsed.data.endsAt ?? "", parsed.data.reason]
+  );
+  revalidatePath("/app/provider-costs");
+  revalidatePath("/app/billing/earn");
+}
+
+export async function setEarnProviderSponsorshipStatusAction(formData: FormData) {
+  const actor = await requirePermission("platform:manage");
+  const parsed = earnSponsorshipStatusSchema.safeParse({
+    tenantId: formData.get("tenantId"),
+    status: formData.get("status")
+  });
+  if (!parsed.success) return;
+  const actorId = actor.userId === "admin-token" ? null : actor.userId;
+  await queryPostgres(
+    `update public.earn_provider_sponsorships
+     set status=$2,updated_at=now(),
+       metadata_json=metadata_json || jsonb_build_object('lastStatusChangedBy',$3::text,'lastStatusChangedAt',now())
+     where tenant_id=$1`,
+    [parsed.data.tenantId, parsed.data.status, actorId]
+  );
+  await queryPostgres(
+    `insert into public.activity_logs (tenant_id,actor_type,user_id,action,target_type,metadata_json)
+     values ($1,'user',$2,'earn_provider_sponsorship_status_changed','earn_provider_sponsorship',jsonb_build_object('status',$3))`,
+    [parsed.data.tenantId, actorId, parsed.data.status]
+  );
+  revalidatePath("/app/provider-costs");
+  revalidatePath("/app/billing/earn");
 }
 
 export async function saveProviderFundingAccountAction(formData: FormData) {

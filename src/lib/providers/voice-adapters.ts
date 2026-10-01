@@ -37,6 +37,10 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function records(value: unknown) {
+  return Array.isArray(value) ? value.map(record) : [];
+}
+
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -593,8 +597,44 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       model: "gpt-4.1-mini",
       general_prompt: retellSystemPrompt(config),
       begin_message: text(config.firstMessage) ?? "Thank you for calling. How can I help you today?",
+      default_dynamic_variables: {
+        business_name: "the business",
+        business_context: "Use only verified business information from the agent profile.",
+        caller_name: "the caller",
+        caller_status: "unknown",
+        caller_context: "No verified inbound caller context is available.",
+        contact_name: "the person",
+        contact_type: "unknown",
+        contact_context: "No verified outbound contact context is available.",
+        call_purpose: "Help with the caller's stated need.",
+        desired_outcome: "Resolve the request or create a complete, tracked next step.",
+        context_quality: "limited",
+        verified_services: "No verified service list was supplied for this call.",
+        verified_service_areas: "No verified service area was supplied for this call.",
+        business_hours: "Business hours were not supplied for this call.",
+        call_handling_instruction: "AI answers first, handles routine needs, and transfers only through a verified tool when requested or required by the business rules.",
+        transfer_rules: "Transfer only through a verified Ferocity tool and destination.",
+        allowed_next_steps: "Answer from verified information, collect only what is needed, and never claim an action succeeded without tool confirmation."
+      },
       tool_call_strict_mode: true,
-      ...(toolOrigin ? { general_tools: retellBusinessTools(toolOrigin, text(config.transferNumber)) } : {})
+      ...(toolOrigin ? {
+        general_tools: retellBusinessTools(
+          toolOrigin,
+          records(config.transferDestinations).length
+            ? records(config.transferDestinations).map((destination) => ({
+                label: text(destination.label) ?? "Human",
+                role: (text(destination.role) ?? "general") as import("@/lib/phone/transfer-routing").TransferRoutingRole,
+                phoneNumber: text(destination.phoneNumber) ?? "",
+                priority: number(destination.priority) ?? 100,
+                weekdays: Array.isArray(destination.weekdays) ? destination.weekdays.map(Number) : [0, 1, 2, 3, 4, 5, 6],
+                availableStart: text(destination.availableStart),
+                availableEnd: text(destination.availableEnd),
+                timezone: text(destination.timezone) ?? "America/Chicago",
+                isPrimary: destination.isPrimary === true
+              }))
+            : text(config.transferNumber)
+        )
+      } : {})
     };
     const agentPayload: Record<string, unknown> = {
       agent_name: text(config.name) ?? "Ferocity AI Receptionist",
@@ -652,10 +692,11 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       const llm = await retellRequest(credentials.apiKey, "/create-retell-llm", "POST", llmPayload);
       const llmId = text(llm.body?.llm_id);
       if (!llm.response.ok || !llmId) {
+        const providerDetail = text(llm.body?.message ?? llm.body?.error)?.slice(0, 240);
         return {
           ok: false,
           errorCategory: llm.response.status === 401 ? "provider_authentication" : "provider_error",
-          safeMessage: `Retell response-engine creation failed with HTTP ${llm.response.status}.`,
+          safeMessage: `Retell response-engine creation failed with HTTP ${llm.response.status}${providerDetail ? `: ${providerDetail}` : "."}`,
           retryable: llm.response.status === 429 || llm.response.status >= 500
         };
       }
@@ -665,10 +706,11 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       });
       returnedId = text(agent.body?.agent_id);
       if (!agent.response.ok || !returnedId) {
+        const providerDetail = text(agent.body?.message ?? agent.body?.error)?.slice(0, 240);
         return {
           ok: false,
           errorCategory: agent.response.status === 401 ? "provider_authentication" : "provider_error",
-          safeMessage: `Retell agent creation failed with HTTP ${agent.response.status}.`,
+          safeMessage: `Retell agent creation failed with HTTP ${agent.response.status}${providerDetail ? `: ${providerDetail}` : "."}`,
           retryable: agent.response.status === 429 || agent.response.status >= 500
         };
       }

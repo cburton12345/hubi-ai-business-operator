@@ -45,15 +45,15 @@ export default async function EarnPage() {
             <h2>$0/month base subscription</h2>
             <p><strong>0.9%</strong> when you bring the business to Ferocity to manage.</p>
             <p><strong>6%</strong> when Ferocity brings you the business.</p>
-            <p className="muted">And we don&apos;t get paid until you do. Provider usage, payment processing, and third-party costs remain separate.</p>
+            <p className="muted">And we don&apos;t get paid until you do. Provider usage, payment processing, advertising spend, and third-party costs remain separate unless Ferocity approves a written pilot exception.</p>
           </div>
           <span className={`pill ${active ? "" : "medium"}`}>{dashboard.enrollment?.status ?? "not enrolled"}</span>
         </div>
-        {!dashboard.enrollment ? (
+        {!dashboard.enrollment || !active ? (
           <form action={enrollInEarnAction} className="form-stack">
             <label className="checkbox-row">
               <input name="accepted" type="checkbox" value="yes" required />
-              <span>I accept the Ferocity Earn V1 agreement and understand that it applies prospectively from enrollment, not to historical collected revenue.</span>
+              <span>I accept the Ferocity Earn V1 agreement and understand that it applies prospectively from enrollment, not to historical collected revenue. Provider and external costs remain separate unless a written pilot exception in my workspace says otherwise.</span>
             </label>
             <button className="button" type="submit">Enroll in Ferocity Earn</button>
           </form>
@@ -76,7 +76,11 @@ export default async function EarnPage() {
         <Metric label="6% Earn" value={money(dashboard.currentPeriod.originatedEarnCents)} />
         <Metric label="Credits / adjustments" value={money(dashboard.currentPeriod.adjustmentsCents)} />
         <Metric label="Disputed" value={money(dashboard.currentPeriod.disputedCents)} />
-        <Metric label="Provider usage (separate)" value={money(dashboard.currentPeriod.providerUsageCents)} />
+        {dashboard.currentPeriod.providerUsageSponsored ? (
+          <Metric label="Pilot provider cost covered by Ferocity" value={money(dashboard.currentPeriod.providerCostCoveredCents)} />
+        ) : (
+          <Metric label="Provider usage (separate)" value={money(dashboard.currentPeriod.providerUsageCents)} />
+        )}
         <Metric label="Current Earn balance" value={money(dashboard.currentPeriod.currentBalanceCents)} />
         <Metric label="Revenue Ferocity brought you — lifetime" value={money(dashboard.lifetimeOriginatedRevenueCents)} />
       </section>

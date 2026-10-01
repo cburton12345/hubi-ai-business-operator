@@ -241,8 +241,8 @@ export async function prepareEarnSettlementAction() {
        from public.earn_ledger_entries l cross join period p
        where l.tenant_id=$1 and l.billing_period_start=p.period_start and l.settlement_status='unsettled'
      ), usage as (
-       select coalesce(sum(amount_cents),0)::bigint provider_usage from public.billing_usage_charges u cross join period p
-       where u.tenant_id=$1 and u.created_at>=p.period_start and u.created_at<p.period_end+1 and u.status not in ('void','failed')
+       select ceil(coalesce(sum(provider_cost_cents),0))::bigint provider_usage from public.usage_meter_events u cross join period p
+       where u.tenant_id=$1 and u.billing_period_start=p.period_start and u.status not in ('void','failed')
      ), inserted as (
        insert into public.earn_settlements (
          tenant_id,period_start,period_end,eligible_managed_cents,managed_earn_cents,eligible_originated_cents,

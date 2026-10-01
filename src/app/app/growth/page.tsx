@@ -9,9 +9,14 @@ import {
   addDistributionIdentityAction,
   addGrowthCommunityAction,
   captureGrowthOpportunityAction,
+  configureMetaConversionFeedbackAction,
   convertGrowthOpportunityToLeadAction,
+  createConversationAcquisitionLinkAction,
   createGrowthObjectiveAction,
   queueGrowthResponseAction,
+  queueFacebookCommunityJoinAction,
+  queueFacebookCommunityPostAction,
+  prepareGrowthContentPackageAction,
   scanGrowthLoopAction,
   updateContentQualityReviewAction,
   updateFollowUpWorkflowAction,
@@ -57,6 +62,51 @@ export default async function GrowthOperatorPage() {
         </Link>
       </div>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <span className="eyebrow">Your AI Growth Department</span>
+            <h2>Ferocity found {dashboard.dailyGrowthDepartment.worthwhile} worthwhile actions</h2>
+            <p className="muted">Organic-first opportunities are ranked by business value, confidence, and current evidence—not by how much activity they create.</p>
+          </div>
+          <div className="inline-actions">
+            <span className="pill low">{dashboard.dailyGrowthDepartment.handledAutomatically} handled safely</span>
+            <Link className="mini-button" href="/app/approvals">{dashboard.dailyGrowthDepartment.needsApproval} need approval</Link>
+            <span className={`pill ${dashboard.dailyGrowthDepartment.needsOwner ? "high" : "low"}`}>{dashboard.dailyGrowthDepartment.needsOwner} need you personally</span>
+          </div>
+        </div>
+        <ul className="list section-actions">
+          {dashboard.dailyGrowthDepartment.actions.map((action) => (
+            <li className="list-row" key={action.id}>
+              <div>
+                <h3>{action.title}</h3>
+                <p>{action.whyNow}</p>
+                <p className="muted"><strong>Next:</strong> {action.nextStep}</p>
+                {action.evidence.length ? <p className="muted"><strong>Evidence:</strong> {action.evidence.join(" · ")}</p> : null}
+              </div>
+              <div className="inline-actions">
+                <span className="pill">{action.category.replaceAll("_", " ")}</span>
+                <span className="pill">{action.executionStatus.replaceAll("_", " ")}</span>
+                {action.organicFirst ? <span className="pill low">organic first</span> : null}
+                <span className={`pill ${action.ownerInvolvement === "personal" ? "high" : action.ownerInvolvement === "automatic" ? "low" : ""}`}>{action.ownerInvolvement}</span>
+                <span className="pill">{action.confidenceScore}% confidence</span>
+                {action.effectivenessScore != null ? <span className="pill low">{action.effectivenessScore}% effective</span> : null}
+                {action.assessmentScore != null ? <span className="pill">business loop {action.assessmentScore}%</span> : null}
+                {!["attribution", "follow_up", "retention"].includes(action.category) ? (
+                  <form action={prepareGrowthContentPackageAction}>
+                    <input name="recommendationId" type="hidden" value={action.id} />
+                    <button className="mini-button" type="submit">Prepare content package</button>
+                  </form>
+                ) : null}
+              </div>
+            </li>
+          ))}
+          {dashboard.dailyGrowthDepartment.actions.length === 0 ? (
+            <li className="list-row"><span className="muted">Run the growth scan to turn current business, customer, website, conversation, and revenue signals into a small action list.</span></li>
+          ) : null}
+        </ul>
+      </section>
+
       <div className="grid section-actions">
         {dashboard.metrics.map((metric) => (
           <section className="panel span-2 metric" key={metric.label}>
@@ -86,6 +136,64 @@ export default async function GrowthOperatorPage() {
         </section>
       </div>
 
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <span className="eyebrow">Direct to conversation</span>
+            <h2>Create once. Track the conversation through collected revenue.</h2>
+            <p className="muted">Use a short link or QR in ads, social posts, signs, vehicles, print, or the website. The customer still chooses to send the message; Ferocity reconnects it to the originating campaign.</p>
+          </div>
+          <span className="pill low">Connect inbox · source-to-cash</span>
+        </div>
+        <form action={createConversationAcquisitionLinkAction} className="form-stack section-actions">
+          <div className="grid compact-grid">
+            <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+            <label>Link name<input name="name" required placeholder="Spring roof campaign" /></label>
+            <label>Conversation channel<select name="preferredChannel" defaultValue="sms"><option value="sms">SMS / MMS</option><option value="whatsapp">WhatsApp</option><option value="website_chat">Website chat</option><option value="meta_messenger">Facebook Messenger</option><option value="instagram">Instagram</option><option value="apple_business_chat">Apple Messages for Business</option><option value="rcs">RCS (falls back where unsupported)</option><option value="phone">Phone</option></select></label>
+            <label>Destination<input name="destination" placeholder="+17155551212 or provider destination" /></label>
+            <label>Source<input name="source" placeholder="facebook, yard-sign, website" /></label>
+            <label>Campaign<input name="campaign" placeholder="spring-roof-2026" /></label>
+            <label>Ad ID<input name="adReference" placeholder="Optional provider ad ID" /></label>
+            <label>Fallback URL<input name="fallbackUrl" type="url" placeholder="https://example.com/contact" /></label>
+          </div>
+          <label>Prefilled customer message<textarea name="prefilledMessage" required rows={2} defaultValue="Hi, I would like more information." /></label>
+          <button className="button" type="submit">Create tracked conversation link</button>
+        </form>
+        <ul className="list section-actions">
+          {distribution.conversationLinks.map((link) => {
+            const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://ferocity.live"}/c/${link.slug}`;
+            return <li className="list-row" key={link.id}><div><h3>{link.name}</h3><p><a href={publicUrl} target="_blank" rel="noreferrer">{publicUrl}</a></p><p className="muted">{link.brandName} · {link.preferredChannel.replaceAll("_", " ")} · {[link.sourceName,link.campaignReference].filter(Boolean).join(" · ") || "Direct"}</p></div><div className="inline-actions"><span className="pill">{link.clicks} clicks</span><span className="pill">{link.conversations} conversations</span><span className="pill">{link.leads} leads</span><span className="pill">{link.jobs} jobs</span><span className="pill low">{money(link.collectedRevenueCents)} collected</span><a className="mini-button" href={`/api/public/conversation-links/${link.slug}/qr`} download>Download QR</a></div></li>;
+          })}
+          {distribution.conversationLinks.length === 0 ? <li className="list-row"><span className="muted">No tracked conversation links yet.</span></li> : null}
+        </ul>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <span className="eyebrow">Closed-loop ad learning</span>
+            <h2>Teach ad platforms which conversations became real business</h2>
+            <p className="muted">Ferocity sends approved, consent-safe milestones with stable event IDs. Secrets stay in the encrypted credential vault, and a setup is never shown as active until its credential exists.</p>
+          </div>
+          <Link className="mini-button secondary-button" href="/app/credentials">Encrypted credentials</Link>
+        </div>
+        <form action={configureMetaConversionFeedbackAction} className="form-stack section-actions">
+          <div className="grid compact-grid">
+            <label>Business<select name="brandId" required>{distribution.brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+            <label>Meta dataset / pixel ID<input name="pixelId" inputMode="numeric" pattern="[0-9]{5,30}" required placeholder="123456789012345" /></label>
+            <label>Graph API version<input name="apiVersion" required defaultValue="v25.0" pattern="v[0-9]{2,3}\.[0-9]" /></label>
+            <label>Status<select name="requestedStatus" defaultValue="active"><option value="active">Activate when ready</option><option value="paused">Paused</option></select></label>
+            <label>Approval policy<select name="requiresManualApproval" defaultValue="true"><option value="true">Approve conversion events first</option><option value="false">Send eligible events automatically</option></select></label>
+          </div>
+          <p className="muted">Credential vault label: provider <strong>facebook</strong>, label <strong>capi_access_token</strong>. Customer identifiers are hashed before transmission and omitted unless consent is recorded.</p>
+          <button className="button" type="submit">Save Meta conversion feedback</button>
+        </form>
+        <ul className="list section-actions">
+          {distribution.conversionDestinations.map((destination) => <li className="list-row" key={destination.id}><div><h3>{destination.providerKey === "meta" ? "Meta Conversions API" : destination.providerKey}</h3><p className="muted">{destination.brandName ?? "All businesses"} · {destination.supportedEventTypes.length} event types · {destination.requiresManualApproval ? "approval first" : "automatic eligible events"}</p>{destination.lastError ? <p>{destination.lastError}</p> : null}</div><div className="inline-actions"><span className={`pill ${destination.status === "active" ? "low" : destination.status === "error" ? "high" : ""}`}>{destination.status}</span><span className={`pill ${destination.credentialReady ? "low" : "high"}`}>{destination.credentialReady ? "credential ready" : "credential needed"}</span></div></li>)}
+          {distribution.conversionDestinations.length === 0 ? <li className="list-row"><span className="muted">No conversion feedback destination is configured yet.</span></li> : null}
+        </ul>
+      </section>
+
       <div className="grid">
         <section className="panel span-12">
           <div className="list-row flush-row">
@@ -106,10 +214,26 @@ export default async function GrowthOperatorPage() {
               <label>Time horizon<input name="timeHorizonDays" type="number" min="1" max="730" defaultValue="30" /></label>
               <label>Default authority<select name="autonomyLevel" defaultValue="suggest"><option value="suggest">Suggest</option><option value="approve">Ask before acting</option><option value="autopilot">Autopilot where allowed</option></select></label>
             </div>
+            <details>
+              <summary>Advanced economics and capacity (optional)</summary>
+              <p className="muted">Leave these blank and Ferocity will build a conservative first plan, clearly label its assumptions, and improve it as real results arrive.</p>
+              <div className="grid compact-grid section-actions">
+                <label>Collected-cash target<input name="targetCollectedRevenueDollars" type="number" min="0" placeholder="90000" /></label>
+                <label>Gross-profit target<input name="targetGrossProfitDollars" type="number" min="0" placeholder="36000" /></label>
+                <label>Average collected job<input name="averageJobValueDollars" type="number" min="1" placeholder="12000" /></label>
+                <label>Expected cost per lead<input name="costPerLeadDollars" type="number" min="0" step="0.01" placeholder="85" /></label>
+                <label>Target gross margin %<input name="grossMarginTargetPercent" type="number" min="0" max="100" step="0.1" placeholder="40" /></label>
+                <label>Margin floor %<input name="minimumGrossMarginPercent" type="number" min="0" max="100" step="0.1" placeholder="30" /></label>
+                <label>Maximum CAC<input name="maximumCacDollars" type="number" min="0" placeholder="800" /></label>
+                <label>Minimum ROAS<input name="minimumRoas" type="number" min="0" step="0.1" placeholder="3" /></label>
+                <label>Monthly job capacity<input name="monthlyJobCapacity" type="number" min="0" placeholder="18" /></label>
+                <label>Maximum backlog<input name="maximumBacklogJobs" type="number" min="0" placeholder="8" /></label>
+              </div>
+            </details>
             <button className="button" type="submit">Start objective</button>
           </form>
           <ul className="list section-actions">
-            {distribution.objectives.map((objective) => <li className="list-row" key={objective.id}><div><h3>{objective.name}</h3><p className="muted">{objective.brandName} · {objective.serviceFocus ?? "All services"} · {objective.geography} · {objective.timeHorizonDays} days</p></div><div className="inline-actions"><span className="pill">{objective.autonomyLevel}</span><span className="pill">{objective.status}</span>{objective.targetLeads != null ? <span className="pill">{objective.targetLeads} leads</span> : null}{objective.targetRevenueCents != null ? <span className="pill">{money(objective.targetRevenueCents)}</span> : null}</div></li>)}
+            {distribution.objectives.map((objective) => <li className="list-row" key={objective.id}><div><h3>{objective.name}</h3><p className="muted">{objective.brandName} · {objective.serviceFocus ?? "All services"} · {objective.geography} · {objective.timeHorizonDays} days</p></div><div className="inline-actions"><span className="pill">{objective.autonomyLevel}</span><span className="pill">{objective.status}</span>{objective.targetLeads != null ? <span className="pill">{objective.targetLeads} leads</span> : null}{objective.targetRevenueCents != null ? <span className="pill">{money(objective.targetRevenueCents)} revenue</span> : null}{objective.targetCollectedRevenueCents != null ? <span className="pill">{money(objective.targetCollectedRevenueCents)} collected</span> : null}{objective.targetGrossProfitCents != null ? <span className="pill">{money(objective.targetGrossProfitCents)} gross profit</span> : null}{objective.monthlyJobCapacity != null ? <span className="pill">{objective.monthlyJobCapacity} jobs/month capacity</span> : null}{objective.minimumGrossMarginBps != null ? <span className="pill">{(objective.minimumGrossMarginBps / 100).toFixed(1)}% margin floor</span> : null}</div></li>)}
             {distribution.objectives.length === 0 ? <li className="list-row"><span className="muted">No growth objective yet. Start with the business result, not a channel.</span></li> : null}
           </ul>
         </section>
@@ -145,7 +269,7 @@ export default async function GrowthOperatorPage() {
             <button className="mini-button" type="submit">Remember community</button>
           </form>
           <ul className="list section-actions">
-            {distribution.communities.map((community) => <li className="list-row" key={community.id}><div><h3>{community.name}</h3><p className="muted">{community.brandName} · {community.channelKey} · {community.postingPolicy}</p></div><span className="pill">{community.relevanceScore}% match</span></li>)}
+            {distribution.communities.map((community) => <li className="list-row" key={community.id}><div><h3>{community.name}</h3><p className="muted">{community.brandName} · {community.channelKey} · {community.postingPolicy} · {community.membershipState.replaceAll("_", " ")}</p><p className="muted">Rules: {!community.rulesKnown ? "not captured — posting blocked" : !community.rulesFresh ? "stale — refresh required" : `checked ${dateLabel(community.rulesCheckedAt)}`}</p>{community.nextPostAt ? <p className="muted">Next normal posting window: {dateLabel(community.nextPostAt)}</p> : null}{community.channelKey === "facebook" && ["available", "unknown"].includes(community.membershipState) && community.url ? <form action={queueFacebookCommunityJoinAction} className="section-actions"><input name="communityId" type="hidden" value={community.id} /><button className="mini-button" type="submit">Ask to join</button></form> : null}{community.channelKey === "facebook" && community.membershipState === "joined" && community.rulesKnown && community.rulesFresh && community.url ? <form action={queueFacebookCommunityPostAction} className="form-stack compact-form section-actions"><input name="communityId" type="hidden" value={community.id} /><label>Prepare a useful, rule-aware group post<textarea name="body" minLength={20} maxLength={10000} rows={3} required placeholder="Be genuinely useful and transparent. Ferocity sends it to Approvals before the connector can publish." /></label><button className="mini-button" type="submit">Send post to approval</button></form> : null}</div><span className="pill">{community.relevanceScore}% match</span></li>)}
           </ul>
         </section>
 

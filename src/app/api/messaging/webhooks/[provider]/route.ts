@@ -3,6 +3,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { verifyMessagingWebhook } from "@/lib/messaging/verify-messaging-webhook";
 import { handleTwilioMessagingWebhook } from "@/lib/messaging/twilio-webhook";
+import { handleVonageMessagingWebhook } from "@/lib/messaging/vonage-webhook";
 
 function safePayload(payload: unknown) {
   if (!payload || typeof payload !== "object") return {};
@@ -25,6 +26,9 @@ export async function POST(
   }
   if (provider === "twilio" || provider === "twilio_sms") {
     return handleTwilioMessagingWebhook(request);
+  }
+  if (provider === "vonage" || provider === "vonage_sms") {
+    return handleVonageMessagingWebhook(request);
   }
 
   const tenantId = request.headers.get("x-ferocity-tenant-id");

@@ -166,6 +166,11 @@ function checkStaticGroups() {
     ["TikTok connection", ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_OAUTH_REDIRECT_URI"]],
     ["Reddit connection", ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_OAUTH_REDIRECT_URI"]],
     ["Microsoft connection", ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_OAUTH_REDIRECT_URI"]],
+    ["LinkedIn Ads connection", ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_OAUTH_REDIRECT_URI"]],
+    ["Pinterest Ads connection", ["PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET", "PINTEREST_OAUTH_REDIRECT_URI"]],
+    ["Snap Ads connection", ["SNAPCHAT_CLIENT_ID", "SNAPCHAT_CLIENT_SECRET", "SNAPCHAT_OAUTH_REDIRECT_URI"]],
+    ["Amazon Ads connection", ["AMAZON_ADS_CLIENT_ID", "AMAZON_ADS_CLIENT_SECRET", "AMAZON_ADS_OAUTH_REDIRECT_URI"]],
+    ["X Ads connection", ["X_ADS_CONSUMER_KEY", "X_ADS_CONSUMER_SECRET", "X_ADS_OAUTH_REDIRECT_URI"]],
     ["Yahoo connection", ["YAHOO_CLIENT_ID", "YAHOO_CLIENT_SECRET", "YAHOO_OAUTH_REDIRECT_URI"]],
     ["Premium video rendering", [
       "VIDEO_PROVIDER",
@@ -178,6 +183,7 @@ function checkStaticGroups() {
       "VIDEO_CUSTOMER_PRICE_CENTS_PER_SECOND"
     ]],
     ["AI Office Manager voice", ["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET", "VOICE_PHONE_NUMBER", "VOICE_MONTHLY_BUDGET_CENTS"]],
+    ["Optional Vonage SMS", ["VONAGE_API_KEY", "VONAGE_API_SECRET", "VONAGE_FROM_NUMBER", "VONAGE_SIGNATURE_SECRET", "ENABLE_VONAGE_SMS_SENDS"]],
     ["Optional Twilio SMS", ["ENABLE_TWILIO_SMS_SENDS", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]]
   ];
 
@@ -197,9 +203,14 @@ function checkStaticGroups() {
     if (label === "AI Office Manager voice" && has("VAPI_API_KEY")) {
       gaps = gaps.filter((key) => !["VOICE_PROVIDER", "VOICE_API_KEY", "VOICE_WEBHOOK_SECRET"].includes(key));
     }
-    const optional = ["Google/GBP connection", "Meta connection", "TikTok connection", "Reddit connection", "Microsoft connection", "Yahoo connection", "Premium video rendering", "AI Office Manager voice", "Optional Twilio SMS"].includes(label);
+    if (label === "Optional Vonage SMS" && has("VONAGE_SMS_FROM")) {
+      gaps = gaps.filter((key) => key !== "VONAGE_FROM_NUMBER");
+    }
+    const optional = ["Google/GBP connection", "Meta connection", "TikTok connection", "Reddit connection", "Microsoft connection", "LinkedIn Ads connection", "Pinterest Ads connection", "Snap Ads connection", "Amazon Ads connection", "X Ads connection", "Yahoo connection", "Premium video rendering", "AI Office Manager voice", "Optional Vonage SMS", "Optional Twilio SMS"].includes(label);
     const status = gaps.length === 0 ? "ready" : optional ? "warning" : "blocked";
-    const detail = label === "Optional Twilio SMS" && gaps.length
+    const detail = label === "Optional Vonage SMS" && gaps.length
+      ? `not required for launch; live use remains disabled until credentials, sender registration, signed webhooks, funding, and certification are complete`
+      : label === "Optional Twilio SMS" && gaps.length
       ? `not required for launch; using app alerts, email, dashboard queues, and manual text drafts`
       : label === "AI Office Manager voice" && gaps.length
         ? `not required for launch; office-manager setup works now, live calls need ${gaps.join(", ")}`

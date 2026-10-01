@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({
   env: {
@@ -31,8 +31,14 @@ const context = {
 };
 
 describe("OpenAI video adapter", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-23T12:00:00Z"));
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     mocked.env.VIDEO_PROVIDER = "openai";
     mocked.env.VIDEO_API_KEY = "video-key";
     mocked.env.VIDEO_MODEL = "sora-2";
@@ -87,14 +93,32 @@ describe("OpenAI video adapter", () => {
     const result = await new OpenAiVideoAdapter().getVideo(context, "video_123");
     expect(result).toEqual({ ok: true, data: { status: "completed" } });
   });
+
+  it("surfaces moderation failures without exposing raw provider internals", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "content_policy", message: "internal moderation detail" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const result = await new OpenAiVideoAdapter().createVideo(context, { prompt: "A rejected concept" });
+    expect(result).toMatchObject({
+      ok: false,
+      errorCategory: "provider_moderation",
+      retryable: false,
+      safeMessage: expect.stringContaining("safety review")
+    });
+  });
 });
 
 describe("provider-independent video routing", () => {
   it("registers Google Veo without replacing the existing OpenAI adapter", () => {
-    expect(listVideoGenerationProviders()).toEqual([
-      { providerKey: "openai_video", displayName: "OpenAI Video" },
-      { providerKey: "google_veo", displayName: "Google Veo" }
-    ]);
+    expect(listVideoGenerationProviders()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ providerKey: "google_veo", adapterStatus: "live", imageToVideo: true }),
+      expect.objectContaining({ providerKey: "openai_video", adapterStatus: "legacy" }),
+      expect.objectContaining({ providerKey: "runway", adapterStatus: "evaluated" }),
+      expect.objectContaining({ providerKey: "luma", adapterStatus: "evaluated" })
+    ]));
     expect(getVideoGenerationProvider("openai")?.providerKey).toBe("openai_video");
     expect(getVideoGenerationProvider("veo")?.providerKey).toBe("google_veo");
   });

@@ -87,7 +87,7 @@ try {
     "When the owner says goodbye, declines further help, confirms nothing else is needed, or the recap is complete, say a brief natural closing and use end_call. Do not end while the owner is still asking a question or deciding."
   ].join("\n");
   const llmPayload = {
-    model: "gpt-4.1-mini",
+    model: "gpt-4.1",
     model_temperature: 0,
     tool_call_strict_mode: true,
     general_prompt: prompt,
@@ -177,10 +177,15 @@ try {
       "Allowed next steps: {{allowed_next_steps}}.",
       "Stay within the stated purpose. Be warm, concise, natural, and respectful of interruptions. Use short conversational turns and answer the person's question before asking another one.",
       "Your first spoken turn must include all five items in this order: the person's name when known, that you are Ferocity's AI assistant, the business you represent, the concrete call_purpose, and a brief permission question such as 'Is now an okay time?'. Do not replace this opening with a generic greeting.",
+      "A phone call-screening assistant, voicemail greeting, or automated attendant is not the intended person. If an automated screen asks who you are or why you are calling, state only: Ferocity's AI assistant calling on behalf of {{business_name}}, followed by {{call_purpose}}. Do not ask the screening system for its name, phone number, needs, or permission.",
+      "If a screening system says it will try to reach the person or asks you to stay on the line, wait quietly. When a human then answers, restart the complete purpose-first opening before discussing anything else.",
+      "Never interpret phrases such as 'record your name and reason for calling,' 'I'll see if this person is available,' or 'please stay on the line' as a request to collect the recipient's information. Those are call-screening instructions directed at you.",
       "If the person asks why you called, answer immediately and directly with call_purpose and the relevant supplied contact_context. Do not ask what they need, what you can help with, or make them repeat the question.",
       "Do not make the person explain why Ferocity called. State the supplied reason clearly. When context_quality is limited, acknowledge that you have only a brief note, give the specific call_purpose, and ask one useful clarifying question.",
       "Do not invent prices, appointments, promises, policies, job details, or completed actions. Never use missing context as permission to guess.",
       "Do not promise that someone will call back. If the person actually requests a human callback, confirm their name, callback number, and reason, then use create_sales_callback. Say it is recorded only when the tool returns ok true.",
+      "If the person clearly says they want to start using Ferocity, offer to send a secure account invitation. Confirm their full name, company name, complete email address, and explicit permission to create the account, then use create_ferocity_signup. Spell the email address back and get confirmation before calling the tool.",
+      "Never ask the person to say or choose a password on the call. A successful create_ferocity_signup result sends a secure invitation where they choose their password privately. Do not claim an account or invitation exists unless the tool returns ok true.",
       "If the person asks not to receive AI calls, apologize, end promptly, and state that their preference will be recorded.",
       "Never request passwords, verification codes, full payment-card details, Social Security numbers, or banking credentials.",
       "Close with the agreed next step without claiming it is completed unless a connected Ferocity tool confirmed it.",
@@ -230,6 +235,31 @@ try {
           preferred_time: { type: "string", description: "A preferred callback window only when stated; it is not a confirmed appointment." }
         }
       }
+    }, {
+      type: "custom",
+      name: "create_ferocity_signup",
+      description: "Create a Ferocity Earn workspace and send a secure invitation only after the person explicitly asks to start, confirms their identity and email, and gives permission. Never collect a password on the call.",
+      url: `${appUrl}/api/integrations/voice-ai/tools/signup`,
+      method: "POST",
+      timeout_ms: 15000,
+      args_at_root: false,
+      parameter_type: "json",
+      speak_during_execution: true,
+      execution_message_type: "static_text",
+      execution_message_description: "One moment while I send your secure Ferocity invitation.",
+      speak_after_execution: true,
+      parameters: {
+        type: "object",
+        required: ["full_name", "email", "company_name", "consent_to_create_account"],
+        properties: {
+          full_name: { type: "string", description: "The person's confirmed full name." },
+          email: { type: "string", description: "The complete email address after spelling it back and receiving confirmation." },
+          company_name: { type: "string", description: "The person's confirmed company or business name." },
+          business_type: { type: "string", description: "The business type or industry when provided." },
+          phone_number: { type: "string", description: "The person's phone number when confirmed; otherwise omit it so Ferocity uses the call number." },
+          consent_to_create_account: { type: "boolean", description: "True only after the person explicitly authorizes Ferocity to create the workspace and email the secure invitation." }
+        }
+      }
     }]
   };
   const outboundAgentPayload = {
@@ -242,6 +272,13 @@ try {
     end_call_after_silence_ms: 45000,
     reminder_trigger_ms: 12000,
     reminder_max_count: 1,
+    begin_message_delay_ms: 700,
+    call_screening_option: {
+      agent_identity: "Ferocity's AI assistant calling on behalf of {{business_name}}",
+      call_purpose: "{{call_purpose}}"
+    },
+    voicemail_option: { action: { type: "hangup" } },
+    ivr_option: { action: { type: "hangup" } },
     data_storage_setting: "everything_except_pii",
     opt_in_signed_url: true,
     post_call_analysis_data: [
@@ -295,6 +332,46 @@ try {
   if (!String(verifiedOutboundLlm?.general_prompt || "").includes("This is always an OUTBOUND call")) {
     throw new Error("Retell did not retain the customer outbound purpose contract.");
   }
+  if (!String(verifiedOutboundLlm?.general_prompt || "").includes("A phone call-screening assistant")) {
+    throw new Error("Retell did not retain the outbound call-screening contract.");
+  }
+  const verifiedOutboundToolNames = Array.isArray(verifiedOutboundLlm?.general_tools)
+    ? verifiedOutboundLlm.general_tools.map((tool) => tool?.name).filter(Boolean)
+    : [];
+  if (!verifiedOutboundToolNames.includes("create_ferocity_signup")) {
+    throw new Error("Retell did not retain the secure Ferocity signup tool.");
+  }
+  if (!verifiedOutboundAgent?.call_screening_option || verifiedOutboundAgent?.voicemail_option?.action?.type !== "hangup") {
+    throw new Error("Retell did not retain the outbound screening and voicemail safeguards.");
+  }
+
+  const phoneContext = await client.query(
+    `select phone_number, callback_status, compliance_status
+       from public.telephony_numbers
+      where tenant_id=$1 and provider_key='retell_voice' and status='active'
+      order by updated_at desc limit 1`,
+    [tenantId]
+  );
+  const activePhone = phoneContext.rows[0];
+  if (!activePhone?.phone_number) {
+    throw new Error("The active Ferocity Retell number is missing.");
+  }
+  if (activePhone.callback_status !== "certified") {
+    throw new Error("The active Ferocity Retell number must pass callback certification before an outbound agent is assigned.");
+  }
+  if (!['ready', 'not_required'].includes(activePhone.compliance_status)) {
+    throw new Error("The active Ferocity Retell number is not compliance-ready for outbound agent assignment.");
+  }
+  await retell(`/update-phone-number/${encodeURIComponent(activePhone.phone_number)}`, "PATCH", {
+    outbound_agents: [{ agent_id: outboundAssistantId, weight: 1 }]
+  });
+  const verifiedPhone = await retell(`/get-phone-number/${encodeURIComponent(activePhone.phone_number)}`);
+  const assignedOutboundAgentId = verifiedPhone?.outbound_agent_id
+    ?? verifiedPhone?.outbound_agents?.[0]?.agent_id
+    ?? null;
+  if (assignedOutboundAgentId !== outboundAssistantId) {
+    throw new Error("Retell did not retain the customer outbound agent assignment.");
+  }
 
   await client.query("begin");
   try {
@@ -343,6 +420,7 @@ try {
     tenantId,
     assistantId,
     outboundAssistantId,
+    outboundAgentAssigned: true,
     assistantPurpose: "private_owner_office_manager",
     publicReceptionistChanged: false,
     liveCallsRequireVerifiedOwnerDestination: true

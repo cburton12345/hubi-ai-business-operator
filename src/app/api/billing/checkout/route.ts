@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { env } from "@/lib/env";
 import { getCurrentAppSession } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { isSelfServePlanKey } from "@/lib/billing/public-plans";
 import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
@@ -11,6 +12,7 @@ import { TERMS_VERSION } from "@/lib/legal/terms";
 
 const checkoutSchema = z.object({
   plan: z.string().trim(),
+  billingInterval: z.enum(["month", "year"]).default("month"),
   source: z.string().trim().max(120).optional(),
   email: z.string().trim().email().optional(),
   companyName: z.string().trim().min(1).max(180).optional(),
@@ -26,6 +28,12 @@ const priceEnvByPlan = {
   starter: "STRIPE_PRICE_ID_STARTER",
   growth: "STRIPE_PRICE_ID_GROWTH",
   operator: "STRIPE_PRICE_ID_OPERATOR"
+} as const;
+
+const annualPriceEnvByPlan = {
+  starter: "STRIPE_PRICE_ID_STARTER_ANNUAL",
+  growth: "STRIPE_PRICE_ID_GROWTH_ANNUAL",
+  operator: "STRIPE_PRICE_ID_OPERATOR_ANNUAL"
 } as const;
 
 function redirectTo(request: NextRequest, path: string) {
@@ -46,6 +54,7 @@ async function updateExistingSubscription(input: {
   priceId: string;
   plan: string;
   tenantId: string;
+  billingInterval: "month" | "year";
 }) {
   const currentResponse = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, {
     headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
@@ -64,6 +73,7 @@ async function updateExistingSubscription(input: {
     "metadata[tenant_id]": input.tenantId,
     "metadata[purchase_flow]": "plan_change"
   });
+  body.set("metadata[billing_interval]", input.billingInterval);
   const response = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`, {
     method: "POST",
     headers: {
@@ -79,6 +89,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const parsed = checkoutSchema.safeParse({
     plan: String(formData.get("plan") ?? ""),
+    billingInterval: String(formData.get("billingInterval") ?? "month"),
     source: String(formData.get("source") ?? ""),
     email: String(formData.get("email") ?? "") || undefined,
     companyName: String(formData.get("companyName") ?? "") || undefined,
@@ -91,14 +102,21 @@ export async function POST(request: NextRequest) {
     return redirectTo(request, "/pricing?billing=invalid_plan");
   }
 
-  const priceEnvKey = priceEnvByPlan[parsed.data.plan];
+  const annualPlan = parsed.data.billingInterval === "year" && parsed.data.plan in annualPriceEnvByPlan;
+  const priceEnvKey = annualPlan
+    ? annualPriceEnvByPlan[parsed.data.plan as keyof typeof annualPriceEnvByPlan]
+    : priceEnvByPlan[parsed.data.plan];
   const priceId = env[priceEnvKey];
   const appSession = await getCurrentAppSession();
   const workspace = appSession ? await getCurrentWorkspace() : null;
   const publicSignup = !workspace;
 
+  if (workspace) {
+    await requirePermission("billing:manage");
+  }
+
   if (publicSignup && (!parsed.data.email || !parsed.data.companyName || parsed.data.consentToContact !== "on" || parsed.data.termsAccepted !== "on")) {
-    return redirectTo(request, `/subscribe?plan=${encodeURIComponent(parsed.data.plan)}&error=details`);
+    return redirectTo(request, `/subscribe?plan=${encodeURIComponent(parsed.data.plan)}&billing=${parsed.data.billingInterval}&error=details`);
   }
 
   if (!env.STRIPE_SECRET_KEY || !priceId) {
@@ -116,7 +134,7 @@ export async function POST(request: NextRequest) {
       }
     });
     return publicSignup
-      ? redirectTo(request, `/subscribe?plan=${encodeURIComponent(parsed.data.plan)}&error=checkout_not_ready`)
+      ? redirectTo(request, `/subscribe?plan=${encodeURIComponent(parsed.data.plan)}&billing=${parsed.data.billingInterval}&error=checkout_not_ready`)
       : startFallback(request, parsed.data.plan, "stripe_not_ready");
   }
 
@@ -131,14 +149,15 @@ export async function POST(request: NextRequest) {
     );
     const subscription = existing?.rows[0];
     if (subscription?.external_subscription_ref && ["active", "trialing", "past_due", "incomplete"].includes(subscription.status)) {
-      if (subscription.plan_key === parsed.data.plan) {
+      if (subscription.plan_key === parsed.data.plan && parsed.data.billingInterval === "month") {
         return redirectTo(request, "/app/billing?plan=already_active");
       }
       const updated = await updateExistingSubscription({
         subscriptionId: subscription.external_subscription_ref,
         priceId,
         plan: parsed.data.plan,
-        tenantId: workspace.id
+        tenantId: workspace.id,
+        billingInterval: parsed.data.billingInterval
       });
       if (!updated.ok) {
         await logAppError({
@@ -178,7 +197,8 @@ export async function POST(request: NextRequest) {
            consentToContact: true,
            termsAccepted: true,
            termsVersion: TERMS_VERSION,
-           submittedAt: new Date().toISOString()
+           submittedAt: new Date().toISOString(),
+           billingInterval: parsed.data.billingInterval
         }),
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
         request.headers.get("user-agent") || null
@@ -192,6 +212,7 @@ export async function POST(request: NextRequest) {
 
   const metadata: Record<string, string> = {
     plan_key: parsed.data.plan,
+    billing_interval: parsed.data.billingInterval,
     source: parsed.data.source ?? "pricing"
   };
 

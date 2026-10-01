@@ -5,6 +5,7 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".next-stale-*/**",
       ".netlify/**",
       "node_modules/**",
       "dist/**",

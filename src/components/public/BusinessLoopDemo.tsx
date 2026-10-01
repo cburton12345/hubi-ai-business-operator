@@ -33,13 +33,13 @@ const stages: DemoStage[] = [
   {
     department: "Growth",
     time: "7:42 AM",
-    title: "Marketing creates the opportunity",
-    signal: "Yesterday’s completed roof and customer-approved photos are strong proof for this week’s storm campaign.",
-    action: "The Growth team prepares channel-ready creative, updates the local search plan, and publishes only through connected channels with authority and budget remaining.",
-    result: "A homeowner clicks the tracked campaign and starts a conversation. Source, offer, creative, and cost stay attached to the opportunity.",
-    human: "No interruption — the campaign is inside the approved plan and budget.",
+    title: "Ferocity catches the opportunity while it is forming",
+    signal: "In this guided example, a verified severe-weather alert overlaps the roofing service area—and four new hail-damage inquiries exceed the business’s normal lead baseline.",
+    action: "Ferocity checks open crew capacity, approved project proof, service-area rules, customer consent, and budget before preparing the timely campaign and follow-up plan.",
+    result: "The owner sees why the opportunity matters, the evidence behind it, and the next move already prepared. Nothing publishes or spends until the business’s authority rules allow it.",
+    human: "No interruption when the move is already authorized; otherwise Ferocity routes one clear launch decision.",
     humanNeeded: false,
-    evidence: ["Source attached", "Budget checked", "Consent-safe proof"],
+    evidence: ["NWS alert verified", "Lead spike corroborated", "Budget and consent checked"],
     icon: Megaphone
   },
   {
@@ -167,7 +167,7 @@ export function BusinessLoopDemo() {
     <section className="business-loop-demo" aria-labelledby="business-loop-demo-title">
       <div className="business-loop-demo-heading">
         <div>
-          <p className="eyebrow">One opportunity. The entire AI operations department.</p>
+          <p className="eyebrow">One opportunity. The entire business stays connected.</p>
           <h2 id="business-loop-demo-title">Watch the business move forward as one connected system.</h2>
           <p>
             This guided example shows how a configured service business can move from demand to revenue and future growth while Ferocity preserves context, follows authority, and interrupts a person only for a real decision.

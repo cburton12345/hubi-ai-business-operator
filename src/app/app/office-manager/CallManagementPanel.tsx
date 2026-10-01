@@ -61,6 +61,9 @@ export function CallManagementPanel({ dashboard }: { dashboard: Dashboard }) {
       <div>
         <h3>How should incoming calls work?</h3>
         <p className="muted">{currentMode?.description ?? "AI handles routine calls and brings in a person when needed."}</p>
+        <p className="muted">
+          On a Ferocity-managed AI number, the AI receives the call first and can immediately transfer it. True owner-first or simultaneous ringing requires a fully connected phone carrier that supports multi-leg routing; Ferocity will not claim that behavior until the active phone connection can execute it.
+        </p>
         <form action={setCallHandlingModeAction} className="form-grid">
           <label>
             Current call mode

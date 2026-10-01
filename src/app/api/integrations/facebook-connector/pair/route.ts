@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { exchangeFacebookPairingCode, readConnectorBearer } from "@/lib/growth/facebook-connector-protocol";
+import { exchangeFacebookPairingCode, facebookConnectorTransportSchema, readConnectorBearer } from "@/lib/growth/facebook-connector-protocol";
 import { revokeGrowthConnectorSession } from "@/lib/growth/connector-session";
 import { consumePublicRateLimit } from "@/lib/security/rate-limit";
 
@@ -8,7 +8,8 @@ const schema = z.object({
   code: z.string().trim().min(12).max(20),
   deviceId: z.string().trim().min(16).max(200),
   connectorVersion: z.string().trim().min(1).max(50),
-  deviceName: z.string().trim().min(1).max(120).optional()
+  deviceName: z.string().trim().min(1).max(120).optional(),
+  transportType: facebookConnectorTransportSchema.optional()
 });
 
 export async function POST(request: NextRequest) {

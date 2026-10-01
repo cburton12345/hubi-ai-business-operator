@@ -7,6 +7,24 @@ export const facebookConnectorScopes = [
   "facebook:observe", "facebook:health", "facebook:action:claim", "facebook:action:confirm"
 ] as const;
 
+const facebookHosts = ["facebook.com", "www.facebook.com", "m.facebook.com"];
+
+export function normalizeFacebookGroupUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (!facebookHosts.includes(url.hostname.toLowerCase())) return null;
+    const match = url.pathname.match(/^\/groups\/([^/?#]+)/i);
+    if (!match || ["feed", "discover", "joins", "create"].includes(match[1].toLowerCase())) return null;
+    return `https://www.facebook.com/groups/${encodeURIComponent(decodeURIComponent(match[1]))}`;
+  } catch {
+    return null;
+  }
+}
+
+export const facebookConnectorTransportSchema = z.enum([
+  "chrome_extension", "windows_worker", "hosted_worker"
+]);
+
 export const facebookObservationSchema = z.object({
   providerEventId: z.string().trim().min(1).max(300),
   externalConversationRef: z.string().trim().min(1).max(500),
@@ -29,6 +47,26 @@ export const facebookObservationSchema = z.object({
   }
 });
 
+export const facebookCommunityObservationSchema = z.object({
+  providerEventId: z.string().trim().min(1).max(300),
+  externalCommunityId: z.string().trim().min(1).max(300),
+  name: z.string().trim().min(2).max(240),
+  url: z.string().url().max(2000),
+  discoveryContext: z.string().trim().max(2000).optional(),
+  rulesText: z.string().trim().max(10_000).optional(),
+  rulesSourceUrl: z.string().url().max(2000).optional(),
+  membershipState: z.enum(["joined", "available", "unknown"]).default("unknown"),
+  connectorVersion: z.string().trim().min(1).max(50),
+  observedAt: z.string().datetime().optional()
+}).superRefine((value, context) => {
+  if (!normalizeFacebookGroupUrl(value.url)) {
+    context.addIssue({ code: "custom", path: ["url"], message: "Community must be a specific Facebook group." });
+  }
+  if (value.rulesSourceUrl && normalizeFacebookGroupUrl(value.rulesSourceUrl) !== normalizeFacebookGroupUrl(value.url)) {
+    context.addIssue({ code: "custom", path: ["rulesSourceUrl"], message: "Rules must originate from the same Facebook group surface." });
+  }
+});
+
 const facebookChromeNoise = [
   /^message requests?$/i, /^marketplace$/i, /^facebook$/i, /^messenger$/i, /^chats?$/i,
   /^search messenger$/i, /^new message$/i, /^you sent$/i, /^delivered$/i, /^seen$/i,
@@ -45,7 +83,10 @@ export const facebookHealthSchema = z.object({
   reason: z.string().trim().max(1000).optional(),
   providerCode: z.string().trim().max(100).optional(),
   url: z.string().url().max(2000),
-  connectorVersion: z.string().trim().min(1).max(50)
+  connectorVersion: z.string().trim().min(1).max(50),
+  transportType: facebookConnectorTransportSchema.optional(),
+  runtimeState: z.enum(["idle", "starting", "running", "backoff", "stopping"]).optional(),
+  browserState: z.enum(["closed", "starting", "ready", "attention_required", "failed"]).optional()
 });
 
 export const facebookActionConfirmationSchema = z.object({
@@ -114,6 +155,7 @@ export async function issueFacebookPairingCode(input: {
 
 export async function exchangeFacebookPairingCode(input: {
   code: string; deviceId: string; connectorVersion: string; deviceName?: string;
+  transportType?: z.infer<typeof facebookConnectorTransportSchema>;
 }) {
   const normalized = normalizePairingCode(input.code);
   if (normalized.length !== 12) return null;
@@ -133,7 +175,7 @@ export async function exchangeFacebookPairingCode(input: {
     scopes: [...facebookConnectorScopes], lifetimeMinutes: 43_200,
     metadata: {
       destination: "ferocity",
-      transport: "chrome_extension",
+      transport: input.transportType ?? "chrome_extension",
       deviceName: input.deviceName?.trim().slice(0, 120) || "Facebook browser connector"
     }
   });

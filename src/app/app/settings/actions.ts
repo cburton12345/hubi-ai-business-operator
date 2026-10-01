@@ -5,7 +5,15 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
-import { isSafePublicHref, normalizeDemoEmbedUrl, publicCopyKeys } from "@/lib/public-site/featured-demo";
+import {
+  defaultPublicCopy,
+  isSafePublicHref,
+  normalizeDemoEmbedUrl,
+  publicCopyFromSnapshot,
+  publicCopyKeys,
+  type PublicCopyKey,
+  type PublicCopySlot,
+} from "@/lib/public-site/featured-demo";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const featuredDemoSchema = z.object({
@@ -44,6 +52,74 @@ const publicCopySchema = z.object({
   secondaryCtaLabel: z.string().min(1).max(80),
   secondaryCtaHref: z.string().refine(isSafePublicHref)
 });
+
+const publicCopyRevisionSchema = z.object({
+  contentKey: z.enum(publicCopyKeys),
+  revisionId: z.string().uuid(),
+});
+
+async function readPublicCopyRevision(contentKey: PublicCopyKey, revisionId: string) {
+  const result = await queryPostgres<{ snapshot_json: unknown }>(
+    `
+    select snapshot_json
+    from public.platform_public_content_versions
+    where id = $1 and content_key = $2
+    limit 1
+    `,
+    [revisionId, contentKey],
+  );
+  return result?.rows[0]?.snapshot_json ?? null;
+}
+
+async function publishPublicCopy(
+  contentKey: PublicCopyKey,
+  value: PublicCopySlot,
+  changedBy: string,
+  source: { draftId?: string; restoredFrom?: string } = {},
+) {
+  const snapshot = {
+    stage: "published",
+    ...value,
+    ...(source.draftId ? { sourceDraftId: source.draftId } : {}),
+    ...(source.restoredFrom ? { restoredFrom: source.restoredFrom } : {}),
+  };
+  await queryPostgres(
+    `
+    with saved as (
+      insert into public.platform_public_content (
+        content_key, enabled, eyebrow, headline, body, cta_label, cta_href,
+        secondary_cta_label, secondary_cta_href, updated_by, updated_at
+      ) values ($1, true, $2, $3, $4, $5, $6, $7, $8, $9, now())
+      on conflict (content_key) do update
+      set enabled = true,
+          eyebrow = excluded.eyebrow,
+          headline = excluded.headline,
+          body = excluded.body,
+          cta_label = excluded.cta_label,
+          cta_href = excluded.cta_href,
+          secondary_cta_label = excluded.secondary_cta_label,
+          secondary_cta_href = excluded.secondary_cta_href,
+          updated_by = excluded.updated_by,
+          updated_at = now()
+      returning content_key
+    )
+    insert into public.platform_public_content_versions (content_key, snapshot_json, changed_by)
+    select content_key, $10::jsonb, $9 from saved
+    `,
+    [
+      contentKey,
+      value.eyebrow,
+      value.headline,
+      value.body,
+      value.ctaLabel,
+      value.ctaHref,
+      value.secondaryCtaLabel,
+      value.secondaryCtaHref,
+      changedBy,
+      JSON.stringify(snapshot),
+    ],
+  );
+}
 
 export async function updateWorkspaceSettingsAction(formData: FormData) {
   await requirePermission("tenant:manage");
@@ -167,7 +243,7 @@ export async function updateFeaturedDemoAction(formData: FormData) {
   redirect("/app/settings?demo=saved");
 }
 
-export async function updatePublicCopyAction(formData: FormData) {
+export async function savePublicCopyDraftAction(formData: FormData) {
   const actor = await requirePermission("platform:manage");
   const parsed = publicCopySchema.safeParse({
     contentKey: formData.get("contentKey"),
@@ -184,43 +260,91 @@ export async function updatePublicCopyAction(formData: FormData) {
   const value = parsed.data;
   await queryPostgres(
     `
-    with saved as (
-      insert into public.platform_public_content (
-        content_key, enabled, eyebrow, headline, body, cta_label, cta_href,
-        secondary_cta_label, secondary_cta_href, updated_by, updated_at
-      ) values ($1, true, $2, $3, $4, $5, $6, $7, $8, $9, now())
-      on conflict (content_key) do update
-      set enabled = true,
-          eyebrow = excluded.eyebrow,
-          headline = excluded.headline,
-          body = excluded.body,
-          cta_label = excluded.cta_label,
-          cta_href = excluded.cta_href,
-          secondary_cta_label = excluded.secondary_cta_label,
-          secondary_cta_href = excluded.secondary_cta_href,
-          updated_by = excluded.updated_by,
-          updated_at = now()
-      returning *
-    )
     insert into public.platform_public_content_versions (content_key, snapshot_json, changed_by)
-    select content_key, to_jsonb(saved), $9 from saved
+    values ($1, $2::jsonb, $3)
     `,
     [
       value.contentKey,
-      value.eyebrow,
-      value.headline,
-      value.body,
-      value.ctaLabel,
-      value.ctaHref,
-      value.secondaryCtaLabel,
-      value.secondaryCtaHref,
+      JSON.stringify({ stage: "draft", ...value }),
       actor.userId
     ]
   );
 
+  revalidatePath("/app/settings");
+  revalidatePath("/app/settings/public-preview");
+  redirect(`/app/settings?content=draft_saved&slot=${encodeURIComponent(value.contentKey)}`);
+}
+
+export async function publishPublicCopyAction(formData: FormData) {
+  const actor = await requirePermission("platform:manage");
+  const parsed = publicCopyRevisionSchema.safeParse({
+    contentKey: formData.get("contentKey"),
+    revisionId: formData.get("revisionId"),
+  });
+  if (!parsed.success) redirect("/app/settings?content=invalid");
+
+  const snapshot = await readPublicCopyRevision(parsed.data.contentKey, parsed.data.revisionId);
+  if (!snapshot || typeof snapshot !== "object" || (snapshot as { stage?: unknown }).stage !== "draft") {
+    redirect("/app/settings?content=invalid");
+  }
+  const value = publicCopyFromSnapshot(snapshot, defaultPublicCopy[parsed.data.contentKey]);
+  const validated = publicCopySchema.safeParse({ contentKey: parsed.data.contentKey, ...value });
+  if (!validated.success) redirect("/app/settings?content=invalid");
+
+  await publishPublicCopy(parsed.data.contentKey, value, actor.userId, { draftId: parsed.data.revisionId });
   revalidatePath("/");
   revalidatePath("/demo");
   revalidatePath("/pricing");
   revalidatePath("/app/settings");
-  redirect(`/app/settings?content=saved&slot=${encodeURIComponent(value.contentKey)}`);
+  revalidatePath("/app/settings/public-preview");
+  redirect(`/app/settings?content=published&slot=${encodeURIComponent(parsed.data.contentKey)}`);
+}
+
+export async function discardPublicCopyDraftAction(formData: FormData) {
+  const actor = await requirePermission("platform:manage");
+  const parsed = publicCopyRevisionSchema.safeParse({
+    contentKey: formData.get("contentKey"),
+    revisionId: formData.get("revisionId"),
+  });
+  if (!parsed.success) redirect("/app/settings?content=invalid");
+  const snapshot = await readPublicCopyRevision(parsed.data.contentKey, parsed.data.revisionId);
+  if (!snapshot || typeof snapshot !== "object" || (snapshot as { stage?: unknown }).stage !== "draft") {
+    redirect("/app/settings?content=invalid");
+  }
+  await queryPostgres(
+    `insert into public.platform_public_content_versions (content_key, snapshot_json, changed_by)
+     values ($1, $2::jsonb, $3)`,
+    [
+      parsed.data.contentKey,
+      JSON.stringify({ stage: "discarded", discardedDraftId: parsed.data.revisionId }),
+      actor.userId,
+    ],
+  );
+  revalidatePath("/app/settings");
+  revalidatePath("/app/settings/public-preview");
+  redirect(`/app/settings?content=discarded&slot=${encodeURIComponent(parsed.data.contentKey)}`);
+}
+
+export async function restorePublicCopyRevisionAction(formData: FormData) {
+  const actor = await requirePermission("platform:manage");
+  const parsed = publicCopyRevisionSchema.safeParse({
+    contentKey: formData.get("contentKey"),
+    revisionId: formData.get("revisionId"),
+  });
+  if (!parsed.success) redirect("/app/settings?content=invalid");
+  const snapshot = await readPublicCopyRevision(parsed.data.contentKey, parsed.data.revisionId);
+  const stage = snapshot && typeof snapshot === "object" ? (snapshot as { stage?: unknown }).stage : null;
+  if (!snapshot || typeof snapshot !== "object" || (stage !== undefined && stage !== "published")) {
+    redirect("/app/settings?content=invalid");
+  }
+  const value = publicCopyFromSnapshot(snapshot, defaultPublicCopy[parsed.data.contentKey]);
+  const validated = publicCopySchema.safeParse({ contentKey: parsed.data.contentKey, ...value });
+  if (!validated.success) redirect("/app/settings?content=invalid");
+
+  await publishPublicCopy(parsed.data.contentKey, value, actor.userId, { restoredFrom: parsed.data.revisionId });
+  revalidatePath("/");
+  revalidatePath("/demo");
+  revalidatePath("/pricing");
+  revalidatePath("/app/settings");
+  redirect(`/app/settings?content=restored&slot=${encodeURIComponent(parsed.data.contentKey)}`);
 }

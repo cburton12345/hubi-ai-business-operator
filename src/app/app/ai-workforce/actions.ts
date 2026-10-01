@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -17,10 +18,16 @@ import {
 import { scanLeadToJobLoopAction } from "@/app/app/operator/actions";
 import { generateSeoAutopilotAction } from "@/app/app/seo/actions";
 import { scanServiceOpsAction } from "@/app/app/service/actions";
+import { getAttentionCommandDashboard } from "@/lib/attention-command/get-attention-command-dashboard";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { classifyAiCommandIntent, readOnlyRouteForCommand, workspaceRouteForCommand } from "@/lib/ai-workforce/command-intent";
+import { commandSearchText, understandFerocityCommand } from "@/lib/ai-workforce/command-understanding";
+import { discoverRelevantCapabilities, type CapabilityRecommendation } from "@/lib/ai-workforce/capability-discovery";
+import { readBusinessActionForCommand, summarizeBusinessActionItems } from "@/lib/ai-workforce/business-action-routing";
+import { invokeBusinessAction, type BusinessActionPrincipal } from "@/lib/business-actions/gateway";
 import { queryPostgres } from "@/lib/db/postgres";
+import { createOwnerGrowthObjectiveFromCommand } from "@/lib/growth/composable-growth-intelligence";
 import { processNewestWebsiteImportForUrl } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -32,15 +39,24 @@ type AiWorkforceState = {
   runId?: string;
   intent?: string;
   href?: string;
+  needsInput?: boolean;
+  recommended?: CapabilityRecommendation[];
 };
 
 const commandSchema = z.object({
-  command: z.string().trim().min(8).max(2000)
+  command: z.string().trim().min(2).max(2000),
+  conversationContext: z.string().trim().max(6000).optional(),
+  onboardingMode: z.enum(["true", "false"]).default("false")
 });
 
 function hasAny(value: string, terms: string[]) {
   const lower = value.toLowerCase();
   return terms.some((term) => lower.includes(term));
+}
+
+function advisoryText(answer: string, nextSteps: string[]) {
+  if (!nextSteps.length) return answer;
+  return `${answer}\n\nRecommended next steps:\n${nextSteps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`;
 }
 
 function setupRequestFor(command: string) {
@@ -428,46 +444,174 @@ async function saveCommandRun(input: {
 
 export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, formData: FormData): Promise<AiWorkforceState> {
   await requirePermission("ai:queue");
-  const parsed = commandSchema.safeParse({ command: formData.get("command") });
+  const parsed = commandSchema.safeParse({
+    command: formData.get("command"),
+    conversationContext: formData.get("conversationContext") || undefined,
+    onboardingMode: formData.get("onboardingMode") ?? "false"
+  });
   if (!parsed.success) {
     return { ok: false, message: "Tell the AI Workforce what you want done in normal words." };
   }
 
   const command = parsed.data.command;
-  const intent = classifyAiCommandIntent(command);
+  const workspaceId = await getCurrentWorkspaceId();
+  const session = await getCurrentAppSession();
+  const discoveryState = await queryPostgres<Record<string, string>>(`
+    select
+      (select count(*) from public.workspace_feature_entitlements where tenant_id=$1 and feature_key='closed_loop_growth_controller' and status <> 'disabled')::text has_growth_controller,
+      (select count(*) from public.growth_objectives where tenant_id=$1 and status='active')::text active_growth_objectives,
+      (select count(*) from public.workspace_feature_entitlements where tenant_id=$1 and feature_key='expense_document_intelligence' and status <> 'disabled')::text has_expense_intelligence,
+      (select count(*) from public.document_intelligence_documents where tenant_id=$1)::text imported_expense_documents,
+      (select count(*) from public.workspace_feature_entitlements where tenant_id=$1 and feature_key='sms_send' and status <> 'disabled')::text has_ferocity_connect,
+      (select count(*) from public.ferocity_connect_devices where tenant_id=$1 and status in ('active','paired','offline'))::text paired_android_devices
+  `, [workspaceId]);
+  const discovery = discoveryState?.rows[0] ?? {};
+  const recommended = discoverRelevantCapabilities(command, {
+    hasGrowthController: Number(discovery.has_growth_controller ?? 0) > 0,
+    hasActiveGrowthObjective: Number(discovery.active_growth_objectives ?? 0) > 0,
+    hasExpenseIntelligence: Number(discovery.has_expense_intelligence ?? 0) > 0,
+    hasImportedExpenseDocuments: Number(discovery.imported_expense_documents ?? 0) > 0,
+    hasFerocityConnect: Number(discovery.has_ferocity_connect ?? 0) > 0,
+    hasPairedAndroidDevice: Number(discovery.paired_android_devices ?? 0) > 0
+  });
+  if (parsed.data.onboardingMode === "true") {
+    await queryPostgres(
+      `update public.tenants
+          set onboarding_status = 'completed',
+              onboarding_completed_at = coalesce(onboarding_completed_at, now()),
+              updated_at = now()
+        where id = $1 and onboarding_status <> 'completed'`,
+      [workspaceId]
+    );
+  }
+  const brandResult = await queryPostgres<{ id: string; name: string; industry: string | null; business_model: string | null }>(
+    `select id, name, industry, business_model from public.brands where tenant_id = $1 order by created_at asc limit 1`,
+    [workspaceId]
+  );
+  const brand = brandResult?.rows[0];
+  const understanding = await understandFerocityCommand({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    command,
+    conversationContext: parsed.data.conversationContext,
+    businessContext: brand
+      ? `Business: ${brand.name}. Industry: ${brand.industry ?? "not set"}. Business model: ${brand.business_model ?? "not set"}.`
+      : "No business profile is available yet."
+  });
+  if (understanding.needsClarification && understanding.clarifyingQuestion) {
+    return {
+      ok: true,
+      needsInput: true,
+      message: understanding.clarifyingQuestion,
+      prepared: [],
+      blocked: []
+    };
+  }
+  const interpretedCommand = commandSearchText(command, understanding.capabilities);
+  const literalIntent = classifyAiCommandIntent(command);
+  const intent = literalIntent === "read_only" && ["draft_preparation", "workspace_changing"].includes(understanding.requestedMode)
+    ? understanding.requestedMode
+    : literalIntent;
   if (intent === "read_only") {
-    const href = readOnlyRouteForCommand(command);
+    const businessRead = readBusinessActionForCommand(interpretedCommand);
+    if (businessRead && session?.userId) {
+      const principal: BusinessActionPrincipal = {
+        principalId: `user:${session.userId}`,
+        principalType: "user",
+        tenantId: workspaceId,
+        userId: session.userId,
+        scopes: ["business:*"],
+        authorization: { verified: true, source: "authenticated_user_session" },
+        metadata: { source: "ask_ferocity" },
+      };
+      const actionResult = await invokeBusinessAction(principal, {
+        action: businessRead.action,
+        input: businessRead.action === "getStaleLeads" ? { olderThanDays: 1, limit: 25 } : { limit: 25 },
+        idempotencyKey: `ask-ferocity:${randomUUID()}`,
+        source: "ask_ferocity_read",
+      });
+      if (actionResult.ok) {
+        const prepared = summarizeBusinessActionItems(businessRead.action, actionResult.data);
+        return {
+          ok: true,
+          intent,
+          href: businessRead.href,
+          message: `${understanding.answer}\n\nI checked the authorized workspace records directly and did not change or contact anything.`,
+          prepared: prepared.length ? prepared : ["No matching records currently need attention."],
+          blocked: [],
+          recommended,
+        };
+      }
+    }
+    const href = readOnlyRouteForCommand(interpretedCommand);
+    const canAnswerFromOperatingSnapshot = hasAny(interpretedCommand, [
+      "attention", "today", "priority", "money", "revenue", "invoice", "paid", "lead", "opportunit", "report", "audit", "what next"
+    ]);
+    if (canAnswerFromOperatingSnapshot) {
+      const dashboard = await getAttentionCommandDashboard();
+      const items = hasAny(interpretedCommand, ["money", "revenue", "invoice", "paid", "lead", "opportunit"])
+        ? dashboard.moneyMoves
+        : dashboard.doFirst;
+      return {
+        ok: true,
+        intent,
+        href: items[0]?.href ?? dashboard.direction.href,
+        message: `${understanding.answer}\n\nCurrent workspace evidence — ${dashboard.direction.title}: ${dashboard.direction.detail}`,
+        prepared: items.slice(0, 4).map((item) => `${item.title} — ${item.detail}`),
+        blocked: [],
+        recommended
+      };
+    }
     return {
       ok: true,
       intent,
       href,
-      message: "Read-only request. Ferocity did not create, update, apply, send, publish, or schedule anything.",
+      message: `${advisoryText(understanding.answer, understanding.nextSteps)}\n\nI kept this read-only and did not create, update, send, publish, or schedule anything.`,
       prepared: [`Open ${href} to review the current workspace state.`],
-      blocked: []
+      blocked: [],
+      recommended
     };
   }
 
-  const workspaceId = await getCurrentWorkspaceId();
-  const session = await getCurrentAppSession();
-  const lower = command.toLowerCase();
+  const lower = interpretedCommand.toLowerCase();
   const prepared: string[] = [];
   const blocked: string[] = [];
+
+  const isExplicitGrowthOutcome = hasAny(command.toLowerCase(), [
+    "fill next week", "fill our schedule", "fill my schedule", "fill the calendar", "fill our calendar",
+    "get me more", "get us more", "grow ", "more profitable jobs", "without increasing ad spend",
+    "improve our google visibility", "improve my google visibility", "improve our search visibility", "improve my search visibility"
+  ]);
+  if (brand?.id && isExplicitGrowthOutcome && understanding.capabilities.some((capability) => ["growth_revenue", "marketing", "seo"].includes(capability))) {
+    const objective = await createOwnerGrowthObjectiveFromCommand({
+      tenantId: workspaceId,
+      brandId: brand.id,
+      userId: session?.userId ?? null,
+      command
+    });
+    prepared.push(`Created a measurable growth objective and composed ${objective.playbookRunIds.length} versioned playbook${objective.playbookRunIds.length === 1 ? "" : "s"} around it.`);
+  }
 
   if (intent === "external") {
     blocked.push("External actions stay gated. Ferocity can prepare drafts and review records, but sending, publishing, ad spend, payments, and payouts require separate provider approval.");
   }
 
-  const setupForm = new FormData();
-  setupForm.set("request", setupRequestFor(command));
-  const setupResult = await applySetupPlanAction({ ok: false }, setupForm);
-  if (setupResult.ok) {
-    prepared.push("Applied a reviewed setup plan using existing setup, service control, workflow, page, source, and template records.");
-  } else if (setupResult.error) {
-    blocked.push(setupResult.error);
+  const explicitlyRequestsSetup = understanding.capabilities.includes("setup") || hasAny(command.toLowerCase(), ["set up", "setup", "configure", "onboard"]);
+  if (explicitlyRequestsSetup) {
+    const setupForm = new FormData();
+    setupForm.set("request", setupRequestFor(command));
+    const setupResult = await applySetupPlanAction({ ok: false }, setupForm);
+    if (setupResult.ok) {
+      prepared.push("Applied a reviewed setup plan using existing setup, service control, workflow, page, source, and template records.");
+    } else if (setupResult.error) {
+      blocked.push(setupResult.error);
+    }
   }
 
-  await refreshBusinessProfileMemoryAction(new FormData());
-  prepared.push("Refreshed business profile memory from existing brand, services, areas, proof, offers, and marketing settings.");
+  if (understanding.capabilities.some((capability) => ["setup", "growth_revenue", "marketing", "seo", "website", "reporting_attention"].includes(capability))) {
+    await refreshBusinessProfileMemoryAction(new FormData());
+    prepared.push("Refreshed business profile memory from existing brand, services, areas, proof, offers, and marketing settings.");
+  }
 
   const websiteUrl = firstUrl(command);
   if (websiteUrl) {
@@ -597,7 +741,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     prepared.push("Created a job/bid task routed to Jobs & Money for scope, materials, payment terms, and profit tracking.");
   }
 
-  if (hasAny(lower, ["monitor", "optimize", "improve", "audit", "check everything", "run scans", "command center"])) {
+  if (hasAny(lower, ["monitor", "optimize", "improve", "audit", "check everything", "run scans", "business scan", "connected area", "command center"])) {
     await scanLeadToJobLoopAction();
     await scanGrowthLoopAction();
     await scanServiceOpsAction();
@@ -605,10 +749,13 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     prepared.push("Ran Guided setup monitoring scans across lead-to-job, growth, service ops, and action queue systems.");
   }
 
+  const didPrepareWork = prepared.length > 0;
   await timeline(
     workspaceId,
-    "AI Workforce prepared work",
-    "Guided setup translated an owner command into existing Ferocity setup, marketing, SEO, action queue, and timeline records.",
+    didPrepareWork ? "AI Workforce prepared work" : "AI Workforce answered an owner request",
+    didPrepareWork
+      ? "Ferocity translated an owner command into existing operating records and preserved all authority boundaries."
+      : "Ferocity answered from available business context without claiming an execution occurred.",
     {
       command,
       prepared,
@@ -640,11 +787,16 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
 
   return {
     ok: blocked.length === 0,
-    message: blocked.length === 0 ? "I reviewed the business and prepared the next steps. Nothing consequential went live without your approval." : "I prepared what I safely could. One or more decisions still need your attention.",
+    message: blocked.length === 0
+      ? didPrepareWork
+        ? `${understanding.answer}\n\nI prepared the work listed below. Nothing consequential went live without your approval.`
+        : `${advisoryText(understanding.answer, understanding.nextSteps)}\n\nI did not claim or record an execution because this request did not map to a verified action.`
+      : `${understanding.answer}\n\nI prepared what I safely could. One or more decisions still need your attention.`,
     prepared,
     blocked,
+    recommended,
     runId: runId ?? undefined,
-    href: workspaceRouteForCommand(command)
+    href: workspaceRouteForCommand(interpretedCommand)
   };
 }
 

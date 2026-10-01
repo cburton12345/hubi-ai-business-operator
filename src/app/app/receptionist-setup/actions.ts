@@ -7,7 +7,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getIndustryKnowledgeContext } from "@/lib/industry-knowledge/get-industry-context";
 import { listPhoneProviders } from "@/lib/phone/provider-registry";
-import { getPhoneConnection, savePhoneConnection } from "@/lib/phone/phone-connections";
+import { getPhoneConnection, inferNorthAmericanAreaCode, savePhoneConnection } from "@/lib/phone/phone-connections";
 import { ProviderBackedVoiceAgent } from "@/lib/phone/voice-agent";
 import {
   buildVoiceAgentSystemPrompt,
@@ -15,10 +15,12 @@ import {
 } from "@/lib/phone/voice-agent-profile";
 import { getVoiceAgentProvider } from "@/lib/providers/voice-adapters";
 import { getVoiceMaxDurationSeconds } from "@/lib/usage/managed-voice";
+import { listHumanTransferDestinations, transferRoutingRoles } from "@/lib/phone/transfer-routing";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const voiceProviderSchema = z.string().trim().min(2).max(120);
 const activateVoiceSchema = z.object({ providerKey: voiceProviderSchema });
+const managedNumberSchema = z.object({ numberId: z.string().uuid() });
 
 const testCallSchema = z.object({
   providerKey: voiceProviderSchema,
@@ -47,7 +49,21 @@ const phoneConnectionSchema = z.object({
   phoneProviderKey: z.string().trim().max(120),
   phoneProviderLabel: z.string().trim().max(160),
   smsRequested: z.boolean(),
-  mmsRequested: z.boolean()
+  mmsRequested: z.boolean(),
+  managedNumberProvisioningApproved: z.boolean()
+});
+
+const transferDestinationSchema = z.object({
+  label: z.string().trim().min(2).max(80),
+  routingRole: z.enum(transferRoutingRoles),
+  phoneNumber: z.string().trim().regex(/^\+[1-9]\d{7,14}$/),
+  priority: z.coerce.number().int().min(1).max(999),
+  weekdays: z.array(z.number().int().min(0).max(6)).min(1),
+  availableStart: z.string().regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/),
+  availableEnd: z.string().regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/),
+  timezone: z.string().trim().min(1).max(80),
+  isPrimary: z.boolean(),
+  authorizationConfirmed: z.literal(true)
 });
 
 export async function savePhoneConnectionAction(formData: FormData) {
@@ -63,9 +79,19 @@ export async function savePhoneConnectionAction(formData: FormData) {
     phoneProviderKey: String(formData.get("phoneProviderKey") ?? ""),
     phoneProviderLabel: String(formData.get("phoneProviderLabel") ?? ""),
     smsRequested: formData.get("smsRequested") === "true",
-    mmsRequested: formData.get("mmsRequested") === "true"
+    mmsRequested: formData.get("mmsRequested") === "true",
+    managedNumberProvisioningApproved: formData.get("managedNumberProvisioningApproved") === "true"
   });
   if (!parsed.success) return;
+  if (parsed.data.connectionPath === "new_ferocity_number" && !parsed.data.managedNumberProvisioningApproved) return;
+  if (
+    parsed.data.humanTransferNumber
+    && !/^\+[1-9]\d{7,14}$/.test(parsed.data.humanTransferNumber)
+  ) return;
+  if (
+    parsed.data.connectionPath === "new_ferocity_number"
+    && !/^\+[1-9]\d{7,14}$/.test(parsed.data.humanTransferNumber)
+  ) return;
   if (
     ["keep_number_forwarding", "keep_number_full"].includes(parsed.data.connectionPath)
     && !parsed.data.businessNumber
@@ -84,13 +110,16 @@ export async function savePhoneConnectionAction(formData: FormData) {
     ? parsed.data.phoneProviderLabel
     : provider?.displayName ?? parsed.data.phoneProviderLabel;
   const tenantId = await getCurrentWorkspaceId();
+  const preferredAreaCode = parsed.data.connectionPath === "new_ferocity_number"
+    ? parsed.data.preferredAreaCode || inferNorthAmericanAreaCode(parsed.data.humanTransferNumber) || ""
+    : parsed.data.preferredAreaCode;
   await savePhoneConnection({
     tenantId,
     connectionPath: parsed.data.connectionPath,
     businessNumber: parsed.data.businessNumber,
     currentCarrier: parsed.data.currentCarrier,
     fullIntegrationMethod: parsed.data.fullIntegrationMethod ?? null,
-    preferredAreaCode: parsed.data.preferredAreaCode,
+    preferredAreaCode,
     intendedUse: parsed.data.intendedUse,
     humanTransferNumber: parsed.data.humanTransferNumber,
     smsRequested: parsed.data.smsRequested,
@@ -100,10 +129,132 @@ export async function savePhoneConnectionAction(formData: FormData) {
       : null,
     phoneProviderLabel: parsed.data.connectionPath === "bring_own_provider"
       ? providerLabel
-      : null
+      : null,
+    managedNumberProvisioningApproved: parsed.data.managedNumberProvisioningApproved
   });
+
+  // An existing voice assistant must not keep a stale human-transfer destination.
+  // Only synchronize assistants that have already been provisioned; first-time setup
+  // continues through the explicit provider activation flow below.
+  const activeVoiceRoute = await queryPostgres<{ provider_key: string }>(
+    `
+    select r.primary_provider_key as provider_key
+    from public.voice_provider_routes r
+    join public.provider_accounts a
+      on a.tenant_id = r.tenant_id and a.provider_key = r.primary_provider_key
+    where r.tenant_id = $1
+      and r.route_family = 'voice_orchestrator'
+      and nullif(a.metadata_json->>'assistantId', '') is not null
+    limit 1
+    `,
+    [tenantId]
+  );
+  const activeProviderKey = activeVoiceRoute?.rows[0]?.provider_key;
+  if (activeProviderKey) {
+    await syncVoiceAssistantForTenant(tenantId, activeProviderKey);
+  }
   revalidatePath("/app/receptionist-setup");
   revalidatePath("/app/office-manager");
+}
+
+export async function requestManagedNumberPortOutAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = managedNumberSchema.safeParse({ numberId: formData.get("numberId") });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  const protectedNumber = await queryPostgres<{ id: string }>(
+    `update public.telephony_numbers set port_out_requested_at=coalesce(port_out_requested_at,now()),
+       status='needs_attention',outbound_enabled=false,
+       retain_until=greatest(coalesce(retain_until,now()),now()+interval '30 days'),
+       metadata_json=metadata_json||'{"automaticReleaseBlocked":"port_out_requested"}'::jsonb,updated_at=now()
+     where id=$1 and tenant_id=$2 and number_mode='ferocity_managed' and status<>'released'
+     returning id`,
+    [parsed.data.numberId, tenantId]
+  );
+  if (!protectedNumber?.rows[0]) return;
+  await queryPostgres(
+    `update public.phone_number_lifecycle_jobs set status='cancelled',updated_at=now(),
+       safe_error_message='Customer requested port-out; automatic release cancelled.'
+     where telephony_number_id=$1 and tenant_id=$2 and action='release' and status in ('queued','retrying')`,
+    [parsed.data.numberId, tenantId]
+  );
+  await queryPostgres(
+    `insert into public.owner_command_events (
+       tenant_id,platform_key,platform_name,external_event_id,event_type,title,summary,severity,status,
+       owner_attention,ai_handled,recommended_action,action_href,risk_type,confidence_score,metadata_json
+     ) values ($1,'ferocity','Ferocity',$2,'phone.port_out_requested','Number protected for port-out',
+       'Automatic release is blocked. Ferocity support will coordinate a verified number transfer.','high','needs_owner',true,false,
+       'Keep billing and contact details current while the transfer is completed.','/app/receptionist-setup','operations',100,$3::jsonb)
+     on conflict (tenant_id,platform_key,external_event_id) where external_event_id is not null do nothing`,
+    [tenantId, `phone-port-out:${parsed.data.numberId}`, JSON.stringify({ numberId: parsed.data.numberId })]
+  );
+  revalidatePath("/app/receptionist-setup");
+}
+
+export async function saveHumanTransferDestinationAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = transferDestinationSchema.safeParse({
+    label: formData.get("label"),
+    routingRole: formData.get("routingRole"),
+    phoneNumber: formData.get("phoneNumber"),
+    priority: formData.get("priority") ?? 100,
+    weekdays: Array.from({ length: 7 }, (_, day) => formData.get(`weekday:${day}`) === "on" ? day : null).filter((day): day is number => day !== null),
+    availableStart: formData.get("availableStart") ?? "",
+    availableEnd: formData.get("availableEnd") ?? "",
+    timezone: formData.get("timezone") ?? "America/Chicago",
+    isPrimary: formData.get("isPrimary") === "on",
+    authorizationConfirmed: formData.get("authorizationConfirmed") === "on"
+  });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  if (parsed.data.isPrimary) {
+    await queryPostgres(
+      `update public.call_transfer_destinations set is_primary=false,updated_at=now()
+        where tenant_id=$1 and brand_id is null and is_primary=true`,
+      [tenantId]
+    );
+  }
+  await queryPostgres(
+    `insert into public.call_transfer_destinations (
+       tenant_id,label,routing_role,phone_number,priority,weekdays_json,available_start,available_end,
+       timezone,is_primary,authorization_confirmed_at,metadata_json
+     ) values ($1,$2,$3,$4,$5,$6::jsonb,nullif($7,'')::time,nullif($8,'')::time,$9,$10,now(),'{"source":"receptionist_setup"}'::jsonb)
+     on conflict (tenant_id,phone_number,routing_role) do update set
+       label=excluded.label,priority=excluded.priority,weekdays_json=excluded.weekdays_json,available_start=excluded.available_start,
+       available_end=excluded.available_end,timezone=excluded.timezone,is_primary=excluded.is_primary,
+       is_active=true,authorization_confirmed_at=now(),updated_at=now()`,
+    [tenantId, parsed.data.label, parsed.data.routingRole, parsed.data.phoneNumber,
+      parsed.data.priority, JSON.stringify(parsed.data.weekdays), parsed.data.availableStart, parsed.data.availableEnd,
+      parsed.data.timezone, parsed.data.isPrimary]
+  );
+  await synchronizeExistingVoiceRoute(tenantId);
+  revalidatePath("/app/receptionist-setup");
+}
+
+export async function removeHumanTransferDestinationAction(formData: FormData) {
+  await requirePermission("tenant:manage");
+  const parsed = z.object({ destinationId: z.string().uuid() }).safeParse({ destinationId: formData.get("destinationId") });
+  if (!parsed.success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  await queryPostgres(
+    `update public.call_transfer_destinations set is_active=false,is_primary=false,updated_at=now()
+      where tenant_id=$1 and id=$2`,
+    [tenantId, parsed.data.destinationId]
+  );
+  await synchronizeExistingVoiceRoute(tenantId);
+  revalidatePath("/app/receptionist-setup");
+}
+
+async function synchronizeExistingVoiceRoute(tenantId: string) {
+  const route = await queryPostgres<{ provider_key: string }>(
+    `select r.primary_provider_key as provider_key
+       from public.voice_provider_routes r
+       join public.provider_accounts a on a.tenant_id=r.tenant_id and a.provider_key=r.primary_provider_key
+      where r.tenant_id=$1 and r.route_family='voice_orchestrator'
+        and nullif(a.metadata_json->>'assistantId','') is not null limit 1`,
+    [tenantId]
+  );
+  if (route?.rows[0]?.provider_key) await syncVoiceAssistantForTenant(tenantId, route.rows[0].provider_key);
 }
 
 export async function selectVoiceProviderRouteAction(formData: FormData) {
@@ -184,7 +335,11 @@ export async function syncVoiceAssistantAction(formData: FormData) {
   const provider = voiceProviderSchema.safeParse(formData.get("providerKey"));
   if (!provider.success) return;
   const tenantId = await getCurrentWorkspaceId();
-  const adapter = getVoiceAgentProvider(provider.data);
+  await syncVoiceAssistantForTenant(tenantId, provider.data);
+}
+
+async function syncVoiceAssistantForTenant(tenantId: string, providerKey: string) {
+  const adapter = getVoiceAgentProvider(providerKey);
   if (!adapter || adapter.adapterStatus !== "live") return;
 
   const profileResult = await queryPostgres<{
@@ -210,7 +365,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     order by p.updated_at desc
     limit 1
     `,
-    [tenantId, provider.data]
+    [tenantId, providerKey]
   );
   const profile = profileResult?.rows[0];
   if (!profile) return;
@@ -230,9 +385,17 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     categories: ["intake", "qualification", "scheduling", "safety", "follow_up"]
   });
   const systemPrompt = buildVoiceAgentSystemPrompt(businessProfile, industryContext);
-  const maxDurationSeconds = await getVoiceMaxDurationSeconds(tenantId, provider.data);
+  const maxDurationSeconds = await getVoiceMaxDurationSeconds(tenantId, providerKey);
 
   const phoneConnection = await getPhoneConnection(tenantId);
+  const transferDestinations = await listHumanTransferDestinations(tenantId, profile.brand_id);
+  if (!transferDestinations.length && phoneConnection?.humanTransferNumber) {
+    transferDestinations.push({
+      label: "Primary human", role: "general", phoneNumber: phoneConnection.humanTransferNumber,
+      priority: 100, weekdays: [0, 1, 2, 3, 4, 5, 6], availableStart: null,
+      availableEnd: null, timezone: "America/Chicago", isPrimary: true
+    });
+  }
   const sharedConfig = {
     model: {
       provider: "openai",
@@ -243,14 +406,15 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     serverMessages: ["status-update", "end-of-call-report", "transcript"],
     maxDurationSeconds,
     transferNumber: phoneConnection?.humanTransferNumber ?? null,
+    transferDestinations,
     metadata: { profileSource: "ferocity_office_manager", industryModule: industryContext?.moduleKey ?? null }
   };
   const result = await adapter.createOrUpdateAssistant(
     {
       tenantId,
       brandId: profile.brand_id,
-      correlationId: `voice-assistant:${provider.data}:${tenantId}`,
-      idempotencyKey: `voice-assistant:${provider.data}:${tenantId}:${profile.brand_id ?? "workspace"}`,
+      correlationId: `voice-assistant:${providerKey}:${tenantId}`,
+      idempotencyKey: `voice-assistant:${providerKey}:${tenantId}:${profile.brand_id ?? "workspace"}`,
       liveActionsEnabled: false
     },
     {
@@ -272,7 +436,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
       [
         tenantId,
         JSON.stringify({ assistantSyncError: result.safeMessage, assistantSyncAt: new Date().toISOString() }),
-        provider.data
+        providerKey
       ]
     );
     revalidatePath("/app/receptionist-setup");
@@ -282,8 +446,8 @@ export async function syncVoiceAssistantAction(formData: FormData) {
   const outboundResult = await adapter.createOrUpdateAssistant(
     {
       tenantId, brandId: profile.brand_id,
-      correlationId: `voice-outbound-assistant:${provider.data}:${tenantId}`,
-      idempotencyKey: `voice-outbound-assistant:${provider.data}:${tenantId}:${profile.brand_id ?? "workspace"}`,
+      correlationId: `voice-outbound-assistant:${providerKey}:${tenantId}`,
+      idempotencyKey: `voice-outbound-assistant:${providerKey}:${tenantId}:${profile.brand_id ?? "workspace"}`,
       liveActionsEnabled: false
     },
     {
@@ -297,7 +461,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     await queryPostgres(
       `update public.provider_accounts set status='error',live_actions_enabled=false,
        metadata_json=metadata_json || $2::jsonb,updated_at=now() where tenant_id=$1 and provider_key=$3`,
-      [tenantId, JSON.stringify({ outboundAssistantSyncError: outboundResult.safeMessage, assistantSyncAt: new Date().toISOString() }), provider.data]
+      [tenantId, JSON.stringify({ outboundAssistantSyncError: outboundResult.safeMessage, assistantSyncAt: new Date().toISOString() }), providerKey]
     );
     revalidatePath("/app/receptionist-setup");
     return;
@@ -316,9 +480,10 @@ export async function syncVoiceAssistantAction(formData: FormData) {
         outboundAssistantId: outboundResult.data.assistantId,
         assistantStatus: result.data.status,
         assistantSyncedAt: new Date().toISOString(),
+        transferNumber: phoneConnection?.humanTransferNumber ?? null,
         publishedProfileVersion: await latestVoiceProfileVersion(tenantId, profile.brand_id)
       }),
-      provider.data
+      providerKey
     ]
   );
   await queryPostgres(
@@ -332,7 +497,7 @@ export async function syncVoiceAssistantAction(formData: FormData) {
     [
       tenantId,
       JSON.stringify({ assistantId: result.data.assistantId, syncedAt: new Date().toISOString() }),
-      provider.data
+      providerKey
     ]
   );
 

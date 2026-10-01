@@ -169,3 +169,32 @@ export async function getPublicFormProfile(publicKey: string) {
   const row = result?.rows[0];
   return row ? addQualificationQuestions(mapProfile(row)) : null;
 }
+
+export async function getFerocityPublicSalesProfile() {
+  const result = await queryPostgres<FormProfileRow>(
+    `
+    select
+      f.public_key,
+      f.name as form_name,
+      b.name as brand_name,
+      b.slug as brand_slug,
+      b.business_model,
+      b.industry,
+      b.primary_goal,
+      b.risk_profile,
+      s.cta_goals,
+      s.tone_of_voice
+    from public.forms f
+    join public.brands b on b.id = f.brand_id and b.tenant_id = f.tenant_id
+    join public.tenants t on t.id = f.tenant_id
+    left join public.brand_marketing_settings s on s.brand_id = b.id and s.tenant_id = b.tenant_id
+    where f.active = true
+      and lower(b.slug) = 'ferocity'
+      and lower(t.name) = 'internal portfolio'
+    order by f.created_at asc
+    limit 1
+    `
+  );
+  const row = result?.rows[0];
+  return row ? addQualificationQuestions(mapProfile(row)) : null;
+}

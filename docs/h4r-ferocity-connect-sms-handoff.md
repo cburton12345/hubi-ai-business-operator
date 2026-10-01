@@ -1,6 +1,6 @@
 # H4R ↔ Ferocity Connect SMS handoff
 
-Last verified: 2026-08-31
+Last verified: 2026-09-07
 
 ## Bottom line
 
@@ -29,6 +29,7 @@ Important files:
 - Durable queue: `src/lib/ferocity-connect/queue.ts`
 - Canonical messaging safety engine: `src/lib/messaging/messaging-engine.ts`
 - Device API: `src/app/api/ferocity-connect/device/`
+- H4R read-only support status: `src/app/api/integrations/h4r/status/route.ts`
 - Pairing/device control APIs: `src/app/api/ferocity-connect/`
 - Workspace control UI: `src/app/app/integrations/ferocity-connect/`
 - Architecture: `docs/ferocity-connect-production-architecture.md`
@@ -138,6 +139,18 @@ On 2026-08-31, the focused Ferocity Connect, SMS policy, and messaging-engine sa
 The subsequent connector-health and inbound-reply controls are preserved in local Ferocity commit `8a04caa` (`Add connector health and inbound reply controls`). TypeScript, lint, connector readiness, syntax checks, and the focused connector/message-health suite passed after that change. This commit has not been pushed or deployed.
 
 No deployment or H4R routing change is authorized by this handoff document.
+
+## H4R support-check compatibility update — 2026-09-07
+
+H4R now has a local `/connect.html` Help / Support Check panel and a daily read-only safety monitor. Ferocity's bridge is prepared to support that model without changing H4R's active Twilio route or enabling automatic replies:
+
+- `POST /api/integrations/h4r/status` uses the same timestamp, nonce, and HMAC protection as the SMS ingress route.
+- The request contains only the mapped H4R `workspace_id` and an optional bounded `limit`; the caller cannot choose a Ferocity tenant.
+- The response returns the bridge/reply mode, Ferocity Connect account state, device heartbeat and failure state, active offline/callback alerts, H4R-scoped outbound history with delivery/failure details, H4R-scoped inbound history, and prepared reply drafts.
+- New inbound H4R messages are tagged with the mapped workspace/conversation/prospect identifiers so subsequent status reads cannot mix another workspace's history.
+- `review` remains the default. The status endpoint is read-only and cannot send, approve, switch providers, replace Twilio, or enable live H4R replies.
+
+This source update is local and requires the next authorized Ferocity deployment before H4R can call it. H4R still needs its own signed status client and support-panel mapping. The shared H4R/Ferocity bridge secret must stay server-side.
 
 ## Ferocity-side implementation update — 2026-09-02
 

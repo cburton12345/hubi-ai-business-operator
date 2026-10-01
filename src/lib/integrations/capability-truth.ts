@@ -1,4 +1,5 @@
 import truth from "@/lib/integrations/provider-capability-truth.json";
+import type { ProviderCertificationStatus } from "@/lib/integrations/provider-certification";
 
 export type CapabilityTruthState =
   | "certified_live"
@@ -36,8 +37,13 @@ export function providerIsCertifiedLive(providerKey: string) {
 }
 
 export function providerCanExecute(providerKey: string) {
-  const state = providerTruthState(providerKey);
-  return state === "certified_live" || state === "limited" || state === "connect_account";
+  const provider = getProviderCapabilityTruth(providerKey);
+  if (!provider) return false;
+  if (provider.state === "certified_live" || provider.state === "limited") return true;
+  if (provider.state !== "connect_account") return false;
+  // Some live adapters still require each tenant to connect an account. A
+  // connection screen by itself is not execution, so require a real action.
+  return provider.capabilities.some((capability) => capability !== "connect_account");
 }
 
 export function providerTruthLabel(state: CapabilityTruthState) {
@@ -47,6 +53,16 @@ export function providerTruthLabel(state: CapabilityTruthState) {
   if (state === "approval_blocked") return "Provider approval required";
   if (state === "fallback_only") return "Native fallback available";
   return "Planned";
+}
+
+export function providerApprovalIsBlocked(
+  providerKey: string,
+  certificationStatus?: ProviderCertificationStatus | null
+) {
+  if (providerTruthState(providerKey) !== "approval_blocked") return false;
+  return !["connected_unverified", "certified_limited", "certified_live"].includes(
+    certificationStatus ?? ""
+  );
 }
 
 export function listProviderCapabilityTruth() {

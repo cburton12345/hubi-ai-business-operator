@@ -1,6 +1,7 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
+import { logAppError } from "@/lib/observability/log-error";
 
 export async function createSupportIssue(input: {
   tenantId?: string | null;
@@ -57,30 +58,48 @@ export async function createSupportIssue(input: {
     );
   }
 
-  const tasks: Array<Promise<unknown>> = [
-    raisePlatformAdminAlert({
-      fingerprint: `support-request:${issueId}`,
-      family: "customer_support",
-      type: "support_requested",
-      severity: "high",
-      title: `Customer support request: ${input.subject}`,
-      body: `${input.requesterName || input.requesterEmail || input.requesterPhone || "A caller"} needs help. The request is recorded in Ferocity's support queue.`,
-      tenantId: input.tenantId,
-      actionUrl: "/app/platform-activity#support",
-      metadata: { supportIssueId: issueId, issueType: input.issueType, requesterEmail: input.requesterEmail ?? null, requesterPhone: input.requesterPhone ?? null }
-    })
+  const alertSeverity = input.severity === "high" ? "high" : input.severity === "low" ? "info" : "warning";
+  const tasks: Array<{ channel: string; task: Promise<unknown> }> = [
+    {
+      channel: "platform_admin_alert",
+      task: raisePlatformAdminAlert({
+        fingerprint: `support-request:${issueId}`,
+        family: "customer_support",
+        type: "support_requested",
+        severity: alertSeverity,
+        title: `Customer support request: ${input.subject}`,
+        body: `${input.requesterName || input.requesterEmail || input.requesterPhone || "A caller"} needs help. The request is recorded in Ferocity's support queue.`,
+        tenantId: input.tenantId ?? undefined,
+        actionUrl: "/app/platform-activity#support",
+        metadata: { supportIssueId: issueId, issueType: input.issueType, requesterEmail: input.requesterEmail ?? null, requesterPhone: input.requesterPhone ?? null }
+      })
+    }
   ];
   if (input.requesterEmail) {
-    tasks.push(sendTransactionalEmail({
+    tasks.push({ channel: "requester_confirmation_email", task: sendTransactionalEmail({
       to: input.requesterEmail,
       subject: "Ferocity received your support request",
       text: `We received your request: ${input.subject}\n\nReference: ${issueId}\n\nYou do not need to submit it again. If you need to add context, email support@ferocity.live and include this reference. Do not send passwords, verification codes, or full payment information.`,
       tenantId: input.tenantId,
       eventKey: `support-confirmation-${issueId}`,
       metadata: { supportIssueId: issueId }
-    }));
+    }) });
   }
-  await Promise.all(tasks);
+  const notificationResults = await Promise.allSettled(tasks.map((entry) => entry.task));
+  await Promise.all(notificationResults.map(async (notification, index) => {
+    if (notification.status === "fulfilled") return;
+    await logAppError({
+      source: "support.create_issue.notification",
+      message: "A support request was saved, but a follow-up notification failed.",
+      severity: "warning",
+      tenantId: input.tenantId,
+      metadata: {
+        supportIssueId: issueId,
+        channel: tasks[index]?.channel,
+        error: notification.reason instanceof Error ? notification.reason.message.slice(0, 500) : "Unknown notification error."
+      }
+    });
+  }));
 
   return { issueId };
 }

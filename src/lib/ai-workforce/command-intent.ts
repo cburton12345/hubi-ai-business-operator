@@ -91,6 +91,7 @@ export function readOnlyRouteForCommand(command: string) {
 
 export function workspaceRouteForCommand(command: string) {
   const lower = command.toLowerCase();
+  if (lower.includes("ferocity connect") || lower.includes("android business phone") || lower.includes("pair android")) return "/app/integrations/ferocity-connect";
   if (["marketing", "campaign", "customer", "lead", "growth", "seo", "review", "referral", "advertis"].some((term) => lower.includes(term))) return "/app/growth";
   if (["invoice", "paid", "cash", "collection", "owe", "money"].some((term) => lower.includes(term))) return "/app/cash-collection";
   if (["estimate", "job", "material", "scope", "crew", "work more smoothly"].some((term) => lower.includes(term))) return "/app/job-tracker";

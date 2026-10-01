@@ -9,12 +9,65 @@ import { normalizeFunnelStrategy, type FunnelStrategyPlan } from "@/lib/ai/funne
 import { directVideoMarketingAsset } from "@/lib/ai/video-service";
 import { queryPostgres } from "@/lib/db/postgres";
 import { processWebsiteImport } from "@/lib/marketing-os/website-import-processor";
+import { evaluateOrganicContentQuality, includedOrganicPublishingMoments } from "@/lib/marketing/organic-publishing-policy";
+import { getWorkspacePlanKey } from "@/lib/controls/service-gates";
 import { activateFunnelOperations } from "@/lib/revenue-growth/activate-funnel-operations";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const brandSchema = z.object({
   brandId: z.string().uuid().optional()
 });
+
+const organicPublishingSettingsSchema = z.object({
+  brandId: z.string().uuid(),
+  enabled: z.boolean(),
+  weeklyMomentTarget: z.coerce.number().int().min(0).max(14),
+  channels: z.array(z.enum(["website", "google_business_profile", "facebook", "instagram", "linkedin"])).max(5)
+});
+
+export async function saveOrganicPublishingSettingsAction(formData: FormData) {
+  await requirePermission("brand:manage");
+  const parsed = organicPublishingSettingsSchema.safeParse({
+    brandId: formData.get("brandId"),
+    enabled: formData.get("enabled") === "on",
+    weeklyMomentTarget: formData.get("weeklyMomentTarget"),
+    channels: formData.getAll("channels")
+  });
+  if (!parsed.success) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const planKey = await getWorkspacePlanKey(workspaceId);
+  const included = includedOrganicPublishingMoments(planKey);
+  const target = parsed.data.enabled ? Math.min(parsed.data.weeklyMomentTarget, included) : 0;
+
+  await queryPostgres(
+    `
+    insert into public.brand_marketing_settings (
+      tenant_id, brand_id, organic_publishing_enabled, organic_weekly_moment_target,
+      organic_channels, organic_minimum_quality_score, organic_require_approved_source, metadata_json
+    )
+    values ($1, $2, $3, $4, $5::text[], 80, true, jsonb_build_object(
+      'organicPublishingUpdatedAt', now(),
+      'organicPublishingPlanAllowance', $6::int,
+      'paidSpendAuthorized', false
+    ))
+    on conflict (brand_id) do update
+    set organic_publishing_enabled = excluded.organic_publishing_enabled,
+        organic_weekly_moment_target = excluded.organic_weekly_moment_target,
+        organic_channels = excluded.organic_channels,
+        organic_minimum_quality_score = 80,
+        organic_require_approved_source = true,
+        metadata_json = public.brand_marketing_settings.metadata_json || jsonb_build_object(
+          'organicPublishingUpdatedAt', now(),
+          'organicPublishingPlanAllowance', $6::int,
+          'paidSpendAuthorized', false
+        ),
+        updated_at = now()
+    `,
+    [workspaceId, parsed.data.brandId, parsed.data.enabled && target > 0, target, parsed.data.channels, included]
+  );
+  revalidatePath("/app/marketing-os");
+}
 
 const websiteImportSchema = z.object({
   brandId: z.string().uuid().optional(),
@@ -91,7 +144,9 @@ const videoJobSchema = z.object({
   durationSeconds: z.coerce.number().int().min(6).max(90),
   audience: z.string().trim().max(220).optional(),
   sourceAssets: z.string().trim().max(800).optional(),
-  variantCount: z.coerce.number().int().min(1).max(5)
+  variantCount: z.coerce.number().int().min(1).max(5),
+  quality: z.enum(["economy", "balanced", "premium"]).default("economy"),
+  contentStyle: z.enum(["brand_story", "ugc", "product_demo", "customer_proof"]).default("brand_story")
 });
 
 async function firstBrandId(workspaceId: string, preferredBrandId?: string) {
@@ -369,6 +424,51 @@ async function insertDraftOutputs(workspaceId: string, brandId: string | null, c
       ]
     );
     const draftId = draftResult?.rows[0]?.id ?? null;
+
+    if (draftId) {
+      const quality = evaluateOrganicContentQuality({
+        title: item.title,
+        body: item.body,
+        sourceFactCount: prompt.trim().length >= 20 ? 1 : 0,
+        claimsVerified: false
+      });
+      await queryPostgres(
+        `
+        insert into public.content_quality_reviews (
+          tenant_id, brand_id, draft_id, quality_status, usefulness_score,
+          local_relevance_score, originality_score, conversion_clarity_score,
+          risk_flags, metadata_json
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10::jsonb)
+        on conflict (draft_id) do update
+        set quality_status = excluded.quality_status,
+            usefulness_score = excluded.usefulness_score,
+            local_relevance_score = excluded.local_relevance_score,
+            originality_score = excluded.originality_score,
+            conversion_clarity_score = excluded.conversion_clarity_score,
+            risk_flags = excluded.risk_flags,
+            metadata_json = public.content_quality_reviews.metadata_json || excluded.metadata_json,
+            updated_at = now()
+        `,
+        [
+          workspaceId,
+          brandId,
+          draftId,
+          quality.status,
+          quality.scores.usefulness,
+          quality.scores.relevance,
+          quality.scores.originality,
+          quality.scores.conversionClarity,
+          quality.riskFlags,
+          JSON.stringify({
+            qualityGate: "organic_publishing_v1",
+            overallScore: quality.score,
+            factualGroundingScore: quality.scores.factualGrounding,
+            requiresHumanImprovement: quality.status !== "passed"
+          })
+        ]
+      );
+    }
 
     const calendarResult = await queryPostgres<{ id: string }>(
       `
@@ -1166,6 +1266,7 @@ export async function createAdAutopilotPackageAction(formData: FormData) {
     system: [
       "You are Ferocity's growth funnel strategist.",
       "Return only a compact JSON object matching the requested fields.",
+      "qualificationQuestions, followUpPlan, trackingPlan, creativeAngles, and safetyChecks must each be JSON arrays; never replace them with objects or prose.",
       "Create a practical audit, quiz, or offer funnel that a normal business owner can understand.",
       "Keep the short-video idea under the requested duration.",
       "Do not guarantee revenue, invent reviews, invent credentials, invent customer proof, or imply live publishing/ad spend is active.",
@@ -1622,11 +1723,50 @@ export async function createVideoJobAction(formData: FormData) {
     durationSeconds: formData.get("durationSeconds") || "15",
     audience: formData.get("audience")?.toString() || undefined,
     sourceAssets: formData.get("sourceAssets")?.toString() || undefined,
-    variantCount: formData.get("variantCount") || "3"
+    variantCount: formData.get("variantCount") || "3",
+    quality: formData.get("quality") || "economy",
+    contentStyle: formData.get("contentStyle") || "brand_story"
   });
   if (!parsed.success) return;
 
   const brandId = await firstBrandId(workspaceId, parsed.data.brandId);
+  const brandContextResult = brandId
+    ? await queryPostgres<{
+        company_name: string | null;
+        website_url: string | null;
+        brand_voice: string | null;
+        ideal_customers: string | null;
+        competitive_advantages: unknown;
+        approved_assets: unknown;
+      }>(
+        `
+        select
+          coalesce(p.company_name, b.name) as company_name,
+          coalesce(p.website_url, b.domain) as website_url,
+          p.brand_voice,
+          p.ideal_customers,
+          p.positioning_json->'competitiveAdvantages' as competitive_advantages,
+          coalesce((
+            select jsonb_agg(jsonb_build_object('id', a.id, 'title', a.title, 'type', a.asset_type) order by a.updated_at desc)
+            from public.marketing_media_assets a
+            where a.tenant_id = $1 and a.brand_id = $2 and a.status = 'active'
+              and a.approved_for_ai_reuse = true and a.permission_status = 'approved'
+          ), '[]'::jsonb) as approved_assets
+        from public.brands b
+        left join public.marketing_os_business_profiles p
+          on p.tenant_id = b.tenant_id and p.brand_id = b.id
+        where b.tenant_id = $1 and b.id = $2
+        limit 1
+        `,
+        [workspaceId, brandId]
+      )
+    : null;
+  const brandContextRow = brandContextResult?.rows[0];
+  const approvedAssets = Array.isArray(brandContextRow?.approved_assets)
+    ? brandContextRow.approved_assets.filter((item): item is { id: string; title: string; type: string } => (
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      )).slice(0, 12)
+    : [];
   const videoPlan = await directVideoMarketingAsset({
     tenantId: workspaceId,
     brandId,
@@ -1638,7 +1778,17 @@ export async function createVideoJobAction(formData: FormData) {
     durationSeconds: parsed.data.durationSeconds,
     audience: parsed.data.audience,
     sourceAssets: parsed.data.sourceAssets,
-    variantCount: parsed.data.variantCount
+    variantCount: parsed.data.variantCount,
+    quality: parsed.data.quality,
+    contentStyle: parsed.data.contentStyle,
+    brandContext: brandContextRow ? {
+      companyName: brandContextRow.company_name,
+      websiteUrl: brandContextRow.website_url,
+      brandVoice: brandContextRow.brand_voice,
+      idealCustomers: brandContextRow.ideal_customers,
+      competitiveAdvantages: brandContextRow.competitive_advantages,
+      approvedAssets
+    } : null
   });
   const result = await queryPostgres<{ id: string }>(
     `

@@ -54,6 +54,11 @@ Ferocity Calls remains part of the existing Ferocity tenant, identity, Business 
 - [x] Handle past-due service with a short take-a-message mode instead of a silent call.
 - [x] Upgrade an existing Calls subscription without a second subscription or data migration.
 - [x] Give Calls users a focused navigation shell backed by the same Ferocity data.
+- [x] Provision a selected Ferocity-managed number only after explicit owner approval, current billing, and workspace voice-agent readiness.
+- [x] Preserve calling through a seven-day payment-recovery period, then restrict paid outbound service while retaining the number for 30 days.
+- [x] Restore the same retained number automatically after payment recovery and honor the paid term for scheduled cancellations.
+- [x] Protect customer port-out requests and require a final 24-hour warning before any automatic release.
+- [x] Queue provider lifecycle work idempotently and block uncertain number purchases for human reconciliation instead of risking duplicate purchases.
 
 ## Certification
 
@@ -63,6 +68,7 @@ Ferocity Calls remains part of the existing Ferocity tenant, identity, Business 
 - [ ] Test BYO Retell, Ferocity-managed Retell, BYO Twilio SMS, manual SMS, and email fallback.
 - [x] Verify current RLS/permissions and sensitive-table grants.
 - [ ] Live-test payment failure, subscription upgrade, concurrency, and provider failure after release configuration is applied.
+- [x] Unit-test managed-number activation, grace, restriction, restoration, retention, port-out protection, release policy, and current Retell weighted-agent payloads.
 - [x] Run typecheck, lint, targeted tests, production build, and non-persisting migration validation.
 - [x] Run current production and provider readiness checks without changing the deployment.
 - [ ] After deployment configuration is available: run live end-to-end certification.

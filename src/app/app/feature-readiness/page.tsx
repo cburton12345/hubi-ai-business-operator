@@ -14,6 +14,7 @@ function icon(state: FeatureReadinessState) {
   if (state === "needs_connection") return <PlugZap size={18} />;
   if (state === "approval_first") return <ShieldCheck size={18} />;
   if (state === "higher_plan") return <LockKeyhole size={18} />;
+  if (state === "unavailable") return <CircleAlert size={18} />;
   return <PlugZap size={18} />;
 }
 
@@ -23,7 +24,8 @@ export default async function FeatureReadinessPage() {
     live: items.filter((item) => item.state === "live_now").length,
     approval: items.filter((item) => item.state === "approval_first").length,
     connection: items.filter((item) => item.state === "needs_connection").length,
-    gated: items.filter((item) => item.state === "higher_plan").length
+    gated: items.filter((item) => item.state === "higher_plan").length,
+    unavailable: items.filter((item) => item.state === "unavailable").length
   };
 
   return (
@@ -52,6 +54,7 @@ export default async function FeatureReadinessPage() {
           <Metric label="Review before action" value={counts.approval} />
           <Metric label="Optional connections" value={counts.connection} />
           <Metric label="Higher plan" value={counts.gated} />
+          <Metric label="Not available yet" value={counts.unavailable} />
         </div>
       </section>
 
@@ -59,7 +62,7 @@ export default async function FeatureReadinessPage() {
         <h2><CircleAlert size={18} /> The Rule</h2>
         <p>
           Internal organization, scans, drafts, reminders, owner alerts, source tracking, and setup can run automatically.
-          Customer messages, public posts, website publishing, ad spend, payment requests, and managed payouts stay gated until connected and reviewed.
+          Customer messages, public posts, website publishing, ad spend, payment requests, and managed payouts stay gated until connected, certified, and reviewed. A saved credential is not proof that an action can execute.
         </p>
       </section>
 

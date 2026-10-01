@@ -122,7 +122,14 @@ export interface LanguageModelProvider {
 
 export interface VideoGenerationProvider {
   providerKey: string;
-  createVideo(context: ProviderContext, input: { prompt: string; assets?: string[]; durationSeconds?: number; aspectRatio?: string; model?: string }): Promise<ProviderResult<{ jobId: string; status: string; usage: ProviderUsage }>>;
+  createVideo(context: ProviderContext, input: {
+    prompt: string;
+    assets?: string[];
+    durationSeconds?: number;
+    aspectRatio?: string;
+    model?: string;
+    quality?: "economy" | "balanced" | "premium";
+  }): Promise<ProviderResult<{ jobId: string; status: string; usage: ProviderUsage }>>;
   getVideo(context: ProviderContext, jobId: string): Promise<ProviderResult<{ status: string; videoUrl?: string; usage?: ProviderUsage }>>;
 }
 

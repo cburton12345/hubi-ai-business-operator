@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { minimumPlanForFeature, planAllowsFeature, planMeetsMinimum, usesCountBasedLimit } from "./service-gates";
+import {
+  billingAllowsWorkspaceActions,
+  minimumPlanForFeature,
+  planAllowsFeature,
+  planMeetsMinimum,
+  usesCountBasedLimit
+} from "./service-gates";
 
 describe("Ferocity core AI plan boundaries", () => {
   it("includes the Authority Engine in Starter", () => {
@@ -44,10 +50,45 @@ describe("Ferocity core AI plan boundaries", () => {
     expect(planAllowsFeature("calls", "payment_collection")).toBe(false);
   });
 
+  it("allows advertised managed voice access on every full Ferocity plan", () => {
+    expect(planAllowsFeature("earn", "voice_ai")).toBe(true);
+    expect(planAllowsFeature("starter", "voice_ai")).toBe(true);
+    expect(planAllowsFeature("growth", "voice_ai")).toBe(true);
+    expect(planAllowsFeature("operator", "voice_ai")).toBe(true);
+  });
+
+  it("treats Earn as the performance-priced full operating system rather than Free", () => {
+    expect(planMeetsMinimum("earn", "operator")).toBe(true);
+    expect(planAllowsFeature("earn", "content_studio")).toBe(true);
+    expect(planAllowsFeature("earn", "payment_collection")).toBe(true);
+    expect(planAllowsFeature("earn", "ai_video_generation")).toBe(true);
+  });
+
   it("allows Ferocity Connect SMS without unlocking the full operating system", () => {
     expect(planAllowsFeature("ferocity_connect", "sms_send")).toBe(true);
     expect(planAllowsFeature("ferocity_connect", "follow_up_recovery")).toBe(true);
     expect(planAllowsFeature("ferocity_connect", "voice_ai")).toBe(false);
     expect(planAllowsFeature("job_tracker", "sms_send")).toBe(true);
+  });
+
+  it("allows Ferocity-owned internal AI surfaces without inventing a customer subscription", () => {
+    expect(billingAllowsWorkspaceActions({
+      accountType: "internal",
+      billingAccess: { allowPaidActions: false },
+      planKey: "pro_agency"
+    })).toBe(true);
+  });
+
+  it("continues enforcing subscription access for customer workspaces", () => {
+    expect(billingAllowsWorkspaceActions({
+      accountType: "customer",
+      billingAccess: { allowPaidActions: false },
+      planKey: "growth"
+    })).toBe(false);
+    expect(billingAllowsWorkspaceActions({
+      accountType: "customer",
+      billingAccess: { allowPaidActions: true },
+      planKey: "growth"
+    })).toBe(true);
   });
 });

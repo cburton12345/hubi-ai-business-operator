@@ -77,7 +77,7 @@ try {
             metadata_json = metadata_json || $5::jsonb,
             updated_at = now()
       where tenant_id = $6 and provider_key = 'retell_voice' and provider_call_id = $7
-        and metadata_json->>'source' = 'founder_authorized_certification'
+        and metadata_json->>'source' in ('founder_authorized_certification','founder_authorized_business_intro')
       returning id`,
     [
       durationSeconds,

@@ -206,6 +206,29 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
     [tenantId, input.planKey]
   );
 
+  if (["starter", "growth", "operator"].includes(input.planKey)) {
+    const includedWeeklyPublishingMoments = input.planKey === "starter" ? 2 : input.planKey === "growth" ? 4 : 7;
+    await queryPostgres(
+      `
+      update public.workspace_feature_entitlements
+      set usage_limit = $2,
+          usage_period = 'weekly',
+          metadata_json = metadata_json || jsonb_build_object(
+            'includedWeeklyPublishingMoments', $2::int,
+            'approvalMode', 'review_required',
+            'overagePolicy', 'block',
+            'organicOnly', true,
+            'paidSpendSeparate', true,
+            'requiresExplicitOptIn', true,
+            'qualityGateRequired', true
+          ),
+          updated_at = now()
+      where tenant_id = $1 and feature_key = 'publishing_queue'
+      `,
+      [tenantId, includedWeeklyPublishingMoments]
+    );
+  }
+
   await queryPostgres(
     `
     update public.workspace_feature_entitlements

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { PublicVisitTracker } from "@/components/public/PublicVisitTracker";
+import { PublicFerocityChatWidget } from "@/components/public/PublicFerocityChatWidget";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ferocity.live"),
   title: {
-    default: "Ferocity AI | AI Operating System for Service Businesses",
+    default: "Ferocity | The AI Operating System for Running a Business",
     template: "%s | Ferocity"
   },
   description:
-    "Ferocity helps service businesses win more work, run jobs, get paid, grow customer trust, and take routine office work off the owner.",
+    "Ferocity connects customers, work, people, money, communications, and growth—then keeps authorized next steps moving.",
   applicationName: "Ferocity",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -32,13 +33,13 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://ferocity.live",
     siteName: "Ferocity",
-    title: "Ferocity AI | AI Operating System for Service Businesses",
+    title: "Ferocity | The AI Operating System for Running a Business",
     description:
-      "Win more work, lose less money, and get your time back with one AI operating system for service businesses."
+      "Connect customers, work, people, money, communications, and growth through one AI business operating system."
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ferocity | AI Workforce for Modern Businesses",
+    title: "Ferocity | AI Operating System for Business",
     description:
       "Run follow-up, reviews, jobs, payments, team work, and owner alerts with one AI operating system."
   },
@@ -58,7 +59,7 @@ const structuredData = {
       alternateName: "Ferocity AI",
       url: "https://ferocity.live/",
       logo: "https://ferocity.live/icon.svg",
-      description: "Ferocity is an AI business operating system that coordinates people, AI employees, customer work, operations, money, and growth for service businesses."
+      description: "Ferocity is an AI business operating system that coordinates people, specialized AI departments, customer work, operations, money, and growth through one Business Brain."
     },
     {
       "@type": "WebSite",
@@ -78,11 +79,11 @@ const structuredData = {
       applicationCategory: "BusinessApplication",
       applicationSubCategory: "AI business operating system",
       operatingSystem: "Web",
-      description: "An AI operating system for service businesses that helps capture and follow up with leads, coordinate jobs and teams, manage customer communication, collect payments, and keep authorized work moving.",
+      description: "An AI business operating system that helps coordinate customer work, teams, communication, money, growth, and authorized next actions.",
       publisher: { "@id": "https://ferocity.live/#organization" },
       audience: {
         "@type": "BusinessAudience",
-        audienceType: "Service businesses"
+        audienceType: "Businesses and operating teams"
       }
     }
   ]
@@ -102,6 +103,7 @@ export default function RootLayout({
         />
         <PublicVisitTracker />
         {children}
+        <PublicFerocityChatWidget />
       </body>
     </html>
   );

@@ -10,8 +10,10 @@ afterEach(() => {
 describe("AI workload routing", () => {
   it("classifies known workflows without treating every task as frontier work", () => {
     expect(workloadTierForRunType("receipt_vision_extraction")).toBe("economy");
-    expect(workloadTierForRunType("public_website_chat_reply")).toBe("balanced");
+    expect(workloadTierForRunType("public_website_chat_reply")).toBe("advanced");
+    expect(workloadTierForRunType("public_website_chat_reply_recovery")).toBe("balanced");
     expect(workloadTierForRunType("growth_funnel_strategy")).toBe("advanced");
+    expect(workloadTierForRunType("expense_allocation_reasoning_advanced")).toBe("advanced");
     expect(workloadTierForRunType("future_workflow")).toBe("balanced");
   });
 

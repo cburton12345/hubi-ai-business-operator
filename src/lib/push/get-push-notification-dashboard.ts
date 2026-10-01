@@ -43,7 +43,7 @@ export type PushNotificationDashboard = {
   }[];
   inAppNotifications: {
     id: string;
-    source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert";
+    source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert" | "marketing_recommendation";
     title: string;
     body: string;
     severity: string;
@@ -121,7 +121,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
     ),
     queryPostgres<{
       id: string;
-      source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert";
+      source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert" | "marketing_recommendation";
       title: string;
       body: string;
       severity: string;
@@ -240,6 +240,26 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
         from public.provider_funding_alerts f
         where f.tenant_id = $1
           and f.status = 'active'
+
+        union all
+
+        select
+          r.id::text as id,
+          'marketing_recommendation'::text as source,
+          r.title,
+          r.trigger_reason as body,
+          case
+            when r.source_signals_json->>'claimAllowed' = 'storm_related_demand_is_rising' then 'high'
+            else 'medium'
+          end as severity,
+          r.status,
+          '/app/marketing-os'::text as action_url,
+          r.updated_at as created_at
+        from public.marketing_campaign_recommendations r
+        where r.tenant_id = $1
+          and r.metadata_json->>'createdByAgent' = 'weather_demand_monitor'
+          and r.status not in ('dismissed', 'paused')
+          and r.updated_at >= now() - interval '14 days'
       ) notifications
       left join public.in_app_notification_states state
         on state.tenant_id = $1

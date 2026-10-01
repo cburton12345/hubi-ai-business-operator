@@ -107,10 +107,10 @@ def scene_opportunity(p, timeline):
     x = int(505 + (1 - phase(p, 0.0, 0.22)) * 70)
     rounded(draw, (x, 105, 1235, 630), 28, NAVY)
     text(draw, (x + 34, 136), "GROWTH SIGNAL DETECTED", 16, MINT, True)
-    text(draw, (x + 34, 178), "Storm demand is rising.", 35, "#ffffff", True)
+    text(draw, (x + 34, 178), "A verified storm opportunity.", 35, "#ffffff", True)
     text(draw, (x + 34, 224), "Tomorrow still has capacity.", 24, "#c8d8dc")
     reveal = phase(p, 0.18, 0.48)
-    metrics = [("Search demand", f"+{round(31 * reveal)}%"), ("Open crew hours", f"{round(16 * reveal)}"), ("Approved proof", f"{round(9 * reveal)} jobs")]
+    metrics = [("Verified alert", "NWS"), ("Open crew hours", f"{round(16 * reveal)}"), ("Approved proof", f"{round(9 * reveal)} jobs")]
     for i, (label, value) in enumerate(metrics):
         metric(draw, (x + 34 + i * 218, 292, x + 228 + i * 218, 405), label, value, MINT)
     if p > 0.52:

@@ -8,6 +8,8 @@ import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
 import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
 import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
+import { EARN_AGREEMENT_VERSION, ensureEarnFeatureEntitlements } from "@/lib/billing/earn";
+import { importPublicChatHandoff } from "@/lib/public-site/import-public-chat-handoff";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -28,6 +30,7 @@ const accessRequestSchema = z.object({
   autonomyMode: z.string().trim().max(80).optional(),
   message: z.string().trim().max(2500).optional(),
   sourceDetail: z.string().trim().max(240).optional(),
+  chatSessionId: z.string().uuid().optional(),
   consentToContact: z.literal("on"),
   createWorkspace: z.string().optional(),
   website: z.string().max(0).optional()
@@ -415,6 +418,7 @@ async function createStarterWorkspace(input: {
   message?: string;
   leadSources?: string[];
   websiteConnectionPlan?: string | null;
+  chatSessionId?: string | null;
 }) {
   const existingInviteResult = await queryPostgres<{ tenant_id: string; slug: string }>(
     `
@@ -519,10 +523,11 @@ async function createStarterWorkspace(input: {
   const workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 5).toLowerCase()}`;
   const brandSlug = slugify(workspaceName) || "main-brand";
   const planKey =
-    input.requestedPlan && ["free", "ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator", "managed_operator", "pro_agency"].includes(input.requestedPlan)
+    input.requestedPlan && ["free", "earn", "ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator", "managed_operator", "pro_agency"].includes(input.requestedPlan)
       ? input.requestedPlan
       : "free";
-  const manualBillingPlan = planKey === "managed_operator" || planKey === "pro_agency";
+  const earnPlan = planKey === "earn";
+  const manualBillingPlan = earnPlan || planKey === "managed_operator" || planKey === "pro_agency";
   const token = randomSessionToken();
 
   const workspaceResult = await queryPostgres<{ id: string; slug: string }>(
@@ -536,7 +541,7 @@ async function createStarterWorkspace(input: {
       workspaceSlug,
       planKey,
       planKey === "free" || manualBillingPlan ? "active" : "trial",
-      manualBillingPlan ? "manual" : planKey === "free" ? "free" : "trialing"
+      planKey === "free" ? "none" : manualBillingPlan ? "active" : "trialing"
     ]
   );
   const workspace = workspaceResult?.rows[0];
@@ -587,6 +592,20 @@ async function createStarterWorkspace(input: {
     [workspace.id, brandId, defaultServiceName(input.businessType, input.mainGoal), slugify(defaultServiceName(input.businessType, input.mainGoal))]
   );
 
+  if (earnPlan) {
+    await queryPostgres(
+      `insert into public.earn_enrollments (tenant_id,status,agreement_version,metadata_json)
+       values ($1,'pending',$2,$3::jsonb)
+       on conflict (tenant_id) do nothing`,
+      [workspace.id, EARN_AGREEMENT_VERSION, JSON.stringify({
+        requestedDuringSignup: true,
+        explicitAgreementAcceptanceRequiredAfterSecureLogin: true,
+        providerUsageSponsored: false
+      })]
+    );
+    await ensureEarnFeatureEntitlements(workspace.id);
+  }
+
   await queryPostgres(
     `
     insert into public.brand_marketing_settings (
@@ -633,6 +652,27 @@ async function createStarterWorkspace(input: {
 
   await ensureDefaultAgentWorkflows(workspace.id);
   await upsertPushNotificationPreferences(workspace.id, getDefaultPushNotificationPreferences());
+
+  let importedChatThreadId: string | null = null;
+  try {
+    importedChatThreadId = await importPublicChatHandoff({
+      tenantId: workspace.id,
+      requestId: input.requestId,
+      chatSessionId: input.chatSessionId,
+    });
+  } catch (error) {
+    await logAppError({
+      source: "public.access_requests.chat_handoff",
+      message: "Workspace created, but the public Ferocity conversation could not be imported.",
+      severity: "warning",
+      tenantId: workspace.id,
+      metadata: {
+        accessRequestId: input.requestId,
+        chatSessionId: input.chatSessionId ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
 
   await queryPostgres(
     `
@@ -693,7 +733,8 @@ async function createStarterWorkspace(input: {
         autopilotAreas: normalizeAutopilotAreas(input.autopilotAreas),
         autonomyMode: normalizeAutonomyMode(input.autonomyMode),
         websiteConnectionPlan: input.websiteConnectionPlan,
-        liveActionsEnabled: false
+        liveActionsEnabled: false,
+        importedChatThreadId
       })
     ]
   );
@@ -719,7 +760,8 @@ async function createStarterWorkspace(input: {
         autonomyMode: normalizeAutonomyMode(input.autonomyMode),
         websiteConnectionPlan: input.websiteConnectionPlan,
         inviteCreated: true,
-        liveActionsEnabled: false
+        liveActionsEnabled: false,
+        importedChatThreadId
       })
     ]
   );
@@ -754,6 +796,7 @@ export async function POST(request: NextRequest) {
     autonomyMode: String(formData.get("autonomyMode") ?? ""),
     message: String(formData.get("message") ?? ""),
     sourceDetail: String(formData.get("sourceDetail") ?? ""),
+    chatSessionId: formData.has("chatSessionId") ? String(formData.get("chatSessionId")) : undefined,
     consentToContact: formData.get("consentToContact"),
     createWorkspace: String(formData.get("createWorkspace") ?? ""),
     website: String(formData.get("website") ?? "")
@@ -766,6 +809,7 @@ export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = request.headers.get("user-agent") ?? null;
   const priority = parsed.data.mainGoal?.includes("fast_lead_response") || parsed.data.mainGoal?.includes("seo_reviews") ? "high" : "normal";
+  const createWorkspaceRequested = parsed.data.createWorkspace === "on" || parsed.data.requestedPlan === "earn";
 
   const result = await queryPostgres<{ id: string }>(
     `
@@ -832,8 +876,9 @@ export async function POST(request: NextRequest) {
         preferredCallWindow: emptyToNull(parsed.data.preferredCallWindow),
         autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
         websiteConnectionPlan: emptyToNull(parsed.data.websiteConnectionPlan),
-        launchMode: parsed.data.createWorkspace === "on" ? "auto_workspace_requested" : "request_access_no_auto_workspace",
-        nextStep: parsed.data.createWorkspace === "on" ? "workspace_invite_created_when_safe" : "review_then_invite_or_setup_call"
+        chatSessionId: parsed.data.chatSessionId ?? null,
+        launchMode: createWorkspaceRequested ? "auto_workspace_requested" : "request_access_no_auto_workspace",
+        nextStep: createWorkspaceRequested ? "workspace_invite_created_when_safe" : "review_then_invite_or_setup_call"
       }),
       ipAddress,
       userAgent
@@ -875,11 +920,12 @@ export async function POST(request: NextRequest) {
       preferredCallWindow: parsed.data.preferredCallWindow,
       autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
       websiteConnectionPlan: parsed.data.websiteConnectionPlan,
-      createWorkspace: parsed.data.createWorkspace === "on"
+      chatSessionId: parsed.data.chatSessionId ?? null,
+      createWorkspace: createWorkspaceRequested
     }
   });
 
-  if (parsed.data.createWorkspace === "on") {
+  if (createWorkspaceRequested) {
     const created = await createStarterWorkspace({
       requestId: result.rows[0].id,
       email: parsed.data.email,
@@ -894,7 +940,8 @@ export async function POST(request: NextRequest) {
       autopilotAreas: normalizeAutopilotAreas(parsed.data.autopilotAreas),
       autonomyMode: normalizeAutonomyMode(parsed.data.autonomyMode),
       message: parsed.data.message,
-      leadSources: normalizeLeadSources(parsed.data.leadSources)
+      leadSources: normalizeLeadSources(parsed.data.leadSources),
+      chatSessionId: parsed.data.chatSessionId ?? null
     });
 
     if (created) {

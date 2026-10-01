@@ -21,6 +21,28 @@ export type OAuthProviderConfig = {
 };
 
 export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
+  gmail_mailbox: {
+    provider: "gmail_mailbox",
+    label: "Gmail inbox",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
+    scopes: ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"],
+    query: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
+    liveActionRule: "Read and organize inbox messages only. Sending requires a separate owner authorization."
+  },
+  microsoft_mailbox: {
+    provider: "microsoft_mailbox",
+    label: "Microsoft 365 inbox",
+    authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    clientIdEnv: "MICROSOFT_CLIENT_ID",
+    clientSecretEnv: "MICROSOFT_CLIENT_SECRET",
+    redirectUriEnv: "MICROSOFT_OAUTH_REDIRECT_URI",
+    scopes: ["offline_access", "openid", "profile", "User.Read", "Mail.Read"],
+    query: { response_mode: "query" },
+    liveActionRule: "Read and organize inbox messages only. Sending requires a separate owner authorization."
+  },
   google_calendar: {
     provider: "google_calendar",
     label: "Google Calendar",
@@ -61,10 +83,20 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
     redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
-    extraRequiredEnv: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
     scopes: ["https://www.googleapis.com/auth/adwords"],
     query: { access_type: "offline", prompt: "consent" },
     liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
+  },
+  youtube: {
+    provider: "youtube",
+    label: "YouTube channel",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
+    scopes: ["openid", "email", "https://www.googleapis.com/auth/youtube.readonly"],
+    query: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
+    liveActionRule: "Read channel identity and context only. Video uploads and publishing require a separate owner authorization and approval policy."
   },
   search_console: {
     provider: "search_console",
@@ -114,6 +146,19 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     query: {},
     liveActionRule: "Creative drafts, scripts, and reporting first. Posting, creator actions, campaign creation, and spend require approval."
   },
+  tiktok_content: {
+    provider: "tiktok_content",
+    label: "TikTok Content Publishing",
+    authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    clientIdParam: "client_key",
+    clientIdEnv: "TIKTOK_CLIENT_KEY",
+    clientSecretEnv: "TIKTOK_CLIENT_SECRET",
+    redirectUriEnv: "TIKTOK_CONTENT_REDIRECT_URI",
+    scopes: ["user.info.basic", "video.upload", "video.publish"],
+    scopeSeparator: ",",
+    query: {},
+    liveActionRule: "Publishing requires TikTok product approval, current creator information, explicit per-post consent, quality review, and workspace authorization."
+  },
   reddit: {
     provider: "reddit",
     label: "Reddit",
@@ -137,6 +182,50 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     query: { response_mode: "query" },
     liveActionRule: "Read reporting first. Campaign creation, budget edits, and spend require approval."
   },
+  linkedin_ads: {
+    provider: "linkedin_ads",
+    label: "LinkedIn Ads",
+    authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    clientIdEnv: "LINKEDIN_CLIENT_ID",
+    clientSecretEnv: "LINKEDIN_CLIENT_SECRET",
+    redirectUriEnv: "LINKEDIN_OAUTH_REDIRECT_URI",
+    scopes: ["r_ads", "r_ads_reporting"],
+    query: {},
+    liveActionRule: "Read reporting first. Campaign publishing, audience changes, and spend require approval."
+  },
+  pinterest_ads: {
+    provider: "pinterest_ads",
+    label: "Pinterest Ads",
+    authorizeUrl: "https://www.pinterest.com/oauth/",
+    clientIdEnv: "PINTEREST_CLIENT_ID",
+    clientSecretEnv: "PINTEREST_CLIENT_SECRET",
+    redirectUriEnv: "PINTEREST_OAUTH_REDIRECT_URI",
+    scopes: ["ads:read"],
+    query: {},
+    liveActionRule: "Read reporting first. Pin publishing, campaign changes, and spend require a separate approved scope and owner approval."
+  },
+  snapchat_ads: {
+    provider: "snapchat_ads",
+    label: "Snap Ads",
+    authorizeUrl: "https://accounts.snapchat.com/login/oauth2/authorize",
+    clientIdEnv: "SNAPCHAT_CLIENT_ID",
+    clientSecretEnv: "SNAPCHAT_CLIENT_SECRET",
+    redirectUriEnv: "SNAPCHAT_OAUTH_REDIRECT_URI",
+    scopes: ["snapchat-marketing-api"],
+    query: {},
+    liveActionRule: "Discover organizations and ad accounts first. Campaign changes and spend require approval."
+  },
+  amazon_ads: {
+    provider: "amazon_ads",
+    label: "Amazon Ads",
+    authorizeUrl: "https://www.amazon.com/ap/oa",
+    clientIdEnv: "AMAZON_ADS_CLIENT_ID",
+    clientSecretEnv: "AMAZON_ADS_CLIENT_SECRET",
+    redirectUriEnv: "AMAZON_ADS_OAUTH_REDIRECT_URI",
+    scopes: ["advertising::campaign_management"],
+    query: {},
+    liveActionRule: "Discover eligible advertiser profiles first. Campaign changes and spend require approval."
+  },
   jobber: {
     provider: "jobber",
     label: "Jobber",
@@ -153,17 +242,6 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     pkce: true,
     query: {},
     liveActionRule: "Read the connected Jobber business for analysis. Ferocity never writes back until the owner enables a specific action."
-  },
-  yahoo_ads: {
-    provider: "yahoo_ads",
-    label: "Yahoo / Native Ads",
-    authorizeUrl: "https://api.login.yahoo.com/oauth2/request_auth",
-    clientIdEnv: "YAHOO_CLIENT_ID",
-    clientSecretEnv: "YAHOO_CLIENT_SECRET",
-    redirectUriEnv: "YAHOO_OAUTH_REDIRECT_URI",
-    scopes: ["openid", "profile"],
-    query: {},
-    liveActionRule: "Reporting and attribution first. Publishing and spend require approval."
   }
 };
 

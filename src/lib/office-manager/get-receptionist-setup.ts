@@ -1,5 +1,6 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { getPhoneConnection, type PhoneConnection } from "@/lib/phone/phone-connections";
+import { listHumanTransferDestinations, type HumanTransferDestination } from "@/lib/phone/transfer-routing";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type ReceptionistSetupStep = {
@@ -16,6 +17,7 @@ export type ReceptionistSetupDashboard = {
   missing: string[];
   steps: ReceptionistSetupStep[];
   phoneConnection: PhoneConnection | null;
+  transferDestinations: HumanTransferDestination[];
   phoneNumbers: Array<{
     id: string;
     phoneNumber: string;
@@ -25,6 +27,9 @@ export type ReceptionistSetupDashboard = {
     inboundEnabled: boolean;
     outboundEnabled: boolean;
     complianceStatus: string;
+    callbackStatus: string;
+    retainUntil: string | null;
+    portOutRequested: boolean;
   }>;
   providers: Array<{
     routeFamily: string;
@@ -41,7 +46,7 @@ function label(value: string | null | undefined) {
 
 export async function getReceptionistSetupDashboard(): Promise<ReceptionistSetupDashboard> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [checklistResult, numberResult, routeResult, phoneConnection] = await Promise.all([
+  const [checklistResult, numberResult, routeResult, phoneConnection, transferDestinations] = await Promise.all([
     queryPostgres<{
       status: string;
       business_basics_status: string;
@@ -71,9 +76,13 @@ export async function getReceptionistSetupDashboard(): Promise<ReceptionistSetup
       inbound_enabled: boolean;
       outbound_enabled: boolean;
       compliance_status: string;
+      callback_status: string;
+      retain_until: Date | string | null;
+      port_out_requested_at: Date | string | null;
     }>(
       `
-      select id, phone_number, number_mode, provider_key, status, inbound_enabled, outbound_enabled, compliance_status
+      select id, phone_number, number_mode, provider_key, status, inbound_enabled, outbound_enabled,
+             compliance_status,callback_status,retain_until,port_out_requested_at
       from public.telephony_numbers
       where tenant_id = $1
       order by created_at desc
@@ -96,7 +105,8 @@ export async function getReceptionistSetupDashboard(): Promise<ReceptionistSetup
       `,
       [workspaceId]
     ),
-    getPhoneConnection(workspaceId)
+    getPhoneConnection(workspaceId),
+    listHumanTransferDestinations(workspaceId)
   ]);
 
   const checklist = checklistResult?.rows[0];
@@ -170,6 +180,7 @@ export async function getReceptionistSetupDashboard(): Promise<ReceptionistSetup
     missing,
     steps,
     phoneConnection,
+    transferDestinations,
     phoneNumbers: numbers.map((number) => ({
       id: number.id,
       phoneNumber: number.phone_number,
@@ -178,7 +189,10 @@ export async function getReceptionistSetupDashboard(): Promise<ReceptionistSetup
       status: number.status,
       inboundEnabled: number.inbound_enabled,
       outboundEnabled: number.outbound_enabled,
-      complianceStatus: number.compliance_status
+      complianceStatus: number.compliance_status,
+      callbackStatus: number.callback_status,
+      retainUntil: number.retain_until ? new Date(number.retain_until).toISOString() : null,
+      portOutRequested: Boolean(number.port_out_requested_at)
     })),
     providers: routes.map((route) => ({
       routeFamily: route.route_family,

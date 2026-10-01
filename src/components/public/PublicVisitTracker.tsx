@@ -24,6 +24,7 @@ export function PublicVisitTracker() {
 
     const query = new URLSearchParams(window.location.search);
     const payload = JSON.stringify({
+      eventType: "page_view",
       path: pathname,
       referrer: document.referrer,
       campaignSource: query.get("utm_source"),
@@ -41,6 +42,18 @@ export function PublicVisitTracker() {
       body: payload,
       keepalive: true
     });
+  }, [pathname]);
+
+  useEffect(() => {
+    if (navigator.doNotTrack === "1" || !isPublicMarketingPath(pathname)) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-track-event]") : null;
+      const eventType = target?.dataset.trackEvent;
+      if (!eventType) return;
+      void fetch("/api/public/site-activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventType, path: pathname }), keepalive: true });
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
   }, [pathname]);
 
   return null;
