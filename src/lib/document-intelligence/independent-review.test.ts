@@ -97,4 +97,51 @@ describe("independent financial document review", () => {
     expect(hasUsableDocumentExtraction(partial)).toBe(false);
     expect(deterministicDocumentIssues(partial)).toContain("PDF extraction failed on page(s) 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.");
   });
+
+  it("allows legitimate repeated charges but rejects duplicate source-row identities", () => {
+    const transaction = {
+      sourceKey: "row-1", transactionDate: "2025-12-31", postedDate: null, description: "Parking meter",
+      merchantName: "Parking meter", counterpartyName: null, counterpartyHandle: null, note: null,
+      transactionType: "purchase", providerStatus: "completed", referenceNumber: null, amountCents: 500,
+      direction: "debit" as const, balanceCents: null, suggestedCategory: "parking", isTransfer: false,
+      transferReason: null, confidence: 0.99,
+    };
+    const legitimateRepeat = {
+      ...base,
+      documentType: "statement" as const,
+      subtotalCents: null,
+      taxCents: null,
+      totalCents: null,
+      statementTransactions: [transaction, { ...transaction, sourceKey: "row-2" }],
+    };
+
+    expect(deterministicDocumentIssues(legitimateRepeat)).toEqual([]);
+    expect(deterministicDocumentIssues({
+      ...legitimateRepeat,
+      statementTransactions: [transaction, { ...transaction }],
+    })).toContain("The extraction contains duplicate or missing source-row identities.");
+  });
+
+  it("carries deterministic parser reconciliation failures into independent review", () => {
+    const statement = {
+      ...base,
+      documentType: "statement" as const,
+      subtotalCents: null,
+      taxCents: null,
+      totalCents: null,
+      reviewReasons: ["Parsed transaction totals do not reconcile to the statement summary."],
+      statementTransactions: [{
+        sourceKey: "row-1", transactionDate: "2025-12-31", postedDate: null, description: "Purchase",
+        merchantName: "Store", counterpartyName: null, counterpartyHandle: null, note: null,
+        transactionType: "purchase", providerStatus: "completed", referenceNumber: null, amountCents: 100,
+        direction: "debit" as const, balanceCents: null, suggestedCategory: "supplies", isTransfer: false,
+        transferReason: null, confidence: 0.99,
+      }],
+    };
+
+    const result = compareDocumentExtractions(statement, { ...statement });
+    expect(result.status).toBe("disagreed");
+    expect(result.deterministicIssues).toContain("Parsed transaction totals do not reconcile to the statement summary.");
+    expect(result.humanReviewRequired).toBe(true);
+  });
 });

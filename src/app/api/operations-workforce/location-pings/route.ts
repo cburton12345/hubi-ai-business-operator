@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 const payloadSchema = z.object({
   tenantId: z.string().uuid(),
@@ -22,8 +23,13 @@ function bearer(request: Request) {
 }
 
 function validToken(request: Request) {
-  const expected = env.WORKFORCE_INTAKE_TOKEN ?? env.OWNER_COMMAND_CENTER_TOKEN;
-  return Boolean(expected && bearer(request) === expected);
+  return timingSafeSecretMatch(
+    bearer(request),
+    env.WORKFORCE_INTAKE_TOKEN,
+    env.WORKFORCE_INTAKE_TOKEN_PREVIOUS,
+    env.OWNER_COMMAND_CENTER_TOKEN,
+    env.OWNER_COMMAND_CENTER_TOKEN_PREVIOUS
+  );
 }
 
 export async function POST(request: Request) {

@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { runDueAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { fallbackWorkspaceId } from "@/lib/workspace/current-workspace";
+import { hasRotatingSecret, timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ async function logMonitorRun(status: string, body: string, metadata: Record<stri
 
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
-  if (!env.AI_WORKFORCE_CRON_TOKEN) {
+  if (!hasRotatingSecret(env.AI_WORKFORCE_CRON_TOKEN, env.AI_WORKFORCE_CRON_TOKEN_PREVIOUS)) {
     return NextResponse.json(
       {
         ok: false,
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (tokenFrom(request) !== env.AI_WORKFORCE_CRON_TOKEN) {
+  if (!timingSafeSecretMatch(tokenFrom(request), env.AI_WORKFORCE_CRON_TOKEN, env.AI_WORKFORCE_CRON_TOKEN_PREVIOUS)) {
     return NextResponse.json(
       {
         ok: false,

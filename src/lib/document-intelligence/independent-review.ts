@@ -36,7 +36,7 @@ export function hasUsableDocumentExtraction(document: NormalizedExpenseDocument)
 }
 
 export function deterministicDocumentIssues(document: NormalizedExpenseDocument) {
-  const issues: string[] = [];
+  const issues: string[] = [...new Set(document.reviewReasons.map((reason) => reason.trim()).filter(Boolean))];
   if (!hasUsableDocumentExtraction(document)) issues.push("No usable document details were extracted.");
   if (document.sourceCoverage?.failedPages.length) {
     issues.push(`PDF extraction failed on page(s) ${document.sourceCoverage.failedPages.join(", ")}.`);
@@ -56,8 +56,10 @@ export function deterministicDocumentIssues(document: NormalizedExpenseDocument)
     if (!document.statementTransactions.length) issues.push("No statement transactions were extracted.");
     if (document.statementTransactions.some((row) => row.amountCents <= 0)) issues.push("One or more statement amounts are not positive integers.");
     if (document.statementTransactions.some((row) => !row.transactionDate)) issues.push("One or more statement transactions have no date.");
-    const signatures = document.statementTransactions.map(transactionSignature);
-    if (new Set(signatures).size !== signatures.length) issues.push("The extraction contains repeated transaction rows that need confirmation.");
+    const sourceKeys = document.statementTransactions.map((row) => row.sourceKey);
+    if (sourceKeys.some((sourceKey) => !sourceKey) || new Set(sourceKeys).size !== sourceKeys.length) {
+      issues.push("The extraction contains duplicate or missing source-row identities.");
+    }
   }
   return issues;
 }

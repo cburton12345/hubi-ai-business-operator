@@ -14,6 +14,8 @@ export const refreshableProviderKeys = [
   "microsoft_mailbox",
   "jobber",
   "tiktok",
+  "reddit",
+  "snapchat_ads",
 ] as const;
 
 export type RefreshableProviderKey = (typeof refreshableProviderKeys)[number];

@@ -12,6 +12,7 @@ import {
   type RejectedResendExpenseAttachment,
   type ResendExpenseAttachment,
 } from "@/lib/document-intelligence/email-intake-jobs";
+import { rotatingSecretCandidates, timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 type RouteRow = {
   id: string;
@@ -137,25 +138,28 @@ function verifySvixSignature(request: Request, rawBody: string, secret: string) 
 }
 
 function verifyInboundSecret(request: Request, rawBody: string) {
-  if (!env.RESEND_INBOUND_WEBHOOK_SECRET) return { ok: false as const, reason: "missing_secret" };
+  const secrets = rotatingSecretCandidates(
+    env.RESEND_INBOUND_WEBHOOK_SECRET,
+    env.RESEND_INBOUND_WEBHOOK_SECRET_PREVIOUS
+  );
+  if (secrets.length === 0) return { ok: false as const, reason: "missing_secret" };
 
-  if (verifySvixSignature(request, rawBody, env.RESEND_INBOUND_WEBHOOK_SECRET)) {
+  if (secrets.some((secret) => verifySvixSignature(request, rawBody, secret))) {
     return { ok: true as const };
   }
 
   const authorization = request.headers.get("authorization") ?? "";
   const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
   const token = request.headers.get("x-ferocity-webhook-token")?.trim() || bearer;
-  if (token && token === env.RESEND_INBOUND_WEBHOOK_SECRET) return { ok: true as const };
+  if (timingSafeSecretMatch(token, ...secrets)) return { ok: true as const };
 
   const signature = request.headers.get("x-resend-signature")?.trim();
   if (signature) {
-    const expected = crypto.createHmac("sha256", env.RESEND_INBOUND_WEBHOOK_SECRET).update(rawBody).digest("hex");
     const normalized = signature.replace(/^sha256=/i, "");
-    if (
-      normalized.length === expected.length &&
-      crypto.timingSafeEqual(Buffer.from(normalized), Buffer.from(expected))
-    ) {
+    if (secrets.some((secret) => {
+      const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+      return normalized.length === expected.length && crypto.timingSafeEqual(Buffer.from(normalized), Buffer.from(expected));
+    })) {
       return { ok: true as const };
     }
   }

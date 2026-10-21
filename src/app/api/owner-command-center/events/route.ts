@@ -8,6 +8,7 @@ import { getPushNotificationPreferences, pushPreferencesAllowEvent } from "@/lib
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { captureH4rGoalObservation } from "@/lib/integrations/h4r/goal-observation";
 import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
+import { timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 const eventSchema = z.object({
   tenantId: z.string().uuid().optional(),
@@ -57,8 +58,7 @@ function ownerNotificationBody(event: z.infer<typeof eventSchema>) {
 }
 
 export async function POST(request: Request) {
-  const expectedToken = env.OWNER_COMMAND_CENTER_TOKEN;
-  if (!expectedToken || bearerToken(request) !== expectedToken) {
+  if (!timingSafeSecretMatch(bearerToken(request), env.OWNER_COMMAND_CENTER_TOKEN, env.OWNER_COMMAND_CENTER_TOKEN_PREVIOUS)) {
     return NextResponse.json({ error: "Owner event intake is not configured or token is invalid." }, { status: 401 });
   }
 

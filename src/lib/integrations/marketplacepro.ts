@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { hasRotatingSecret, timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
 import { safeLogAppError } from "@/lib/observability/log-error";
 
@@ -71,14 +72,14 @@ type ConnectionRow = {
 
 function hasValidSignature(request: Request) {
   // TODO: Replace shared-token comparison with MarketplacePro's final HMAC signature contract.
-  if (!env.MARKETPLACEPRO_WEBHOOK_SECRET) return false;
   const signature = request.headers.get("x-marketplacepro-signature")?.trim();
   const token = request.headers.get("x-marketplacepro-token")?.trim();
-  return signature === env.MARKETPLACEPRO_WEBHOOK_SECRET || token === env.MARKETPLACEPRO_WEBHOOK_SECRET;
+  return timingSafeSecretMatch(signature, env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS) ||
+    timingSafeSecretMatch(token, env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS);
 }
 
 export function marketplaceProAuthState(request: Request) {
-  if (!env.MARKETPLACEPRO_WEBHOOK_SECRET) {
+  if (!hasRotatingSecret(env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS)) {
     return { ok: false, status: 501, error: "MarketplacePro webhook secret is not configured." };
   }
 

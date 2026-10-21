@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { runBusinessAutomationLoop } from "@/lib/automation/run-business-automation";
+import { hasRotatingSecret, timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ function intParam(request: NextRequest, key: string, fallback: number) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!env.AI_WORKFORCE_CRON_TOKEN) {
+  if (!hasRotatingSecret(env.AI_WORKFORCE_CRON_TOKEN, env.AI_WORKFORCE_CRON_TOKEN_PREVIOUS)) {
     return NextResponse.json(
       {
         ok: false,
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (tokenFrom(request) !== env.AI_WORKFORCE_CRON_TOKEN) {
+  if (!timingSafeSecretMatch(tokenFrom(request), env.AI_WORKFORCE_CRON_TOKEN, env.AI_WORKFORCE_CRON_TOKEN_PREVIOUS)) {
     return NextResponse.json({ ok: false, status: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
 

@@ -15,6 +15,10 @@ vi.mock("@/lib/env", () => ({
   env: {
     MICROSOFT_CLIENT_ID: "microsoft-client",
     MICROSOFT_CLIENT_SECRET: "microsoft-secret",
+    REDDIT_CLIENT_ID: "reddit-client",
+    REDDIT_CLIENT_SECRET: "reddit-secret",
+    SNAPCHAT_CLIENT_ID: "snap-client",
+    SNAPCHAT_CLIENT_SECRET: "snap-secret",
   },
 }));
 
@@ -91,5 +95,37 @@ describe("getFreshProviderAccessToken", () => {
     expect(request.body.toString()).toContain("scope=offline_access+https%3A%2F%2Fads.microsoft.com%2Fmsads.manage");
     expect(request.body.toString()).not.toContain("oauth2.googleapis.com");
     expect(mocks.queryPostgres).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes Reddit with HTTP Basic authentication and the required user agent", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "new-reddit-access",
+      expires_in: 3600,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    await getFreshProviderAccessToken("tenant-1", "reddit", fetchImpl as typeof fetch);
+
+    const [url, request] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://www.reddit.com/api/v1/access_token");
+    expect(request.headers.authorization).toBe(`Basic ${Buffer.from("reddit-client:reddit-secret").toString("base64")}`);
+    expect(request.headers["user-agent"]).toContain("ferocity.live");
+    expect(request.body.toString()).toContain("grant_type=refresh_token");
+    expect(request.body.toString()).not.toContain("client_secret");
+  });
+
+  it("refreshes Snapchat with client credentials in the form body", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "new-snap-access",
+      refresh_token: "new-snap-refresh",
+      expires_in: 3600,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    await getFreshProviderAccessToken("tenant-1", "snapchat_ads", fetchImpl as typeof fetch);
+
+    const [url, request] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://accounts.snapchat.com/login/oauth2/access_token");
+    expect(request.body.toString()).toContain("client_id=snap-client");
+    expect(request.body.toString()).toContain("client_secret=snap-secret");
+    expect(request.body.toString()).toContain("refresh_token=refresh-token");
   });
 });

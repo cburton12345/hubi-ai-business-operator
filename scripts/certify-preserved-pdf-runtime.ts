@@ -78,8 +78,10 @@ for (const source of sources) {
 }
 
 console.log(JSON.stringify({
-  status: "passed",
+  status: documents.every((document) => document.reconciled) ? "passed" : "needs_review",
   documentCount: documents.length,
+  reconciledDocumentCount: documents.filter((document) => document.reconciled).length,
+  unreconciledDocumentCount: documents.filter((document) => !document.reconciled).length,
   totalPages: documents.reduce((sum, document) => sum + document.totalPages, 0),
   readablePages: documents.reduce((sum, document) => sum + document.readablePages, 0),
   documents,

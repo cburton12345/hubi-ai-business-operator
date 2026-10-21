@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { sendDueOwnerReminders } from "@/lib/reminders/owner-reminders";
+import { timingSafeSecretMatch } from "@/lib/security/rotating-secret";
 
 function bearerToken(request: NextRequest) {
   const header = request.headers.get("authorization") ?? "";
@@ -10,7 +11,7 @@ function bearerToken(request: NextRequest) {
 
 function authorized(request: NextRequest) {
   const token = bearerToken(request) ?? request.nextUrl.searchParams.get("token");
-  return Boolean(env.AI_WORKFORCE_CRON_TOKEN && token && token === env.AI_WORKFORCE_CRON_TOKEN);
+  return timingSafeSecretMatch(token, env.AI_WORKFORCE_CRON_TOKEN, env.AI_WORKFORCE_CRON_TOKEN_PREVIOUS);
 }
 
 export async function POST(request: NextRequest) {

@@ -15,7 +15,9 @@ type RefreshableProvider =
   | "gmail_mailbox"
   | "microsoft_mailbox"
   | "jobber"
-  | "tiktok";
+  | "tiktok"
+  | "reddit"
+  | "snapchat_ads";
 
 type CredentialRow = {
   credential_label: string;
@@ -31,6 +33,12 @@ function clientConfig(provider: RefreshableProvider) {
   }
   if (provider === "jobber") {
     return { clientId: env.JOBBER_CLIENT_ID, clientSecret: env.JOBBER_CLIENT_SECRET, tokenUrl: "https://api.getjobber.com/api/oauth/token" };
+  }
+  if (provider === "reddit") {
+    return { clientId: env.REDDIT_CLIENT_ID, clientSecret: env.REDDIT_CLIENT_SECRET, tokenUrl: "https://www.reddit.com/api/v1/access_token" };
+  }
+  if (provider === "snapchat_ads") {
+    return { clientId: env.SNAPCHAT_CLIENT_ID, clientSecret: env.SNAPCHAT_CLIENT_SECRET, tokenUrl: "https://accounts.snapchat.com/login/oauth2/access_token" };
   }
   const microsoft = provider === "microsoft_ads" || provider === "microsoft_calendar" || provider === "microsoft_mailbox";
   return microsoft
@@ -83,14 +91,20 @@ export async function getFreshProviderAccessToken(tenantId: string, provider: Re
     await storeToken(tenantId, provider, "oauth_refresh_token", tokens.refresh_token, new Date(Date.now() + tokens.refresh_expires_in * 1000).toISOString());
     return tokens.access_token;
   }
+  const reddit = provider === "reddit";
   const response = await fetchImpl(config.tokenUrl, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      ...(reddit ? {
+        authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
+        "user-agent": "web:ferocity.live:1.0 (Ferocity OAuth connection)",
+      } : {}),
+    },
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
+      ...(!reddit ? { client_id: config.clientId, client_secret: config.clientSecret } : {}),
       ...(provider === "microsoft_calendar" ? { scope: "offline_access openid profile User.Read Calendars.Read" } : {}),
       ...(provider === "microsoft_mailbox" ? { scope: "offline_access openid profile User.Read Mail.Read" } : {}),
       ...(provider === "microsoft_ads" ? { scope: "offline_access https://ads.microsoft.com/msads.manage" } : {})
