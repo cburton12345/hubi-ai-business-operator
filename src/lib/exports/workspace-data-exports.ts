@@ -55,8 +55,8 @@ export async function getWorkspaceDataExportRows(): Promise<WorkspaceDataExportR
   return (result?.rows ?? []).map(toRow);
 }
 
-export async function getWorkspaceDataExportDetail(exportId: string): Promise<WorkspaceDataExportDetail | null> {
-  const workspaceId = await getCurrentWorkspaceId();
+export async function getWorkspaceDataExportDetail(exportId: string, authorizedWorkspaceId?: string): Promise<WorkspaceDataExportDetail | null> {
+  const workspaceId = authorizedWorkspaceId ?? await getCurrentWorkspaceId();
   const result = await queryPostgres<ExportRecord>(
     `
     select id, status, export_scope, requested_at, completed_at, expires_at, package_json

@@ -850,7 +850,7 @@ async function runInvoiceReminderAgent(tenantId: string, workflowId: string, run
       'invoice_followup', 'email', 'open', now(),
       concat(
         'Hi ', c.name, ', this is a friendly reminder that ', i.title, ' has a balance of $',
-        to_char(greatest(i.total_cents - i.amount_paid_cents, 0) / 100.0, 'FM999999990.00'),
+        to_char(greatest(i.total_cents - i.amount_paid_cents - i.write_off_cents, 0) / 100.0, 'FM999999990.00'),
         case
           when i.due_date is null then ' due upon receipt.'
           when i.due_date < current_date then concat(' and was due ', to_char(i.due_date, 'Mon FMDD, YYYY'), '.')
@@ -880,9 +880,16 @@ async function runInvoiceReminderAgent(tenantId: string, workflowId: string, run
     left join public.live_action_policies policy on policy.tenant_id=i.tenant_id and policy.action_key='email_send'
     where i.tenant_id = $1
       and i.status in ('sent_manually', 'partially_paid', 'overdue')
-      and greatest(i.total_cents - i.amount_paid_cents, 0) > 0
+      and greatest(i.total_cents - i.amount_paid_cents - i.write_off_cents, 0) > 0
       and coalesce(i.due_date, current_date) <= current_date + 3
       and c.email is not null
+      and not exists (
+        select 1 from public.payment_disputes d
+        join public.service_invoice_payments disputed_payment
+          on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+        where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+          and d.status in ('warning','needs_response','under_review')
+      )
       and not exists (
         select 1
         from public.follow_up_workflows f

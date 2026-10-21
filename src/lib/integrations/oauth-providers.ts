@@ -50,7 +50,7 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
     redirectUriEnv: "GOOGLE_OAUTH_REDIRECT_URI",
-    scopes: ["openid", "email", "https://www.googleapis.com/auth/calendar"],
+    scopes: ["openid", "email", "https://www.googleapis.com/auth/calendar.readonly"],
     query: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
     liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
   },
@@ -61,7 +61,7 @@ export const oauthProviderConfigs: Record<string, OAuthProviderConfig> = {
     clientIdEnv: "MICROSOFT_CLIENT_ID",
     clientSecretEnv: "MICROSOFT_CLIENT_SECRET",
     redirectUriEnv: "MICROSOFT_OAUTH_REDIRECT_URI",
-    scopes: ["offline_access", "openid", "profile", "User.Read", "Calendars.ReadWrite"],
+    scopes: ["offline_access", "openid", "profile", "User.Read", "Calendars.Read"],
     query: { response_mode: "query" },
     liveActionRule: "Read availability first. Calendar writes require a selected calendar and separate owner authorization."
   },

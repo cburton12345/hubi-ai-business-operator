@@ -168,7 +168,7 @@ export async function syncTimelineToOwnerCommandCenter(tenantId: string) {
         money_cents, risk_type, confidence_score, metadata_json, occurred_at
       )
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19)
-      on conflict (tenant_id, platform_key, external_event_id)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
       do update set
         event_type = excluded.event_type,
         title = excluded.title,

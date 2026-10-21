@@ -13,10 +13,10 @@ if (fs.existsSync(".env.local")) {
 }
 
 const publish = process.argv.includes("--publish");
-const versionName = "1.0.2";
-const versionCode = 3;
+const versionName = "1.1.0";
+const versionCode = 4;
 const artifactPath = path.resolve("output", `Ferocity-Connect-${versionName}-production-signed.apk`);
-const expectedSha256 = "ADF24D666794CF42460561B39A08D481DFB2F72D4F97F30213F6FE4B50DF0D24";
+const expectedSha256 = "DDE35EC5668C1A9392BBE52864789CB1F61C7043822EA373266796EDC3CE6D3A";
 const bucket = "ferocity-connect-releases";
 const storagePath = `android/${versionCode}/Ferocity-Connect-${versionName}.apk`;
 
@@ -54,7 +54,7 @@ try {
        version_name=excluded.version_name,storage_bucket=excluded.storage_bucket,storage_path=excluded.storage_path,
        sha256=excluded.sha256,file_size_bytes=excluded.file_size_bytes,status=excluded.status,
        published_at=excluded.published_at,release_notes=excluded.release_notes,updated_at=now()`,
-    [versionName, versionCode, bucket, storagePath, sha256, bytes.length, publish ? "published" : "draft", "Stops stale final SMS status events from retrying forever and improves durable outbox recovery."]
+    [versionName, versionCode, bucket, storagePath, sha256, bytes.length, publish ? "published" : "draft", "Adds durable in-app scheduled-text visibility and controls while preserving the existing pairing, consent, pacing, quiet-hours, and delivery-evidence safeguards."]
   );
   await client.query("commit");
 } catch (error) {

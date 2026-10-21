@@ -1,5 +1,6 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getGrowthActionDedupeKey } from "./ai-growth-department";
 
 export type GrowthMetric = {
   label: string;
@@ -139,6 +140,7 @@ export type GrowthOperatorDashboard = {
   dailyGrowthDepartment: {
     worthwhile: number;
     handledAutomatically: number;
+    readyForFerocity: number;
     needsApproval: number;
     needsOwner: number;
     actions: Array<{
@@ -179,7 +181,8 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     weakAreaResult,
     conversionTargetResult,
     timelineResult,
-    growthDepartmentResult
+    growthDepartmentResult,
+    growthApprovalResult
   ] = await Promise.all([
     queryPostgres<{
       seo_drafts: string;
@@ -442,19 +445,26 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       effectiveness_score: number | null;
       capability_keys: string[];
       assessment_json: { score?: number };
+      recommended_action_key: string | null;
     }>(
       `
       select id, title, trigger_reason, recommended_outputs_json, opportunity_category,
         owner_involvement, organic_first, priority_score, confidence_score, evidence_json,
-        execution_status, effectiveness_score, capability_keys, assessment_json
-      from public.marketing_campaign_recommendations
-      where tenant_id = $1
-        and recommendation_key like 'growth-department:%'
-        and status in ('recommended', 'needs_review', 'approved', 'turned_into_campaign')
-        and (expires_at is null or expires_at > now())
+        execution_status, effectiveness_score, capability_keys, assessment_json, recommended_action_key
+      from public.marketing_campaign_recommendations recommendation
+      where recommendation.tenant_id = $1
+        and recommendation.recommendation_key like 'growth-department:%'
+        and recommendation.status in ('recommended', 'needs_review', 'approved', 'turned_into_campaign')
+        and (recommendation.expires_at is null or recommendation.expires_at > now())
       order by priority_score desc, confidence_score desc, updated_at desc
-      limit 5
+      limit 20
       `,
+      [workspaceId]
+    ),
+    queryPostgres<{ pending_approvals: string }>(
+      `select count(*)::text as pending_approvals
+         from public.approvals
+        where tenant_id=$1 and target_type='growth_action' and status='pending'`,
       [workspaceId]
     )
   ]);
@@ -561,6 +571,7 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
       : null
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
+  const seenDepartmentActions = new Set<string>();
   const departmentActions = (growthDepartmentResult?.rows ?? []).map((row) => ({
     id: row.id,
     title: row.title,
@@ -572,11 +583,22 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     priorityScore: row.priority_score,
     confidenceScore: row.confidence_score,
     evidence: row.evidence_json ?? [],
-    executionStatus: row.execution_status,
+    executionStatus: row.execution_status === "waiting_approval" ? "ready_to_advance" : row.execution_status,
     effectivenessScore: row.effectiveness_score,
     capabilityKeys: row.capability_keys ?? [],
-    assessmentScore: row.assessment_json?.score ?? null
-  }));
+    assessmentScore: row.assessment_json?.score ?? null,
+    dedupeKey: getGrowthActionDedupeKey({
+      key: row.recommended_action_key ?? row.id,
+      title: row.title,
+      whyNow: row.trigger_reason,
+      nextStep: row.recommended_outputs_json?.[0]?.nextStep ?? "",
+      evidence: row.evidence_json ?? []
+    })
+  })).filter((action) => {
+    if (seenDepartmentActions.has(action.dedupeKey)) return false;
+    seenDepartmentActions.add(action.dedupeKey);
+    return true;
+  }).slice(0, 5).map(({ dedupeKey: _dedupeKey, ...action }) => action);
 
   return {
     metrics: [
@@ -630,8 +652,9 @@ export async function getGrowthOperatorDashboard(): Promise<GrowthOperatorDashbo
     nextBestActions,
     dailyGrowthDepartment: {
       worthwhile: departmentActions.length,
-      handledAutomatically: departmentActions.filter((action) => action.ownerInvolvement === "automatic").length,
-      needsApproval: departmentActions.filter((action) => action.ownerInvolvement === "approval").length,
+      handledAutomatically: departmentActions.filter((action) => action.ownerInvolvement === "automatic" && ["completed", "measuring"].includes(action.executionStatus)).length,
+      readyForFerocity: departmentActions.filter((action) => action.ownerInvolvement !== "personal" && !["completed", "measuring"].includes(action.executionStatus)).length,
+      needsApproval: numberFrom(growthApprovalResult?.rows[0]?.pending_approvals),
       needsOwner: departmentActions.filter((action) => action.ownerInvolvement === "personal").length,
       actions: departmentActions
     },

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(join(process.cwd(), "src/app/app/service/actions.ts"), "utf8");
 const stripeWebhookSource = readFileSync(join(process.cwd(), "src/app/api/integrations/stripe/webhook/route.ts"), "utf8");
+const lifecycleSource = readFileSync(join(process.cwd(), "src/lib/service-ops/lifecycle-transitions.ts"), "utf8");
 
 function actionBody(name: string) {
   const start = source.indexOf(`export async function ${name}`);
@@ -28,8 +29,20 @@ describe("service action workspace safety", () => {
   });
 
   it("does not double-count fast duplicate payment submissions", () => {
-    expect(actionBody("recordManualInvoicePaymentAction")).toContain("on conflict (tenant_id,idempotency_key)");
+    expect(actionBody("recordManualInvoicePaymentAction")).toContain("recordManualInvoicePayment");
+    expect(lifecycleSource).toContain("on conflict (tenant_id,idempotency_key)");
+    expect(lifecycleSource).toContain("invoice-payment:${input.tenantId}:${input.invoiceId}");
     expect(stripeWebhookSource).toContain("on conflict (provider, provider_payment_id) where provider_payment_id is not null do nothing");
     expect(stripeWebhookSource).toContain("from payment p");
+  });
+
+  it("keeps customer merge cleanup inside the verified audited transaction", () => {
+    const body = actionBody("mergeDuplicateCustomerAction");
+    expect(body).toContain("withPostgresTransaction");
+    expect(body).toContain("for update of source, target");
+    expect(body).toContain("if (eligible.rowCount !== 1)");
+    expect(body).toContain("returning id");
+    expect(body).toContain("if (mergeAudit.rowCount !== 1)");
+    expect(body.indexOf("delete from public.customer_tag_assignments")).toBeGreaterThan(body.indexOf("if (mergeAudit.rowCount !== 1)"));
   });
 });

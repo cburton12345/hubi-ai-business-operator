@@ -52,7 +52,7 @@ async function upsertOwnerCommandEvent(input: {
       money_cents, risk_type, confidence_score, metadata_json
     )
     values ($1, 'personal-ops', 'Private Owner Tasks', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '/app/personal-ops', 0, $12, 82, $13::jsonb)
-    on conflict (tenant_id, platform_key, external_event_id)
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
     do update set
       title = excluded.title,
       summary = excluded.summary,

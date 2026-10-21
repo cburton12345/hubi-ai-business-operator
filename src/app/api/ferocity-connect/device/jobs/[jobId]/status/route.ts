@@ -48,12 +48,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   );
   const normalized: NormalizedDeliveryStatus = parsed.data.status === "failed_retryable" || parsed.data.status === "failed_terminal"
     ? "failed" : parsed.data.status;
+  const retriesExhausted = retryableFailure
+    && job.rows[0].attempt_count >= job.rows[0].max_attempts;
+  const finalFailure = terminalFailure || retriesExhausted;
   await recordMessageDeliveryReceipt({
     tenantId: auth.identity.tenantId, providerKey: "ferocity_connect", providerMessageId: jobId,
-    providerEventId: parsed.data.eventId, normalizedStatus: normalized, rawStatus: parsed.data.status,
+    providerEventId: parsed.data.eventId, normalizedStatus: normalized,
+    rawStatus: retriesExhausted ? "dead_letter" : parsed.data.status,
     errorCode: parsed.data.errorCode, safeReason: parsed.data.safeError,
     receiptAt: parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date(),
-    isFinal: normalized === "delivered" || terminalFailure,
+    isFinal: normalized === "delivered" || finalFailure,
     metadata: { deviceId: auth.identity.deviceId }
   });
   const metadata = job.rows[0].metadata_json ?? {};
@@ -66,7 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
       sms_outbox_id: metadata.h4rSmsOutboxId ?? null,
       provider_message_ref: jobId,
       ferocity_message_ref: jobId,
-      status: parsed.data.status,
+      status: retriesExhausted ? "dead_letter" : parsed.data.status,
       occurred_at: parsed.data.occurredAt ?? new Date().toISOString(),
       error_code: parsed.data.errorCode ?? null,
       safe_error: parsed.data.safeError ?? null

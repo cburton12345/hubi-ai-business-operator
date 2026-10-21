@@ -10,8 +10,8 @@ export default async function CashCollectionPage() {
   return (
     <QueuePageShell
       eyebrow="Cash Collection"
-      title="Get Paid And Keep The Ledger Clean"
-      description="One place for unpaid invoices, overdue follow-up, manual payment records, Stripe payment-link readiness, payments received, and ledger visibility."
+      title="Get Paid"
+      description="See what is owed, choose the next collection step, and keep a clear payment record."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
@@ -40,6 +40,7 @@ export default async function CashCollectionPage() {
         <Metric label="Payment requests" value={dashboard.metrics.paymentRequests} />
         <Metric label="Payments received" value={dashboard.metrics.paymentsReceived} />
         <Metric label="Ledger entries" value={dashboard.metrics.ledgerEntries} />
+        <Metric label="Active disputes" value={dashboard.metrics.activeDisputes} tone={dashboard.metrics.activeDisputes ? "high" : ""} />
       </div>
 
       <section className="grid section-actions">
@@ -71,7 +72,7 @@ export default async function CashCollectionPage() {
         </section>
 
         <section className="panel span-5">
-          <h2><CreditCard size={18} /> Payment Readiness</h2>
+          <h2><CreditCard size={18} /> Online payment setup</h2>
           <p className="muted">{dashboard.readiness.detail}</p>
           <div className="inline-actions section-actions">
             <span className={`pill ${dashboard.readiness.stripeStatus === "ready" ? "" : "high"}`}>{dashboard.readiness.stripeStatus.replaceAll("_", " ")}</span>
@@ -81,18 +82,22 @@ export default async function CashCollectionPage() {
         </section>
       </section>
 
-      <section className="panel section-actions">
-        <h2><ShieldCheck size={18} /> Fee Safety Rules</h2>
-        <p className="muted">
-          Manual payment records do not create processing fees. Online payment links use provider fees. Managed payments must pass through
-          processor fees, instant-payout fees, refunds, disputes, chargebacks, and bank-return costs before managed payment options are enabled.
-        </p>
-      </section>
+      <details className="panel progressive-disclosure section-actions">
+        <summary>
+          <div>
+            <h2><ShieldCheck size={18} /> Fees and payment safeguards</h2>
+            <p className="muted">When fees apply and which payment actions remain controlled.</p>
+          </div>
+        </summary>
+        <div className="progressive-disclosure-body">
+          <p className="muted">Manual payment records do not create processing fees. Online payment links can include processor, payout, refund, dispute, chargeback, or bank-return fees. Ferocity does not enable managed payments until those costs and controls are configured.</p>
+        </div>
+      </details>
 
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2><FileText size={18} /> Open Invoice Checklist</h2>
+            <h2><FileText size={18} /> Open invoices</h2>
             <p className="muted">Open the invoice to edit line items, record a manual payment, prepare a payment request, or view the ledger.</p>
           </div>
           <Link className="mini-button" href="/app/service">All service ops</Link>
@@ -106,11 +111,13 @@ export default async function CashCollectionPage() {
                 <p className="muted">Total {invoice.total} / paid {invoice.paid} / balance {invoice.balance}</p>
               </div>
               <div className="inline-actions">
-                <span className={`pill ${invoice.status === "overdue" ? "high" : ""}`}>{invoice.status}</span>
-                <form action={prepareInvoicePaymentRequestAction}>
-                  <input name="invoiceId" type="hidden" value={invoice.id} />
-                  <button className="mini-button" type="submit">Prepare Stripe link</button>
-                </form>
+                <span className={`pill ${invoice.status === "overdue" ? "high" : ""}`}>{invoice.collectionPaused ? "disputed / collection paused" : invoice.status}</span>
+                {!invoice.collectionPaused ? (
+                  <form action={prepareInvoicePaymentRequestAction}>
+                    <input name="invoiceId" type="hidden" value={invoice.id} />
+                    <button className="mini-button" type="submit">Prepare Stripe link</button>
+                  </form>
+                ) : null}
                 <a className={`mini-button secondary-button ${invoice.canText ? "" : "disabled-link"}`} href={invoice.smsHref} aria-disabled={!invoice.canText}>
                   Text reminder
                 </a>
@@ -122,7 +129,14 @@ export default async function CashCollectionPage() {
         </ul>
       </section>
 
-      <div className="grid section-actions">
+      <details className="panel progressive-disclosure section-actions">
+        <summary>
+          <div>
+            <h2>Payment history and ledger</h2>
+            <p className="muted">Prepared requests, received payments, and accounting entries.</p>
+          </div>
+        </summary>
+        <div className="grid progressive-disclosure-body">
         <ListPanel
           title="Payment Requests"
           icon={<CreditCard size={18} />}
@@ -159,7 +173,8 @@ export default async function CashCollectionPage() {
             href: entry.href
           }))}
         />
-      </div>
+        </div>
+      </details>
     </QueuePageShell>
   );
 }

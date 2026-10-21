@@ -11,6 +11,10 @@ export type BusinessActionDefinition = {
 };
 
 export type BusinessActionKey =
+  | "getBusinessSummary"
+  | "listCustomers"
+  | "listJobs"
+  | "listInvoices"
   | "getOpenLeads"
   | "getStaleLeads"
   | "getUnsoldEstimates"
@@ -23,12 +27,50 @@ export type BusinessActionKey =
   | "requestApproval"
   | "getOutstandingInvoices"
   | "getOpenCommitments"
-  | "createCommitment";
+  | "createCommitment"
+  | "updateCommitment"
+  | "startWorkflow";
 
 export const businessActionCatalog: Record<
   BusinessActionKey,
   BusinessActionDefinition
 > = {
+  getBusinessSummary: {
+    key: "getBusinessSummary",
+    title: "Get business summary",
+    description: "Return a minimized operational summary for the authorized workspace.",
+    scope: "business:read",
+    mode: "read",
+    risk: "read",
+    externalReady: true,
+  },
+  listCustomers: {
+    key: "listCustomers",
+    title: "List customers",
+    description: "Return a paginated, minimized customer directory without contact secrets.",
+    scope: "customers:read",
+    mode: "read",
+    risk: "read",
+    externalReady: true,
+  },
+  listJobs: {
+    key: "listJobs",
+    title: "List jobs",
+    description: "Return paginated workspace jobs and their current operating status.",
+    scope: "jobs:read",
+    mode: "read",
+    risk: "read",
+    externalReady: true,
+  },
+  listInvoices: {
+    key: "listInvoices",
+    title: "List invoices",
+    description: "Return paginated invoice status and balances without payment credentials.",
+    scope: "invoices:read",
+    mode: "read",
+    risk: "read",
+    externalReady: true,
+  },
   getOpenLeads: {
     key: "getOpenLeads",
     title: "Get open leads",
@@ -66,7 +108,7 @@ export const businessActionCatalog: Record<
     scope: "customers:read",
     mode: "read",
     risk: "read",
-    externalReady: false,
+    externalReady: true,
   },
   getScheduleAvailability: {
     key: "getScheduleAvailability",
@@ -85,7 +127,7 @@ export const businessActionCatalog: Record<
     scope: "jobs:read",
     mode: "read",
     risk: "read",
-    externalReady: false,
+    externalReady: true,
   },
   createFollowUp: {
     key: "createFollowUp",
@@ -145,7 +187,7 @@ export const businessActionCatalog: Record<
     scope: "commitments:read",
     mode: "read",
     risk: "read",
-    externalReady: false,
+    externalReady: true,
   },
   createCommitment: {
     key: "createCommitment",
@@ -155,7 +197,25 @@ export const businessActionCatalog: Record<
     scope: "commitments:write",
     mode: "execute",
     risk: "low",
-    externalReady: false,
+    externalReady: true,
+  },
+  updateCommitment: {
+    key: "updateCommitment",
+    title: "Update task",
+    description: "Update a reversible internal commitment while preserving status history.",
+    scope: "commitments:write",
+    mode: "execute",
+    risk: "low",
+    externalReady: true,
+  },
+  startWorkflow: {
+    key: "startWorkflow",
+    title: "Start governed workflow",
+    description: "Create or resume a durable Ferocity operating goal in observe or prepare mode.",
+    scope: "workflows:write",
+    mode: "execute",
+    risk: "low",
+    externalReady: true,
   },
 };
 

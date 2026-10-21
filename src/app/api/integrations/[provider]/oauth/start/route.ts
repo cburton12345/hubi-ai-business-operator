@@ -8,6 +8,7 @@ import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanConnectAccount } from "@/lib/integrations/connector-runtime";
 import { encryptSecret, hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
 import { createOAuthPkcePair } from "@/lib/integrations/standard-oauth";
+import { normalizeOAuthReturnTo } from "@/lib/onboarding/oauth-return";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -20,6 +21,8 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   const { provider } = await context.params;
   const config = getOAuthProviderConfig(provider);
   const requestUrl = new URL(request.url);
+  const requestedReturnTo = requestUrl.searchParams.get("returnTo");
+  const returnTo = normalizeOAuthReturnTo(requestedReturnTo);
   const useTikTokSandbox = config?.provider === "tiktok" && requestUrl.searchParams.get("sandbox") === "1";
 
   if (!config) {
@@ -57,6 +60,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
         credentialProfile: useTikTokSandbox ? "sandbox" : "production",
         missingEnvVars: missing,
         liveActionRule: config.liveActionRule,
+        returnTo,
         ...(encryptedVerifier
           ? {
               pkceVerifier: {

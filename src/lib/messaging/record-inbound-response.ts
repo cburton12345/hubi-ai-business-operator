@@ -82,7 +82,7 @@ export async function recordInboundResponse(input: InboundResponseInput) {
       tenant_id, conversation_id, lead_id, customer_id, contact_channel, contact_value, reason
     )
     values ($1, $2, $3, $4, $5, $6, 'customer_replied')
-    on conflict (tenant_id, contact_channel, lower(contact_value)) where active = true
+    on conflict (tenant_id, contact_channel, (lower(contact_value))) where active = true
     do update set conversation_id = excluded.conversation_id, lead_id = coalesce(excluded.lead_id, public.customer_response_stops.lead_id),
       customer_id = coalesce(excluded.customer_id, public.customer_response_stops.customer_id),
       triggered_at = now(), metadata_json = public.customer_response_stops.metadata_json || jsonb_build_object('latestConversationId', excluded.conversation_id)
@@ -99,9 +99,48 @@ export async function recordInboundResponse(input: InboundResponseInput) {
         updated_at = now()
       where tenant_id = $1
         and status in ('draft', 'needs_review', 'approved', 'queued', 'failed')
-        and lower(recipient_label) = lower($3)
+        and (
+          lower(trim(coalesce(recipient_label, ''))) = lower(trim($3))
+          or (
+            nullif(regexp_replace($3, '\\D', '', 'g'), '') is not null
+            and right(regexp_replace(coalesce(recipient_label, ''), '\\D', '', 'g'), 10)
+              = right(regexp_replace($3, '\\D', '', 'g'), 10)
+          )
+          or ($4::uuid is not null and target_type = 'lead' and target_id = $4)
+          or ($5::uuid is not null and target_type = 'customer' and target_id = $5)
+          or (
+            target_type = 'follow_up_workflow'
+            and exists (
+              select 1 from public.follow_up_workflows followup
+              where followup.tenant_id = public.outbound_action_queue.tenant_id
+                and followup.id = public.outbound_action_queue.target_id
+                and (($4::uuid is not null and followup.lead_id = $4) or ($5::uuid is not null and followup.customer_id = $5))
+            )
+          )
+          or (
+            target_type = 'communication_message'
+            and exists (
+              select 1
+              from public.communication_messages message
+              join public.communication_threads thread
+                on thread.tenant_id = message.tenant_id and thread.id = message.thread_id
+              where message.tenant_id = public.outbound_action_queue.tenant_id
+                and message.id = public.outbound_action_queue.target_id
+                and (($4::uuid is not null and thread.lead_id = $4) or ($5::uuid is not null and thread.customer_id = $5))
+            )
+          )
+          or (
+            target_type = 'messaging_conversation'
+            and exists (
+              select 1 from public.messaging_conversations conversation
+              where conversation.tenant_id = public.outbound_action_queue.tenant_id
+                and conversation.id = public.outbound_action_queue.target_id
+                and (conversation.id = $2 or ($4::uuid is not null and conversation.lead_id = $4) or ($5::uuid is not null and conversation.customer_id = $5))
+            )
+          )
+        )
       `,
-      [input.tenantId, conversationId, input.from]
+      [input.tenantId, conversationId, input.from, input.leadId ?? null, input.customerId ?? null]
     ),
     queryPostgres(
       `

@@ -6,11 +6,12 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { exchangeTikTokBusinessAuthorizationCode, listTikTokAdvertisers } from "@/lib/integrations/tiktok-business-api";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { recordInitialOAuthAuthority } from "@/lib/integrations/authority-grants";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import { oauthAppRedirect } from "@/lib/onboarding/oauth-return";
 
-function appRedirect(request: Request, params: Record<string, string>) {
-  const url = new URL("/app/integrations", request.url);
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return NextResponse.redirect(url);
+function appRedirect(request: Request, params: Record<string, string>, returnTo?: string | null) {
+  return oauthAppRedirect(request, params, returnTo);
 }
 
 async function saveToken(input: { workspaceId: string; userId: string | null; token: string; expiresAt: string; advertisers: string[] }) {
@@ -39,19 +40,19 @@ export async function GET(request: Request) {
   const workspaceId = await getCurrentWorkspaceId();
   if (!state) return appRedirect(request, { provider: "tiktok_business", setup: "invalid_state" });
 
-  const claimed = await queryPostgres<{ id: string }>(
+  const claimed = await queryPostgres<{ id: string; return_to: string | null }>(
     `update public.integration_jobs set status='running', started_at=now()
      where id=(select id from public.integration_jobs where tenant_id=$1 and job_type='oauth_start_requested'
        and status='queued' and payload_json->>'provider'='tiktok_business' and payload_json->>'oauthState'=$2
        and created_at > now() - interval '10 minutes' order by created_at desc limit 1 for update skip locked)
-     returning id`,
+     returning id,payload_json->>'returnTo' as return_to`,
     [workspaceId, state]
   );
   const job = claimed?.rows[0];
   if (!job) return appRedirect(request, { provider: "tiktok_business", setup: "invalid_state" });
   if (!authCode || !env.TIKTOK_BUSINESS_APP_ID || !env.TIKTOK_BUSINESS_APP_SECRET || !env.TIKTOK_BUSINESS_REDIRECT_URI || !hasCredentialEncryptionKey()) {
     await queryPostgres(`update public.integration_jobs set status='failed', error_message='TikTok Business callback or server configuration was incomplete.', completed_at=now() where id=$1`, [job.id]);
-    return appRedirect(request, { provider: "tiktok_business", setup: "failed" });
+    return appRedirect(request, { provider: "tiktok_business", setup: "failed" }, job.return_to);
   }
 
   try {
@@ -85,10 +86,12 @@ export async function GET(request: Request) {
       [workspaceId, "TikTok Ads reporting is connected. Campaign writes remain off until provider approval, account certification, customer approval, and hard budget caps are all active.", JSON.stringify(metadata)]
     );
     await queryPostgres(`update public.integration_jobs set status='completed',result_json=$2::jsonb,completed_at=now() where id=$1`, [job.id, JSON.stringify({ provider: "tiktok_business", advertiserIds, liveActionsEnabled: false })]);
-    return appRedirect(request, { provider: "tiktok_business", setup: "connected" });
+    await recordInitialOAuthAuthority({ tenantId: workspaceId, provider: "tiktok_business", scopes: token.scope ?? [], actorKey: session?.userId ?? null });
+    await syncCustomerOnboardingForTenant(workspaceId).catch(() => null);
+    return appRedirect(request, { provider: "tiktok_business", setup: "connected", onboarding: "resumed" }, job.return_to);
   } catch (error) {
     const message = error instanceof Error ? error.message : "TikTok Business connection failed.";
     await queryPostgres(`update public.integration_jobs set status='failed',error_message=$2,result_json=$3::jsonb,completed_at=now() where id=$1`, [job.id, message, JSON.stringify({ safeMode: true, reason: "token_exchange_failed" })]);
-    return appRedirect(request, { provider: "tiktok_business", setup: "failed" });
+    return appRedirect(request, { provider: "tiktok_business", setup: "failed" }, job.return_to);
   }
 }

@@ -5,7 +5,7 @@ export type ConnectDeviceIdentity = {
   credentialId: string;
   deviceId: string;
   tenantId: string;
-  deviceStatus: "paired" | "active" | "paused" | "needs_attention";
+  deviceStatus: "paired" | "active" | "offline" | "paused" | "needs_attention";
   sendingEnabled: boolean;
 };
 

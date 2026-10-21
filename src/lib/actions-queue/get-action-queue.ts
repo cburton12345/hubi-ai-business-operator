@@ -96,6 +96,7 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
     queryPostgres<{
       needs_review: string;
       approved: string;
+      provider_queued: string;
       blocked: string;
       live_providers: string;
       consent_granted: string;
@@ -105,6 +106,7 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
       select
         (select count(*) from public.outbound_action_queue where tenant_id = $1 and status = 'needs_review') as needs_review,
         (select count(*) from public.outbound_action_queue where tenant_id = $1 and status = 'approved') as approved,
+        (select count(*) from public.outbound_action_queue where tenant_id = $1 and status = 'provider_queued') as provider_queued,
         (select count(*) from public.outbound_action_queue where tenant_id = $1 and status = 'blocked') as blocked,
         (select count(*) from public.provider_accounts where tenant_id = $1 and live_actions_enabled = true) as live_providers,
         (select count(*) from public.contact_consent_records where tenant_id = $1 and status = 'granted') as consent_granted,
@@ -234,9 +236,9 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
         limit 1
       ) pref on true
       where q.tenant_id = $1
-        and q.status in ('draft', 'needs_review', 'approved', 'queued', 'failed', 'blocked')
+        and q.status in ('draft', 'needs_review', 'approved', 'queued', 'provider_queued', 'failed', 'blocked')
       order by
-        case q.status when 'needs_review' then 1 when 'approved' then 2 when 'queued' then 3 when 'failed' then 4 else 5 end,
+        case q.status when 'needs_review' then 1 when 'approved' then 2 when 'queued' then 3 when 'provider_queued' then 4 when 'failed' then 5 else 6 end,
         coalesce(q.scheduled_for, q.created_at) asc
       limit 80
       `,
@@ -326,6 +328,7 @@ export async function getActionQueueDashboard(): Promise<ActionQueueDashboard> {
     metrics: [
       { label: "Needs review", value: num(metrics?.needs_review), detail: "Owner chose approval" },
       { label: "Approved", value: num(metrics?.approved), detail: "Ready to run" },
+      { label: "Waiting on provider", value: num(metrics?.provider_queued), detail: "Accepted; not yet sent" },
       { label: "Blocked", value: num(metrics?.blocked), detail: "Stopped by a safety rule" },
       { label: "Connected services", value: num(metrics?.live_providers), detail: "Allowed to act live" },
       { label: "Consent granted", value: num(metrics?.consent_granted), detail: "customer contact records" },

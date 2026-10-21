@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env, missingEnvVars } from "@/lib/env";
 import { buildTikTokBusinessAuthorizationUrl } from "@/lib/integrations/tiktok-business-api";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { normalizeOAuthReturnTo } from "@/lib/onboarding/oauth-return";
 
 function appRedirect(request: Request, params: Record<string, string>) {
   const url = new URL("/app/integrations", request.url);
@@ -22,13 +23,14 @@ export async function GET(request: Request) {
   if (missing.length) return appRedirect(request, { provider: "tiktok_business", setup: "missing_credentials", missing: missing.join(",") });
 
   const workspaceId = await getCurrentWorkspaceId();
+  const returnTo = normalizeOAuthReturnTo(new URL(request.url).searchParams.get("returnTo"));
   const state = randomUUID();
   await queryPostgres(
     `insert into public.integration_jobs (tenant_id, job_type, status, payload_json, result_json)
      values ($1, 'oauth_start_requested', 'queued', $2::jsonb, $3::jsonb)`,
     [
       workspaceId,
-      JSON.stringify({ provider: "tiktok_business", oauthState: state, requestedScopes: ["advertiser.read", "campaign.read", "report.read", "campaign.write"] }),
+      JSON.stringify({ provider: "tiktok_business", oauthState: state, returnTo, requestedScopes: ["advertiser.read", "campaign.read", "report.read", "campaign.write"] }),
       JSON.stringify({ safeMode: true, liveActionsEnabled: false, reason: "redirected_to_provider_authorization" })
     ]
   );

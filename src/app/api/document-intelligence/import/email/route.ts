@@ -28,7 +28,13 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({
       ok: result.failed.length === 0,
-      documents: result.completed.map((item) => ({ documentId: item.documentId, status: item.status, duplicate: item.duplicate })),
+      documents: result.completed.map((item) => ({
+        fileName: item.fileName,
+        documentId: item.result.documentId,
+        status: item.result.status,
+        duplicate: item.result.duplicate ?? null,
+        reusedExisting: item.result.reusedExisting
+      })),
       failures: result.failed
     }, { status: result.completed.length ? 200 : 422 });
   } catch (error) {

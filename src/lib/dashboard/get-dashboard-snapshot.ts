@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { internalBrands, starterRecommendations, starterTasks } from "@/lib/dashboard/demo-data";
 import type { BrandSummary } from "@/types/core";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 
 type BrandRow = {
@@ -112,10 +112,17 @@ async function loadOperationalSnapshot(workspaceId: string) {
           select count(*) from public.service_invoices
           where tenant_id = $1 and status in ('sent_manually', 'partially_paid', 'overdue')
             and coalesce(due_date, created_at::date) <= current_date
-            and amount_paid_cents < total_cents
+            and amount_paid_cents + write_off_cents < total_cents
+            and not exists (
+              select 1 from public.payment_disputes d
+              join public.service_invoice_payments disputed_payment
+                on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+              where d.tenant_id=service_invoices.tenant_id and disputed_payment.invoice_id=service_invoices.id
+                and d.status in ('warning','needs_response','under_review')
+            )
         ) as overdue_invoices,
         (select coalesce(sum(amount_paid_cents), 0) from public.service_invoices where tenant_id = $1 and status in ('partially_paid', 'paid')) as payments_collected_cents,
-        (select coalesce(sum(greatest(total_cents - amount_paid_cents, 0)), 0) from public.service_invoices where tenant_id = $1 and status in ('draft', 'sent_manually', 'partially_paid', 'overdue')) as invoice_balance_cents,
+        (select coalesce(sum(greatest(total_cents - amount_paid_cents - write_off_cents, 0)), 0) from public.service_invoices where tenant_id = $1 and status in ('draft', 'sent_manually', 'partially_paid', 'overdue')) as invoice_balance_cents,
         (select coalesce(sum(value_cents), 0) from public.opportunities where tenant_id = $1 and status = 'open') as pipeline_value_cents,
         (
           select coalesce(sum(metric_value), 0)
@@ -150,13 +157,20 @@ async function loadOperationalSnapshot(workspaceId: string) {
     queryPostgres<InvoiceFollowUpRow>(
       `
       select i.id, i.title, c.name as customer_name, i.status,
-        greatest(i.total_cents - i.amount_paid_cents, 0) as balance_due_cents,
+        greatest(i.total_cents - i.amount_paid_cents - i.write_off_cents, 0) as balance_due_cents,
         i.due_date::text as due_date
       from public.service_invoices i
       join public.customers c on c.id = i.customer_id
       where i.tenant_id = $1
         and i.status in ('sent_manually', 'partially_paid', 'overdue')
-        and i.amount_paid_cents < i.total_cents
+        and i.amount_paid_cents + i.write_off_cents < i.total_cents
+        and not exists (
+          select 1 from public.payment_disputes d
+          join public.service_invoice_payments disputed_payment
+            on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+          where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+            and d.status in ('warning','needs_response','under_review')
+        )
       order by coalesce(i.due_date, i.created_at::date) asc
       limit 6
       `,
@@ -191,9 +205,9 @@ async function loadOperationalSnapshot(workspaceId: string) {
       ),
       income_totals as (
         select
-          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at)::date = current_date and status in ('succeeded','manual')), 0) as income_today_cents,
-          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at) >= date_trunc('week', now()) and status in ('succeeded','manual')), 0) as income_week_cents,
-          coalesce(sum(amount_cents) filter (where coalesce(paid_at, received_at) >= now() - interval '30 days' and status in ('succeeded','manual')), 0) as income_30d_cents
+          coalesce(sum(greatest(amount_cents-refunded_amount_cents,0)) filter (where coalesce(paid_at, received_at)::date = current_date and status in ('succeeded','manual','partially_refunded','refunded')), 0) as income_today_cents,
+          coalesce(sum(greatest(amount_cents-refunded_amount_cents,0)) filter (where coalesce(paid_at, received_at) >= date_trunc('week', now()) and status in ('succeeded','manual','partially_refunded','refunded')), 0) as income_week_cents,
+          coalesce(sum(greatest(amount_cents-refunded_amount_cents,0)) filter (where coalesce(paid_at, received_at) >= now() - interval '30 days' and status in ('succeeded','manual','partially_refunded','refunded')), 0) as income_30d_cents
         from public.service_invoice_payments
         where tenant_id = $1
       )

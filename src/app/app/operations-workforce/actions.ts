@@ -13,7 +13,6 @@ import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { uploadFieldMediaFile } from "@/lib/operations-workforce/field-media-upload";
 import { extractReceiptFieldsWithVision } from "@/lib/operations-workforce/receipt-extraction";
 import { isUploadFile, uploadReceiptPhoto } from "@/lib/operations-workforce/receipt-upload";
-import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -24,6 +23,17 @@ function cents(value: string | undefined) {
   if (!value) return 0;
   const number = Number(value.replace(/[$,]/g, ""));
   return Number.isFinite(number) ? Math.round(number * 100) : 0;
+}
+
+type TenantReferenceTable = "operations_workers" | "operations_assignments";
+
+async function tenantOwnsReference(tenantId: string, table: TenantReferenceTable, id?: string) {
+  if (!id) return true;
+  const result = await queryPostgres<{ allowed: boolean }>(
+    `select exists(select 1 from public.${table} where tenant_id = $1 and id = $2) as allowed`,
+    [tenantId, id]
+  );
+  return result?.rows[0]?.allowed === true;
 }
 
 const workerSchema = z.object({
@@ -71,6 +81,12 @@ const assignmentSchema = z.object({
   scheduledEnd: z.string().optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]),
   taskList: z.string().max(2000).optional()
+});
+
+const assignmentTaskStatusSchema = z.object({
+  assignmentId: z.string().uuid(),
+  taskIndex: z.coerce.number().int().min(0).max(49),
+  status: z.enum(["open", "done"])
 });
 
 const clockSchema = z.object({
@@ -486,6 +502,7 @@ export async function decideEmployeeAccessRequestAction(formData: FormData) {
 }
 
 export async function createAssignmentAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = assignmentSchema.safeParse({
     title: text(formData, "title"),
     workerId: text(formData, "workerId"),
@@ -496,7 +513,8 @@ export async function createAssignmentAction(formData: FormData) {
     taskList: text(formData, "taskList")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
+  if (!(await tenantOwnsReference(tenantId, "operations_workers", parsed.data.workerId))) return;
   await queryPostgres(
     `
     insert into public.operations_assignments (
@@ -518,6 +536,68 @@ export async function createAssignmentAction(formData: FormData) {
       JSON.stringify({ dragDropReady: true, views: ["daily", "weekly", "monthly", "crew", "job"] })
     ]
   );
+  revalidatePath("/app/operations-workforce");
+}
+
+export async function updateAssignmentTaskStatusAction(formData: FormData) {
+  const parsed = assignmentTaskStatusSchema.safeParse({
+    assignmentId: text(formData, "assignmentId"),
+    taskIndex: text(formData, "taskIndex"),
+    status: text(formData, "status")
+  });
+  if (!parsed.success) return;
+  const context = await getEmployeeAccessContext();
+  if (!(await canAccessEmployeeAssignment(context, parsed.data.assignmentId))) return;
+
+  await queryPostgres(
+    `with rebuilt as (
+       select assignment.id,
+         jsonb_agg(
+           case when item.ordinality - 1 = $3 then
+             (case when jsonb_typeof(item.value)='object' then item.value
+               else jsonb_build_object('title',coalesce(item.value #>> '{}','Task ' || item.ordinality::text)) end) || jsonb_build_object(
+               'status',$4::text,
+               'completedAt',case when $4='done' then now() else null end,
+               'completedByWorkerId',case when $4='done' then $5::uuid else null end
+             )
+           else item.value end
+           order by item.ordinality
+         ) as task_list_json
+       from public.operations_assignments assignment,
+         jsonb_array_elements(assignment.task_list_json) with ordinality as item(value,ordinality)
+       where assignment.tenant_id=$1 and assignment.id=$2
+         and jsonb_array_length(assignment.task_list_json) > $3
+       group by assignment.id
+     ), task_state as (
+       select rebuilt.id,rebuilt.task_list_json,
+         not exists(
+           select 1 from jsonb_array_elements(rebuilt.task_list_json) task
+           where coalesce(task->>'status','open') <> 'done'
+         ) as all_done
+       from rebuilt
+     )
+     update public.operations_assignments assignment set
+       task_list_json=task_state.task_list_json,
+       status=case
+         when task_state.all_done then 'completed'
+         when assignment.status in ('scheduled','completed') then 'in_progress'
+         else assignment.status end,
+       metadata_json=assignment.metadata_json || jsonb_build_object(
+         'lastTaskUpdateAt',now(),'lastTaskUpdateByWorkerId',$5::uuid,
+         'allPunchListTasksCompleted',task_state.all_done
+       ),updated_at=now()
+     from task_state
+     where assignment.tenant_id=$1 and assignment.id=task_state.id`,
+    [
+      context.tenantId,
+      parsed.data.assignmentId,
+      parsed.data.taskIndex,
+      parsed.data.status,
+      context.workerId
+    ]
+  );
+  revalidatePath("/employee");
+  revalidatePath("/app/employee");
   revalidatePath("/app/operations-workforce");
 }
 
@@ -727,6 +807,7 @@ export async function createExpenseAction(formData: FormData) {
 }
 
 export async function createRecurringExpenseAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = recurringExpenseSchema.safeParse({
     vendor: text(formData, "vendor"),
     description: text(formData, "description"),
@@ -739,7 +820,7 @@ export async function createRecurringExpenseAction(formData: FormData) {
     autopostMode: text(formData, "autopostMode") ?? "review_first"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     insert into public.recurring_operating_expenses (
@@ -767,6 +848,7 @@ export async function createRecurringExpenseAction(formData: FormData) {
 }
 
 export async function updateRecurringExpenseStatusAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = z.object({
     id: z.string().uuid(),
     status: z.enum(["active", "paused", "archived"])
@@ -775,7 +857,7 @@ export async function updateRecurringExpenseStatusAction(formData: FormData) {
     status: text(formData, "status")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     update public.recurring_operating_expenses
@@ -830,6 +912,7 @@ export async function createMileageAction(formData: FormData) {
 }
 
 export async function createMaterialLogAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = materialSchema.safeParse({
     workerId: text(formData, "workerId"),
     assignmentId: text(formData, "assignmentId"),
@@ -840,7 +923,12 @@ export async function createMaterialLogAction(formData: FormData) {
     cost: text(formData, "cost")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
+  const [workerAllowed, assignmentAllowed] = await Promise.all([
+    tenantOwnsReference(tenantId, "operations_workers", parsed.data.workerId),
+    tenantOwnsReference(tenantId, "operations_assignments", parsed.data.assignmentId)
+  ]);
+  if (!workerAllowed || !assignmentAllowed) return;
   await queryPostgres(
     `
     insert into public.operations_material_logs (
@@ -864,6 +952,7 @@ export async function createMaterialLogAction(formData: FormData) {
 }
 
 export async function createLocationPingAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = locationPingSchema.safeParse({
     workerId: text(formData, "workerId"),
     assignmentId: text(formData, "assignmentId"),
@@ -875,7 +964,12 @@ export async function createLocationPingAction(formData: FormData) {
     alertStatus: text(formData, "alertStatus") ?? "normal"
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
+  const [workerAllowed, assignmentAllowed] = await Promise.all([
+    tenantOwnsReference(tenantId, "operations_workers", parsed.data.workerId),
+    tenantOwnsReference(tenantId, "operations_assignments", parsed.data.assignmentId)
+  ]);
+  if (!workerAllowed || !assignmentAllowed) return;
   await queryPostgres(
     `
     insert into public.operations_location_pings (
@@ -998,6 +1092,7 @@ export async function createFieldMediaAction(formData: FormData) {
 }
 
 export async function createPayrollExportAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
   const parsed = payrollExportSchema.safeParse({
     provider: text(formData, "provider") ?? "csv",
     periodStart: text(formData, "periodStart"),
@@ -1005,7 +1100,7 @@ export async function createPayrollExportAction(formData: FormData) {
     notes: text(formData, "notes")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   const periodStart = parsed.data.periodStart ? new Date(parsed.data.periodStart).toISOString().slice(0, 10) : new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
   const periodEnd = parsed.data.periodEnd ? new Date(parsed.data.periodEnd).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
   await queryPostgres(
@@ -1158,6 +1253,7 @@ export async function updateEmployeeLanguageAction(formData: FormData) {
 }
 
 export async function createCustomerUpdateDraftAction(formData: FormData) {
+  const actor = await requirePermission("lead:manage");
   const parsed = customerUpdateSchema.safeParse({
     assignmentId: text(formData, "assignmentId"),
     channel: text(formData, "channel") ?? "sms",
@@ -1166,7 +1262,8 @@ export async function createCustomerUpdateDraftAction(formData: FormData) {
     body: text(formData, "body")
   });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
+  if (!(await tenantOwnsReference(tenantId, "operations_assignments", parsed.data.assignmentId))) return;
   await queryPostgres(
     `
     insert into public.operations_customer_update_drafts (
@@ -1188,9 +1285,10 @@ export async function createCustomerUpdateDraftAction(formData: FormData) {
 }
 
 export async function approveCustomerUpdateDraftAction(formData: FormData) {
+  const actor = await requirePermission("approval:review_low");
   const parsed = idSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     update public.operations_customer_update_drafts
@@ -1205,9 +1303,10 @@ export async function approveCustomerUpdateDraftAction(formData: FormData) {
 }
 
 export async function sendCustomerUpdateDraftAction(formData: FormData) {
+  const actor = await requirePermission("approval:review_medium");
   const parsed = idSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   const result = await queryPostgres<{
     id: string;
     channel: string;
@@ -1304,9 +1403,10 @@ export async function sendCustomerUpdateDraftAction(formData: FormData) {
 }
 
 export async function markPayrollExportReadyAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
   const parsed = idSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     update public.operations_payroll_exports
@@ -1321,9 +1421,10 @@ export async function markPayrollExportReadyAction(formData: FormData) {
 }
 
 export async function markPayrollExportedAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
   const parsed = idSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
-  const tenantId = await getCurrentWorkspaceId();
+  const tenantId = actor.workspace.id;
   await queryPostgres(
     `
     update public.operations_payroll_exports

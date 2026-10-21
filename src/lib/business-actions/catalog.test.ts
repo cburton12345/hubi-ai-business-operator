@@ -33,11 +33,14 @@ describe("provider-neutral business action catalog", () => {
     );
   });
 
-  it("does not certify outside-agent compatibility before authentication and testing", () => {
-    expect(
-      listBusinessActionDefinitions().every(
-        (definition) => !definition.externalReady,
-      ),
-    ).toBe(true);
+  it("certifies only the narrow MCP action set for stored external grants", () => {
+    const external = listBusinessActionDefinitions().filter((definition) => definition.externalReady).map((definition) => definition.key);
+    expect(external).toEqual(expect.arrayContaining([
+      "getBusinessSummary", "listCustomers", "getCustomerHistory", "listJobs", "getJobStatus",
+      "listInvoices", "getOpenCommitments", "createCommitment", "updateCommitment", "startWorkflow",
+    ]));
+    expect(businessActionCatalog.scheduleJob.externalReady).toBe(false);
+    expect(businessActionCatalog.updateJob.externalReady).toBe(false);
+    expect(businessActionCatalog.requestApproval.externalReady).toBe(false);
   });
 });

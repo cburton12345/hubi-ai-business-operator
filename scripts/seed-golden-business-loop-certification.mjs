@@ -191,7 +191,7 @@ try {
        tenant_id,brand_id,lead_id,customer_id,estimate_id,job_id,invoice_id,mode,status,idempotency_key,metadata_json
      ) values (
        $1,$2,$3,$4,$5,$6,$7,'certification','active','certification:v1:lead:'||($3::uuid)::text,
-       '{"createdBy":"qa_golden_loop_certification","liveProviderActionsTriggered":false}'::jsonb
+       '{"createdBy":"qa_golden_loop_certification","qaOnly":true,"syntheticFixture":true,"liveProviderActionsTriggered":false}'::jsonb
      ) on conflict (tenant_id,idempotency_key) do update set
        brand_id=excluded.brand_id,customer_id=excluded.customer_id,estimate_id=excluded.estimate_id,
        job_id=excluded.job_id,invoice_id=excluded.invoice_id,status='active',updated_at=now()

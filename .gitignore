@@ -22,3 +22,7 @@ tsconfig.tsbuildinfo
 
 # Local Netlify folder
 .netlify
+
+# Local certification/runtime scratch data. Never commit generated evidence or CLI state.
+tmp/
+supabase/.temp/

@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 

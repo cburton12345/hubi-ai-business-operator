@@ -4,6 +4,7 @@ import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
+import { recordPlatformSubscriptionInvoiceEvent } from "@/lib/billing/platform-subscription-revenue";
 
 export type FerocityBillingStatus = "active" | "trialing" | "past_due" | "cancelled";
 export type StripeSubscriptionInvoiceEvent =
@@ -105,6 +106,17 @@ export async function reconcileStripeSubscriptionInvoice(input: {
     }), recovered]
   );
   await applyPlanEntitlements({ tenantId: row.tenant_id, planKey: row.plan_key, billingStatus: nextStatus });
+  await recordPlatformSubscriptionInvoiceEvent({
+    eventId: input.eventId,
+    eventType: input.eventType,
+    invoice: input.invoice,
+    identity: {
+      tenantId: row.tenant_id,
+      planKey: row.plan_key,
+      subscriptionId,
+      customerId,
+    },
+  });
 
   const title = recovered ? "Ferocity subscription payment received" : "Ferocity subscription payment needs attention";
   const summary = recovered

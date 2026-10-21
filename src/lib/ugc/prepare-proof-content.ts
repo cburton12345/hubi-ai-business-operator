@@ -54,6 +54,7 @@ export async function prepareProofContentDrafts(input: { tenantId: string; submi
     `,
     [input.tenantId, input.submissionId ?? null, Math.max(1, Math.min(input.limit ?? 20, 100))]
   );
+  if (!proofResult) throw new Error("Approved proof could not be loaded for content preparation.");
 
   let prepared = 0;
   for (const proof of proofResult?.rows ?? []) {
@@ -63,6 +64,7 @@ export async function prepareProofContentDrafts(input: { tenantId: string; submi
          where tenant_id=$1 and submission_id=$2 and output_type=$3 and status <> 'archived' limit 1`,
         [input.tenantId, proof.id, output.outputType]
       );
+      if (!existing) throw new Error("Existing proof content could not be verified.");
       if (existing?.rows[0]) continue;
 
       const title = `${output.titlePrefix}: ${proof.title || "Customer proof"}`;
@@ -92,8 +94,9 @@ export async function prepareProofContentDrafts(input: { tenantId: string; submi
           })
         ]
       );
+      if (!draftResult) throw new Error("The proof content draft could not be created.");
       const draftId = draftResult?.rows[0]?.id;
-      if (!draftId) continue;
+      if (!draftId) throw new Error("The proof content draft did not return an identifier.");
 
       const inserted = await queryPostgres(
         `
@@ -110,6 +113,7 @@ export async function prepareProofContentDrafts(input: { tenantId: string; submi
         `,
         [input.tenantId, proof.brand_id, proof.id, draftId, output.outputType, title]
       );
+      if (!inserted) throw new Error("The proof content output could not be recorded.");
       prepared += Number(inserted?.rowCount ?? 0);
     }
   }

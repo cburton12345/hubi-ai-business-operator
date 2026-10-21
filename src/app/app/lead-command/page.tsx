@@ -145,14 +145,14 @@ export default async function LeadCommandPage() {
           </ul>
         </section>
 
-        <section className="panel span-7">
-          <h2>How Ferocity keeps momentum</h2>
-          <p className="muted">
-            Every conversation stays connected as a person becomes a customer
-            and work turns into revenue.
-          </p>
-          <details className="subtle-panel">
-            <summary>See the customer journey</summary>
+        <details className="panel span-7 progressive-disclosure">
+          <summary>
+            <div>
+              <h2>How customer follow-up works</h2>
+              <p className="muted">Optional detail about how leads become customers, work, and revenue.</p>
+            </div>
+          </summary>
+          <div className="progressive-disclosure-body">
             <div className="path-grid section-actions">
               {[
                 [
@@ -193,8 +193,8 @@ export default async function LeadCommandPage() {
                 </Link>
               ))}
             </div>
-          </details>
-        </section>
+          </div>
+        </details>
       </section>
 
       <section className="grid section-actions">
@@ -244,14 +244,14 @@ export default async function LeadCommandPage() {
         <section className="panel span-6">
           <div className="list-row flush-row">
             <div>
-              <h2>Conversations And Queued Work</h2>
+              <h2>Conversations and prepared follow-up</h2>
               <p className="muted">
                 Drafts and queued sends stay visible before live customer
                 contact.
               </p>
             </div>
             <Link className="mini-button" href="/app/actions">
-              Review queue
+              Review prepared work
             </Link>
           </div>
           <ul className="list">
@@ -283,7 +283,7 @@ export default async function LeadCommandPage() {
                   <h3>
                     <Link href={action.href}>{action.subject}</Link>
                   </h3>
-                  <p className="muted">Prepared business action</p>
+                  <p className="muted">Prepared follow-up</p>
                 </div>
                 <div className="inline-actions">
                   <span className={`pill ${tone(action.riskLevel)}`}>
@@ -306,29 +306,29 @@ export default async function LeadCommandPage() {
         </section>
       </section>
 
-      <section className="panel section-actions">
-        <div className="list-row flush-row">
+      <details className="panel progressive-disclosure section-actions">
+        <summary>
           <div>
             <h2>Pipeline</h2>
-            <p className="muted">
-              Use the full Sales Console to move stages and add notes.
-            </p>
+            <p className="muted">Stage totals and open opportunities.</p>
           </div>
+        </summary>
+        <div className="progressive-disclosure-body">
           <Link className="mini-button" href="/app/operator">
             Open pipeline
           </Link>
+          <div className="grid">
+            {dashboard.stages.map((stage) => (
+              <section className="panel span-4" key={stage.id}>
+                <h3>{stage.name}</h3>
+                <p className="muted">{stage.probability}% expected close rate</p>
+                <strong>{stage.opportunities.length}</strong>
+                <span className="muted">open opportunities</span>
+              </section>
+            ))}
+          </div>
         </div>
-        <div className="grid">
-          {dashboard.stages.map((stage) => (
-            <section className="panel span-4" key={stage.id}>
-              <h3>{stage.name}</h3>
-              <p className="muted">{stage.probability}% default probability</p>
-              <strong>{stage.opportunities.length}</strong>
-              <span className="muted">open opportunity records</span>
-            </section>
-          ))}
-        </div>
-      </section>
+      </details>
     </QueuePageShell>
   );
 }

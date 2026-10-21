@@ -1,5 +1,7 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { centsToDollars, formatMoney } from "@/lib/service-ops/money";
+import { getJobMargin } from "@/lib/service-ops/job-margin";
+import { calculateEstimatePricing } from "@/lib/service-ops/estimate-pricing";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type ServiceEstimateDetail = {
@@ -9,6 +11,15 @@ export type ServiceEstimateDetail = {
   title: string;
   status: string;
   total: string;
+  subtotal: string;
+  discount: string;
+  discountValue: string;
+  tax: string;
+  taxRatePercent: string;
+  estimatedCost: string;
+  grossProfit: string;
+  grossMarginPercent: number | null;
+  pricingWarnings: string[];
   paymentTerms: string;
   depositRequired: string;
   acceptanceNotes: string;
@@ -48,8 +59,9 @@ export type ServiceEstimateDetail = {
     deliveryError: string;
   } | null;
   linkedJobs: { id: string; title: string; status: string; schedule: string }[];
+  changeOrders: { id: string; title: string; description: string; amount: string; estimatedCost: string; scheduleImpact: string; status: string; decidedBy: string; decidedAt: string }[];
   pricebookItems: { id: string; name: string; category: string; price: string }[];
-  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; total: string }[];
+  lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; unitPriceValue: string; unitCostValue: string; taxable: boolean; optional: boolean; selected: boolean; total: string }[];
 };
 
 export type ServiceJobDetail = {
@@ -66,6 +78,23 @@ export type ServiceJobDetail = {
   dispatcherNotes: string;
   completionNotes: string;
   nextAction: string;
+  margin: {
+    invoiced: string;
+    collected: string;
+    refunded: string;
+    writtenOff: string;
+    labor: string;
+    materials: string;
+    directExpenses: string;
+    approvedOverhead: string;
+    totalCost: string;
+    invoiceMargin: string;
+    cashMargin: string;
+    invoiceMarginPercent: number | null;
+    cashMarginPercent: number | null;
+    complete: boolean;
+    missingEvidence: string[];
+  };
   linkedInvoices: { id: string; title: string; status: string; total: string; balanceDue: string }[];
   proofRequests: { id: string; publicToken: string; requestType: string; status: string; createdAt: string; url: string }[];
   proofSubmissions: { id: string; title: string; status: string; assetCount: number; createdAt: string }[];
@@ -80,7 +109,9 @@ export type ServiceInvoiceDetail = {
   status: string;
   total: string;
   amountPaid: string;
+  amountWrittenOff: string;
   balanceDue: string;
+  balanceDueCents: number;
   dueDate: string;
   internalNotes: string;
   paymentNotes: string;
@@ -110,13 +141,17 @@ function formatDateTime(start: Date | null, end: Date | null) {
 
 export async function getServiceEstimateDetail(estimateId: string): Promise<ServiceEstimateDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [estimateResult, itemsResult, jobsResult, shareLinkResult, pricebookResult] = await Promise.all([
+  const [estimateResult, itemsResult, jobsResult, shareLinkResult, pricebookResult, changeOrdersResult] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
       customer_name: string;
       title: string;
       status: string;
+      subtotal_cents: number;
+      discount_cents: number;
+      tax_cents: number;
+      tax_rate_bps: number;
       total_cents: number;
       customer_summary: string | null;
       internal_notes: string | null;
@@ -147,7 +182,8 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       market_price_notes: string | null;
     }>(
       `
-      select e.id, e.customer_id, c.name as customer_name, e.title, e.status, e.total_cents,
+      select e.id, e.customer_id, c.name as customer_name, e.title, e.status,
+        e.subtotal_cents, e.discount_cents, e.tax_cents, e.tax_rate_bps, e.total_cents,
         e.customer_summary, e.internal_notes, e.manual_follow_up_draft,
         e.payment_terms, e.deposit_required_cents, e.acceptance_notes,
         e.customer_display_mode, e.customer_intro, e.customer_scope_summary,
@@ -165,9 +201,10 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       `,
       [workspaceId, estimateId]
     ),
-    queryPostgres<{ id: string; name: string; description: string | null; quantity: string; unit_price_cents: number; total_cents: number }>(
+    queryPostgres<{ id: string; name: string; description: string | null; quantity: string; unit_price_cents: number; cost_cents: number; taxable: boolean; optional: boolean; selected: boolean; total_cents: number }>(
       `
-      select id, name, description, quantity::text, unit_price_cents, total_cents
+      select id, name, description, quantity::text, unit_price_cents, cost_cents,
+        taxable, optional, selected, total_cents
       from public.estimate_line_items
       where tenant_id = $1 and estimate_id = $2
       order by position, name
@@ -213,10 +250,29 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       limit 300
       `,
       [workspaceId]
+    ),
+    queryPostgres<{ id: string; title: string; description: string | null; amount_cents: number; estimated_cost_cents: number; schedule_impact_minutes: number; status: string; decided_by_name: string | null; decided_at: Date | null }>(
+      `select id, title, description, amount_cents, estimated_cost_cents,
+              schedule_impact_minutes, status, decided_by_name, decided_at
+         from public.estimate_change_orders
+        where tenant_id=$1 and estimate_id=$2 and status <> 'cancelled'
+        order by created_at desc`,
+      [workspaceId, estimateId]
     )
   ]);
   const estimate = estimateResult?.rows[0];
   if (!estimate) return null;
+  const pricing = calculateEstimatePricing({
+    lines: (itemsResult?.rows ?? []).map((item) => ({
+      quantity: item.quantity,
+      unitPriceCents: item.unit_price_cents,
+      unitCostCents: item.cost_cents,
+      taxable: item.taxable,
+      selected: item.selected
+    })),
+    discountCents: estimate.discount_cents,
+    taxRateBps: estimate.tax_rate_bps
+  });
 
   return {
     id: estimate.id,
@@ -225,6 +281,15 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
     title: estimate.title,
     status: estimate.status,
     total: formatMoney(estimate.total_cents),
+    subtotal: formatMoney(pricing.subtotalCents),
+    discount: formatMoney(pricing.discountCents),
+    discountValue: centsToDollars(pricing.discountCents),
+    tax: formatMoney(pricing.taxCents),
+    taxRatePercent: (estimate.tax_rate_bps / 100).toFixed(2),
+    estimatedCost: formatMoney(pricing.estimatedCostCents),
+    grossProfit: formatMoney(pricing.grossProfitCents),
+    grossMarginPercent: pricing.grossMarginPercent,
+    pricingWarnings: pricing.warnings,
     paymentTerms: estimate.payment_terms ?? "",
     depositRequired: formatMoney(estimate.deposit_required_cents ?? 0),
     acceptanceNotes: estimate.acceptance_notes ?? "",
@@ -274,6 +339,17 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       status: job.status,
       schedule: formatDateTime(job.scheduled_start, job.scheduled_end)
     })),
+    changeOrders: (changeOrdersResult?.rows ?? []).map((change) => ({
+      id: change.id,
+      title: change.title,
+      description: change.description ?? "",
+      amount: formatMoney(change.amount_cents),
+      estimatedCost: formatMoney(change.estimated_cost_cents),
+      scheduleImpact: change.schedule_impact_minutes > 0 ? `${(change.schedule_impact_minutes / 60).toFixed(1)} hours` : "None",
+      status: change.status,
+      decidedBy: change.decided_by_name ?? "",
+      decidedAt: change.decided_at ? formatDateTime(change.decided_at, null) : ""
+    })),
     pricebookItems: (pricebookResult?.rows ?? []).map((item) => ({
       id: item.id,
       name: item.name,
@@ -287,6 +363,10 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
       quantity: item.quantity,
       unitPrice: formatMoney(item.unit_price_cents),
       unitPriceValue: centsToDollars(item.unit_price_cents),
+      unitCostValue: centsToDollars(item.cost_cents),
+      taxable: item.taxable,
+      optional: item.optional,
+      selected: item.selected,
       total: formatMoney(item.total_cents)
     }))
   };
@@ -294,7 +374,7 @@ export async function getServiceEstimateDetail(estimateId: string): Promise<Serv
 
 export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDetail | null> {
   const workspaceId = await getCurrentWorkspaceId();
-  const [result, requestsResult, submissionsResult, invoicesResult, authorityResult] = await Promise.all([
+  const [result, requestsResult, submissionsResult, invoicesResult, authorityResult, margin] = await Promise.all([
     queryPostgres<{
       id: string;
       customer_id: string;
@@ -360,9 +440,9 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       `,
       [workspaceId, jobId]
     ),
-    queryPostgres<{ id: string; title: string; status: string; total_cents: number; amount_paid_cents: number }>(
+    queryPostgres<{ id: string; title: string; status: string; total_cents: number; amount_paid_cents: number; write_off_cents: number }>(
       `
-      select id, title, status, total_cents, amount_paid_cents
+      select id, title, status, total_cents, amount_paid_cents, write_off_cents
       from public.service_invoices
       where tenant_id = $1 and job_id = $2
       order by created_at desc
@@ -379,7 +459,8 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
       limit 1
       `,
       [workspaceId, jobId]
-    )
+    ),
+    getJobMargin(workspaceId, jobId)
   ]);
   const job = result?.rows[0];
   if (!job) return null;
@@ -398,12 +479,29 @@ export async function getServiceJobDetail(jobId: string): Promise<ServiceJobDeta
     dispatcherNotes: job.dispatcher_notes ?? "",
     completionNotes: job.completion_notes ?? "",
     nextAction: job.ai_next_action ?? "",
+    margin: {
+      invoiced: formatMoney(margin.invoicedCents),
+      collected: formatMoney(margin.collectedCents),
+      refunded: formatMoney(margin.refundedCents),
+      writtenOff: formatMoney(margin.writtenOffCents),
+      labor: formatMoney(margin.laborCents),
+      materials: formatMoney(margin.materialCents),
+      directExpenses: formatMoney(margin.directExpenseCents),
+      approvedOverhead: formatMoney(margin.approvedOverheadCents),
+      totalCost: formatMoney(margin.totalCostCents),
+      invoiceMargin: formatMoney(margin.invoiceMarginCents),
+      cashMargin: formatMoney(margin.cashMarginCents),
+      invoiceMarginPercent: margin.invoiceMarginPercent,
+      cashMarginPercent: margin.cashMarginPercent,
+      complete: margin.complete,
+      missingEvidence: margin.missingEvidence
+    },
     linkedInvoices: (invoicesResult?.rows ?? []).map((invoice) => ({
       id: invoice.id,
       title: invoice.title,
       status: invoice.status,
       total: formatMoney(invoice.total_cents),
-      balanceDue: formatMoney(Math.max(invoice.total_cents - invoice.amount_paid_cents, 0))
+      balanceDue: formatMoney(Math.max(invoice.total_cents - invoice.amount_paid_cents - invoice.write_off_cents, 0))
     })),
     proofRequests: (requestsResult?.rows ?? []).map((request) => ({
       id: request.id,
@@ -443,12 +541,13 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
       status: string;
       total_cents: number;
       amount_paid_cents: number;
+      write_off_cents: number;
       due_date: Date | null;
       internal_notes: string | null;
       manual_payment_notes: string | null;
     }>(
       `
-      select i.id, i.customer_id, c.name as customer_name, i.title, i.status, i.total_cents, i.amount_paid_cents, i.due_date, i.internal_notes, i.manual_payment_notes
+      select i.id, i.customer_id, c.name as customer_name, i.title, i.status, i.total_cents, i.amount_paid_cents, i.write_off_cents, i.due_date, i.internal_notes, i.manual_payment_notes
       from public.service_invoices i
       join public.customers c on c.id = i.customer_id
       where i.tenant_id = $1 and i.id = $2
@@ -522,6 +621,7 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
   const invoice = invoiceResult?.rows[0];
   if (!invoice) return null;
 
+  const balanceDueCents = Math.max(invoice.total_cents - invoice.amount_paid_cents - invoice.write_off_cents, 0);
   return {
     id: invoice.id,
     customerId: invoice.customer_id,
@@ -530,7 +630,9 @@ export async function getServiceInvoiceDetail(invoiceId: string): Promise<Servic
     status: invoice.status,
     total: formatMoney(invoice.total_cents),
     amountPaid: formatMoney(invoice.amount_paid_cents),
-    balanceDue: formatMoney(Math.max(invoice.total_cents - invoice.amount_paid_cents, 0)),
+    amountWrittenOff: formatMoney(invoice.write_off_cents),
+    balanceDue: formatMoney(balanceDueCents),
+    balanceDueCents,
     dueDate: invoice.due_date ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(invoice.due_date) : "No due date",
     internalNotes: invoice.internal_notes ?? "",
     paymentNotes: invoice.manual_payment_notes ?? "",

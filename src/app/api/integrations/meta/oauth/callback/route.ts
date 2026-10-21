@@ -6,6 +6,9 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { discoverAdvertisingAccounts } from "@/lib/integrations/advertising-account-discovery";
+import { recordInitialOAuthAuthority } from "@/lib/integrations/authority-grants";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import { oauthAppRedirect } from "@/lib/onboarding/oauth-return";
 
 type MetaTokenResponse = {
   access_token?: string;
@@ -20,14 +23,12 @@ type MetaProfileResponse = {
   error?: { message?: string };
 };
 
-function appRedirect(request: Request, params: Record<string, string>) {
-  const url = new URL("/app/integrations", request.url);
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return NextResponse.redirect(url);
+function appRedirect(request: Request, params: Record<string, string>, returnTo?: string | null) {
+  return oauthAppRedirect(request, params, returnTo);
 }
 
 async function claimOAuthJob(workspaceId: string, state: string) {
-  const result = await queryPostgres<{ id: string }>(
+  const result = await queryPostgres<{ id: string; return_to: string | null }>(
     `
     update public.integration_jobs
     set status = 'running',
@@ -45,7 +46,7 @@ async function claimOAuthJob(workspaceId: string, state: string) {
       limit 1
       for update skip locked
     )
-    returning id
+    returning id, payload_json->>'returnTo' as return_to
     `,
     [workspaceId, state]
   );
@@ -259,13 +260,13 @@ export async function GET(request: Request) {
   const providerError = url.searchParams.get("error") || url.searchParams.get("error_reason");
   if (providerError) {
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "authorization_denied" }, providerError);
-    return appRedirect(request, { provider: "facebook", setup: "denied" });
+    return appRedirect(request, { provider: "facebook", setup: "denied" }, job.return_to);
   }
 
   const code = url.searchParams.get("code");
   if (!code || !env.META_APP_ID || !env.META_APP_SECRET || !env.META_OAUTH_REDIRECT_URI) {
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "incomplete_callback" }, "Meta callback was incomplete.");
-    return appRedirect(request, { provider: "facebook", setup: "failed" });
+    return appRedirect(request, { provider: "facebook", setup: "failed" }, job.return_to);
   }
   if (!hasCredentialEncryptionKey()) {
     await finishOAuthJob(
@@ -274,7 +275,7 @@ export async function GET(request: Request) {
       { safeMode: true, reason: "credential_encryption_unavailable" },
       "Encrypted credential storage is not configured."
     );
-    return appRedirect(request, { provider: "facebook", setup: "encryption_required" });
+    return appRedirect(request, { provider: "facebook", setup: "encryption_required" }, job.return_to);
   }
 
   try {
@@ -294,16 +295,23 @@ export async function GET(request: Request) {
       discovery
     });
     await recordConnectedAccount(workspaceId, profile, metadata);
+    await recordInitialOAuthAuthority({
+      tenantId: workspaceId,
+      provider: "facebook",
+      scopes: ["pages_read_engagement", "pages_show_list", "business_management", "ads_read"],
+      actorKey: session?.userId ?? null,
+    });
     await finishOAuthJob(job.id, "completed", {
       safeMode: true,
       provider: "facebook",
       metaUserId: profile.id,
       liveActionsEnabled: false
     });
-    return appRedirect(request, { provider: "facebook", setup: "connected" });
+    await syncCustomerOnboardingForTenant(workspaceId).catch(() => null);
+    return appRedirect(request, { provider: "facebook", setup: "connected", onboarding: "resumed" }, job.return_to);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Meta connection failed.";
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "token_exchange_failed" }, message);
-    return appRedirect(request, { provider: "facebook", setup: "failed" });
+    return appRedirect(request, { provider: "facebook", setup: "failed" }, job.return_to);
   }
 }

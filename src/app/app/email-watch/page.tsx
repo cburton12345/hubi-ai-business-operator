@@ -4,11 +4,12 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { syncMailboxAction } from "./actions";
+import { onboardingOAuthStartPath } from "@/lib/onboarding/oauth-return";
 
 type Connection = { provider_key: "gmail_mailbox" | "microsoft_mailbox"; account_email: string | null; status: string; send_enabled: boolean; last_synced_at: string | null; last_error: string | null };
 type Message = { id: string; provider_key: string; sender_json: { name?: string; email?: string }; subject: string | null; preview: string | null; received_at: string; classification: string; action_status: string; source_url: string | null };
 
-export default async function EmailWatchPage({ searchParams }: { searchParams: Promise<{ synced?: string; saved?: string; error?: string }> }) {
+export default async function EmailWatchPage({ searchParams }: { searchParams: Promise<{ synced?: string; saved?: string; error?: string; onboarding?: string }> }) {
   const tenantId = await getCurrentWorkspaceId();
   const params = await searchParams;
   const [connectionsResult, messagesResult] = await Promise.all([
@@ -34,7 +35,9 @@ export default async function EmailWatchPage({ searchParams }: { searchParams: P
         const label = provider === "gmail_mailbox" ? "Gmail" : "Microsoft 365 / Outlook";
         return <article className="panel span-6 form-stack" key={provider}>
           <div className="list-row flush-row"><div><h2><Mail size={18} /> {label}</h2><p className="muted">{connection?.account_email ?? "Not connected"}</p></div><span className="pill">{connection?.status ?? "not connected"}</span></div>
-          {!connection ? <Link className="button" href={`/api/integrations/${provider}/oauth/start`}>Connect {label}</Link> : <form action={syncMailboxAction}><input type="hidden" name="provider" value={provider} /><button className="button" type="submit"><RefreshCw size={15} /> Check inbox now</button></form>}
+          {!connection ? <Link className="button" href={params.onboarding === "1"
+            ? onboardingOAuthStartPath(`/api/integrations/${provider}/oauth/start`, { provider, destination: "email" })
+            : `/api/integrations/${provider}/oauth/start`}>Connect {label}</Link> : <form action={syncMailboxAction}><input type="hidden" name="provider" value={provider} /><button className="button" type="submit"><RefreshCw size={15} /> Check inbox now</button></form>}
           <p className="muted"><ShieldCheck size={14} /> Inbox access is read-only. Sending is {connection?.send_enabled ? "separately enabled" : "not authorized"}.</p>
           {connection?.last_synced_at ? <p className="muted">Last checked {new Date(connection.last_synced_at).toLocaleString()}</p> : null}
           {connection?.last_error ? <p className="muted">Needs attention: {connection.last_error}</p> : null}

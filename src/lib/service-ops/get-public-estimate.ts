@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 
 export type PublicEstimate = {
@@ -30,6 +30,17 @@ export type PublicEstimate = {
     signedAt: string;
     documentVerification: string;
   } | null;
+  changeOrders: {
+    id: string;
+    title: string;
+    description: string;
+    amount: string;
+    scheduleImpact: string;
+    status: string;
+    decidedByName: string;
+    decidedAt: string;
+    decisionVerification: string;
+  }[];
   lineItems: { id: string; name: string; description: string; quantity: string; unitPrice: string; total: string; optional: boolean; selected: boolean }[];
 };
 
@@ -124,7 +135,7 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
     `,
     [estimate.tenant_id, estimate.estimate_id]
   );
-  const [paymentResult, acceptanceResult] = await Promise.all([
+  const [paymentResult, acceptanceResult, changeOrdersResult] = await Promise.all([
     queryPostgres<{ payment_url: string | null; status: string }>(
     `
     select l.payment_url, l.status
@@ -150,6 +161,25 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
         where tenant_id=$1 and estimate_share_link_id=$2
         order by created_at desc limit 1`,
       [estimate.tenant_id, estimate.share_link_id]
+    ),
+    queryPostgres<{
+      id: string;
+      title: string;
+      description: string | null;
+      amount_cents: number;
+      schedule_impact_minutes: number;
+      status: string;
+      decided_by_name: string | null;
+      decided_at: Date | null;
+      decision_document_sha256: string | null;
+    }>(
+      `select id, title, description, amount_cents, schedule_impact_minutes, status,
+              decided_by_name, decided_at, decision_document_sha256
+         from public.estimate_change_orders
+        where tenant_id=$1 and estimate_id=$2
+          and status in ('sent_manually','approved','rejected')
+        order by created_at`,
+      [estimate.tenant_id, estimate.estimate_id]
     )
   ]);
   const payment = paymentResult?.rows[0];
@@ -186,6 +216,19 @@ export async function getPublicEstimate(publicToken: string): Promise<PublicEsti
           documentVerification: acceptance.metadata_json?.documentSha256?.slice(0, 16) ?? ""
         }
       : null,
+    changeOrders: (changeOrdersResult?.rows ?? []).map((change) => ({
+      id: change.id,
+      title: change.title,
+      description: change.description ?? "",
+      amount: formatMoney(change.amount_cents),
+      scheduleImpact: change.schedule_impact_minutes > 0
+        ? `${(change.schedule_impact_minutes / 60).toFixed(1)} additional hours`
+        : "No schedule change",
+      status: change.status,
+      decidedByName: change.decided_by_name ?? "",
+      decidedAt: change.decided_at?.toISOString() ?? "",
+      decisionVerification: change.decision_document_sha256?.slice(0, 16) ?? ""
+    })),
     lineItems: (itemsResult?.rows ?? []).map((item) => ({
       id: item.id,
       name: item.name,

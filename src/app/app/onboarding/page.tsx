@@ -3,8 +3,10 @@ import { Building2, CheckCircle2, WandSparkles } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getWorkspaceOnboardingRows } from "@/lib/onboarding/get-workspace-onboarding";
 import { createWorkspaceOnboardingAction } from "./actions";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export default async function WorkspaceOnboardingPage() {
+  await requirePermission("platform:manage");
   const rows = await getWorkspaceOnboardingRows();
 
   return (

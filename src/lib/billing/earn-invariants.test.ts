@@ -6,7 +6,8 @@ describe("Ferocity Earn V1 billing invariants", () => {
   const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/186_ferocity_earn_v1.sql"), "utf8");
   const actions = fs.readFileSync(path.join(process.cwd(), "src/app/app/billing/earn/actions.ts"), "utf8");
   const stripeWebhook = fs.readFileSync(path.join(process.cwd(), "src/app/api/integrations/stripe/webhook/route.ts"), "utf8");
-  const serviceActions = fs.readFileSync(path.join(process.cwd(), "src/app/app/service/actions.ts"), "utf8");
+  const paymentAdjustments = fs.readFileSync(path.join(process.cwd(), "src/lib/billing/invoice-payment-adjustments.ts"), "utf8");
+  const serviceLifecycle = fs.readFileSync(path.join(process.cwd(), "src/lib/service-ops/lifecycle-transitions.ts"), "utf8");
   const settlementRunner = fs.readFileSync(path.join(process.cwd(), "src/lib/billing/earn-settlement.ts"), "utf8");
   const automationRunner = fs.readFileSync(path.join(process.cwd(), "src/lib/automation/run-business-automation.ts"), "utf8");
   const voiceUsage = fs.readFileSync(path.join(process.cwd(), "src/lib/usage/managed-voice.ts"), "utf8");
@@ -39,7 +40,7 @@ describe("Ferocity Earn V1 billing invariants", () => {
   it("prevents duplicate payment and Earn assessment events", () => {
     expect(migration).toContain("unique (tenant_id, source_event_key)");
     expect(migration).toContain("uniq_service_invoice_payments_idempotency");
-    expect(serviceActions).toContain("on conflict (tenant_id,idempotency_key)");
+    expect(serviceLifecycle).toContain("on conflict (tenant_id,idempotency_key)");
     expect(stripeWebhook).toContain("on conflict (provider, provider_payment_id)");
   });
 
@@ -47,7 +48,8 @@ describe("Ferocity Earn V1 billing invariants", () => {
     expect(migration).toContain("prevent_earn_ledger_mutation");
     expect(migration).toContain("adjust_earn_for_refund");
     expect(migration).toContain("'earn_credit'");
-    expect(stripeWebhook).toContain("adjust_earn_for_refund");
+    expect(stripeWebhook).toContain("recordInvoiceRefund");
+    expect(paymentAdjustments).toContain("adjust_earn_for_refund");
   });
 
   it("keeps privileged Earn accounting functions off public tenant RPC", () => {

@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function dollars(cents: number) {
@@ -7,6 +7,22 @@ function dollars(cents: number) {
 
 function n(value: unknown) {
   return Number(value ?? 0);
+}
+
+function assignmentTasks(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 50).map((task, index) => {
+    const item = task && typeof task === "object" && !Array.isArray(task)
+      ? task as Record<string, unknown>
+      : {};
+    return {
+      index,
+      title: typeof item.title === "string" && item.title.trim()
+        ? item.title.trim().slice(0, 240)
+        : `Task ${index + 1}`,
+      status: item.status === "done" ? "done" as const : "open" as const
+    };
+  });
 }
 
 export type OperationsWorkforceDashboard = {
@@ -27,7 +43,7 @@ export type OperationsWorkforceDashboard = {
     recurringDue: number;
   };
   workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string; email: string; language: string; access: string }[];
-  assignments: { id: string; serviceVisitId: string | null; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; aiNotes: string }[];
+  assignments: { id: string; serviceVisitId: string | null; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; taskList: { index: number; title: string; status: "open" | "done" }[]; aiNotes: string }[];
   timeEntries: { id: string; worker: string; assignment: string; clockIn: string; clockOut: string; hours: string; status: string; verified: string }[];
   expenses: { id: string; vendor: string; amount: string; category: string; status: string; worker: string; summary: string }[];
   mileage: { id: string; worker: string; route: string; miles: string; vehicle: string; status: string }[];
@@ -139,11 +155,12 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       status: string;
       priority: string;
       task_count: string;
+      task_list_json: unknown;
       ai_dispatch_notes: string | null;
     }>(
       `
       select a.id, a.service_visit_id, a.title, w.name as worker, c.name as crew, a.jobsite, a.scheduled_start, a.scheduled_end,
-        a.status, a.priority, jsonb_array_length(a.task_list_json) as task_count, a.ai_dispatch_notes
+        a.status, a.priority, jsonb_array_length(a.task_list_json) as task_count, a.task_list_json, a.ai_dispatch_notes
       from public.operations_assignments a
       left join public.operations_workers w on w.id = a.worker_id
       left join public.operations_crews c on c.id = a.crew_id
@@ -364,6 +381,7 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       status: row.status,
       priority: row.priority,
       tasks: n(row.task_count),
+      taskList: assignmentTasks(row.task_list_json),
       aiNotes: row.ai_dispatch_notes ?? "No AI dispatch recommendation yet."
     })),
     timeEntries: (timeResult?.rows ?? []).map((row) => ({

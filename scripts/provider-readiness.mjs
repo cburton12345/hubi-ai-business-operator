@@ -1,5 +1,23 @@
 import fs from "node:fs";
 
+const providerTruth = JSON.parse(fs.readFileSync("src/lib/integrations/provider-capability-truth.json", "utf8")).providers;
+const truthKeyByLabel = {
+  "Google/GBP connection": "google_business_profile",
+  "Meta connection": "facebook",
+  "TikTok connection": "tiktok_business",
+  "Reddit connection": "reddit",
+  "Microsoft connection": "microsoft_ads",
+  "LinkedIn Ads connection": "linkedin_ads",
+  "Pinterest Ads connection": "pinterest_ads",
+  "Snap Ads connection": "snapchat_ads",
+  "Amazon Ads connection": "amazon_ads",
+  "X Ads connection": "x_ads",
+  "Premium video rendering": "premium_video_rendering",
+  "AI Office Manager voice": "voice_ai",
+  "Optional Vonage SMS": "vonage_sms",
+  "Optional Twilio SMS": "twilio_shared"
+};
+
 function loadLocalEnv() {
   if (process.env.SKIP_LOCAL_ENV === "1") return;
   if (!fs.existsSync(".env.local")) return;
@@ -207,8 +225,11 @@ function checkStaticGroups() {
       gaps = gaps.filter((key) => key !== "VONAGE_FROM_NUMBER");
     }
     const optional = ["Google/GBP connection", "Meta connection", "TikTok connection", "Reddit connection", "Microsoft connection", "LinkedIn Ads connection", "Pinterest Ads connection", "Snap Ads connection", "Amazon Ads connection", "X Ads connection", "Yahoo connection", "Premium video rendering", "AI Office Manager voice", "Optional Vonage SMS", "Optional Twilio SMS"].includes(label);
-    const status = gaps.length === 0 ? "ready" : optional ? "warning" : "blocked";
-    const detail = label === "Optional Vonage SMS" && gaps.length
+    const truth = providerTruth[truthKeyByLabel[label]];
+    const status = gaps.length === 0
+      ? truth && truth.state !== "certified_live" ? "warning" : "ready"
+      : optional ? "warning" : "blocked";
+    const missingDetail = label === "Optional Vonage SMS" && gaps.length
       ? `not required for launch; live use remains disabled until credentials, sender registration, signed webhooks, funding, and certification are complete`
       : label === "Optional Twilio SMS" && gaps.length
       ? `not required for launch; using app alerts, email, dashboard queues, and manual text drafts`
@@ -216,7 +237,10 @@ function checkStaticGroups() {
         ? `not required for launch; office-manager setup works now, live calls need ${gaps.join(", ")}`
       : label === "Premium video rendering" && gaps.length
         ? `not required for launch; video briefs work now, live renders need ${gaps.join(", ")}`
-      : gaps.length ? `missing ${gaps.join(", ")}` : "configured";
+      : gaps.length ? `missing ${gaps.join(", ")}` : "credentials configured";
+    const detail = truth
+      ? `${missingDetail}; provider truth: ${truth.state.replaceAll("_", " ")} — ${truth.summary}`
+      : missingDetail;
     row(label, status, detail);
     results.push({ label, ok: gaps.length === 0, gaps });
   }

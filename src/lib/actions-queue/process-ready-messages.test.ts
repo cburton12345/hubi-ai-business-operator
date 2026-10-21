@@ -47,6 +47,7 @@ const readyEmail = {
   ,contact_phone: "5550101"
   ,workflow_type: null
   ,approved_by_user_id: null
+  ,metadata_json: null
 };
 
 describe("processReadyMessagesForTenant", () => {
@@ -84,7 +85,7 @@ describe("processReadyMessagesForTenant", () => {
 
     const result = await processReadyMessagesForTenant("tenant-1");
 
-    expect(result).toEqual({ checked: 1, sent: 1, blocked: 0, failed: 0 });
+    expect(result).toEqual({ checked: 1, sent: 1, providerQueued: 0, blocked: 0, failed: 0 });
     expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: "tenant-1",
       channel: "email",
@@ -107,7 +108,7 @@ describe("processReadyMessagesForTenant", () => {
 
     const result = await processReadyMessagesForTenant("tenant-1");
 
-    expect(result).toEqual({ checked: 1, sent: 0, blocked: 1, failed: 0 });
+    expect(result).toEqual({ checked: 1, sent: 0, providerQueued: 0, blocked: 1, failed: 0 });
     expect(sendMessageMock).not.toHaveBeenCalled();
     expect(queryPostgresMock).toHaveBeenCalledWith(
       expect.stringContaining("update public.outbound_action_queue"),
@@ -134,6 +135,48 @@ describe("processReadyMessagesForTenant", () => {
     }));
   });
 
+  it("preserves H4R bridge context and its canonical idempotency key through execution", async () => {
+    const h4rMetadata = {
+      source: "h4r",
+      h4rCanonicalIdempotencyKey: "h4r:workspace-1:outbox-1",
+      h4rCallbackUrl: "https://h4r.example/functions/v1/ferocity-sms-callback",
+      h4rWorkspaceId: "workspace-1",
+      h4rSmsOutboxId: "outbox-1",
+      messagePurpose: "tenant_notice",
+      enforceQuietHours: true,
+      aiGenerated: false
+    };
+    queryPostgresMock
+      .mockResolvedValueOnce({ rows: [{
+        ...readyEmail,
+        action_type: "sms_send",
+        provider_key: "ferocity_connect",
+        recipient_label: "+17155550199",
+        metadata_json: h4rMetadata
+      }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
+      .mockResolvedValue({ rows: [], rowCount: 1 });
+    sendMessageMock.mockResolvedValue({
+      ok: true,
+      providerKey: "ferocity_connect",
+      providerMessageId: "connect-job-1",
+      status: "queued"
+    });
+
+    const result = await processReadyMessagesForTenant("tenant-1");
+
+    expect(result).toEqual({ checked: 1, sent: 0, providerQueued: 1, blocked: 0, failed: 0 });
+    expect(queryPostgresMock).toHaveBeenCalledWith(
+      expect.stringContaining("update public.outbound_action_queue"),
+      expect.arrayContaining(["provider_queued"])
+    );
+    expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "h4r:workspace-1:outbox-1",
+      providerKey: "ferocity_connect",
+      metadata: expect.objectContaining(h4rMetadata)
+    }));
+  });
+
   it("records explicit alternatives when a provider fails", async () => {
     queryPostgresMock
       .mockResolvedValueOnce({ rows: [readyEmail] })
@@ -149,11 +192,32 @@ describe("processReadyMessagesForTenant", () => {
 
     const result = await processReadyMessagesForTenant("tenant-1");
 
-    expect(result).toEqual({ checked: 1, sent: 0, blocked: 0, failed: 1 });
+    expect(result).toEqual({ checked: 1, sent: 0, providerQueued: 0, blocked: 0, failed: 1 });
     expect(queryPostgresMock).toHaveBeenCalledWith(
       expect.stringContaining("communication_failover_events"),
       expect.arrayContaining(["Provider unavailable", "ask", "pending"])
     );
+    expect(queryPostgresMock).toHaveBeenCalledWith(
+      expect.stringContaining("update public.outbound_action_queue"),
+      expect.arrayContaining([expect.stringContaining('"retryable":true')])
+    );
+  });
+
+  it("does not send when the capability trust envelope denies execution", async () => {
+    queryPostgresMock.mockResolvedValueOnce({ rows: [readyEmail] }).mockResolvedValue({ rows: [], rowCount: 1 });
+    beginCapabilityExecutionMock.mockResolvedValueOnce({
+      auditId: "audit-blocked",
+      shouldProceed: false,
+      enforced: true,
+      authorization: { allowed: false, reason: "Workspace policy does not authorize this send." },
+      readiness: { ready: true, health: "healthy", blockers: [], warnings: [] },
+      trustLevel: "supervised"
+    });
+
+    const result = await processReadyMessagesForTenant("tenant-1");
+
+    expect(result).toEqual({ checked: 1, sent: 0, providerQueued: 0, blocked: 1, failed: 0 });
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   it("allows a transactional invoice reminder without marketing consent but still honors suppression", async () => {
@@ -176,8 +240,55 @@ describe("processReadyMessagesForTenant", () => {
 
     const result = await processReadyMessagesForTenant("tenant-1");
 
-    expect(result).toEqual({ checked: 1, sent: 1, blocked: 0, failed: 0 });
+    expect(result).toEqual({ checked: 1, sent: 1, providerQueued: 0, blocked: 0, failed: 0 });
     expect(sendMessageMock).toHaveBeenCalledOnce();
+  });
+
+  it("advances authoritative lead and conversation state after a workflow message sends", async () => {
+    queryPostgresMock
+      .mockResolvedValueOnce({ rows: [{
+        ...readyEmail,
+        target_type: "follow_up_workflow",
+        target_id: "followup-1",
+        workflow_type: "new_lead_response"
+      }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ enrollment_id: null, lead_id: "lead-1", customer_id: "customer-1", workflow_type: "new_lead_response" }], rowCount: 1 })
+      .mockResolvedValue({ rows: [], rowCount: 1 });
+    sendMessageMock.mockResolvedValue({
+      ok: true,
+      providerKey: "resend_email",
+      providerMessageId: "provider-lead-1",
+      status: "sent"
+    });
+
+    const result = await processReadyMessagesForTenant("tenant-1");
+
+    expect(result.sent).toBe(1);
+    expect(queryPostgresMock).toHaveBeenCalledWith(
+      expect.stringContaining("set status=case when status='new' then 'contacted'"),
+      ["tenant-1", "lead-1"]
+    );
+    expect(queryPostgresMock).toHaveBeenCalledWith(
+      expect.stringContaining("status='waiting_on_customer'"),
+      expect.arrayContaining(["provider-lead-1", "a1", "new_lead_response"])
+    );
+  });
+
+  it("closes owner response pressure after an authorized inbound reply is sent", async () => {
+    queryPostgresMock
+      .mockResolvedValueOnce({ rows: [{ ...readyEmail, target_type: "messaging_conversation", target_id: "conversation-1" }] })
+      .mockResolvedValueOnce({ rows: [{ status: "granted", suppressed: false }] })
+      .mockResolvedValue({ rows: [], rowCount: 1 });
+    sendMessageMock.mockResolvedValue({ ok: true, providerKey: "resend_email", providerMessageId: "reply-1", status: "sent" });
+
+    await processReadyMessagesForTenant("tenant-1");
+
+    expect(queryPostgresMock).toHaveBeenCalledWith(
+      expect.stringContaining("set status='waiting_on_customer',unread_count=0"),
+      ["tenant-1", "conversation-1"]
+    );
   });
 
   it("blocks a transactional invoice reminder for a suppressed address", async () => {

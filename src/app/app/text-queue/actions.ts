@@ -143,7 +143,14 @@ export async function prepareInvoiceTextQueueAction() {
         and c.phone is not null
         and c.phone <> ''
         and i.status in ('sent_manually','partially_paid','overdue')
-        and i.total_cents > i.amount_paid_cents
+        and i.total_cents > i.amount_paid_cents + i.write_off_cents
+        and not exists (
+          select 1 from public.payment_disputes d
+          join public.service_invoice_payments disputed_payment
+            on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+          where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+            and d.status in ('warning','needs_response','under_review')
+        )
         and coalesce(sent.sent_count, 0) < 3
         and (sent.last_sent_at is null or sent.last_sent_at < now() - interval '3 days')
         and not exists (
@@ -190,7 +197,7 @@ export async function prepareInvoiceTextQueueAction() {
       jsonb_build_object(
         'body',
         'Hi ' || coalesce(nullif(customer_name, ''), 'there') || ', quick reminder that ' || title || ' has a balance of ' ||
-        ($2::text) || to_char(((total_cents - amount_paid_cents)::numeric / 100), 'FM999,999,990.00') ||
+        ($2::text) || to_char((greatest(total_cents - amount_paid_cents - write_off_cents,0)::numeric / 100), 'FM999,999,990.00') ||
         case when due_date is not null then ' due ' || to_char(due_date, 'Mon DD, YYYY') else '' end ||
         '. Please reply if you already paid or need the payment link resent.'
       ),
@@ -200,7 +207,7 @@ export async function prepareInvoiceTextQueueAction() {
         'attemptNumber', sent_count + 1,
         'maxAttempts', 3,
         'liveProviderSend', false,
-        'balanceCents', total_cents - amount_paid_cents
+        'balanceCents', greatest(total_cents - amount_paid_cents - write_off_cents,0)
       )
     from candidates
     `,

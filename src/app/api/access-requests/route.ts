@@ -10,6 +10,7 @@ import { getDefaultPushNotificationPreferences, upsertPushNotificationPreference
 import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 import { EARN_AGREEMENT_VERSION, ensureEarnFeatureEntitlements } from "@/lib/billing/earn";
 import { importPublicChatHandoff } from "@/lib/public-site/import-public-chat-handoff";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -766,6 +767,8 @@ async function createStarterWorkspace(input: {
     ]
   );
 
+  await syncCustomerOnboardingForTenant(workspace.id);
+
   return {
     status: "created" as const,
     tenantId: workspace.id,
@@ -924,6 +927,29 @@ export async function POST(request: NextRequest) {
       createWorkspace: createWorkspaceRequested
     }
   });
+
+  const selfServePaidPlan = parsed.data.requestedPlan && [
+    "ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator"
+  ].includes(parsed.data.requestedPlan);
+  if (selfServePaidPlan) {
+    const handoffToken = randomSessionToken();
+    await queryPostgres(
+      `update public.access_requests
+          set metadata_json=metadata_json || $2::jsonb,updated_at=now()
+        where id=$1`,
+      [result.rows[0].id, JSON.stringify({
+        checkoutHandoffTokenHash: hashSessionToken(handoffToken),
+        checkoutHandoffExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        nextStep: "secure_self_serve_checkout",
+      })],
+    );
+    const checkout = new URLSearchParams({
+      plan: parsed.data.requestedPlan!,
+      request: result.rows[0].id,
+      handoff: handoffToken,
+    });
+    return redirectTo(request, `/subscribe?${checkout.toString()}`);
+  }
 
   if (createWorkspaceRequested) {
     const created = await createStarterWorkspace({

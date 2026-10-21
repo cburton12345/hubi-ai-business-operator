@@ -6,12 +6,13 @@ import { getServiceInvoiceDetail } from "@/lib/service-ops/get-service-record-de
 import {
   deleteInvoiceLineItemAction,
   prepareInvoicePaymentRequestAction,
+  recordInvoiceWriteOffAction,
   recordManualInvoicePaymentAction,
   saveInvoiceLineItemAction,
   updateInvoiceAction
 } from "../../actions";
 
-const statuses = ["draft", "sent_manually", "partially_paid", "paid", "void", "overdue"];
+const statuses = ["draft", "sent_manually", "void", "overdue"];
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ invoiceId: string }> }) {
   const { invoiceId } = await params;
@@ -23,10 +24,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       <div className="grid">
         <section className="panel span-7">
           <h2>Line Items</h2>
+          {invoice.status !== "draft" ? (
+            <p className="muted">Line items are locked after an invoice is issued. Void it and create a corrected invoice instead of changing the historical bill.</p>
+          ) : null}
           <ul className="list">
             {invoice.lineItems.map((item) => (
               <li className="list-row" key={item.id}>
-                <form action={saveInvoiceLineItemAction} className="compact-form">
+                {invoice.status === "draft" ? <form action={saveInvoiceLineItemAction} className="compact-form">
                   <input name="invoiceId" type="hidden" value={invoice.id} />
                   <input name="itemId" type="hidden" value={item.id} />
                   <input name="name" defaultValue={item.name} />
@@ -34,26 +38,27 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <input name="quantity" defaultValue={item.quantity} inputMode="decimal" />
                   <input name="unitPrice" defaultValue={item.unitPriceValue} inputMode="decimal" />
                   <button className="mini-button" type="submit">Save</button>
-                </form>
+                </form> : <div><strong>{item.name}</strong><p className="muted">{item.description}</p></div>}
                 <span className="pill">{item.total}</span>
-                <form action={deleteInvoiceLineItemAction}>
+                {invoice.status === "draft" ? <form action={deleteInvoiceLineItemAction}>
                   <input name="invoiceId" type="hidden" value={invoice.id} />
                   <input name="itemId" type="hidden" value={item.id} />
                   <button className="mini-button danger-button" type="submit">Remove</button>
-                </form>
+                </form> : null}
               </li>
             ))}
           </ul>
-          <form action={saveInvoiceLineItemAction} className="compact-form section-actions">
+          {invoice.status === "draft" ? <form action={saveInvoiceLineItemAction} className="compact-form section-actions">
             <input name="invoiceId" type="hidden" value={invoice.id} />
             <input name="name" placeholder="New line item" required />
             <input name="description" placeholder="Description" />
             <input name="quantity" defaultValue="1" inputMode="decimal" />
             <input name="unitPrice" placeholder="Unit price" inputMode="decimal" />
             <button className="mini-button" type="submit">Add item</button>
-          </form>
+          </form> : null}
           <dl className="detail-grid section-actions">
             <Detail label="Amount paid" value={invoice.amountPaid} />
+            <Detail label="Written off" value={invoice.amountWrittenOff} />
             <Detail label="Balance due" value={invoice.balanceDue} />
             <Detail label="Due date" value={invoice.dueDate} />
           </dl>
@@ -63,13 +68,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <h2>Invoice Workflow</h2>
           <form action={updateInvoiceAction} className="form-stack">
             <input name="invoiceId" type="hidden" value={invoice.id} />
-            <label>
-              Status
-              <select name="status" defaultValue={invoice.status}>
-                {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
-            </label>
-            <label>Amount paid<input name="amountPaid" inputMode="decimal" placeholder={invoice.amountPaid} /></label>
+            {invoice.status === "paid" || invoice.status === "partially_paid" || invoice.status === "written_off" ? (
+              <>
+                <input name="status" type="hidden" value="draft" />
+                <p><strong>Status:</strong> {invoice.status.replaceAll("_", " ")} (controlled by payment ledger)</p>
+              </>
+            ) : (
+              <label>
+                Status
+                <select name="status" defaultValue={invoice.status}>
+                  {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+                </select>
+              </label>
+            )}
             <label>Due date<input name="dueDate" type="date" /></label>
             <label>Internal notes<textarea name="internalNotes" rows={3} defaultValue={invoice.internalNotes} /></label>
             <label>Manual payment notes<textarea name="paymentNotes" rows={3} defaultValue={invoice.paymentNotes} /></label>
@@ -103,6 +114,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </label>
             <button className="button secondary-button" type="submit">Record payment in ledger</button>
           </form>
+          {invoice.balanceDueCents > 0 ? (
+            <details className="progressive-disclosure">
+              <summary>Write off an uncollectible balance</summary>
+              <form action={recordInvoiceWriteOffAction} className="form-stack progressive-disclosure-body">
+                <input name="invoiceId" type="hidden" value={invoice.id} />
+                <input name="idempotencyKey" type="hidden" value={randomUUID()} />
+                <p className="muted">This is an accounting action. It reduces the collectible balance and stops invoice follow-up; it does not send money or contact the customer.</p>
+                <label>Amount<input name="amount" inputMode="decimal" placeholder={invoice.balanceDue} required /></label>
+                <label>Reason<textarea name="reason" rows={3} placeholder="Why this balance is uncollectible" required /></label>
+                <button className="button danger-button" type="submit">Record write-off</button>
+              </form>
+            </details>
+          ) : null}
         </section>
 
         <section className="panel span-6">

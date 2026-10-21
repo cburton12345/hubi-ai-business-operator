@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getScheduleDashboard } from "@/lib/scheduling/get-schedule-dashboard";
+import { nextVisitStatuses, type VisitStatus } from "@/lib/scheduling/visit-lifecycle";
 import { CalendarFeedCreator } from "./CalendarFeedCreator";
 import {
   assignVisitWorkerAction,
@@ -8,7 +9,8 @@ import {
   revokeCalendarFeedAction,
   scanScheduleConflictsAction,
   scheduleVisitAction,
-  updateVisitDispatchStatusAction
+  updateVisitDispatchStatusAction,
+  removeVisitWorkerAction
 } from "./actions";
 
 function dateTimeLocal(value: string | null) {
@@ -95,39 +97,36 @@ export default async function SchedulePage({
           </nav>
         </section>
 
-        <section className="panel span-12">
-          <div className="section-heading">
+        <details className="panel span-12 progressive-disclosure">
+          <summary>
             <div>
-              <span className="eyebrow">Keyless Calendar Sync</span>
-              <h2>Subscribe from Google, Outlook, Apple, or another calendar</h2>
+              <span className="eyebrow">Calendar connection</span>
+              <h2>See this schedule in another calendar</h2>
+              <p className="muted">Optional Google, Outlook, Apple, or other calendar subscription.</p>
             </div>
-            <span className="pill">iCalendar standard</span>
+          </summary>
+          <div className="progressive-disclosure-body">
+            <p className="muted">The private calendar link stays synchronized. Anyone with the link can read the schedule, so revoke it if it is shared accidentally.</p>
+            <CalendarFeedCreator />
+            <ul className="list section-actions">
+              {dashboard.calendarFeeds.map((feed) => (
+                <li className="list-row" key={feed.id}>
+                  <div>
+                    <strong>{feed.label}</strong>
+                    <p className="muted">Created {displayTime(feed.createdAt)} · {feed.lastUsedAt ? `last read ${displayTime(feed.lastUsedAt)}` : "not read yet"}</p>
+                  </div>
+                  {feed.status === "active" ? (
+                    <form action={revokeCalendarFeedAction}>
+                      <input type="hidden" name="feedId" value={feed.id} />
+                      <button className="mini-button danger-button" type="submit">Revoke</button>
+                    </form>
+                  ) : <span className="pill">revoked</span>}
+                </li>
+              ))}
+              {dashboard.calendarFeeds.length === 0 ? <li className="list-row"><span className="muted">No calendar subscriptions yet.</span></li> : null}
+            </ul>
           </div>
-          <p className="muted">
-            This private feed stays synchronized from Ferocity without a Google or Microsoft developer account.
-            Anyone with its URL can read the schedule, so treat it like a password and revoke it if shared accidentally.
-          </p>
-          <CalendarFeedCreator />
-          <ul className="list section-actions">
-            {dashboard.calendarFeeds.map((feed) => (
-              <li className="list-row" key={feed.id}>
-                <div>
-                  <strong>{feed.label}</strong>
-                  <p className="muted">
-                    Created {displayTime(feed.createdAt)} · {feed.lastUsedAt ? `last read ${displayTime(feed.lastUsedAt)}` : "not read yet"}
-                  </p>
-                </div>
-                {feed.status === "active" ? (
-                  <form action={revokeCalendarFeedAction}>
-                    <input type="hidden" name="feedId" value={feed.id} />
-                    <button className="mini-button danger-button" type="submit">Revoke</button>
-                  </form>
-                ) : <span className="pill">revoked</span>}
-              </li>
-            ))}
-            {dashboard.calendarFeeds.length === 0 ? <li className="list-row"><span className="muted">No private feeds created yet.</span></li> : null}
-          </ul>
-        </section>
+        </details>
 
         <section className="panel span-12">
           <div className="section-heading">
@@ -182,28 +181,31 @@ export default async function SchedulePage({
           </div>
         </section>
 
-        <section className="panel span-12">
-          <div className="section-heading">
+        <details className="panel span-12 progressive-disclosure">
+          <summary>
             <div>
-              <span className="eyebrow">Team Eligibility</span>
-              <h2>People Ferocity can schedule</h2>
+              <span className="eyebrow">Team</span>
+              <h2>People available for scheduling</h2>
+              <p className="muted">Skills, certifications, and availability used when assigning work.</p>
             </div>
+          </summary>
+          <div className="progressive-disclosure-body">
             <Link className="mini-button" href="/app/operations-workforce">Manage team</Link>
+            <ul className="list">
+              {dashboard.workers.map((worker) => (
+                <li className="list-row" key={worker.id}>
+                  <div>
+                    <h3>{worker.name}</h3>
+                    <p className="muted">{worker.roleType.replaceAll("_", " ")}{worker.trade ? ` / ${worker.trade}` : ""}</p>
+                    <p className="muted">Skills: {worker.skills || "Not added"} · Certifications: {worker.certifications || "Not added"}</p>
+                  </div>
+                  <span className="pill">{worker.availabilityStatus}</span>
+                </li>
+              ))}
+              {dashboard.workers.length === 0 ? <li className="list-row"><span className="muted">Add workers before assigning visits.</span></li> : null}
+            </ul>
           </div>
-          <ul className="list">
-            {dashboard.workers.map((worker) => (
-              <li className="list-row" key={worker.id}>
-                <div>
-                  <h3>{worker.name}</h3>
-                  <p className="muted">{worker.roleType.replaceAll("_", " ")}{worker.trade ? ` / ${worker.trade}` : ""}</p>
-                  <p className="muted">Skills: {worker.skills || "No verified skills yet"} · Certifications: {worker.certifications || "No verified certifications yet"}</p>
-                </div>
-                <span className="pill">{worker.availabilityStatus}</span>
-              </li>
-            ))}
-            {dashboard.workers.length === 0 ? <li className="list-row"><span className="muted">Add workers before assigning visits.</span></li> : null}
-          </ul>
-        </section>
+        </details>
       </div>
     </QueuePageShell>
   );
@@ -303,11 +305,25 @@ function VisitCard({
 
       <details>
         <summary>Assign a worker</summary>
+        {visit.assignedWorkerList.length > 0 ? (
+          <ul className="list">
+            {visit.assignedWorkerList.map((worker) => (
+              <li className="list-row" key={worker.id}>
+                <span>{worker.name}</span>
+                <form action={removeVisitWorkerAction}>
+                  <input type="hidden" name="visitId" value={visit.id} />
+                  <input type="hidden" name="workerId" value={worker.id} />
+                  <button className="mini-button danger-button" type="submit">Remove</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <form action={assignVisitWorkerAction} className="inline-actions">
           <input type="hidden" name="visitId" value={visit.id} />
           <select name="workerId" required defaultValue="">
             <option value="" disabled>Choose worker</option>
-            {workers.map((worker) => (
+            {workers.filter((worker) => !visit.assignedWorkerList.some((assigned) => assigned.id === worker.id)).map((worker) => (
               <option key={worker.id} value={worker.id}>
                 {worker.name} · {worker.availabilityStatus}{worker.trade ? ` · ${worker.trade}` : ""}
               </option>
@@ -320,18 +336,9 @@ function VisitCard({
       <form action={updateVisitDispatchStatusAction} className="inline-actions">
         <input type="hidden" name="visitId" value={visit.id} />
         <select name="status" defaultValue={visit.status}>
-          <option value="unscheduled">Unscheduled</option>
-          <option value="tentative">Tentative</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="dispatched">Dispatched</option>
-          <option value="en_route">En route</option>
-          <option value="arrived">Arrived</option>
-          <option value="in_progress">In progress</option>
-          <option value="paused">Paused</option>
-          <option value="completed">Completed</option>
-          <option value="no_show">No show</option>
-          <option value="canceled">Canceled</option>
+          {nextVisitStatuses(visit.status as VisitStatus).map((status) => (
+            <option value={status} key={status}>{status.replaceAll("_", " ")}</option>
+          ))}
         </select>
         <button className="mini-button" type="submit">Update status</button>
         {visit.serviceJobId ? <Link className="mini-button secondary-button" href={`/app/service/jobs/${visit.serviceJobId}`}>Open job</Link> : null}

@@ -1,11 +1,14 @@
 import { ensureDefaultAgentWorkflows } from "@/lib/ai-workforce/agent-workflows";
 import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres, withPostgresTransactionResult } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 import { getDefaultPushNotificationPreferences, upsertPushNotificationPreferences } from "@/lib/push/preferences";
 import type { SelfServePlanKey } from "@/lib/billing/public-plans";
+import { inheritedServiceFeaturesForPlan } from "@/lib/billing/apply-plan-entitlements";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import type { QueryResultRow } from "pg";
 
 function slugify(value: string) {
   return value
@@ -20,6 +23,16 @@ function appUrl(path: string) {
   return new URL(path, env.FEROCITY_APP_URL ?? "https://ferocity.live").toString();
 }
 
+async function requirePostgres<T extends QueryResultRow = QueryResultRow>(
+  sql: string,
+  values: unknown[],
+  safeError: string
+) {
+  const result = await queryPostgres<T>(sql, values);
+  if (!result) throw new Error(safeError);
+  return result;
+}
+
 type ProvisionPaidWorkspaceInput = {
   accessRequestId: string;
   email: string;
@@ -32,73 +45,193 @@ type ProvisionPaidWorkspaceInput = {
   subscriptionId: string;
 };
 
-export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput) {
-  const priorSubscription = await queryPostgres<{ tenant_id: string }>(
-    `
-    select tenant_id
-    from public.billing_subscriptions
-    where external_subscription_ref = $1
-    limit 1
-    `,
-    [input.subscriptionId]
-  );
-  if (priorSubscription?.rows[0]) {
-    return { tenantId: priorSubscription.rows[0].tenant_id, status: "already_provisioned" as const };
-  }
+type ProvisionTarget = {
+  tenantId: string;
+  workspaceSlug: string;
+  hasActiveMembership: boolean;
+  ensureFoundation: boolean;
+  alreadyProvisioned: boolean;
+};
 
-  const existingMembership = await queryPostgres<{ tenant_id: string; slug: string }>(
-    `
-    select tu.tenant_id, t.slug
-    from public.users u
-    join public.tenant_users tu on tu.user_id = u.id and tu.status = 'active'
-    join public.tenants t on t.id = tu.tenant_id and t.status <> 'archived'
-    where lower(u.email) = lower($1)
-    order by tu.updated_at desc nulls last, tu.created_at desc
-    limit 1
-    `,
-    [input.email]
-  );
+function metadataText(metadata: Record<string, unknown> | null | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-  const existingInvite = existingMembership?.rows[0]
-    ? null
-    : (
-        await queryPostgres<{ tenant_id: string; slug: string }>(
+export async function resolveProvisionTarget(input: ProvisionPaidWorkspaceInput): Promise<ProvisionTarget> {
+  const resolved = await withPostgresTransactionResult<ProvisionTarget>(async (client) => {
+    // Serialize every retry or duplicate Stripe event for the same subscription.
+    // The lock is transaction-scoped and cannot leak after commit/rollback.
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [`ferocity-paid-workspace:${input.subscriptionId}`]);
+
+    const accessRequest = await client.query<{
+      status: string;
+      metadata_json: Record<string, unknown>;
+    }>(
+      `
+      select status, metadata_json
+      from public.access_requests
+      where id = $1
+        and lower(email) = lower($2)
+      for update
+      `,
+      [input.accessRequestId, input.email]
+    );
+    const request = accessRequest.rows[0];
+    if (!request) {
+      throw new Error("The paid signup could not be matched to its verified access request.");
+    }
+
+    const priorSubscription = await client.query<{ tenant_id: string }>(
+      `
+      select tenant_id
+      from public.billing_subscriptions
+      where external_subscription_ref = $1
+      limit 1
+      `,
+      [input.subscriptionId]
+    );
+
+    const metadataWorkspaceId = metadataText(request.metadata_json, "workspaceId");
+    const candidateTenantId = metadataWorkspaceId ?? priorSubscription.rows[0]?.tenant_id ?? null;
+    const candidateWorkspace = candidateTenantId
+      ? await client.query<{ id: string; slug: string }>(
           `
-          select wi.tenant_id, t.slug
-          from public.workspace_invites wi
-          join public.tenants t on t.id = wi.tenant_id and t.status <> 'archived'
-          where lower(wi.email) = lower($1)
-          order by wi.updated_at desc nulls last, wi.created_at desc
+          select id, slug
+          from public.tenants
+          where id = $1
+            and status <> 'archived'
+            and account_type = 'customer'
           limit 1
           `,
-          [input.email]
+          [candidateTenantId]
         )
-      )?.rows[0] ?? null;
+      : null;
 
-  let tenantId = existingMembership?.rows[0]?.tenant_id ?? existingInvite?.tenant_id ?? null;
-  let workspaceSlug = existingMembership?.rows[0]?.slug ?? existingInvite?.slug ?? null;
-  let inviteToken: string | null = null;
+    const completed = metadataText(request.metadata_json, "checkoutStatus") === "paid_and_provisioned";
+    if (completed && priorSubscription.rows[0] && candidateWorkspace?.rows[0]) {
+      return {
+        tenantId: candidateWorkspace.rows[0].id,
+        workspaceSlug: candidateWorkspace.rows[0].slug,
+        hasActiveMembership: request.status === "reviewing",
+        ensureFoundation: false,
+        alreadyProvisioned: true
+      };
+    }
 
-  if (!tenantId) {
-    const workspaceName = input.companyName.trim();
-    const baseSlug = slugify(workspaceName) || "ferocity-business";
-    workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 6).toLowerCase()}`;
-    const brandSlug = slugify(workspaceName) || "main-brand";
-
-    const workspace = await queryPostgres<{ id: string }>(
-      `
-      insert into public.tenants (
-        name, slug, account_type, status, billing_status, plan_key, onboarding_status
+    const existingMembership = (
+      await client.query<{ tenant_id: string; slug: string }>(
+        `
+        select tu.tenant_id, t.slug
+        from public.users u
+        join public.tenant_users tu on tu.user_id = u.id and tu.status = 'active'
+        join public.tenants t on t.id = tu.tenant_id and t.status <> 'archived' and t.account_type = 'customer'
+        where lower(u.email) = lower($1)
+          and ($2::uuid is null or t.id = $2::uuid)
+        order by tu.updated_at desc nulls last, tu.created_at desc
+        limit 1
+        `,
+        [input.email, candidateWorkspace?.rows[0]?.id ?? null]
       )
-      values ($1, $2, 'customer', 'active', 'active', $3, 'not_started')
-      returning id
-      `,
-      [workspaceName, workspaceSlug, input.planKey]
-    );
-    tenantId = workspace?.rows[0]?.id ?? null;
-    if (!tenantId) throw new Error("Stripe payment succeeded but the Ferocity workspace could not be created.");
+    ).rows[0] ?? null;
 
-    const brand = await queryPostgres<{ id: string }>(
+    const existingInvite = candidateWorkspace?.rows[0] || existingMembership
+      ? null
+      : (
+          await client.query<{ tenant_id: string; slug: string }>(
+            `
+            select wi.tenant_id, t.slug
+            from public.workspace_invites wi
+            join public.tenants t on t.id = wi.tenant_id and t.status <> 'archived' and t.account_type = 'customer'
+            where lower(wi.email) = lower($1)
+            order by wi.updated_at desc nulls last, wi.created_at desc
+            limit 1
+            `,
+            [input.email]
+          )
+        ).rows[0] ?? null;
+
+    let tenantId = candidateWorkspace?.rows[0]?.id ?? existingMembership?.tenant_id ?? existingInvite?.tenant_id ?? null;
+    let workspaceSlug = candidateWorkspace?.rows[0]?.slug ?? existingMembership?.slug ?? existingInvite?.slug ?? null;
+    let createdWorkspace = false;
+
+    if (!tenantId || !workspaceSlug) {
+      const workspaceName = input.companyName.trim();
+      const baseSlug = slugify(workspaceName) || "ferocity-business";
+      workspaceSlug = `${baseSlug}-${randomSessionToken().slice(0, 6).toLowerCase()}`;
+      const workspace = await client.query<{ id: string }>(
+        `
+        insert into public.tenants (
+          name, slug, account_type, status, billing_status, plan_key, onboarding_status
+        )
+        values ($1, $2, 'customer', 'active', 'active', $3, 'not_started')
+        returning id
+        `,
+        [workspaceName, workspaceSlug, input.planKey]
+      );
+      tenantId = workspace.rows[0]?.id ?? null;
+      if (!tenantId) throw new Error("Stripe payment succeeded but the Ferocity workspace could not be created.");
+      createdWorkspace = true;
+    }
+
+    await client.query(
+      `
+      update public.access_requests
+      set status = 'reviewing',
+          metadata_json = metadata_json || $3::jsonb,
+          updated_at = now()
+      where id = $1
+        and lower(email) = lower($2)
+      `,
+      [
+        input.accessRequestId,
+        input.email,
+        JSON.stringify({
+          checkoutStatus: "provisioning",
+          workspaceId: tenantId,
+          workspaceSlug,
+          subscriptionId: input.subscriptionId,
+          stripeEventId: input.stripeEventId,
+          stripeCheckoutSessionId: input.checkoutSessionId
+        })
+      ]
+    );
+
+    return {
+      tenantId,
+      workspaceSlug,
+      hasActiveMembership: Boolean(existingMembership),
+      ensureFoundation: createdWorkspace || Boolean(candidateWorkspace?.rows[0] && !existingMembership),
+      alreadyProvisioned: false
+    };
+  });
+
+  if (!resolved.ok) throw resolved.error;
+  return resolved.value;
+}
+
+async function ensureWorkspaceFoundation(input: {
+  tenantId: string;
+  workspaceSlug: string;
+  workspaceName: string;
+  email: string;
+}) {
+  const existingBrand = await requirePostgres<{ id: string }>(
+    `
+    select id
+    from public.brands
+    where tenant_id = $1 and status = 'active'
+    order by created_at
+    limit 1
+    `,
+    [input.tenantId],
+    "The paid workspace brand state could not be verified."
+  );
+  let brandId = existingBrand?.rows[0]?.id ?? null;
+
+  if (!brandId) {
+    const brandSlug = slugify(input.workspaceName) || "main-brand";
+    const brand = await requirePostgres<{ id: string }>(
       `
       insert into public.brands (
         tenant_id, name, slug, email, business_model, description, primary_goal, risk_profile, status
@@ -107,46 +240,75 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
         'Complete guided setup and choose the first business outcome.', 'normal', 'active')
       returning id
       `,
-      [tenantId, workspaceName, brandSlug, input.email]
+      [input.tenantId, input.workspaceName, brandSlug, input.email],
+      "Stripe payment succeeded but the Ferocity brand could not be created."
     );
-    const brandId = brand?.rows[0]?.id;
-    if (!brandId) throw new Error("Stripe payment succeeded but the Ferocity brand could not be created.");
+    brandId = brand?.rows[0]?.id ?? null;
+  }
+  if (!brandId) throw new Error("Stripe payment succeeded but the Ferocity brand could not be created.");
 
-    await queryPostgres(
-      `
-      insert into public.brand_services (tenant_id, brand_id, name, slug, description, priority, active)
-      values ($1, $2, 'Primary service', 'primary-service', 'Complete guided setup to customize this service.', 100, true)
-      on conflict (brand_id, slug) do nothing
-      `,
-      [tenantId, brandId]
-    );
-    await queryPostgres(
-      `
-      insert into public.brand_marketing_settings (
-        tenant_id, brand_id, cta_goals, seo_targets, review_strategy, follow_up_strategy, tone_of_voice, approval_mode
-      )
-      values (
-        $1, $2, 'Capture qualified leads for owner review.', 'Complete guided setup before publishing.',
-        'Review requests remain draft-only until approved.', 'Follow-up remains review-first until approved.',
-        'Clear, direct, helpful, and professional.', 'low_risk_auto'
-      )
-      on conflict (brand_id) do nothing
-      `,
-      [tenantId, brandId]
-    );
-    await queryPostgres(
-      `
-      insert into public.forms (tenant_id, brand_id, name, slug, public_key, active)
-      values ($1, $2, 'Primary Lead Form', 'primary-lead-form', $3, true)
-      on conflict (brand_id, slug) do nothing
-      `,
-      [tenantId, brandId, `${workspaceSlug}-lead-${randomSessionToken().slice(0, 10).toLowerCase()}`]
-    );
+  await requirePostgres(
+    `
+    insert into public.brand_services (tenant_id, brand_id, name, slug, description, priority, active)
+    values ($1, $2, 'Primary service', 'primary-service', 'Complete guided setup to customize this service.', 100, true)
+    on conflict (brand_id, slug) do nothing
+    `,
+    [input.tenantId, brandId],
+    "The paid workspace primary service could not be provisioned."
+  );
+  await requirePostgres(
+    `
+    insert into public.brand_marketing_settings (
+      tenant_id, brand_id, cta_goals, seo_targets, review_strategy, follow_up_strategy, tone_of_voice, approval_mode
+    )
+    values (
+      $1, $2, 'Capture qualified leads for owner review.', 'Complete guided setup before publishing.',
+      'Review requests remain draft-only until approved.', 'Follow-up remains review-first until approved.',
+      'Clear, direct, helpful, and professional.', 'low_risk_auto'
+    )
+    on conflict (brand_id) do nothing
+    `,
+    [input.tenantId, brandId],
+    "The paid workspace marketing controls could not be provisioned."
+  );
+  await requirePostgres(
+    `
+    insert into public.forms (tenant_id, brand_id, name, slug, public_key, active)
+    values ($1, $2, 'Primary Lead Form', 'primary-lead-form', $3, true)
+    on conflict (brand_id, slug) do nothing
+    `,
+    [input.tenantId, brandId, `${input.workspaceSlug}-lead-${randomSessionToken().slice(0, 10).toLowerCase()}`],
+    "The paid workspace lead intake could not be provisioned."
+  );
 
-    await ensureDefaultAgentWorkflows(tenantId);
-    await upsertPushNotificationPreferences(tenantId, getDefaultPushNotificationPreferences());
+  await ensureDefaultAgentWorkflows(input.tenantId);
+  await upsertPushNotificationPreferences(input.tenantId, getDefaultPushNotificationPreferences());
+}
+
+export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput) {
+  const inheritedServiceFeatures = inheritedServiceFeaturesForPlan(input.planKey);
+  const target = await resolveProvisionTarget(input);
+  if (target.alreadyProvisioned) {
+    return {
+      tenantId: target.tenantId,
+      workspaceSlug: target.workspaceSlug,
+      status: "already_provisioned" as const
+    };
+  }
+
+  const tenantId = target.tenantId;
+  const workspaceSlug = target.workspaceSlug;
+  let inviteToken: string | null = null;
+
+  if (target.ensureFoundation) {
+    await ensureWorkspaceFoundation({
+      tenantId,
+      workspaceSlug,
+      workspaceName: input.companyName.trim(),
+      email: input.email
+    });
   } else {
-    await queryPostgres(
+    await requirePostgres(
       `
       update public.tenants
       set plan_key = $2,
@@ -155,11 +317,12 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
           updated_at = now()
       where id = $1
       `,
-      [tenantId, input.planKey]
+      [tenantId, input.planKey],
+      "The existing customer workspace could not be upgraded."
     );
   }
 
-  await queryPostgres(
+  await requirePostgres(
     `
     insert into public.billing_subscriptions (
       tenant_id, plan_key, status, seats, current_period_start,
@@ -185,30 +348,43 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
         accessRequestId: input.accessRequestId,
         publicPaidSignup: true
       })
-    ]
+    ],
+    "The paid subscription could not be recorded in Ferocity."
   );
 
-  await queryPostgres(
+  await requirePostgres(
     `
+    with selected_features as (
+      select feature_key, metadata_json, 0 as source_priority
+      from public.plan_feature_matrix
+      where plan_key = $2 and included = true
+      union all
+      select feature_key, '{}'::jsonb, 1
+      from unnest($3::text[]) feature_key
+    ), deduplicated as (
+      select distinct on (feature_key) feature_key, metadata_json
+      from selected_features
+      order by feature_key, source_priority
+    )
     insert into public.workspace_feature_entitlements (
       tenant_id, feature_key, status, usage_limit, usage_period, metadata_json, updated_at
     )
     select
       $1, feature_key, 'enabled', null, 'monthly',
-      metadata_json || jsonb_build_object('provisionedFromPlan', $2::text), now()
-    from public.plan_feature_matrix
-    where plan_key = $2 and included = true
+      metadata_json || jsonb_build_object('provisionedFromPlan', $2::text, 'inheritedServiceFeature', true), now()
+    from deduplicated
     on conflict (tenant_id, feature_key) do update
     set status = 'enabled',
         metadata_json = public.workspace_feature_entitlements.metadata_json || excluded.metadata_json,
         updated_at = now()
     `,
-    [tenantId, input.planKey]
+    [tenantId, input.planKey, inheritedServiceFeatures],
+    "The paid plan entitlements could not be provisioned."
   );
 
   if (["starter", "growth", "operator"].includes(input.planKey)) {
     const includedWeeklyPublishingMoments = input.planKey === "starter" ? 2 : input.planKey === "growth" ? 4 : 7;
-    await queryPostgres(
+    await requirePostgres(
       `
       update public.workspace_feature_entitlements
       set usage_limit = $2,
@@ -225,11 +401,12 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
           updated_at = now()
       where tenant_id = $1 and feature_key = 'publishing_queue'
       `,
-      [tenantId, includedWeeklyPublishingMoments]
+      [tenantId, includedWeeklyPublishingMoments],
+      "The paid publishing allowance could not be provisioned."
     );
   }
 
-  await queryPostgres(
+  await requirePostgres(
     `
     update public.workspace_feature_entitlements
     set metadata_json = metadata_json || jsonb_build_object(
@@ -259,10 +436,11 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
         "growth_attribution",
         "follow_up_recovery"
       ]
-    ]
+    ],
+    "The paid workspace service controls could not be provisioned."
   );
 
-  await queryPostgres(
+  await requirePostgres(
     `
     update public.ai_agent_workflows
     set run_mode = 'auto_allowed',
@@ -275,12 +453,15 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
         updated_at = now()
     where tenant_id = $1 and status <> 'archived'
     `,
-    [tenantId]
+    [tenantId],
+    "The paid workspace agent controls could not be provisioned."
   );
 
-  if (!existingMembership?.rows[0]) {
+  await syncCustomerOnboardingForTenant(tenantId);
+
+  if (!target.hasActiveMembership) {
     inviteToken = randomSessionToken();
-    await queryPostgres(
+    await requirePostgres(
       `
       insert into public.workspace_invites (
         tenant_id, email, role, status, invite_token_hash, expires_at, updated_at
@@ -294,34 +475,13 @@ export async function provisionPaidWorkspace(input: ProvisionPaidWorkspaceInput)
           revoked_at = null,
           updated_at = now()
       `,
-      [tenantId, input.email, hashSessionToken(inviteToken)]
+      [tenantId, input.email, hashSessionToken(inviteToken)],
+      "The paid workspace owner invitation could not be created."
     );
   }
 
-  await queryPostgres(
-    `
-    update public.access_requests
-    set status = $2,
-        metadata_json = metadata_json || $3::jsonb,
-        updated_at = now()
-    where id = $1
-    `,
-    [
-      input.accessRequestId,
-      inviteToken ? "invited" : "reviewing",
-      JSON.stringify({
-        checkoutStatus: "paid_and_provisioned",
-        workspaceId: tenantId,
-        workspaceSlug,
-        stripeEventId: input.stripeEventId,
-        stripeCheckoutSessionId: input.checkoutSessionId,
-        inviteCreated: Boolean(inviteToken)
-      })
-    ]
-  );
-
   const activationUrl = inviteToken ? appUrl(`/invite/${inviteToken}`) : appUrl("/login");
-  await sendTransactionalEmail({
+  const activationEmail = await sendTransactionalEmail({
     to: input.email,
     subject: "Activate your Ferocity account",
     text: `Hi${input.buyerName ? ` ${input.buyerName}` : ""},
@@ -340,6 +500,33 @@ Start with guided setup. Customer messages, calls, publishing, ad spend, and con
       subscriptionId: input.subscriptionId
     }
   });
+  if (!activationEmail.ok) {
+    throw new Error("The paid workspace was created, but its activation email could not be delivered yet.");
+  }
+
+  await requirePostgres(
+    `
+    update public.access_requests
+    set status = $2,
+        metadata_json = metadata_json || $3::jsonb,
+        updated_at = now()
+    where id = $1
+    `,
+    [
+      input.accessRequestId,
+      inviteToken ? "invited" : "reviewing",
+      JSON.stringify({
+        checkoutStatus: "paid_and_provisioned",
+        workspaceId: tenantId,
+        workspaceSlug,
+        stripeEventId: input.stripeEventId,
+        stripeCheckoutSessionId: input.checkoutSessionId,
+        inviteCreated: Boolean(inviteToken),
+        activationEmailDelivered: true
+      })
+    ],
+    "The paid workspace activation could not be finalized."
+  );
 
   await raisePlatformAdminAlert({
     fingerprint: `paid-subscription:${input.subscriptionId}`,

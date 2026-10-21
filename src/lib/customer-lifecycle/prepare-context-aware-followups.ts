@@ -1,5 +1,3 @@
-import "server-only";
-
 import { queryPostgres } from "@/lib/db/postgres";
 import { planLeadFollowUp, type FollowUpCandidate } from "./follow-up-intelligence";
 
@@ -70,6 +68,7 @@ export async function prepareContextAwareLeadFollowUps(tenantId: string): Promis
       on details.tenant_id=l.tenant_id and details.lead_id=l.id
     where l.tenant_id=$1
       and l.status in ('new','contacted','qualified','lost')
+      and not (l.metadata_json ? 'duplicateOfLeadId')
       and (
         (l.status='new' and greatest(l.created_at,l.updated_at) < now() - interval '1 day')
         or (l.status='contacted' and greatest(l.created_at,l.updated_at) < now() - interval '5 days')
@@ -123,7 +122,17 @@ export async function prepareContextAwareLeadFollowUps(tenantId: string): Promis
         tenant_id,brand_id,lead_id,workflow_type,channel,status,due_at,ai_suggested_message,metadata_json
       )
       select $1,$2,$3,$4,$5,'open',now()+make_interval(hours => $6),$7,$8::jsonb
-      where not exists (
+      where exists (
+        select 1 from public.leads lead
+        where lead.tenant_id=$1 and lead.id=$3
+          and lead.consent_to_contact=true and lead.status <> 'spam'
+          and not (lead.metadata_json ? 'duplicateOfLeadId')
+      )
+      and not exists (
+        select 1 from public.customer_response_stops stop
+        where stop.tenant_id=$1 and stop.lead_id=$3 and stop.active=true
+      )
+      and not exists (
         select 1 from public.follow_up_workflows f
         where f.tenant_id=$1 and f.lead_id=$3 and f.workflow_type=$4 and f.status in ('open','scheduled')
       )

@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { liveActionPolicyForMode } from "@/lib/controls/autonomy-policy";
 import { queryPostgres } from "@/lib/db/postgres";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 
 const modeSchema = z.enum(["off", "draft_only", "review_required", "enabled"]);
 const overageSchema = z.enum(["block", "allow_with_review", "allow"]);
@@ -305,4 +307,8 @@ export async function applyAutopilotPresetAction(formData: FormData) {
   revalidatePath("/app/autopilot");
   revalidatePath("/app/ai-workforce");
   revalidatePath("/app/automation-timeline");
+  await syncCustomerOnboardingForTenant(workspaceId).catch(() => null);
+  if (formData.get("returnToOnboarding") === "true") {
+    redirect("/app/ferocity?onboarding=1");
+  }
 }

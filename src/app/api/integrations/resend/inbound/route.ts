@@ -4,9 +4,14 @@ import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
 import { recordInboundResponse } from "@/lib/messaging/record-inbound-response";
+import { prepareInboundReply } from "@/lib/messaging/prepare-inbound-reply";
 import { recordMessageDeliveryReceipt } from "@/lib/messaging/message-health";
 import { resendEmailProvider } from "@/lib/messaging/providers/resend-email";
-import { processExpenseDocumentBatch } from "@/lib/document-intelligence/workflow";
+import {
+  enqueueResendExpenseEmail,
+  type RejectedResendExpenseAttachment,
+  type ResendExpenseAttachment,
+} from "@/lib/document-intelligence/email-intake-jobs";
 
 type RouteRow = {
   id: string;
@@ -32,6 +37,12 @@ type ReceivedAttachment = {
   content_type?: string;
   download_url?: string;
   size?: number;
+};
+
+type ReceivedEmailListItem = {
+  id?: string;
+  message_id?: string;
+  to?: unknown;
 };
 
 const FEROCITY_SUPPORT_ADDRESS = "support@ferocity.live";
@@ -184,6 +195,29 @@ function normalizeInboundEmail(payload: Record<string, unknown>) {
   };
 }
 
+async function resolveReceivedEmailId(email: NormalizedInboundEmail) {
+  if (!env.EMAIL_API_KEY || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(email.providerMessageId)) return email;
+  try {
+    const response = await fetch("https://api.resend.com/emails/receiving?limit=100", {
+      headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
+      cache: "no-store"
+    });
+    if (!response.ok) return email;
+    const payload = asRecord(await response.json().catch(() => null));
+    const received = (Array.isArray(payload.data) ? payload.data : [])
+      .filter((value): value is ReceivedEmailListItem => Boolean(value && typeof value === "object"))
+      .find((candidate) => {
+        if (clean(candidate.message_id) !== email.providerMessageId) return false;
+        const recipients = collectEmails(candidate.to);
+        return !recipients.length || recipients.some((recipient) => email.recipients.includes(recipient));
+      });
+    const resolvedId = clean(received?.id);
+    return resolvedId ? { ...email, providerMessageId: resolvedId } : email;
+  } catch {
+    return email;
+  }
+}
+
 async function hydrateReceivedEmail(email: NormalizedInboundEmail) {
   if (!env.EMAIL_API_KEY || !email.providerMessageId) return email;
 
@@ -217,7 +251,10 @@ async function hydrateReceivedEmail(email: NormalizedInboundEmail) {
   }
 }
 
-async function downloadReceivedExpenseAttachments(providerMessageId: string) {
+async function listReceivedExpenseAttachments(providerMessageId: string): Promise<{
+  supported: ResendExpenseAttachment[];
+  rejected: RejectedResendExpenseAttachment[];
+}> {
   if (!env.EMAIL_API_KEY) throw new Error("Resend API access is not configured.");
   const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(providerMessageId)}/attachments`, {
     headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}` },
@@ -226,22 +263,54 @@ async function downloadReceivedExpenseAttachments(providerMessageId: string) {
   if (!response.ok) throw new Error(`Resend attachment listing failed (${response.status}).`);
   const payload = asRecord(await response.json().catch(() => null));
   const attachments = (Array.isArray(payload.data) ? payload.data : [])
-    .filter((value): value is ReceivedAttachment => Boolean(value && typeof value === "object"))
-    .slice(0, 25);
-  const files: File[] = [];
-  for (const attachment of attachments) {
+    .filter((value): value is ReceivedAttachment => Boolean(value && typeof value === "object"));
+  if (attachments.length > 25) throw new Error(`Email contains ${attachments.length} attachments; the supported maximum is 25.`);
+  const supported: ResendExpenseAttachment[] = [];
+  const rejected: RejectedResendExpenseAttachment[] = [];
+  const seenIds = new Set<string>();
+  for (const [fileIndex, attachment] of attachments.entries()) {
     const mimeType = clean(attachment.content_type).toLowerCase();
-    if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") continue;
-    if (!attachment.download_url || Number(attachment.size ?? 0) > 15 * 1024 * 1024) continue;
-    const url = new URL(attachment.download_url);
-    if (url.protocol !== "https:" || (url.hostname !== "resend.com" && !url.hostname.endsWith(".resend.com"))) continue;
-    const download = await fetch(url, { cache: "no-store" });
-    if (!download.ok) continue;
-    const bytes = await download.arrayBuffer();
-    if (bytes.byteLength === 0 || bytes.byteLength > 15 * 1024 * 1024) continue;
-    files.push(new File([bytes], clean(attachment.filename) || `expense-document-${files.length + 1}`, { type: mimeType }));
+    const byteCount = Number(attachment.size ?? 0);
+    const id = clean(attachment.id);
+    const fileName = clean(attachment.filename) || `expense-document-${fileIndex + 1}`;
+    let error = "";
+    if (!id) error = "The email provider did not supply an attachment identifier.";
+    else if (seenIds.has(id)) error = "The email repeated this attachment identifier; the duplicate was not imported.";
+    else if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") error = `Unsupported attachment type: ${mimeType || "unknown"}. Use PDF or an image.`;
+    else if (!Number.isFinite(byteCount) || byteCount <= 0) error = "The attachment is empty or its size is unavailable.";
+    else if (byteCount > 15 * 1024 * 1024) error = "The attachment is larger than 15 MB.";
+    if (id) seenIds.add(id);
+    if (error) {
+      rejected.push({ fileIndex, fileName, mimeType: mimeType || null, byteCount: Number.isFinite(byteCount) ? byteCount : null, error });
+      continue;
+    }
+    supported.push({
+      id,
+      fileIndex,
+      fileName,
+      mimeType,
+      byteCount,
+    });
   }
-  return files;
+  return { supported, rejected };
+}
+
+async function dispatchExpenseEmailJobs(jobIds: string[]) {
+  const siteUrl = env.FEROCITY_APP_URL;
+  const token = env.AI_WORKFORCE_CRON_TOKEN;
+  if (!siteUrl || !token) return { dispatched: 0, failed: jobIds.length };
+  const outcomes = await Promise.allSettled(jobIds.map(async (jobId) => {
+    const response = await fetch(new URL("/.netlify/functions/process-document-email-background", siteUrl), {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jobId }),
+    });
+    if (!response.ok) throw new Error(`Background dispatch failed (${response.status}).`);
+  }));
+  return {
+    dispatched: outcomes.filter((outcome) => outcome.status === "fulfilled").length,
+    failed: outcomes.filter((outcome) => outcome.status === "rejected").length,
+  };
 }
 
 async function forwardFerocitySupportEmail(email: NormalizedInboundEmail) {
@@ -407,7 +476,7 @@ export async function POST(request: Request) {
     return json(200, { ok: true, recorded: recorded.recorded, duplicate: recorded.duplicate });
   }
 
-  const email = await hydrateReceivedEmail(normalizeInboundEmail(payload));
+  const email = await hydrateReceivedEmail(await resolveReceivedEmailId(normalizeInboundEmail(payload)));
   if (!email.fromEmail || email.recipients.length === 0) {
     return json(400, { ok: false, error: "Inbound email payload is missing sender or recipient." });
   }
@@ -428,25 +497,46 @@ export async function POST(request: Request) {
 
   if (route?.default_lead_source === "expense_document_email") {
     try {
-      const files = await downloadReceivedExpenseAttachments(email.providerMessageId);
-      if (!files.length) return json(422, { ok: false, error: "Receipt email did not contain a supported image or PDF attachment." });
-      const batch = await processExpenseDocumentBatch({
-        workspaceId: route.tenant_id,
-        files,
-        sourceChannel: "email",
-        sourceMessageRef: email.providerMessageId,
-        suppliedText: [email.subject, email.body].filter(Boolean).join("\n\n")
+      const attachmentInventory = await listReceivedExpenseAttachments(email.providerMessageId);
+      if (!attachmentInventory.supported.length && !attachmentInventory.rejected.length) {
+        await queryPostgres(
+          `insert into public.operator_alerts
+            (tenant_id,alert_key,category,severity,status,title,summary,action_href,metadata_json)
+           values ($1,$2,'document_intelligence','medium','active','Document email arrived without attachments',$3,'/app/expenses',$4::jsonb)
+           on conflict (tenant_id,alert_key) do update
+             set status='active',summary=excluded.summary,last_seen_at=now(),updated_at=now()`,
+          [
+            route.tenant_id,
+            `document-email-missing-attachments:${email.providerMessageId}`,
+            `“${email.subject}” arrived from ${email.fromEmail}, but the provider returned no attachments. Ask the sender to attach the source files and resend.`,
+            JSON.stringify({ providerMessageId: email.providerMessageId, fromEmail: email.fromEmail, subject: email.subject }),
+          ],
+        );
+        return json(422, { ok: false, error: "Receipt email did not contain any attachments." });
+      }
+      const batch = await enqueueResendExpenseEmail({
+        tenantId: route.tenant_id,
+        providerMessageId: email.providerMessageId,
+        subject: email.subject,
+        body: email.body,
+        attachments: attachmentInventory.supported,
+        rejectedAttachments: attachmentInventory.rejected,
       });
+      const dispatch = await dispatchExpenseEmailJobs(batch.jobIds);
       await queryPostgres(
         "update public.email_inbound_routes set last_received_at = now(), updated_at = now() where id = $1",
         [route.id]
       );
-      return json(batch.completed.length ? 200 : 422, {
-        ok: batch.failed.length === 0,
+      return json(202, {
+        ok: true,
         routed: true,
         purpose: "expense_document_email",
-        imported: batch.completed.map((item) => ({ documentId: item.documentId, status: item.status })),
-        failures: batch.failed
+        batchId: batch.id,
+        projectId: batch.projectId,
+        queued: batch.jobIds.length,
+        rejected: attachmentInventory.rejected.length,
+        dispatched: dispatch.dispatched,
+        dispatchDeferred: dispatch.failed,
       });
     } catch (error) {
       await logAppError({
@@ -613,7 +703,7 @@ export async function POST(request: Request) {
     ]
   );
 
-  await recordInboundResponse({
+  const canonicalConversationId = await recordInboundResponse({
     tenantId: route.tenant_id,
     brandId: route.brand_id,
     leadId: lead.id,
@@ -627,6 +717,37 @@ export async function POST(request: Request) {
     subject: email.subject,
     body: email.body.slice(0, 10000)
   });
+
+  let replyDraft = null;
+  if (canonicalConversationId) {
+    try {
+      replyDraft = await prepareInboundReply({
+        tenantId: route.tenant_id,
+        brandId: route.brand_id,
+        conversationId: canonicalConversationId,
+        inboundMessageId: email.providerMessageId,
+        channel: "email",
+        providerKey: "resend_email",
+        from: email.replyToEmail || email.fromEmail,
+        subject: email.subject,
+        body: email.body.slice(0, 10000),
+      });
+    } catch (error) {
+      await queryPostgres(
+        `insert into public.operator_alerts
+          (tenant_id,alert_key,category,severity,status,title,summary,action_href,metadata_json)
+         values ($1,$2,'automation','medium','active','Email reply needs attention',$3,'/app/messaging',$4::jsonb)
+         on conflict (tenant_id,alert_key) do update
+           set status='active',summary=excluded.summary,last_seen_at=now(),updated_at=now()`,
+        [
+          route.tenant_id,
+          `email-reply-draft:${email.providerMessageId}`,
+          "The inbound email was saved, but Ferocity could not prepare its reply.",
+          JSON.stringify({ canonicalConversationId, safeError: error instanceof Error ? error.message.slice(0, 300) : "unknown" }),
+        ],
+      );
+    }
+  }
 
   await queryPostgres(
     `
@@ -668,6 +789,8 @@ export async function POST(request: Request) {
   return json(200, {
     ok: true,
     routed: true,
+    replyPrepared: Boolean(replyDraft),
+    replyMode: replyDraft?.mode ?? null,
     forwarded: supportForward.forwarded,
     leadId: lead.id,
     threadId: thread.id,

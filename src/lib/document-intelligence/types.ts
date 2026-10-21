@@ -33,8 +33,14 @@ export type StatementTransaction = {
   postedDate: string | null;
   description: string;
   merchantName: string | null;
+  counterpartyName: string | null;
+  counterpartyHandle: string | null;
+  note: string | null;
+  transactionType: string | null;
+  providerStatus: string | null;
   referenceNumber: string | null;
   amountCents: number;
+  feeCents?: number;
   direction: "debit" | "credit";
   balanceCents: number | null;
   suggestedCategory: string | null;
@@ -46,6 +52,10 @@ export type StatementTransaction = {
 export type NormalizedExpenseDocument = MoneyFields & {
   documentType: ExpenseDocumentType;
   vendorName: string | null;
+  merchantAddress: string | null;
+  merchantCity: string | null;
+  merchantState: string | null;
+  merchantPostalCode: string | null;
   documentNumber: string | null;
   documentDate: string | null;
   documentTime: string | null;
@@ -57,6 +67,23 @@ export type NormalizedExpenseDocument = MoneyFields & {
   fieldConfidence: Record<string, number>;
   overallConfidence: number;
   reviewReasons: string[];
+  extractionMethod?: "ai" | "deterministic_cash_app" | "fallback";
+  statementSummary?: {
+    moneyInCents: number | null;
+    moneyOutCents: number | null;
+    feeCents: number | null;
+    parsedCreditCents: number;
+    parsedDebitCents: number;
+    parsedFeeCents: number;
+    differences: { moneyInCents: number | null; moneyOutCents: number | null; feeCents: number | null };
+  };
+  sourceCoverage?: {
+    totalPages: number;
+    attemptedPages: number[];
+    readablePages: number[];
+    failedPages: number[];
+    omittedPages: number[];
+  };
 };
 
 /** A consuming application supplies these. The shared engine never queries app-specific tables. */

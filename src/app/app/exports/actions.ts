@@ -75,10 +75,11 @@ function exportTypeForDraft(contentType: string) {
 }
 
 export async function createExportFromDraftAction(formData: FormData) {
+  const actor = await requirePermission("ai:queue");
   const parsed = schema.safeParse({ draftId: formData.get("draftId") });
   if (!parsed.success) return;
 
-  const workspaceId = await getCurrentWorkspaceId();
+  const workspaceId = actor.workspace.id;
   const session = await getCurrentAppSession();
   const draftResult = await queryPostgres<{
     id: string;

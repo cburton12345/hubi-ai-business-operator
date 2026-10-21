@@ -18,6 +18,8 @@ import {
   type ProviderLane
 } from "@/lib/integrations/provider-lane-readiness";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { queryPostgres } from "@/lib/db/postgres";
+import { onboardingOAuthStartPath } from "@/lib/onboarding/oauth-return";
 import {
   disconnectCustomerIntegrationAction,
   releaseAdapterBuildAction,
@@ -41,10 +43,25 @@ function plainConnectionStatus(value: string | null | undefined) {
 
 function setupNotice(params: { setup?: string; provider?: string; missing?: string }) {
   if (!params.setup) return null;
+  if (params.setup === "connected") {
+    return {
+      title: "Connection verified",
+      body: "Ferocity can now read and monitor this account for business context. Sending, publishing, spending, provider writes, and moving money are still off until separately authorized."
+    };
+  }
   if (params.setup === "missing_credentials") {
     return {
       title: "This connection needs one more setup step",
       body: `${params.provider ?? "This connection"} is listed in Ferocity, but the account connection is not ready yet.`
+    };
+  }
+  if (params.setup === "scope_reconnect_required") {
+    const missing = (params.missing ?? "").split(",").map((scope) => scope.trim()).filter(Boolean);
+    return {
+      title: "Reconnect and approve the required read access",
+      body: missing.length
+        ? `${params.provider ?? "This connection"} did not grant ${missing.join(", ")}. Ferocity will not treat the account as ready until that read access is approved.`
+        : `${params.provider ?? "This connection"} did not return enough permission evidence. Reconnect it so Ferocity can verify the required read access.`,
     };
   }
   if (params.setup === "unsupported") {
@@ -59,23 +76,97 @@ function setupNotice(params: { setup?: string; provider?: string; missing?: stri
 export default async function IntegrationsPage({
   searchParams
 }: {
-  searchParams: Promise<{ setup?: string; provider?: string; missing?: string }>;
+  searchParams: Promise<{ setup?: string; provider?: string; missing?: string; onboarding?: string; focus?: string }>;
 }) {
   const params = await searchParams;
   const notice = setupNotice(params);
   const actor = await getCurrentActor();
   const tenantId = await getCurrentWorkspaceId();
-  const [rows, capabilityLanes, providerRequests, adapterBuilds] = await Promise.all([
+  const [rows, capabilityLanes, providerRequests, adapterBuilds, authorityResult] = await Promise.all([
     getIntegrationRows(),
     getProviderCapabilityReadiness(),
     getProviderIntegrationRequests(),
-    getAdapterBuildsForTenant(tenantId)
+    getAdapterBuildsForTenant(tenantId),
+    queryPostgres<{ provider_key: string; read_allowed: boolean; monitor_allowed: boolean; protected_actions_off: boolean }>(`
+      select provider_key,
+        bool_or(capability='read' and decision in ('granted_once','granted_until_revoked')) as read_allowed,
+        bool_or(capability='monitor' and decision in ('granted_once','granted_until_revoked')) as monitor_allowed,
+        bool_and(case when capability in ('write','communicate','publish','spend','move_money') then decision in ('denied','revoked') else true end) as protected_actions_off
+      from public.integration_authority_grants where tenant_id=$1 group by provider_key order by provider_key`, [tenantId])
   ]);
   const managed = rows.filter((row) => row.ownershipMode === "ferocity_managed");
   const customerOwned = rows.filter((row) => row.ownershipMode !== "ferocity_managed");
   const connected = rows.filter((row) => row.status === "connected" || row.accountStatus === "connected").length;
   const missingKeys = rows.filter((row) => row.missingEnvVars.length > 0).length;
   const liveActions = rows.filter((row) => row.liveActionsEnabled).length;
+  const onboardingFocusProviders: Record<string, string[]> = {
+    mailbox: ["gmail_mailbox", "microsoft_mailbox"],
+    "service-platform": ["jobber", "housecall_pro", "servicetitan", "hubspot"],
+    phone: ["retell", "twilio", "ferocity_connect", "voice_ai"],
+  };
+  const onboardingFocus = params.onboarding === "1" && params.focus
+    ? onboardingFocusProviders[params.focus] ?? []
+    : [];
+  const focusedConnections = onboardingFocus.length
+    ? customerOwned.filter((row) => onboardingFocus.includes(row.provider))
+    : [];
+
+  if (params.onboarding === "1" && params.focus) {
+    return (
+      <QueuePageShell
+        eyebrow="Guided setup"
+        title="Connect one useful source"
+        description="Choose an account the business already uses. Ferocity starts read-only, discovers useful context, and returns you to the setup conversation."
+      >
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>{params.focus === "mailbox" ? "Customer inbox" : params.focus === "phone" ? "Calls and texts" : "Customers and jobs"}</h2>
+              <p className="muted">Connecting is optional. It does not authorize Ferocity to send, publish, spend, change provider records, or move money.</p>
+            </div>
+            <Link className="button secondary-button" href="/app/ferocity?onboarding=1">Back to guided setup</Link>
+          </div>
+        </section>
+
+        {notice ? (
+          <section className="panel section-actions">
+            <h2>{notice.title}</h2>
+            <p className="muted">{notice.body}</p>
+          </section>
+        ) : null}
+
+        {focusedConnections.length ? (
+          <section className="panel section-actions">
+            <div className="grid">
+              {focusedConnections.map((row) => (
+                <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} onboardingMode key={row.id} />
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="panel section-actions">
+            <h2>No direct connection is available for this category yet.</h2>
+            <p className="muted">Ferocity can still begin with a customer, job, document, or task you provide in the conversation.</p>
+          </section>
+        )}
+
+        <section className="panel section-actions">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Prefer not to connect an outside account?</h2>
+              <p className="muted">Give Ferocity one real business item instead. Outside connections can be added or revoked later.</p>
+            </div>
+            <Link
+              className="button"
+              href={`/app/ferocity?onboarding=1&command=${encodeURIComponent("Continue setup without connecting an outside account. Help me add one real customer, job, task, or document so Ferocity can produce the first useful result.")}`}
+            >
+              Continue without a connection
+            </Link>
+          </div>
+        </section>
+      </QueuePageShell>
+    );
+  }
 
   return (
     <QueuePageShell
@@ -90,7 +181,7 @@ export default async function IntegrationsPage({
             <p className="muted">These are optional capability upgrades, not a launch checklist. Ferocity&apos;s native operations remain available without them.</p>
           </div>
           <div className="inline-actions">
-            <Link className="button" href="/app/build-system">
+            <Link className="button" href="/app/ferocity?onboarding=1">
               Let Ferocity Set This Up
             </Link>
             <Link className="button secondary-button" href="/app/marketing-os">
@@ -114,6 +205,11 @@ export default async function IntegrationsPage({
             <Link className="button secondary-button" href="/app/integrations/ferocity-connect">
               <ArrowRight size={16} /> Android SMS gateway
             </Link>
+            {actor.tenantRole === "owner" || actor.tenantRole === "admin" ? (
+              <Link className="button secondary-button" href="/app/integrations/external-ai">
+                <KeyRound size={16} /> Optional: connect your AI
+              </Link>
+            ) : null}
             <Link className="button secondary-button" href="/docs/provider-account-setup">
               Provider Setup Packet
             </Link>
@@ -309,6 +405,28 @@ export default async function IntegrationsPage({
         </section>
       ) : null}
 
+      {(authorityResult?.rows.length ?? 0) > 0 ? (
+        <section className="panel section-actions">
+          <div>
+            <h2><ShieldCheck size={18} /> What Ferocity is allowed to do</h2>
+            <p className="muted">These permissions are separate from provider login scopes. Connecting an account does not authorize consequential actions.</p>
+          </div>
+          <ul className="list">
+            {authorityResult!.rows.map((grant) => (
+              <li className="list-row" key={grant.provider_key}>
+                <div>
+                  <strong>{grant.provider_key.replaceAll("_", " ")}</strong>
+                  <p className="muted">{grant.read_allowed ? "Read" : "No read access"}{grant.monitor_allowed ? " and monitor" : ""}</p>
+                </div>
+                <span className={`pill ${grant.protected_actions_off ? "low" : "medium"}`}>
+                  {grant.protected_actions_off ? "Protected actions off" : "Custom authority"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
@@ -318,7 +436,7 @@ export default async function IntegrationsPage({
               of billing, ad spend, and public posts.
             </p>
           </div>
-          <Link className="button" href="/app/build-system">
+          <Link className="button" href="/app/ferocity?onboarding=1">
             Setup My Accounts
           </Link>
         </div>
@@ -398,7 +516,7 @@ export default async function IntegrationsPage({
         </div>
         <div className="grid">
           {managed.map((row) => (
-            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} key={row.id} />
+            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} onboardingMode={params.onboarding === "1"} key={row.id} />
           ))}
         </div>
       </section>
@@ -415,7 +533,7 @@ export default async function IntegrationsPage({
         </div>
         <div className="grid">
           {customerOwned.map((row) => (
-            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} key={row.id} />
+            <ProviderCard row={row} isPlatformAdmin={actor.platformRole === "super_admin"} onboardingMode={params.onboarding === "1"} key={row.id} />
           ))}
         </div>
       </section>
@@ -452,7 +570,7 @@ function ProviderLaneCard({ lane, title }: { lane: ProviderLane; title: string }
   );
 }
 
-function ProviderCard({ row, isPlatformAdmin }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number]; isPlatformAdmin: boolean }) {
+function ProviderCard({ row, isPlatformAdmin, onboardingMode }: { row: Awaited<ReturnType<typeof getIntegrationRows>>[number]; isPlatformAdmin: boolean; onboardingMode: boolean }) {
   const providerTruth = getProviderCapabilityTruth(row.provider);
   const providerApprovalBlocked = providerApprovalIsBlocked(row.provider, row.certificationStatus);
   const canMarkReady = row.missingEnvVars.length === 0 && ["executable_adapter", "native_fallback"].includes(row.executionMode);
@@ -552,7 +670,9 @@ function ProviderCard({ row, isPlatformAdmin }: { row: Awaited<ReturnType<typeof
         ) : null}
         <div className="button-row">
           {row.oauthStartPath && row.executionMode !== "setup_only" && platformReady ? (
-            <Link className="mini-button" href={row.oauthStartPath}>
+            <Link className="mini-button" href={onboardingMode
+              ? onboardingOAuthStartPath(row.oauthStartPath, { provider: row.provider })
+              : row.oauthStartPath}>
               Connect Account
             </Link>
           ) : null}

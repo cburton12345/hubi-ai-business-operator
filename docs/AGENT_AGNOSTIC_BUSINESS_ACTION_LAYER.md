@@ -120,8 +120,10 @@ Official references used for this decision:
 - Native Ferocity workforce: implemented and active behind the runtime contract.
 - Provider-neutral business action catalog: implemented.
 - Native use of the action catalog: implemented for stale-lead follow-up.
-- Outside-agent principal authentication: not implemented.
-- Public API/MCP endpoint: not exposed.
+- Outside-agent principal authentication: source-ready through hashed, scoped, expiring, revocable tenant/user grants in pending migration 252; not production-active.
+- MCP Streamable HTTP endpoint: source-ready at `/mcp` with a ten-tool minimized catalog; not migrated, deployed, DNS-routed, or live-client-certified.
 - Named Grok, OpenAI, or other outside-agent compatibility: not certified and must not be claimed publicly.
+
+The implementation and release checklist are in `FEROCITY_EXTERNAL_AI_MCP_2026-10-14.md`.
 
 This separation lets Ferocity add a remote MCP server or another agent protocol without rebuilding business logic or surrendering system-of-record authority.

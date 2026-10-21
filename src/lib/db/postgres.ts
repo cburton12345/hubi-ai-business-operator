@@ -70,6 +70,32 @@ export async function queryPostgres<T extends pg.QueryResultRow>(text: string, v
   }
 }
 
+export class RequiredPostgresQueryError extends Error {
+  readonly code = "DATABASE_QUERY_UNAVAILABLE";
+
+  constructor(readonly context: string) {
+    super(`Required database query failed (${context}).`);
+    this.name = "RequiredPostgresQueryError";
+  }
+}
+
+/**
+ * Strict read path for authoritative UI and API responses. Unlike the legacy
+ * nullable helper, this never lets an unavailable database masquerade as an
+ * empty workspace or a zero-dollar result.
+ */
+export async function queryPostgresRequired<T extends pg.QueryResultRow>(
+  text: string,
+  values: unknown[] = [],
+  context = "authoritative-read"
+) {
+  const result = await queryPostgres<T>(text, values);
+  if (!result) {
+    throw new RequiredPostgresQueryError(context);
+  }
+  return result;
+}
+
 export async function withPostgresTransaction<T>(
   operation: (client: pg.PoolClient) => Promise<T>
 ): Promise<T | null> {
@@ -90,6 +116,41 @@ export async function withPostgresTransaction<T>(
       console.error(`Postgres transaction failed: ${message}`);
     }
     return null;
+  } finally {
+    client.release();
+  }
+}
+
+export type PostgresTransactionResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: Error };
+
+/**
+ * Transaction variant for interactive workflows that must distinguish a
+ * business-rule rollback from an unavailable database without losing the
+ * atomic rollback guarantee. Callers must sanitize errors before displaying
+ * them; raw provider/database details are only logged server-side.
+ */
+export async function withPostgresTransactionResult<T>(
+  operation: (client: pg.PoolClient) => Promise<T>
+): Promise<PostgresTransactionResult<T>> {
+  const db = createPostgresPool();
+  if (!db) return { ok: false, error: new Error("Database connection is unavailable.") };
+
+  const client = await db.connect().catch(() => null);
+  if (!client) return { ok: false, error: new Error("Database connection is unavailable.") };
+  try {
+    await client.query("begin");
+    const value = await operation(client);
+    await client.query("commit");
+    return { ok: true, value };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    const normalized = error instanceof Error ? error : new Error("Unknown database error");
+    if (process.env.NODE_ENV === "production") {
+      console.error(`Postgres transaction failed: ${normalized.message}`);
+    }
+    return { ok: false, error: normalized };
   } finally {
     client.release();
   }

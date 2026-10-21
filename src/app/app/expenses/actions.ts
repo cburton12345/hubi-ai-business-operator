@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { listFerocityAllocationTargets, postFerocityExpense, postFerocityStatementTransactions } from "@/lib/document-intelligence/ferocity-adapter";
 import { normalizeExpenseDocument } from "@/lib/document-intelligence/normalize";
+import { hasUsableDocumentExtraction } from "@/lib/document-intelligence/independent-review";
 import type { AllocationSuggestion } from "@/lib/document-intelligence/types";
 import { processExpenseDocumentBatch } from "@/lib/document-intelligence/workflow";
 import { isUploadFile } from "@/lib/operations-workforce/receipt-upload";
@@ -39,7 +40,7 @@ export async function importExpenseDocumentAction(formData: FormData) {
   const query = new URLSearchParams({
     importedCount: String(result.completed.length),
     failedCount: String(result.failed.length),
-    duplicateCount: String(result.completed.filter((item) => item.status === "duplicate").length)
+    duplicateCount: String(result.completed.filter((item) => item.result.status === "duplicate").length)
   });
   if (result.failed.length) query.set("batchError", result.failed.slice(0, 3).map((item) => `${item.fileName}: ${item.error}`).join(" | "));
   redirect(`/app/expenses?${query.toString()}`);
@@ -79,6 +80,10 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
       where tenant_id = $1 and id = $2 and status in ('needs_review','duplicate','failed')`, [workspaceId, parsed.data.documentId]);
     await queryPostgres(`insert into public.document_intelligence_events (tenant_id, document_id, event_type, actor_type, actor_ref)
       values ($1,$2,'document_rejected','user',$3)`, [workspaceId, parsed.data.documentId, actor.userId]);
+    await queryPostgres(`update public.ai_independent_reviews set status = 'rejected', human_review_required = false,
+      human_reviewed_by_user_id = $3, human_reviewed_at = now(), updated_at = now()
+      where tenant_id = $1 and subject_type = 'expense_document' and subject_id = $2`,
+      [workspaceId, parsed.data.documentId, actor.userId === "admin-token" ? null : actor.userId]);
     revalidatePath("/app/expenses");
     return;
   }
@@ -98,6 +103,9 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
     overall_confidence: 1,
     review_reasons: []
   });
+  if (document.documentType === "statement" && !hasUsableDocumentExtraction(document)) {
+    redirect("/app/expenses?error=This+statement+is+missing+readable+pages+or+transactions.+Reprocess+it+before+approving+any+rows.");
+  }
   if (parsed.data.allocationKey) {
     const targets = await listFerocityAllocationTargets(workspaceId);
     const selected = targets.find((target) => `${target.type}|${target.ref ?? ""}` === parsed.data.allocationKey);
@@ -129,6 +137,23 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
     const selectedTransactionIds = formData.getAll("includeTransaction")
       .filter((value): value is string => typeof value === "string")
       .filter((value) => z.string().uuid().safeParse(value).success);
+    const excludedTransactionIds = formData.getAll("excludeTransaction")
+      .filter((value): value is string => typeof value === "string")
+      .filter((value) => z.string().uuid().safeParse(value).success);
+    const selectedSet = new Set(selectedTransactionIds);
+    if (excludedTransactionIds.some((id) => selectedSet.has(id))) {
+      redirect("/app/expenses?error=A+statement+row+cannot+be+confirmed+and+excluded+at+the+same+time.");
+    }
+    if (selectedTransactionIds.length) {
+      const pending = await queryPostgres<{ count: string }>(`
+        select count(*)::text as count
+        from public.document_intelligence_transactions
+        where tenant_id = $1 and document_id = $2 and id = any($3::uuid[])
+          and metadata_json->>'providerStatus' = 'pending'`, [workspaceId, parsed.data.documentId, selectedTransactionIds]);
+      if (Number(pending?.rows[0]?.count ?? 0) > 0) {
+        redirect("/app/expenses?error=Pending+statement+charges+cannot+be+approved+until+they+settle+on+a+later+statement.");
+      }
+    }
     const transactionTargets = await listFerocityAllocationTargets(workspaceId);
     const allocationByTransactionId = Object.fromEntries(selectedTransactionIds.flatMap((transactionId) => {
       const allocationKey = text(formData, `transactionAllocation:${transactionId}`);
@@ -141,7 +166,7 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
         allocationPercent: 100,
         confidence: 1,
         rationale: "Confirmed by reviewer for this statement transaction.",
-        metadata: selected.metadata
+        metadata: { ...(selected.metadata ?? {}), assignmentEvidence: "owner_confirmed" }
       } satisfies AllocationSuggestion]] : [];
     }));
     const categoryUpdates = selectedTransactionIds.map((transactionId) => ({
@@ -162,10 +187,18 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
       allocationByTransactionId
     });
     if (expenseIds === null) return;
-    await queryPostgres(`update public.document_intelligence_transactions
-      set status = 'excluded', updated_at = now()
-      where tenant_id = $1 and document_id = $2 and posted_expense_ref is null
-        and not (id = any($3::uuid[]))`, [workspaceId, parsed.data.documentId, selectedTransactionIds]);
+    if (excludedTransactionIds.length) {
+      await queryPostgres(`update public.document_intelligence_transactions
+        set status='excluded', updated_at=now()
+        where tenant_id=$1 and document_id=$2 and id=any($3::uuid[])
+          and posted_expense_ref is null`, [workspaceId, parsed.data.documentId, [...new Set(excludedTransactionIds)]]);
+    }
+    const remaining = await queryPostgres<{ count: string }>(`
+      select count(*)::text as count
+      from public.document_intelligence_transactions
+      where tenant_id=$1 and document_id=$2 and status in ('needs_review','duplicate')`,
+      [workspaceId, parsed.data.documentId]);
+    const remainingReviewCount = Number(remaining?.rows[0]?.count ?? 0);
     await queryPostgres(`update public.document_intelligence_documents set status = 'approved', vendor_name = $1,
       document_type = 'statement', document_date = $2, normalized_json = $3::jsonb,
       field_confidence_json = $4::jsonb, overall_confidence = 1, review_reasons_json = '[]'::jsonb,
@@ -178,8 +211,18 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
       (tenant_id, document_id, event_type, actor_type, actor_ref, detail_json)
       values ($1,$2,'statement_transactions_approved','user',$3,$4::jsonb)`, [
         workspaceId, parsed.data.documentId, actor.userId,
-        JSON.stringify({ selectedTransactionCount: selectedTransactionIds.length, expenseIds })
+        JSON.stringify({ selectedTransactionCount: selectedTransactionIds.length, excludedTransactionCount: excludedTransactionIds.length, expenseIds, remainingReviewCount })
       ]);
+    if (remainingReviewCount > 0) {
+      await queryPostgres(`update public.document_intelligence_documents
+        set status='needs_review', approved_by_user_id=null, approved_at=null, updated_at=now()
+        where tenant_id=$1 and id=$2`, [workspaceId, parsed.data.documentId]);
+    } else {
+      await queryPostgres(`update public.ai_independent_reviews set status = 'human_confirmed', human_review_required = false,
+        human_reviewed_by_user_id = $3, human_reviewed_at = now(), updated_at = now()
+        where tenant_id = $1 and subject_type = 'expense_document' and subject_id = $2`,
+        [workspaceId, parsed.data.documentId, actor.userId === "admin-token" ? null : actor.userId]);
+    }
     revalidatePath("/app/expenses");
     revalidatePath("/app/job-tracker");
     revalidatePath("/app/reports");
@@ -203,6 +246,10 @@ export async function reviewExpenseDocumentAction(formData: FormData) {
     where tenant_id = $1 and document_id = $2 and status = 'suggested'`, [workspaceId, parsed.data.documentId]);
   await queryPostgres(`insert into public.document_intelligence_events (tenant_id, document_id, event_type, actor_type, actor_ref, detail_json)
     values ($1,$2,'document_approved','user',$3,$4::jsonb)`, [workspaceId, parsed.data.documentId, actor.userId, JSON.stringify({ expenseId })]);
+  await queryPostgres(`update public.ai_independent_reviews set status = 'human_confirmed', human_review_required = false,
+    human_reviewed_by_user_id = $3, human_reviewed_at = now(), updated_at = now()
+    where tenant_id = $1 and subject_type = 'expense_document' and subject_id = $2`,
+    [workspaceId, parsed.data.documentId, actor.userId === "admin-token" ? null : actor.userId]);
   revalidatePath("/app/expenses");
   revalidatePath("/app/job-tracker");
   revalidatePath("/app/reports");

@@ -10,6 +10,7 @@ type RefreshableProvider =
   | "youtube"
   | "search_console"
   | "analytics"
+  | "microsoft_ads"
   | "microsoft_calendar"
   | "gmail_mailbox"
   | "microsoft_mailbox"
@@ -31,9 +32,10 @@ function clientConfig(provider: RefreshableProvider) {
   if (provider === "jobber") {
     return { clientId: env.JOBBER_CLIENT_ID, clientSecret: env.JOBBER_CLIENT_SECRET, tokenUrl: "https://api.getjobber.com/api/oauth/token" };
   }
-  return provider !== "microsoft_calendar" && provider !== "microsoft_mailbox"
-    ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, tokenUrl: "https://oauth2.googleapis.com/token" }
-    : { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token" };
+  const microsoft = provider === "microsoft_ads" || provider === "microsoft_calendar" || provider === "microsoft_mailbox";
+  return microsoft
+    ? { clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token" }
+    : { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, tokenUrl: "https://oauth2.googleapis.com/token" };
 }
 
 function open(row: CredentialRow | undefined) {
@@ -89,8 +91,9 @@ export async function getFreshProviderAccessToken(tenantId: string, provider: Re
       refresh_token: refreshToken,
       client_id: config.clientId,
       client_secret: config.clientSecret,
-      ...(provider === "microsoft_calendar" ? { scope: "offline_access openid profile User.Read Calendars.ReadWrite" } : {}),
-      ...(provider === "microsoft_mailbox" ? { scope: "offline_access openid profile User.Read Mail.Read" } : {})
+      ...(provider === "microsoft_calendar" ? { scope: "offline_access openid profile User.Read Calendars.Read" } : {}),
+      ...(provider === "microsoft_mailbox" ? { scope: "offline_access openid profile User.Read Mail.Read" } : {}),
+      ...(provider === "microsoft_ads" ? { scope: "offline_access https://ads.microsoft.com/msads.manage" } : {})
     }),
     cache: "no-store"
   });

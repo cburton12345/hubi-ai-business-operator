@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, CircleAlert, CircleDashed, ShieldAlert, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleDashed, ShieldAlert } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { env, hasSupabaseAdminConfig, hasSupabaseBrowserConfig, missingEnvVars } from "@/lib/env";
 import { hasCredentialEncryptionKey } from "@/lib/credentials/credential-vault";
@@ -7,6 +7,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getEmailProviderHealth, type EmailProviderHealth } from "@/lib/email/provider-health";
 import { getPlatformCapacityDashboard } from "@/lib/observability/platform-capacity";
 import { getActivePlatformAdminAlerts } from "@/lib/observability/platform-admin-alerts";
+import { getOperationalHealthSnapshot, type OperationalHealthStatus } from "@/lib/observability/operational-health";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type HealthStatus = "ok" | "needs_setup" | "warning" | "broken" | "not_connected" | "paused";
@@ -59,7 +60,7 @@ type IntegrationStatus = {
 
 async function getSystemHealthData() {
   const workspaceId = await getCurrentWorkspaceId();
-  const [statsResult, integrationsResult, emailHealth, capacity, adminAlerts] = await Promise.all([
+  const [statsResult, integrationsResult, emailHealth, capacity, adminAlerts, operations] = await Promise.all([
     queryPostgres<HealthStats>(
       `
       select
@@ -118,10 +119,11 @@ async function getSystemHealthData() {
     ),
     getEmailProviderHealth(),
     getPlatformCapacityDashboard(),
-    getActivePlatformAdminAlerts()
+    getActivePlatformAdminAlerts(workspaceId),
+    getOperationalHealthSnapshot(workspaceId),
   ]);
 
-  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth, capacity, adminAlerts };
+  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth, capacity, adminAlerts, operations };
 }
 
 function count(value: string | undefined) {
@@ -259,7 +261,7 @@ function buildHealthChecks(stats: HealthStats | null, integrations: IntegrationS
     {
       title: "Live integrations",
       body: liveIntegrations === 0 ? "No live provider actions are enabled by accident." : `${liveIntegrations} live provider connection(s) are enabled.`,
-      status: liveIntegrations === 0 ? "paused" : "broken",
+      status: liveIntegrations === 0 ? "paused" : "ok",
       href: "/app/integrations",
       button: "Inspect"
     },
@@ -370,8 +372,14 @@ function iconFor(status: HealthStatus) {
   return <CircleAlert size={18} />;
 }
 
+function operationalClassName(status: OperationalHealthStatus) {
+  if (status === "healthy") return "status-included";
+  if (status === "degraded") return "status-draft_only";
+  return "high";
+}
+
 export default async function SystemHealthPage() {
-  const { stats, integrations, emailHealth, capacity, adminAlerts } = await getSystemHealthData();
+  const { stats, integrations, emailHealth, capacity, adminAlerts, operations } = await getSystemHealthData();
   const checks = buildHealthChecks(stats, integrations, emailHealth);
   const totals = {
     ok: checks.filter((item) => item.status === "ok").length,
@@ -381,6 +389,13 @@ export default async function SystemHealthPage() {
     paused: checks.filter((item) => item.status === "paused").length,
     needsSetup: checks.filter((item) => item.status === "needs_setup").length
   };
+  const capacityStatus = capacity.latest?.status ?? "unknown";
+  const overallStatus: OperationalHealthStatus =
+    operations.status === "critical" || operations.status === "unknown" || totals.broken > 0 || capacityStatus === "critical"
+      ? "critical"
+      : operations.status === "degraded" || totals.warning > 0 || capacityStatus === "high" || capacityStatus === "watch" || capacityStatus === "unknown"
+        ? "degraded"
+        : "healthy";
 
   return (
     <QueuePageShell
@@ -394,7 +409,7 @@ export default async function SystemHealthPage() {
             <h2>Health Summary</h2>
             <p className="muted">This does not change anything. It helps find risky gaps before launch or demos.</p>
           </div>
-          <ShieldCheck size={22} />
+          <span className={`pill ${operationalClassName(overallStatus)}`}>{overallStatus}</span>
         </div>
         <div className="grid">
           <div className="panel span-2 metric"><span className="muted">OK</span><strong>{totals.ok}</strong></div>
@@ -404,6 +419,37 @@ export default async function SystemHealthPage() {
           <div className="panel span-2 metric"><span className="muted">Not connected</span><strong>{totals.notConnected}</strong></div>
           <div className="panel span-2 metric"><span className="muted">Paused</span><strong>{totals.paused}</strong></div>
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Execution truth</p>
+            <h2>Operational Runtime</h2>
+            <p className="muted">One tenant-scoped view across scheduled workflows, AI runs, approved action queues, integration jobs, provider health, retries, fallbacks, and expected completion evidence.</p>
+          </div>
+          <span className={`pill ${operationalClassName(operations.status)}`}>{operations.status}</span>
+        </div>
+        {operations.status === "unknown" ? (
+          <div className="notice warning section-actions">
+            <strong>Health is unknown.</strong> {operations.unavailableReason}
+          </div>
+        ) : (
+          <ul className="list section-actions">
+            {operations.components.map((component) => (
+              <li className="list-row" key={component.key}>
+                <div>
+                  <h3>{component.label}</h3>
+                  <p className="muted">{component.summary}</p>
+                </div>
+                <div className="inline-actions">
+                  <span className={`pill ${operationalClassName(component.status)}`}>{component.status}</span>
+                  <Link className="mini-button" href={component.href}>Inspect</Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="panel section-actions">

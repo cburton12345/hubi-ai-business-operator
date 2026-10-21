@@ -13,6 +13,14 @@ export function QueueTable<T extends { id: string }>({
   rows: T[];
   emptyMessage?: string;
 }) {
+  if (rows.length === 0) {
+    return (
+      <div className="panel empty-state empty-queue-state" role="status">
+        <p className="muted">{emptyMessage}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="table-wrap">
       <table>
@@ -24,21 +32,13 @@ export function QueueTable<T extends { id: string }>({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td className="empty-table-cell" colSpan={columns.length}>
-                {emptyMessage}
-              </td>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              {columns.map((column) => (
+                <td key={column.key}>{column.render(row)}</td>
+              ))}
             </tr>
-          ) : (
-            rows.map((row) => (
-              <tr key={row.id}>
-                {columns.map((column) => (
-                  <td key={column.key}>{column.render(row)}</td>
-                ))}
-              </tr>
-            ))
-          )}
+          ))}
         </tbody>
       </table>
     </div>

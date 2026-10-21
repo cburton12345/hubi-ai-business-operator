@@ -7,12 +7,12 @@ import { env } from "@/lib/env";
 import { recordConnectedProvider, saveCredential } from "@/lib/integrations/complete-standard-oauth";
 import { discoverXAdAccounts, exchangeXOAuthToken } from "@/lib/integrations/x-ads-oauth1";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { recordInitialOAuthAuthority } from "@/lib/integrations/authority-grants";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import { oauthAppRedirect } from "@/lib/onboarding/oauth-return";
 
-function appRedirect(request: Request, setup: string) {
-  const url = new URL("/app/integrations", request.url);
-  url.searchParams.set("provider", "x_ads");
-  url.searchParams.set("setup", setup);
-  return NextResponse.redirect(url);
+function appRedirect(request: Request, setup: string, returnTo?: string | null) {
+  return oauthAppRedirect(request, { provider: "x_ads", setup }, returnTo);
 }
 
 export async function GET(request: Request) {
@@ -27,12 +27,14 @@ export async function GET(request: Request) {
   const claimed = await queryPostgres<{
     id: string;
     oauth_token_secret: { encryptedSecret?: string; encryptionIv?: string; encryptionTag?: string } | null;
+    return_to: string | null;
   }>(
     `update public.integration_jobs set status='running',started_at=now()
      where id=(select id from public.integration_jobs where tenant_id=$1 and job_type='oauth_start_requested'
        and status='queued' and payload_json->>'provider'='x_ads' and payload_json->>'oauthToken'=$2
        and created_at>now()-interval '15 minutes' order by created_at desc limit 1 for update skip locked)
-     returning id,payload_json->'oauthTokenSecret' as oauth_token_secret`,
+     returning id,payload_json->'oauthTokenSecret' as oauth_token_secret,
+       payload_json->>'returnTo' as return_to`,
     [workspaceId, requestToken]
   );
   const job = claimed?.rows[0];
@@ -73,16 +75,18 @@ export async function GET(request: Request) {
     await saveCredential({ workspaceId, userId: session?.userId ?? null, provider: "x_ads", label: "oauth_access_token", kind: "auth_token", secret: tokens.accessToken, rotationDueAt, metadata });
     await saveCredential({ workspaceId, userId: session?.userId ?? null, provider: "x_ads", label: "oauth_token_secret", kind: "auth_token", secret: tokens.accessTokenSecret, rotationDueAt, metadata });
     await recordConnectedProvider({ workspaceId, provider: "x_ads", scopes: ["ads.read"], metadata });
+    await recordInitialOAuthAuthority({ tenantId: workspaceId, provider: "x_ads", scopes: ["ads.read"], actorKey: session?.userId ?? null });
     await queryPostgres(
       `update public.integration_jobs set status='completed',result_json=$2::jsonb,completed_at=now(),payload_json=payload_json-'oauthTokenSecret' where id=$1`,
       [job.id, JSON.stringify({ safeMode: true, provider: "x_ads", reportingVerified: accounts.length > 0, liveActionsEnabled: false })]
     );
-    return appRedirect(request, "connected");
+    await syncCustomerOnboardingForTenant(workspaceId).catch(() => null);
+    return appRedirect(request, "connected", job.return_to);
   } catch (error) {
     await queryPostgres(
       `update public.integration_jobs set status='failed',error_message=$2,completed_at=now(),payload_json=payload_json-'oauthTokenSecret' where id=$1`,
       [job.id, error instanceof Error ? error.message : "X authorization failed."]
     );
-    return appRedirect(request, "failed");
+    return appRedirect(request, "failed", job.return_to);
   }
 }

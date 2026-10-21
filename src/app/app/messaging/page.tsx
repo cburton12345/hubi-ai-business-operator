@@ -16,6 +16,7 @@ import {
   updateInboundSmsReplyModeAction
 } from "./actions";
 import { ScheduledTextPanel } from "./ScheduledTextPanel";
+import { PendingSubmitButton } from "@/components/forms/PendingSubmitButton";
 
 function statusTone(status: string) {
   if (["active", "ready", "available", "configured"].includes(status)) return "";
@@ -225,9 +226,9 @@ export default async function MessagingPage() {
                     <form action={retryMessageAction} key={`${message.id}-${provider.providerKey}`}>
                       <input name="messageId" type="hidden" value={message.id} />
                       <input name="providerKey" type="hidden" value={provider.providerKey} />
-                      <button className="mini-button secondary-button" type="submit">
+                      <PendingSubmitButton className="mini-button secondary-button" pendingLabel="Retrying…">
                         {provider.providerKey === message.providerKey ? "Retry" : `Try ${provider.displayName}`}
-                      </button>
+                      </PendingSubmitButton>
                     </form>
                   )) : null}
                   {unhealthy && smsLike ? (

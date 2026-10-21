@@ -19,6 +19,7 @@ function managedOpenAiBaseUrl() {
 const byoEligibleRunTypes = new Set([
   "construction_field_log",
   "growth_funnel_strategy",
+  "market_trend_research",
   "receipt_vision_extraction",
   "setup_guidance",
   "weekly_marketing_plan"

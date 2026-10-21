@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type RevenueGrowthDashboard = {
@@ -255,8 +255,8 @@ export async function getRevenueGrowthDashboard(): Promise<RevenueGrowthDashboar
         coalesce((select sum(total_cents) from public.service_estimates where tenant_id = $1 and status in ('sent_manually','approved','declined') and created_at >= now() - interval '90 days'), 0)::text as estimates_sent_cents,
         (select count(*) from public.service_estimates where tenant_id = $1 and status = 'approved' and created_at >= now() - interval '90 days')::text as signed_sales,
         coalesce((select sum(total_cents) from public.service_estimates where tenant_id = $1 and status = 'approved' and created_at >= now() - interval '90 days'), 0)::text as signed_sales_cents,
-        coalesce((select sum(amount_cents) from public.service_invoice_payments where tenant_id = $1 and status in ('succeeded','manual') and received_at >= now() - interval '90 days'), 0)::text as collected_revenue_cents,
-        coalesce((select sum(greatest(total_cents - amount_paid_cents, 0)) from public.service_invoices where tenant_id = $1 and status in ('sent_manually','partially_paid','overdue') and created_at >= now() - interval '90 days'), 0)::text as outstanding_revenue_cents,
+        coalesce((select sum(greatest(amount_cents-refunded_amount_cents,0)) from public.service_invoice_payments where tenant_id = $1 and status in ('succeeded','manual','partially_refunded','refunded') and received_at >= now() - interval '90 days'), 0)::text as collected_revenue_cents,
+        coalesce((select sum(greatest(total_cents - amount_paid_cents - write_off_cents, 0)) from public.service_invoices where tenant_id = $1 and status in ('sent_manually','partially_paid','overdue') and created_at >= now() - interval '90 days'), 0)::text as outstanding_revenue_cents,
         coalesce((select sum(coalesce(nullif(actual_cost_cents, 0), estimated_cost_cents)) from public.job_material_list_items where tenant_id = $1 and status <> 'cancelled' and created_at >= now() - interval '90 days'), 0)::text as material_cost_cents,
         coalesce((select sum(amount_cents) from public.operations_worker_payments where tenant_id = $1 and status in ('recorded','reviewed') and payment_date >= current_date - interval '90 days'), 0)::text as worker_cost_cents
       `,
@@ -614,8 +614,8 @@ function breakdownQuery(workspaceId: string, mode: "source" | "salesperson" | "s
   const labelSql = {
     source: "coalesce(nullif(l.source, ''), nullif(ar.original_source, ''), 'Unknown source')",
     salesperson: "coalesce(u.name, u.email, 'Unassigned')",
-    service: "coalesce(nullif(ls.service_interest, ''), nullif(j.title, ''), nullif(e.title, ''), 'Unknown service')",
-    location: "coalesce(nullif(ls.location, ''), nullif(j.service_area, ''), nullif(j.service_address, ''), 'Unknown location')"
+    service: "coalesce(nullif(ls.service_interest, ''), nullif(job_context.title, ''), nullif(estimate_context.title, ''), 'Unknown service')",
+    location: "coalesce(nullif(ls.location, ''), nullif(job_context.service_area, ''), nullif(job_context.service_address, ''), 'Unknown location')"
   }[mode];
 
   const spendJoin = mode === "source"
@@ -653,34 +653,79 @@ function breakdownQuery(workspaceId: string, mode: "source" | "salesperson" | "s
         l.id as lead_id,
         l.qualification_status,
         s.qualification_status as scored_status,
-        ra.id as appointment_id,
-        e.id as estimate_id,
-        p.id as payment_id,
-        coalesce(p.amount_cents, 0) as collected_cents,
-        coalesce(mat.material_cents, 0) + coalesce(pay.worker_cents, 0) as cost_cents,
+        coalesce(appointment_totals.appointment_count, 0) as appointment_count,
+        coalesce(sale_totals.sale_count, 0) as sale_count,
+        coalesce(payment_totals.collected_cents, 0) as collected_cents,
+        coalesce(cost_totals.cost_cents, 0) as cost_cents,
         ${mode === "source" ? "coalesce(spend.spend_cents, 0)" : "0"} as spend_cents
       from public.leads l
       left join public.revenue_lead_scores s on s.tenant_id = l.tenant_id and s.lead_id = l.id
       left join public.local_service_lead_details ls on ls.tenant_id = l.tenant_id and ls.lead_id = l.id
-      left join public.revenue_attribution_records ar on ar.tenant_id = l.tenant_id and ar.lead_id = l.id and ar.entity_type = 'lead'
-      left join public.revenue_appointments ra on ra.tenant_id = l.tenant_id and ra.lead_id = l.id and ra.status in ('booked','confirmed','showed','completed')
-      left join public.service_estimates e on e.tenant_id = l.tenant_id and e.source_lead_id = l.id and e.status = 'approved'
-      left join public.service_jobs j on j.tenant_id = l.tenant_id and j.source_lead_id = l.id
-      left join public.service_invoices i on i.tenant_id = l.tenant_id and (i.estimate_id = e.id or i.job_id = j.id)
-      left join public.service_invoice_payments p on p.tenant_id = l.tenant_id and p.invoice_id = i.id and p.status in ('succeeded','manual')
-      left join public.users u on u.id = coalesce(l.assigned_to_user_id, j.assigned_user_id)
-      left join (
-        select tenant_id, service_job_id, sum(coalesce(nullif(actual_cost_cents, 0), estimated_cost_cents)) as material_cents
-        from public.job_material_list_items
-        where status <> 'cancelled'
-        group by tenant_id, service_job_id
-      ) mat on mat.tenant_id = j.tenant_id and mat.service_job_id = j.id
-      left join (
-        select tenant_id, service_job_id, sum(amount_cents) as worker_cents
-        from public.operations_worker_payments
-        where status in ('recorded','reviewed')
-        group by tenant_id, service_job_id
-      ) pay on pay.tenant_id = j.tenant_id and pay.service_job_id = j.id
+      left join lateral (
+        select record.original_source
+        from public.revenue_attribution_records record
+        where record.tenant_id = l.tenant_id and record.lead_id = l.id and record.entity_type = 'lead'
+        order by record.occurred_at desc, record.created_at desc
+        limit 1
+      ) ar on true
+      left join lateral (
+        select job.assigned_user_id, job.title, job.service_area, job.service_address
+        from public.service_jobs job
+        where job.tenant_id = l.tenant_id and job.source_lead_id = l.id
+        order by job.updated_at desc, job.created_at desc
+        limit 1
+      ) job_context on true
+      left join lateral (
+        select estimate.title
+        from public.service_estimates estimate
+        where estimate.tenant_id = l.tenant_id and estimate.source_lead_id = l.id
+        order by estimate.updated_at desc, estimate.created_at desc
+        limit 1
+      ) estimate_context on true
+      left join public.users u on u.id = coalesce(l.assigned_to_user_id, job_context.assigned_user_id)
+      left join lateral (
+        select count(*)::bigint as appointment_count
+        from public.revenue_appointments appointment
+        where appointment.tenant_id = l.tenant_id and appointment.lead_id = l.id
+          and appointment.status in ('booked','confirmed','showed','completed')
+      ) appointment_totals on true
+      left join lateral (
+        select count(*)::bigint as sale_count
+        from public.service_estimates estimate
+        where estimate.tenant_id = l.tenant_id and estimate.source_lead_id = l.id and estimate.status = 'approved'
+      ) sale_totals on true
+      left join lateral (
+        select coalesce(sum(greatest(payment.amount_cents-payment.refunded_amount_cents,0)), 0)::bigint as collected_cents
+        from public.service_invoice_payments payment
+        join public.service_invoices invoice
+          on invoice.tenant_id = payment.tenant_id and invoice.id = payment.invoice_id
+        where payment.tenant_id = l.tenant_id and payment.status in ('succeeded','manual','partially_refunded','refunded')
+          and (
+            exists (
+              select 1 from public.service_estimates estimate
+              where estimate.tenant_id = invoice.tenant_id and estimate.id = invoice.estimate_id and estimate.source_lead_id = l.id
+            )
+            or exists (
+              select 1 from public.service_jobs job
+              where job.tenant_id = invoice.tenant_id and job.id = invoice.job_id and job.source_lead_id = l.id
+            )
+          )
+      ) payment_totals on true
+      left join lateral (
+        select
+          coalesce((
+            select sum(coalesce(nullif(material.actual_cost_cents, 0), material.estimated_cost_cents))
+            from public.job_material_list_items material
+            join public.service_jobs job on job.tenant_id = material.tenant_id and job.id = material.service_job_id
+            where material.tenant_id = l.tenant_id and job.source_lead_id = l.id and material.status <> 'cancelled'
+          ), 0)
+          + coalesce((
+            select sum(worker.amount_cents)
+            from public.operations_worker_payments worker
+            join public.service_jobs job on job.tenant_id = worker.tenant_id and job.id = worker.service_job_id
+            where worker.tenant_id = l.tenant_id and job.source_lead_id = l.id and worker.status in ('recorded','reviewed')
+          ), 0) as cost_cents
+      ) cost_totals on true
       ${spendJoin}
       where l.tenant_id = $1 and l.status <> 'spam' and l.created_at >= now() - interval '90 days'
     )
@@ -688,8 +733,8 @@ function breakdownQuery(workspaceId: string, mode: "source" | "salesperson" | "s
       label,
       count(distinct lead_id)::text as leads,
       count(distinct lead_id) filter (where qualification_status = 'qualified' or scored_status = 'qualified')::text as qualified,
-      count(distinct appointment_id)::text as appointments,
-      count(distinct estimate_id)::text as sales,
+      coalesce(sum(appointment_count), 0)::text as appointments,
+      coalesce(sum(sale_count), 0)::text as sales,
       coalesce(sum(collected_cents), 0)::text as collected_revenue_cents,
       (coalesce(sum(collected_cents), 0) - coalesce(sum(cost_cents), 0))::text as gross_profit_cents,
       coalesce(max(spend_cents), 0)::text as spend_cents

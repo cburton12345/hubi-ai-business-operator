@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Camera, Clock, MapPin, ReceiptText, Route } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { OfflineFieldBridge } from "@/components/employee/OfflineFieldBridge";
+import { EmployeeFerocityChat } from "@/components/employee/EmployeeFerocityChat";
+import { getEmployeeChatInitialState } from "@/lib/employee/employee-chat";
 import { getEmployeeWorkday } from "@/lib/employee/get-employee-workday";
 import { getOperationsWorkforceDashboard } from "@/lib/operations-workforce/get-operations-workforce-dashboard";
 import {
@@ -11,6 +13,7 @@ import {
   createFieldMediaAction,
   createMileageAction,
   respondToEmployeeCashAdvanceAction,
+  updateAssignmentTaskStatusAction,
   updateEmployeeLanguageAction
 } from "@/app/app/operations-workforce/actions";
 
@@ -22,6 +25,9 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
   const signedInWorker = employeeDashboard?.workers[0] ?? null;
   const language: "en" | "es" = employeeDashboard?.language === "es" ? "es" : "en";
   const copy = employeeCopy[language];
+  const employeeChat = employeeDashboard?.access.workerId
+    ? await getEmployeeChatInitialState(employeeDashboard.access)
+    : null;
 
   return (
     <QueuePageShell
@@ -48,6 +54,14 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
           </select>
           <button className="mini-button" type="submit">{copy.saveLanguage}</button>
         </form>
+      ) : null}
+
+      {employeeMode && signedInWorker && employeeChat ? (
+        <EmployeeFerocityChat
+          initialTurns={employeeChat.turns}
+          initialThreadId={employeeChat.threadId}
+          language={language}
+        />
       ) : null}
 
       <section className="grid section-actions">
@@ -134,6 +148,23 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
                 </h3>
                 <p className="muted">{assignment.worker} / {assignment.jobsite}</p>
                 <p>{assignment.schedule}</p>
+                {assignment.taskList.length > 0 ? (
+                  <ul className="list compact-list">
+                    {assignment.taskList.map((task) => (
+                      <li className="list-row" key={`${assignment.id}-${task.index}`}>
+                        <span>{task.title}</span>
+                        <form action={updateAssignmentTaskStatusAction}>
+                          <input name="assignmentId" type="hidden" value={assignment.id} />
+                          <input name="taskIndex" type="hidden" value={task.index} />
+                          <input name="status" type="hidden" value={task.status === "done" ? "open" : "done"} />
+                          <button className="mini-button secondary-button" type="submit">
+                            {task.status === "done" ? copy.reopenTask : copy.completeTask}
+                          </button>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
               <div className="button-row">
                 <span className={`pill ${assignment.priority === "high" || assignment.priority === "urgent" ? "high" : ""}`}>{assignment.status}</span>
@@ -265,6 +296,7 @@ const employeeCopy = {
     openAssignments: "Open assignments", needsReview: "Needs review", workList: "Work List",
     workListBody: "Your assigned work, schedule, and field actions are together in one place.", openWork: "Open work",
     noWork: "No work is assigned yet.", punchIn: "Punch In", startLocation: "Where are you starting?",
+    completeTask: "Mark done", reopenTask: "Reopen",
     startNote: "Anything the office should know?", locationChecked: "Location checked", punchInButton: "Punch in",
     punchOut: "Punch Out", punchedIn: "You punched in", endLocation: "Where are you finishing?",
     breakMinutes: "Unpaid break minutes", workPerformed: "What did you complete today?", punchOutButton: "Punch out",
@@ -287,6 +319,7 @@ const employeeCopy = {
     openAssignments: "Trabajos abiertos", needsReview: "Por revisar", workList: "Lista de trabajo",
     workListBody: "Sus trabajos, horario y acciones de campo están juntos en un solo lugar.", openWork: "Abrir trabajo",
     noWork: "Todavía no hay trabajo asignado.", punchIn: "Marcar entrada", startLocation: "¿Dónde empieza?",
+    completeTask: "Marcar terminada", reopenTask: "Reabrir",
     startNote: "¿Hay algo que la oficina deba saber?", locationChecked: "Ubicación verificada", punchInButton: "Marcar entrada",
     punchOut: "Marcar salida", punchedIn: "Marcó entrada a las", endLocation: "¿Dónde termina?",
     breakMinutes: "Minutos de descanso no pagados", workPerformed: "¿Qué trabajo completó hoy?", punchOutButton: "Marcar salida",

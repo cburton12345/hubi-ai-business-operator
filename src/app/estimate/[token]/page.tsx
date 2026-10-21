@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { getPublicEstimate } from "@/lib/service-ops/get-public-estimate";
-import { acceptEstimateAction, updateEstimateOptionsAction } from "./actions";
+import { acceptEstimateAction, decideChangeOrderAction, updateEstimateOptionsAction } from "./actions";
 
 export default async function PublicEstimatePage({
   params,
   searchParams
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ accepted?: string; options?: string }>;
+  searchParams: Promise<{ accepted?: string; options?: string; change?: string }>;
 }) {
   const [{ token }, query] = await Promise.all([params, searchParams]);
   const estimate = await getPublicEstimate(token);
@@ -45,6 +45,9 @@ export default async function PublicEstimatePage({
           </div>
         ) : null}
         {query.options === "updated" ? <div className="success-card section-actions">Options and estimate total updated.</div> : null}
+        {query.change === "approved" ? <div className="success-card section-actions">Change order approved and recorded.</div> : null}
+        {query.change === "rejected" ? <div className="notice-card section-actions">Change order declined and recorded.</div> : null}
+        {query.change === "invalid" || query.change === "unavailable" ? <div className="notice-card warning section-actions">That decision could not be recorded. Review the required fields or ask the business for a current link.</div> : null}
 
         <section className="panel section-actions">
           {estimate.customerIntro ? <p>{estimate.customerIntro}</p> : null}
@@ -135,6 +138,52 @@ export default async function PublicEstimatePage({
               <p className="muted">Your signed receipt and a verification record will be emailed to you.</p>
               <button className="button" type="submit">Sign and accept estimate</button>
             </form>
+          </section>
+        ) : null}
+
+        {estimate.changeOrders.length > 0 ? (
+          <section className="panel section-actions">
+            <h2>Change Orders</h2>
+            <p className="muted">These changes are separate from the original signed estimate. Review the price, scope, and schedule effect before deciding.</p>
+            <ul className="list section-actions">
+              {estimate.changeOrders.map((change) => (
+                <li className="list-row" key={change.id}>
+                  <div className="full-width">
+                    <div className="list-row flush-row">
+                      <h3>{change.title}</h3>
+                      <span className="pill">{change.status.replaceAll("_", " ")}</span>
+                    </div>
+                    {change.description ? <p>{change.description}</p> : null}
+                    <p className="muted">Price change: {change.amount} / {change.scheduleImpact}</p>
+                    {change.status === "sent_manually" ? (
+                      <form action={decideChangeOrderAction} className="stacked-form section-actions">
+                        <input name="token" type="hidden" value={token} />
+                        <input name="changeOrderId" type="hidden" value={change.id} />
+                        <div className="form-grid two">
+                          <label>Electronic signature<input name="decidedByName" defaultValue={estimate.customerName} required /></label>
+                          <label>Email<input name="decidedByEmail" type="email" defaultValue={estimate.customerEmail} /></label>
+                        </div>
+                        <label>Optional note<textarea name="decisionNote" rows={2} /></label>
+                        <label className="inline-checkbox">
+                          <input name="electronicSignatureConsent" type="checkbox" required />
+                          I agree to use an electronic signature for this change-order decision.
+                        </label>
+                        <div className="button-row">
+                          <button className="button" name="decision" value="approved" type="submit">Approve change</button>
+                          <button className="button secondary-button" name="decision" value="rejected" type="submit">Decline change</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <p className="muted">
+                        {change.decidedByName ? `Signed by ${change.decidedByName}` : "Decision recorded"}
+                        {change.decidedAt ? ` on ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(change.decidedAt))}` : ""}
+                        {change.decisionVerification ? ` / verification ${change.decisionVerification}` : ""}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
       </section>

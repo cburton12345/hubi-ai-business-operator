@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { managedModelForRunType, workloadTierForRunType } from "./model-routing";
+import { independentReviewerConfigured, managedModelForRunType, workloadTierForRunType } from "./model-routing";
 
 const originalEnv = { ...process.env };
 
@@ -36,5 +36,33 @@ describe("AI workload routing", () => {
     expect(managedModelForRunType({ runType: "setup_guidance", requestType: "json" })).toBe("balanced");
     expect(managedModelForRunType({ runType: "adapter_factory_manifest", requestType: "json" })).toBe("advanced");
     expect(managedModelForRunType({ runType: "receipt_vision_extraction", requestType: "vision_json" })).toBe("vision");
+  });
+
+  it("requires the reviewer lane to use a deliberately distinct model", () => {
+    process.env.AI_MODEL = "primary";
+    process.env.AI_MODEL_REVIEWER = "reviewer";
+    expect(managedModelForRunType({ runType: "independent_review_expense_document_text", requestType: "json" })).toBe("reviewer");
+    expect(independentReviewerConfigured({ primaryRunType: "expense_document_text_extraction", requestType: "json" })).toBe(true);
+    process.env.AI_MODEL_REVIEWER = "primary";
+    expect(independentReviewerConfigured({ primaryRunType: "expense_document_text_extraction", requestType: "json" })).toBe(false);
+  });
+
+  it("does not route statement rows through the global frontier reviewer", () => {
+    process.env.AI_MODEL = "primary";
+    process.env.AI_MODEL_BALANCED = "primary";
+    process.env.AI_MODEL_REVIEWER = "frontier";
+    delete process.env.AI_MODEL_STATEMENT_REVIEWER;
+    expect(managedModelForRunType({ runType: "independent_review_expense_statement_classification", requestType: "json" })).toBe("primary");
+    expect(independentReviewerConfigured({
+      primaryRunType: "expense_statement_classification",
+      reviewerRunType: "independent_review_expense_statement_classification",
+      requestType: "json",
+    })).toBe(false);
+    process.env.AI_MODEL_STATEMENT_REVIEWER = "statement-reviewer";
+    expect(independentReviewerConfigured({
+      primaryRunType: "expense_statement_classification",
+      reviewerRunType: "independent_review_expense_statement_classification",
+      requestType: "json",
+    })).toBe(true);
   });
 });

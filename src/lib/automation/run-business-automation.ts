@@ -44,10 +44,22 @@ import {
   syncCapabilityTrustHealthForTenant,
 } from "@/lib/reliability/capability-runtime";
 import { evaluateConnectorHeartbeatAlerts } from "@/lib/observability/connector-heartbeats";
+import { evaluateOperationalHealthAlerts } from "@/lib/observability/operational-health";
 import { reconcileManagedNumberLifecycles } from "@/lib/phone/managed-number-lifecycle";
 import { syncOperatingCommitmentsForTenant } from "@/lib/operations/commitment-engine";
+import { syncOperatingGoalsForTenant } from "@/lib/operations/goal-engine";
+import { planDueOperatingGoalsForTenant } from "@/lib/operations/goal-planner";
 import { runAiGrowthDepartmentSweep } from "@/lib/growth/ai-growth-department";
 import { syncCustomerActivationRetentionForTenant } from "@/lib/customer-success/activation-retention";
+import { processStatementClassificationReviewsForTenant } from "@/lib/document-intelligence/statement-classification-review";
+import { runH4rAutonomousOperator } from "@/lib/integrations/h4r/operator";
+import { syncH4rBrainContextForTenant } from "@/lib/integrations/h4r/brain-context";
+import { capturePendingIntegrationGoalObservationsForTenant } from "@/lib/integrations/goal-observation";
+import { syncOperatingGoalIntegrationHealthForTenant } from "@/lib/operations/goal-integration-health";
+import { refreshDueProviderCredentialsForTenant } from "@/lib/integrations/credential-maintenance";
+import { advanceOperatingGoalStepsForTenant } from "@/lib/operations/goal-step-runner";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import { scanFerocityCheckoutRecovery } from "@/lib/platform/checkout-recovery";
 
 export type BusinessAutomationCompletedResult = {
   ok: true;
@@ -81,10 +93,46 @@ export type BusinessAutomationCompletedResult = {
       ReturnType<typeof syncOperatingCommitmentsForTenant>
     >
   >;
+  operatingGoals: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof syncOperatingGoalsForTenant>
+    >
+  >;
+  operatingGoalPlanning: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof planDueOperatingGoalsForTenant>
+    >
+  >;
+  integrationGoalObservations: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof capturePendingIntegrationGoalObservationsForTenant>
+    >
+  >;
+  operatingGoalIntegrationHealth: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof syncOperatingGoalIntegrationHealthForTenant>
+    >
+  >;
+  providerCredentialMaintenance: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof refreshDueProviderCredentialsForTenant>
+    >
+  >;
+  operatingGoalSteps: Array<
+    { tenantId: string } & Awaited<
+      ReturnType<typeof advanceOperatingGoalStepsForTenant>
+    >
+  >;
+  companionProductContext: Array<
+    { tenantId: string } & Awaited<ReturnType<typeof syncH4rBrainContextForTenant>>
+  >;
   customerSuccess: Array<
     { tenantId: string } & Awaited<
       ReturnType<typeof syncCustomerActivationRetentionForTenant>
     >
+  >;
+  statementClassificationReviews: Array<
+    { tenantId: string } & Awaited<ReturnType<typeof processStatementClassificationReviewsForTenant>>
   >;
   dailyBriefs: Array<{
     tenantId: string;
@@ -95,6 +143,7 @@ export type BusinessAutomationCompletedResult = {
   providerFunding: Awaited<ReturnType<typeof evaluateProviderFundingAlerts>>;
   platformCapacity: Awaited<ReturnType<typeof evaluatePlatformCapacity>>;
   platformAdminBrief: Awaited<ReturnType<typeof sendPlatformAdminDailyBrief>>;
+  checkoutRecovery: Awaited<ReturnType<typeof scanFerocityCheckoutRecovery>>;
   capabilityWatchdog: Awaited<
     ReturnType<typeof runCapabilityReliabilityWatchdog>
   >;
@@ -106,8 +155,10 @@ export type BusinessAutomationCompletedResult = {
   connectorHeartbeats: Awaited<
     ReturnType<typeof evaluateConnectorHeartbeatAlerts>
   >;
+  operationalHealth: Awaited<ReturnType<typeof evaluateOperationalHealthAlerts>>;
   managedNumbers: Awaited<ReturnType<typeof reconcileManagedNumberLifecycles>>;
   growthDepartment: Awaited<ReturnType<typeof runAiGrowthDepartmentSweep>>;
+  h4rOperator: Awaited<ReturnType<typeof runH4rAutonomousOperator>>;
   tenantFailures: Array<{ tenantId: string; message: string }>;
   elapsedMs: number;
 };
@@ -175,6 +226,12 @@ async function getAutomationTenantIds(limit: number) {
       where status in ('approved','queued')
         and coalesce(scheduled_for, created_at) <= now()
       group by tenant_id
+    ), due_goals as (
+      select tenant_id, min(next_evaluation_at) as oldest_due_at
+      from public.operating_goals
+      where status in ('active','progressing','waiting','blocked','needs_owner')
+        and next_evaluation_at <= now()
+      group by tenant_id
     ), last_runs as (
       select tenant_id, max(occurred_at) as last_run_at
       from public.operator_timeline_events
@@ -184,11 +241,12 @@ async function getAutomationTenantIds(limit: number) {
     select t.id
     from public.tenants t
     left join due_actions due on due.tenant_id = t.id
+    left join due_goals goals on goals.tenant_id = t.id
     left join last_runs last_run on last_run.tenant_id = t.id
     where t.status in ('active', 'trial')
     order by
-      case when due.tenant_id is not null then 0 else 1 end,
-      due.oldest_due_at nulls last,
+      case when due.tenant_id is not null or goals.tenant_id is not null then 0 else 1 end,
+      least(due.oldest_due_at,goals.oldest_due_at) nulls last,
       last_run.last_run_at nulls first,
       t.created_at asc
     limit $1
@@ -233,6 +291,10 @@ async function generateTenantDailyBrief(tenantId: string) {
     commitments_due: string;
     commitments_overdue: string;
     commitments_unconfirmed: string;
+    goals_progressing: string;
+    goals_waiting: string;
+    goals_blocked: string;
+    goals_needs_owner: string;
   }>(
     `
     select
@@ -247,6 +309,10 @@ async function generateTenantDailyBrief(tenantId: string) {
       ,(select count(*) from public.operating_commitments where tenant_id = $1 and status = 'due_soon')::text as commitments_due
       ,(select count(*) from public.operating_commitments where tenant_id = $1 and status = 'overdue')::text as commitments_overdue
       ,(select count(*) from public.operating_commitments where tenant_id = $1 and status = 'needs_confirmation')::text as commitments_unconfirmed
+      ,(select count(*) from public.operating_goals where tenant_id = $1 and status in ('active','progressing'))::text as goals_progressing
+      ,(select count(*) from public.operating_goals where tenant_id = $1 and status = 'waiting')::text as goals_waiting
+      ,(select count(*) from public.operating_goals where tenant_id = $1 and status = 'blocked')::text as goals_blocked
+      ,(select count(*) from public.operating_goals where tenant_id = $1 and status = 'needs_owner')::text as goals_needs_owner
     `,
     [tenantId],
   );
@@ -263,6 +329,10 @@ async function generateTenantDailyBrief(tenantId: string) {
   const commitmentsDue = Number(row?.commitments_due ?? 0);
   const commitmentsOverdue = Number(row?.commitments_overdue ?? 0);
   const commitmentsUnconfirmed = Number(row?.commitments_unconfirmed ?? 0);
+  const goalsProgressing = Number(row?.goals_progressing ?? 0);
+  const goalsWaiting = Number(row?.goals_waiting ?? 0);
+  const goalsBlocked = Number(row?.goals_blocked ?? 0);
+  const goalsNeedOwner = Number(row?.goals_needs_owner ?? 0);
   const priority =
     critical > 0
       ? "critical"
@@ -329,6 +399,14 @@ async function generateTenantDailyBrief(tenantId: string) {
           priority: "medium",
         }
       : null,
+    goalsNeedOwner > 0
+      ? {
+          title: "Operating goals need your decision",
+          detail: `${goalsNeedOwner} goal(s) reached a dependency that only you can resolve. Other active goals remain with Ferocity, workers, or external parties.`,
+          href: "/app/owner-command-center",
+          priority: "high",
+        }
+      : null,
     staleFollowups > 0
       ? {
           title: "Follow-up can recover money",
@@ -346,6 +424,7 @@ async function generateTenantDailyBrief(tenantId: string) {
     `${actionReview} queued action(s) need review.`,
     `${actionFailed} action(s) are failed or blocked.`,
     `${commitmentsDue} commitment(s) are due within 24 hours and ${commitmentsOverdue} are overdue.`,
+    `${goalsProgressing} goal(s) are progressing, ${goalsWaiting} are waiting on external events, ${goalsBlocked} are blocked, and ${goalsNeedOwner} need owner judgment.`,
   ];
 
   const summary = [
@@ -407,6 +486,10 @@ async function generateTenantDailyBrief(tenantId: string) {
         commitmentsDue,
         commitmentsOverdue,
         commitmentsUnconfirmed,
+        goalsProgressing,
+        goalsWaiting,
+        goalsBlocked,
+        goalsNeedOwner,
       }),
       JSON.stringify({
         generatedBy: "production_business_automation_runner",
@@ -422,7 +505,7 @@ async function generateTenantDailyBrief(tenantId: string) {
       severity, status, owner_attention, ai_handled, ai_summary, recommended_action, action_href, risk_type, confidence_score, metadata_json
     )
     values ($1, 'ferocity', 'Ferocity', $2, 'daily_brief.generated', 'Daily owner brief generated', $3, $4, 'ai_handled', false, true, $3, 'Open the Owner Command Center.', '/app/owner-command-center', 'approval', 91, $5::jsonb)
-    on conflict (tenant_id, platform_key, external_event_id)
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
     do update set
       summary = excluded.summary,
       severity = excluded.severity,
@@ -463,6 +546,9 @@ async function runBusinessAutomationLoopUnlocked(
     agentLimit?: number;
     tenantId?: string | null;
     tenantConcurrency?: number;
+    goalPlanningLimit?: number;
+    goalPlanningConcurrency?: number;
+    goalStepLimit?: number;
   } = {},
 ): Promise<BusinessAutomationCompletedResult> {
   const startedAt = Date.now();
@@ -486,7 +572,15 @@ async function runBusinessAutomationLoopUnlocked(
     [];
   const operatingCommitments: BusinessAutomationCompletedResult["operatingCommitments"] =
     [];
+  const operatingGoals: BusinessAutomationCompletedResult["operatingGoals"] = [];
+  const operatingGoalPlanning: BusinessAutomationCompletedResult["operatingGoalPlanning"] = [];
+  const integrationGoalObservations: BusinessAutomationCompletedResult["integrationGoalObservations"] = [];
+  const operatingGoalIntegrationHealth: BusinessAutomationCompletedResult["operatingGoalIntegrationHealth"] = [];
+  const providerCredentialMaintenance: BusinessAutomationCompletedResult["providerCredentialMaintenance"] = [];
+  const operatingGoalSteps: BusinessAutomationCompletedResult["operatingGoalSteps"] = [];
+  const companionProductContext: BusinessAutomationCompletedResult["companionProductContext"] = [];
   const customerSuccess: BusinessAutomationCompletedResult["customerSuccess"] = [];
+  const statementClassificationReviews: BusinessAutomationCompletedResult["statementClassificationReviews"] = [];
   const dailyBriefs: BusinessAutomationCompletedResult["dailyBriefs"] = [];
   const tenantFailures: BusinessAutomationCompletedResult["tenantFailures"] =
     [];
@@ -498,6 +592,10 @@ async function runBusinessAutomationLoopUnlocked(
     while (nextTenantIndex < tenantIds.length) {
       const tenantId = tenantIds[nextTenantIndex++];
       try {
+        providerCredentialMaintenance.push({
+          tenantId,
+          ...(await refreshDueProviderCredentialsForTenant(tenantId)),
+        });
         capabilityHealth.push({
           tenantId,
           ...(await syncCapabilityTrustHealthForTenant(tenantId)),
@@ -544,9 +642,42 @@ async function runBusinessAutomationLoopUnlocked(
           tenantId,
           ...(await syncOperatingCommitmentsForTenant(tenantId)),
         });
+        await syncCustomerOnboardingForTenant(tenantId);
+        companionProductContext.push({
+          tenantId,
+          ...(await syncH4rBrainContextForTenant(tenantId)),
+        });
+        integrationGoalObservations.push({
+          tenantId,
+          ...(await capturePendingIntegrationGoalObservationsForTenant(tenantId, 100)),
+        });
+        operatingGoalIntegrationHealth.push({
+          tenantId,
+          ...(await syncOperatingGoalIntegrationHealthForTenant(tenantId)),
+        });
+        operatingGoals.push({
+          tenantId,
+          ...(await syncOperatingGoalsForTenant(tenantId)),
+        });
+        operatingGoalPlanning.push({
+          tenantId,
+          ...(await planDueOperatingGoalsForTenant(
+            tenantId,
+            input.goalPlanningLimit ?? 8,
+            input.goalPlanningConcurrency,
+          )),
+        });
+        operatingGoalSteps.push({
+          tenantId,
+          ...(await advanceOperatingGoalStepsForTenant(tenantId, input.goalStepLimit ?? 50)),
+        });
         customerSuccess.push({
           tenantId,
           ...(await syncCustomerActivationRetentionForTenant(tenantId)),
+        });
+        statementClassificationReviews.push({
+          tenantId,
+          ...(await processStatementClassificationReviewsForTenant(tenantId, 25)),
         });
         dailyBriefs.push(await generateTenantDailyBrief(tenantId));
       } catch (error) {
@@ -601,12 +732,14 @@ async function runBusinessAutomationLoopUnlocked(
   });
   const providerFunding = await evaluateProviderFundingAlerts();
   const platformCapacity = await evaluatePlatformCapacity();
+  const checkoutRecovery = await scanFerocityCheckoutRecovery();
   const platformAdminBrief = await sendPlatformAdminDailyBrief();
   const capabilityWatchdog = await runCapabilityReliabilityWatchdog({
     tenantId: input.tenantId ?? null,
     limit: 200,
   });
   const connectorHeartbeats = await evaluateConnectorHeartbeatAlerts();
+  const operationalHealth = await evaluateOperationalHealthAlerts(tenantIds);
   const managedNumbers = await reconcileManagedNumberLifecycles({
     tenantId: input.tenantId ?? null,
     limit: input.tenantLimit ?? 25,
@@ -615,6 +748,19 @@ async function runBusinessAutomationLoopUnlocked(
     tenantLimit: input.tenantLimit ?? 100,
     tenantId: input.tenantId ?? null,
   });
+  const h4rOperator = await runH4rAutonomousOperator();
+  if (!h4rOperator.ok) {
+    await raisePlatformAdminAlert({
+      fingerprint: "h4r-autonomous-operator:request-failed",
+      family: "automation_health",
+      type: "h4r_operator_failed",
+      severity: "high",
+      title: "Homes4Rent persistent operator needs attention",
+      body: "Ferocity could not complete the scheduled Homes4Rent operator handoff. H4R remains authoritative and the failure is retryable without duplicating property-management state.",
+      actionUrl: "/app/platform-activity",
+      metadata: { safeError: h4rOperator.safeError, retryable: h4rOperator.retryable },
+    });
+  }
   await cleanupExpiredRuntimeRows();
 
   await queryPostgres(
@@ -641,16 +787,27 @@ async function runBusinessAutomationLoopUnlocked(
         externalCallLogs,
         goldenBusinessLoops,
         operatingCommitments,
+        integrationGoalObservations,
+        operatingGoalIntegrationHealth,
+        providerCredentialMaintenance,
+        operatingGoalSteps,
+        companionProductContext,
+        operatingGoals,
+        operatingGoalPlanning,
         customerSuccess,
+        statementClassificationReviews,
         dailyBriefs,
         aiWorkforce,
         providerFunding,
         platformCapacity,
+        checkoutRecovery,
         platformAdminBrief,
         capabilityWatchdog,
         connectorHeartbeats,
+        operationalHealth,
         managedNumbers,
         growthDepartment,
+        h4rOperator,
         capabilityHealth,
         tenantFailures,
         elapsedMs: Date.now() - startedAt,
@@ -674,16 +831,27 @@ async function runBusinessAutomationLoopUnlocked(
     externalCallLogs,
     goldenBusinessLoops,
     operatingCommitments,
+    integrationGoalObservations,
+    operatingGoalIntegrationHealth,
+    providerCredentialMaintenance,
+    operatingGoalSteps,
+    companionProductContext,
+    operatingGoals,
+    operatingGoalPlanning,
     customerSuccess,
+    statementClassificationReviews,
     dailyBriefs,
     aiWorkforce,
     providerFunding,
     platformCapacity,
+    checkoutRecovery,
     platformAdminBrief,
     capabilityWatchdog,
     connectorHeartbeats,
+    operationalHealth,
     managedNumbers,
     growthDepartment,
+    h4rOperator,
     capabilityHealth,
     tenantFailures,
     elapsedMs: Date.now() - startedAt,
@@ -696,6 +864,9 @@ export async function runBusinessAutomationLoop(
     agentLimit?: number;
     tenantId?: string | null;
     tenantConcurrency?: number;
+    goalPlanningLimit?: number;
+    goalPlanningConcurrency?: number;
+    goalStepLimit?: number;
   } = {},
 ): Promise<BusinessAutomationRunResult> {
   const startedAt = Date.now();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOAuthPkcePair, exchangeStandardOAuthAuthorizationCode, verifyStandardOAuthIdentity } from "./standard-oauth";
+import { assessOAuthScopes, createOAuthPkcePair, exchangeStandardOAuthAuthorizationCode, verifyStandardOAuthIdentity } from "./standard-oauth";
 
 const client = {
   clientId: "client-id",
@@ -17,6 +17,34 @@ function tokenResponse(extra: Record<string, unknown> = {}) {
     ...extra
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
+
+describe("assessOAuthScopes", () => {
+  it("detects a provider response missing required read access", () => {
+    expect(assessOAuthScopes(["openid", "Mail.Read"], ["openid"])).toEqual({
+      status: "insufficient",
+      effectiveScopes: ["openid"],
+      grantedScopes: ["openid"],
+      missingScopes: ["Mail.Read"],
+    });
+  });
+
+  it("keeps provider-omitted scope reporting distinct from verified access", () => {
+    expect(assessOAuthScopes(["identity", "adsread"], [])).toEqual({
+      status: "unverified",
+      effectiveScopes: ["identity", "adsread"],
+      grantedScopes: [],
+      missingScopes: [],
+    });
+  });
+
+  it("deduplicates exact granted scopes", () => {
+    expect(assessOAuthScopes(["read"], ["read", "read"]).status).toBe("verified");
+  });
+
+  it("does not treat omitted protocol identity scopes as missing business access", () => {
+    expect(assessOAuthScopes(["openid", "email", "Mail.Read"], ["Mail.Read"]).status).toBe("verified");
+  });
+});
 
 describe("standard OAuth token exchange", () => {
   it("uses Google's server-side authorization code exchange", async () => {

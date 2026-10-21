@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, CheckCircle2, CircleDollarSign, LockKeyhole, SlidersHorizontal, WandSparkles, Workflow } from "lucide-react";
+import { Bot, CheckCircle2, CircleDollarSign, KeyRound, LockKeyhole, SlidersHorizontal, WandSparkles, Workflow } from "lucide-react";
 import { getCurrentWorkspace, getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getOperatorSetupDashboard } from "@/lib/setup/get-operator-setup";
@@ -48,7 +48,7 @@ export default async function WelcomePage() {
           </p>
         </div>
         <div className="inline-actions">
-          <Link className="button" href="/app/build-system">
+          <Link className="button" href="/app/ferocity?onboarding=1">
             Let Ferocity guide me
           </Link>
           <Link className="button secondary-button" href="/app/service-command">
@@ -121,7 +121,7 @@ export default async function WelcomePage() {
             Tell Ferocity what the business needs. It recommends services, lead sources, follow-up, reviews, payments, SEO, and automations before
             anything goes live.
           </p>
-          <Link className="mini-button" href="/app/build-system">
+          <Link className="mini-button" href="/app/ferocity?onboarding=1">
             Start guided setup
           </Link>
         </article>
@@ -132,8 +132,8 @@ export default async function WelcomePage() {
           <p className="muted">
             Describe the outcome in normal words. Ferocity uses the Business Brain and the right operating department to prepare replies, follow-up, content, reviews, setup work, and next actions for approval.
           </p>
-          <Link className="mini-button" href="/app/ai-workforce">
-            AI Workforce
+          <Link className="mini-button" href="/app/ferocity?onboarding=1">
+            Ask Ferocity
           </Link>
         </article>
 
@@ -178,6 +178,17 @@ export default async function WelcomePage() {
           </p>
           <Link className="mini-button" href="/app/controls">
             Open controls
+          </Link>
+        </article>
+
+        <article className="panel span-6">
+          <KeyRound size={20} />
+          <h2>Keep using your preferred AI—optionally</h2>
+          <p className="muted">
+            Ferocity includes its own AI. If you already use a compatible paid assistant, an owner can connect it through narrow, revocable permissions without exposing Ferocity&apos;s internal systems.
+          </p>
+          <Link className="mini-button" href="/app/integrations/external-ai">
+            Review external AI access
           </Link>
         </article>
 

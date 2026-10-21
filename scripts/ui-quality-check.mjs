@@ -58,13 +58,18 @@ for (const file of componentFiles) {
 
 const shellPath = path.join(sourceRoot, "components", "admin", "AppShell.tsx");
 const shell = fs.readFileSync(shellPath, "utf8");
-const menuStart = shell.indexOf('<div className="nav-menu-panel">');
-const menuEnd = shell.indexOf("</details>", menuStart);
+const navMenuComponentPath = path.join(sourceRoot, "components", "admin", "WorkspaceNavMenu.tsx");
+const navMenuComponent = fs.readFileSync(navMenuComponentPath, "utf8");
+const menuStart = shell.indexOf("<WorkspaceNavMenu");
+const menuEnd = shell.indexOf("</WorkspaceNavMenu>", menuStart);
 if (menuStart < 0 || menuEnd < 0) {
   throw new Error("Could not locate the All Tools menu in AppShell.");
 }
+if (!navMenuComponent.includes('<div className="nav-menu-panel">')) {
+  throw new Error("WorkspaceNavMenu no longer renders the guarded All Tools panel.");
+}
 
-const menuSource = shell.slice(menuStart, menuEnd);
+const menuSource = shell.slice(menuStart, menuEnd + "</WorkspaceNavMenu>".length);
 const menuTargets = [...menuSource.matchAll(/<Link\b[^>]*href="([^"]+)"/g)].map((match) => match[1]);
 const repeatedMenuTargets = [...new Set(menuTargets.filter((target, index) => menuTargets.indexOf(target) !== index))];
 

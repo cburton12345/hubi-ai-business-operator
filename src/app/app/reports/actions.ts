@@ -7,14 +7,25 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function dollarsToCents(value: FormDataEntryValue | null) {
-  const normalized = String(value ?? "").replace(/[$,\s]/g, "");
+  const raw = String(value ?? "").trim();
+  if (!raw) return Number.NaN;
+  const normalized = raw.replace(/[$,\s]/g, "");
   const dollars = Number(normalized);
-  return Number.isFinite(dollars) ? Math.max(0, Math.round(dollars * 100)) : 0;
+  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : Number.NaN;
 }
 
 function wholeNumber(value: FormDataEntryValue | null) {
-  const parsed = Number(String(value ?? "").replace(/[,\s]/g, ""));
-  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+  const raw = String(value ?? "").trim();
+  if (!raw) return Number.NaN;
+  const parsed = Number(raw.replace(/[,\s]/g, ""));
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
+function decimalNumber(value: FormDataEntryValue | null, optional = false) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return optional ? undefined : Number.NaN;
+  const parsed = Number(raw.replace(/[,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 const baselineSchema = z.object({
@@ -31,7 +42,12 @@ const baselineSchema = z.object({
   notes: z.string().max(1200).optional()
 });
 
-export async function saveGrowthBaselineAction(formData: FormData) {
+export type GrowthBaselineActionState = { ok: boolean; message?: string; error?: string };
+
+export async function saveGrowthBaselineAction(
+  _state: GrowthBaselineActionState,
+  formData: FormData
+): Promise<GrowthBaselineActionState> {
   const actor = await requirePermission("tenant:manage");
   const parsed = baselineSchema.safeParse({
     baselineDate: String(formData.get("baselineDate") ?? "") || undefined,
@@ -40,19 +56,33 @@ export async function saveGrowthBaselineAction(formData: FormData) {
     monthlyBookedJobs: wholeNumber(formData.get("monthlyBookedJobs")),
     monthlyAdSpendCents: dollarsToCents(formData.get("monthlyAdSpend")),
     averageTicketCents: dollarsToCents(formData.get("averageTicket")),
-    closeRatePercent: Number(formData.get("closeRatePercent") ?? 0),
+    closeRatePercent: decimalNumber(formData.get("closeRatePercent")),
     reviewCount: wholeNumber(formData.get("reviewCount")),
-    reviewRating: formData.get("reviewRating") ? Number(formData.get("reviewRating")) : undefined,
+    reviewRating: decimalNumber(formData.get("reviewRating"), true),
     websiteSessions: wholeNumber(formData.get("websiteSessions")),
     notes: String(formData.get("notes") ?? "")
   });
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    const labels: Record<string, string> = {
+      monthlyRevenueCents: "Monthly revenue",
+      monthlyLeads: "Monthly leads",
+      monthlyBookedJobs: "Booked jobs",
+      monthlyAdSpendCents: "Ad spend",
+      averageTicketCents: "Average ticket",
+      closeRatePercent: "Close rate",
+      reviewCount: "Review count",
+      reviewRating: "Review rating",
+      websiteSessions: "Website sessions"
+    };
+    return { ok: false, error: `${labels[String(field)] ?? "A baseline value"} is missing or invalid. Enter 0 only when the true value is zero.` };
+  }
 
   const tenantId = await getCurrentWorkspaceId();
   const closeRateBps = Math.round(parsed.data.closeRatePercent * 100);
   const baselineDate = parsed.data.baselineDate || new Date().toISOString().slice(0, 10);
 
-  await queryPostgres(
+  const saved = await queryPostgres(
     `
     insert into public.business_growth_baselines (
       tenant_id, baseline_name, baseline_type, baseline_date, source, confidence,
@@ -101,4 +131,7 @@ export async function saveGrowthBaselineAction(formData: FormData) {
   revalidatePath("/app/reports");
   revalidatePath("/app");
   revalidatePath("/app/owner-command-center");
+  return saved
+    ? { ok: true, message: "Baseline saved. Ferocity will use it for future comparisons." }
+    : { ok: false, error: "The baseline could not be saved. Your entries are still here; try again." };
 }

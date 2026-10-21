@@ -20,24 +20,48 @@ function count(row: Record<string, unknown> | undefined, key: string) {
 export async function retryFailedOutboundActionsForTenant(tenantId: string) {
   const result = await queryPostgres<{ reopened: string }>(
     `
-    with reopened as (
-      update public.outbound_action_queue
-      set status = 'needs_review',
-          last_error = concat('Retry review required after failure: ', coalesce(last_error, 'Unknown failure')),
-          metadata_json = metadata_json || jsonb_build_object(
+    with retry_candidates as (
+      select q.id,
+        p.status = 'live' and p.requires_human_approval = false
+          and coalesce((q.metadata_json->>'retryable')::boolean, false) as automatic_retry
+      from public.outbound_action_queue q
+      left join public.live_action_policies p on p.tenant_id = q.tenant_id and p.id = q.policy_id
+      where q.tenant_id = $1
+        and q.status = 'failed'
+        and coalesce((q.metadata_json->>'retryCount')::int, 0) < 2
+        and q.updated_at <= now() - interval '10 minutes'
+    ), reopened as (
+      update public.outbound_action_queue q
+      set status = case
+            when candidate.automatic_retry then 'queued'
+            else 'needs_review'
+          end,
+          scheduled_for = case
+            when candidate.automatic_retry
+            then now() + make_interval(mins => 5 * (coalesce((q.metadata_json->>'retryCount')::int, 0) + 1))
+            else q.scheduled_for
+          end,
+          last_error = case
+            when candidate.automatic_retry
+            then concat('Automatic retry scheduled after transient failure: ', coalesce(q.last_error, 'Unknown failure'))
+            else concat('Retry review required after failure: ', coalesce(q.last_error, 'Unknown failure'))
+          end,
+          metadata_json = q.metadata_json || jsonb_build_object(
             'retryCount',
-            coalesce((metadata_json->>'retryCount')::int, 0) + 1,
+            coalesce((q.metadata_json->>'retryCount')::int, 0) + 1,
             'lastRetryPreparedAt',
             now(),
             'retryMode',
-            'human_review_before_live_action'
+            case
+              when candidate.automatic_retry
+              then 'bounded_automatic_retry'
+              else 'human_review_before_live_action'
+            end
           ),
           updated_at = now()
-      where tenant_id = $1
-        and status = 'failed'
-        and coalesce((metadata_json->>'retryCount')::int, 0) < 2
-        and updated_at <= now() - interval '10 minutes'
-      returning id
+      from retry_candidates candidate
+      where q.tenant_id = $1 and q.id = candidate.id
+      returning q.id
     )
     select count(*)::text as reopened from reopened
     `,
@@ -137,7 +161,7 @@ export async function scanActionQueueForTenant(tenantId: string): Promise<Action
       )
       select f.tenant_id, f.brand_id,
         case when f.channel = 'sms' then 'sms_send' else 'email_send' end,
-        case when f.channel = 'sms' then 'twilio_shared' else 'resend_shared' end,
+        coalesce(route.default_provider_key, case when f.channel = 'sms' then 'twilio_shared' else 'resend_shared' end),
         case when p.status = 'live' and p.requires_human_approval = false then 'queued' else 'needs_review' end,
         case when f.workflow_type = 'invoice_followup' then 'high' else 'medium' end,
         'follow_up_workflow',
@@ -154,6 +178,9 @@ export async function scanActionQueueForTenant(tenantId: string): Promise<Action
       from public.follow_up_workflows f
       left join public.leads l on l.tenant_id = f.tenant_id and l.id = f.lead_id
       left join public.customers c on c.tenant_id = f.tenant_id and c.id = f.customer_id
+      left join public.provider_routing_rules route on route.tenant_id = f.tenant_id
+        and route.action_type = case when f.channel = 'sms' then 'sms_send' else 'email_send' end
+        and route.status = 'active'
       left join public.live_action_policies p on p.tenant_id = f.tenant_id
         and p.action_key = case when f.channel = 'sms' then 'sms_send' when f.channel = 'email' then 'email_send' else 'manual_followup' end
       where f.tenant_id = $1

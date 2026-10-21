@@ -22,4 +22,13 @@ describe("business action gateway boundaries", () => {
   it("rejects outside-agent tools until each action is certified", () => {
     expect(businessActionPrincipalBlockReason(externalPrincipal, businessActionCatalog.getOpenLeads)).toContain("not certified");
   });
+
+  it("accepts only certified actions after a stored revocable grant is verified", () => {
+    const principal = { ...externalPrincipal, scopes: ["business:read"] };
+    expect(businessActionPrincipalBlockReason(principal, businessActionCatalog.getBusinessSummary)).toBeNull();
+    expect(businessActionPrincipalBlockReason(
+      { ...principal, authorization: { verified: true, source: "authenticated_user_session" } },
+      businessActionCatalog.getBusinessSummary,
+    )).toContain("stored, revocable");
+  });
 });

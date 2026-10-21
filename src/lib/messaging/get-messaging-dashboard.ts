@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getMessagingProviderStatus } from "@/lib/messaging/messaging-engine";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 

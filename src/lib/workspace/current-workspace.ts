@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { queryPostgres } from "@/lib/db/postgres";
 import { hasAdminSession } from "@/lib/auth/admin-session";
 import { appSessionCookieName, getCurrentAppSession } from "@/lib/auth/session";
@@ -14,7 +15,7 @@ export type CurrentWorkspace = {
   role: string;
 };
 
-export async function getCurrentWorkspace(): Promise<CurrentWorkspace> {
+export const getCurrentWorkspace = cache(async (): Promise<CurrentWorkspace> => {
   const cookieStore = await cookies();
   const selectedCookie = cookieStore.get(selectedWorkspaceCookieName)?.value;
   const session = await getCurrentAppSession();
@@ -62,7 +63,7 @@ export async function getCurrentWorkspace(): Promise<CurrentWorkspace> {
     accountType: "internal",
     role: "owner"
   };
-}
+});
 
 export async function getCurrentWorkspaceId() {
   return (await getCurrentWorkspace()).id;

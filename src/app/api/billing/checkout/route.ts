@@ -9,6 +9,7 @@ import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 import { TERMS_VERSION } from "@/lib/legal/terms";
+import { hashSessionToken } from "@/lib/auth/password";
 
 const checkoutSchema = z.object({
   plan: z.string().trim(),
@@ -19,6 +20,8 @@ const checkoutSchema = z.object({
   name: z.string().trim().max(160).optional(),
   consentToContact: z.string().optional(),
   termsAccepted: z.string().optional()
+  ,accessRequestId: z.string().uuid().optional()
+  ,checkoutHandoff: z.string().trim().min(32).max(200).optional()
 });
 
 const priceEnvByPlan = {
@@ -47,6 +50,25 @@ function startFallback(request: NextRequest, plan: string, reason: string) {
     billing: reason
   });
   return redirectTo(request, `/start?${params.toString()}`);
+}
+
+async function markCheckoutFailure(accessRequestId: string | null, reason: string) {
+  if (!accessRequestId) return;
+  try {
+    await queryPostgres(
+      `update public.access_requests
+       set status='new',metadata_json=metadata_json || $2::jsonb,updated_at=now()
+       where id=$1 and request_type='paid_checkout'`,
+      [accessRequestId, JSON.stringify({ checkoutStatus: "checkout_failed", checkoutFailureReason: reason })],
+    );
+  } catch (error) {
+    await logAppError({
+      source: "api.billing.checkout",
+      message: "Checkout failed and its recovery checkpoint could not be updated.",
+      severity: "error",
+      metadata: { accessRequestId, reason, safeError: error instanceof Error ? error.message : String(error) },
+    });
+  }
 }
 
 async function updateExistingSubscription(input: {
@@ -96,6 +118,8 @@ export async function POST(request: NextRequest) {
     name: String(formData.get("name") ?? "") || undefined,
     consentToContact: String(formData.get("consentToContact") ?? "") || undefined,
     termsAccepted: String(formData.get("termsAccepted") ?? "") || undefined
+    ,accessRequestId: String(formData.get("accessRequestId") ?? "") || undefined
+    ,checkoutHandoff: String(formData.get("checkoutHandoff") ?? "") || undefined
   });
 
   if (!parsed.success || !isSelfServePlanKey(parsed.data.plan)) {
@@ -173,7 +197,32 @@ export async function POST(request: NextRequest) {
   }
 
   if (publicSignup) {
-    const accessRequest = await queryPostgres<{ id: string }>(
+    const reusableRequest = parsed.data.accessRequestId && parsed.data.checkoutHandoff
+      ? await queryPostgres<{ id: string }>(`
+          update public.access_requests set
+            status='new',
+            metadata_json=(metadata_json-'checkoutHandoffTokenHash'-'checkoutHandoffExpiresAt') || $6::jsonb,
+            updated_at=now()
+          where id=$1 and lower(email)=lower($2) and company_name=$3 and requested_plan=$4
+            and metadata_json->>'checkoutHandoffTokenHash'=$5
+            and (metadata_json->>'checkoutHandoffExpiresAt')::timestamptz > now()
+          returning id`, [
+            parsed.data.accessRequestId,
+            parsed.data.email,
+            parsed.data.companyName,
+            parsed.data.plan,
+            hashSessionToken(parsed.data.checkoutHandoff),
+            JSON.stringify({
+              purchaseFlow: "guided_start_to_checkout",
+              checkoutStatus: "creating",
+              consentToContact: true,
+              termsAccepted: true,
+              termsVersion: TERMS_VERSION,
+              billingInterval: parsed.data.billingInterval,
+            }),
+          ])
+      : null;
+    const accessRequest = reusableRequest?.rows[0] ? reusableRequest : await queryPostgres<{ id: string }>(
       `
       insert into public.access_requests (
         request_type, status, priority, name, email, company_name, requested_plan,
@@ -274,11 +323,13 @@ export async function POST(request: NextRequest) {
         detail: detail.slice(0, 500)
       }
     });
+    await markCheckoutFailure(accessRequestId, "stripe_session_creation_failed");
     return startFallback(request, parsed.data.plan, "stripe_error");
   }
 
   const checkoutSession = (await response.json()) as { id?: string; url?: string };
   if (!checkoutSession.url) {
+    await markCheckoutFailure(accessRequestId, "stripe_session_missing_url");
     return startFallback(request, parsed.data.plan, "stripe_missing_url");
   }
 

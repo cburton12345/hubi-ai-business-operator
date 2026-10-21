@@ -19,6 +19,7 @@ import { inferSmsPurpose } from "@/lib/messaging/sms-policy";
 export type ReadyMessageProcessingResult = {
   checked: number;
   sent: number;
+  providerQueued: number;
   blocked: number;
   failed: number;
 };
@@ -42,7 +43,10 @@ type ReadyMessageRow = {
   contact_email: string | null;
   contact_phone: string | null;
   workflow_type: string | null;
+  invoice_id: string | null;
+  invoice_collection_blocked: boolean;
   approved_by_user_id: string | null;
+  metadata_json: Record<string, unknown> | null;
 };
 
 function engineProviderKey(actionType: "email_send" | "sms_send", providerKey: string) {
@@ -56,9 +60,10 @@ function engineProviderKey(actionType: "email_send" | "sms_send", providerKey: s
 async function updateQueueResult(input: {
   tenantId: string;
   row: ReadyMessageRow;
-  status: "sent" | "blocked" | "failed";
+  status: "provider_queued" | "sent" | "blocked" | "failed";
   message: string | null;
   providerMessageId?: string | null;
+  retryable?: boolean;
 }) {
   await queryPostgres(
     `
@@ -78,6 +83,7 @@ async function updateQueueResult(input: {
       JSON.stringify({
         processedBy: "business_automation_loop",
         providerMessageId: input.providerMessageId ?? null,
+        retryable: input.retryable ?? false,
         processedAt: new Date().toISOString(),
         ...(input.row.action_type === "voice_call" && input.status === "sent"
           ? { voiceCapacity: { status: "started", startedAt: new Date().toISOString() } }
@@ -87,6 +93,7 @@ async function updateQueueResult(input: {
   );
 
   if (input.row.target_type === "revenue_appointment_reminder" && input.row.target_id) {
+    const reminderStatus = input.status === "provider_queued" ? "queued" : input.status;
     await queryPostgres(
       `
       update public.revenue_appointment_reminders
@@ -99,14 +106,21 @@ async function updateQueueResult(input: {
       [
         input.tenantId,
         input.row.target_id,
-        input.status,
+        reminderStatus,
         JSON.stringify({ outboundActionId: input.row.id, lastResult: input.message })
       ]
     );
   }
 
+  if (input.status === "provider_queued") return;
+
   if (input.status === "sent" && input.row.target_type === "follow_up_workflow" && input.row.target_id) {
-    const workflowResult = await queryPostgres<{ enrollment_id: string | null }>(
+    const workflowResult = await queryPostgres<{
+      enrollment_id: string | null;
+      lead_id: string | null;
+      customer_id: string | null;
+      workflow_type: string;
+    }>(
       `
       update public.follow_up_workflows
       set status = 'completed',
@@ -114,11 +128,59 @@ async function updateQueueResult(input: {
           metadata_json = metadata_json || jsonb_build_object('completedBy', 'business_automation_loop'),
           updated_at = now()
       where tenant_id = $1 and id = $2
-      returning metadata_json->>'enrollmentId' as enrollment_id
+      returning metadata_json->>'enrollmentId' as enrollment_id, lead_id, customer_id, workflow_type
       `,
       [input.tenantId, input.row.target_id]
     );
     const enrollmentId = workflowResult?.rows[0]?.enrollment_id;
+    const completedWorkflow = workflowResult?.rows[0];
+    if (completedWorkflow?.lead_id) {
+      await queryPostgres(
+        `update public.leads
+         set status=case when status='new' then 'contacted' else status end,updated_at=now()
+         where tenant_id=$1 and id=$2`,
+        [input.tenantId, completedWorkflow.lead_id]
+      );
+    }
+    if (completedWorkflow?.lead_id || completedWorkflow?.customer_id) {
+      await queryPostgres(
+        `with target_thread as (
+           select id from public.communication_threads
+           where tenant_id=$1
+             and (($2::uuid is not null and lead_id=$2::uuid) or ($3::uuid is not null and customer_id=$3::uuid))
+           order by case when status in ('open','waiting_on_team','waiting_on_customer') then 0 else 1 end,updated_at desc
+           limit 1
+         ), recorded as (
+           insert into public.communication_messages (
+             tenant_id,thread_id,direction,channel,visibility,recipient_label,body,status,
+             ai_generated,provider_message_id,sent_at,metadata_json
+           )
+           select $1,id,'outbound',$4,'customer_visible',$5,$6,'sent',true,$7,now(),
+             jsonb_build_object('outboundActionId',$8,'workflowType',$9,'recordedBy','business_automation_loop')
+           from target_thread
+           where not exists (
+             select 1 from public.communication_messages existing
+             where existing.tenant_id=$1 and existing.metadata_json->>'outboundActionId'=$8
+           )
+           returning thread_id
+         )
+         update public.communication_threads thread
+         set status='waiting_on_customer',last_message_at=now(),unanswered_since=now(),
+           next_follow_up_at=null,updated_at=now()
+         where thread.tenant_id=$1 and thread.id in (select id from target_thread)`,
+        [
+          input.tenantId,
+          completedWorkflow.lead_id,
+          completedWorkflow.customer_id,
+          input.row.action_type === "email_send" ? "email" : "sms",
+          input.row.recipient_label,
+          input.row.body,
+          input.providerMessageId ?? null,
+          input.row.id,
+          completedWorkflow.workflow_type,
+        ]
+      );
+    }
     if (enrollmentId) {
       await queryPostgres(
         `
@@ -159,6 +221,25 @@ async function updateQueueResult(input: {
           updated_at = now()
       where tenant_id = $1 and id = $2
       `,
+      [input.tenantId, input.row.target_id]
+    );
+  }
+
+  if (input.status === "sent" && input.row.target_type === "messaging_conversation" && input.row.target_id) {
+    await queryPostgres(
+      `with updated_conversation as (
+         update public.messaging_conversations
+         set status='waiting_on_customer',unread_count=0,first_response_due_at=null,
+           last_outbound_at=now(),last_message_at=now(),updated_at=now()
+         where tenant_id=$1 and id=$2
+         returning source_thread_id
+       )
+       update public.communication_threads thread
+       set status='waiting_on_customer',unanswered_since=now(),next_follow_up_at=null,
+         last_message_at=now(),updated_at=now()
+       where thread.tenant_id=$1 and thread.id in (
+         select source_thread_id from updated_conversation where source_thread_id is not null
+       )`,
       [input.tenantId, input.row.target_id]
     );
   }
@@ -237,13 +318,24 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       ,coalesce(l.email, c.email, case when q.recipient_label like '%@%' then q.recipient_label end) as contact_email
       ,coalesce(l.phone, c.phone, case when q.recipient_label not like '%@%' then q.recipient_label end) as contact_phone
       ,f.workflow_type
+      ,coalesce(i.id,f.invoice_id)::text as invoice_id
+      ,exists(
+        select 1 from public.payment_disputes d
+        join public.service_invoice_payments disputed_payment
+          on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+        where d.tenant_id=q.tenant_id
+          and disputed_payment.invoice_id=coalesce(i.id,f.invoice_id)
+          and d.status in ('warning','needs_response','under_review')
+       ) as invoice_collection_blocked
       ,q.approved_by_user_id
+      ,q.metadata_json
     from public.outbound_action_queue q
     left join public.live_action_policies p on p.id = q.policy_id and p.tenant_id = q.tenant_id
-    left join public.leads l on l.tenant_id = q.tenant_id and q.target_type = 'lead' and l.id = q.target_id
-    left join public.service_invoices i on i.tenant_id = q.tenant_id and q.target_type = 'service_invoice' and i.id = q.target_id
     left join public.follow_up_workflows f on f.tenant_id=q.tenant_id and q.target_type='follow_up_workflow' and f.id=q.target_id
-    left join public.customers c on c.tenant_id = q.tenant_id and c.id = i.customer_id
+    left join public.leads l on l.tenant_id = q.tenant_id
+      and ((q.target_type = 'lead' and l.id = q.target_id) or l.id = f.lead_id)
+    left join public.service_invoices i on i.tenant_id = q.tenant_id and q.target_type = 'service_invoice' and i.id = q.target_id
+    left join public.customers c on c.tenant_id = q.tenant_id and (c.id = i.customer_id or c.id = f.customer_id)
     where q.tenant_id = $1
       and q.action_type in ('email_send', 'sms_send', 'voice_call')
       and coalesce(q.scheduled_for, now()) <= now()
@@ -262,6 +354,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
   );
   const rows = result?.rows ?? [];
   let sent = 0;
+  let providerQueued = 0;
   let blocked = 0;
   let failed = 0;
 
@@ -269,10 +362,23 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
     const recipient = row.recipient_label?.trim() ?? "";
     const body = row.body?.trim() ?? "";
     const channel = row.action_type === "email_send" ? "email" : row.action_type === "voice_call" ? "phone" : "sms";
+    if (row.workflow_type === "invoice_followup" && row.invoice_collection_blocked) {
+      blocked += 1;
+      await updateQueueResult({
+        tenantId,
+        row,
+        status: "blocked",
+        message: "Collection communication stopped because the payment is disputed."
+      });
+      continue;
+    }
     const capabilityKey = capabilityForQueuedAction({ actionType: row.action_type, targetType: row.target_type, workflowType: row.workflow_type });
-    const idempotencyKey = row.retry_count > 0
-      ? `outbound-action:${row.id}:attempt:${row.retry_count}`
+    const sourceIdempotencyKey = typeof row.metadata_json?.h4rCanonicalIdempotencyKey === "string"
+      ? row.metadata_json.h4rCanonicalIdempotencyKey
       : `outbound-action:${row.id}`;
+    const idempotencyKey = row.retry_count > 0
+      ? `${sourceIdempotencyKey}:attempt:${row.retry_count}`
+      : sourceIdempotencyKey;
     const trustExecution = await beginCapabilityExecution({
       tenantId,
       capabilityKey,
@@ -366,7 +472,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
       const connection = await adapter.getConnection(context, true);
       if (!connection.ok) {
         failed += 1;
-        await updateQueueResult({ tenantId, row, status: connection.retryable ? "failed" : "blocked", message: connection.safeMessage });
+        await updateQueueResult({ tenantId, row, status: connection.retryable ? "failed" : "blocked", message: connection.safeMessage, retryable: connection.retryable });
         await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: false, retryable: connection.retryable, error: connection.safeMessage });
         await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: false, reason: connection.safeMessage });
         continue;
@@ -406,7 +512,7 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
           continue;
         }
         failed += 1;
-        await updateQueueResult({ tenantId, row, status: call.retryable ? "failed" : "blocked", message: call.safeMessage });
+        await updateQueueResult({ tenantId, row, status: call.retryable ? "failed" : "blocked", message: call.safeMessage, retryable: call.retryable });
         await recordCapabilityProviderResult({ tenantId, auditId: trustExecution.auditId, providerKey: voice.provider_key, ok: false, retryable: call.retryable, error: call.safeMessage });
         await recordCapabilityCircuitResult({ tenantId, capabilityKey, scopeType: "provider", scopeKey: voice.provider_key, success: false, reason: call.safeMessage });
       }
@@ -429,17 +535,38 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
           && row.requires_human_approval === false
       },
       metadata: {
-        aiGenerated: true,
-        source: "outbound_action_queue",
+        ...(row.metadata_json ?? {}),
+        aiGenerated: row.metadata_json?.aiGenerated !== false,
+        source: typeof row.metadata_json?.source === "string" ? row.metadata_json.source : "outbound_action_queue",
         targetType: row.target_type,
         targetId: row.target_id,
         workflowType: row.workflow_type,
-        messagePurpose: inferSmsPurpose(row.workflow_type),
-        enforceQuietHours: true
+        messagePurpose: typeof row.metadata_json?.messagePurpose === "string"
+          ? row.metadata_json.messagePurpose
+          : inferSmsPurpose(row.workflow_type),
+        enforceQuietHours: row.metadata_json?.enforceQuietHours !== false
       }
     });
 
-    if (sendResult.ok && (sendResult.status === "sent" || sendResult.status === "queued")) {
+    if (sendResult.ok && sendResult.status === "queued") {
+      providerQueued += 1;
+      await updateQueueResult({
+        tenantId,
+        row,
+        status: "provider_queued",
+        message: null,
+        providerMessageId: sendResult.providerMessageId
+      });
+      await recordCapabilityProviderResult({
+        tenantId,
+        auditId: trustExecution.auditId,
+        providerKey: sendResult.providerKey,
+        ok: true,
+        providerReference: sendResult.providerMessageId
+      });
+      continue;
+    }
+    if (sendResult.ok && sendResult.status === "sent") {
       sent += 1;
       await updateQueueResult({
         tenantId,
@@ -551,10 +678,11 @@ export async function processReadyMessagesForTenant(tenantId: string, limit = 50
         tenantId,
         row,
         status: sendResult.retryable ? "failed" : "blocked",
-        message: sendResult.error
+        message: sendResult.error,
+        retryable: sendResult.retryable
       });
     }
   }
 
-  return { checked: rows.length, sent, blocked, failed };
+  return { checked: rows.length, sent, providerQueued, blocked, failed };
 }

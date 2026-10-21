@@ -39,12 +39,21 @@ describe("platform admin daily brief", () => {
         failed_automations: "1",
         provider_risks: "2",
         active_critical_alerts: "1",
-        month_provider_cost_cents: "12345"
+        month_provider_cost_cents: "12345",
+        month_subscription_cash_cents: "69900",
+        month_subscription_refund_cents: "5000"
       }] });
 
     const result = await sendPlatformAdminDailyBrief(new Date("2026-08-31T12:00:00.000Z"));
 
-    expect(result).toMatchObject({ sent: true, newSubscriptions: 2, unresolvedSupport: 4, monthProviderCostCents: 12345 });
+    expect(result).toMatchObject({
+      sent: true,
+      newSubscriptions: 2,
+      unresolvedSupport: 4,
+      monthProviderCostCents: 12345,
+      monthSubscriptionCashCents: 69900,
+      monthSubscriptionRefundCents: 5000
+    });
     expect(mocks.raisePlatformAdminAlert).toHaveBeenCalledWith(expect.objectContaining({
       fingerprint: "platform-daily-brief:2026-08-31",
       severity: "high",

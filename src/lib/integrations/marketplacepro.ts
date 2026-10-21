@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
+import { safeLogAppError } from "@/lib/observability/log-error";
 
 export const marketplaceProLeadSchema = z.object({
   marketplaceLeadId: z.string().min(1),
@@ -302,6 +304,38 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
   });
 
   await queryPostgres("update public.marketplacepro_connections set last_sync_at = now(), updated_at = now() where id = $1", [connection.id]);
+
+  try {
+    const actionable = ["offers", "worker_contact_requests", "support_requests", "payments"].includes(input.marketplaceTable);
+    await captureIntegrationGoalObservation({
+      tenantId: connection.tenant_id,
+      platformKey: "marketplacepro",
+      platformName: "MarketplacePro",
+      externalEventId: input.marketplaceObjectId,
+      eventType,
+      title: titleForEvent(input),
+      summary: input.body ?? input.actorLabel ?? `MarketplacePro reported ${input.marketplaceTable} activity.`,
+      severity: input.marketplaceTable === "support_requests" ? "high" : actionable ? "medium" : "info",
+      status: "open",
+      recommendedAction: actionable ? "Advance this MarketplacePro activity to the next verified business outcome." : null,
+      metadata: {
+        connectionId: connection.id,
+        workspaceId: input.marketplaceAccountId ?? input.vendorId ?? null,
+        marketplaceObjectId: input.marketplaceObjectId,
+        marketplaceTable: input.marketplaceTable,
+        sourceStatus: input.status ?? null,
+      },
+    });
+  } catch (error) {
+    await safeLogAppError({
+      tenantId: connection.tenant_id,
+      source: "integrations.marketplacepro.goal-observation",
+      message: error instanceof Error ? error.message : "MarketplacePro goal observation failed.",
+      severity: "warning",
+      retryable: true,
+      metadata: { connectionId: connection.id, marketplaceObjectId: input.marketplaceObjectId },
+    });
+  }
 
   return { ok: true, status: 202, recorded: true, timelineId };
 }

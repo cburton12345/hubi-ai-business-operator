@@ -79,11 +79,20 @@ export function classifyAiCommandIntent(command: string): AiCommandIntent {
 
 export function readOnlyRouteForCommand(command: string) {
   const lower = command.toLowerCase();
+  if (["receipt", "expense", "statement", "tax", "deduct", "deposit", "withdrawal", "transaction"].some((term) => lower.includes(term))) return "/app/expenses";
+  if (["point of sale", "pos", "inventory", "stock level", "sale return"].some((term) => lower.includes(term))) return "/app/pos";
+  if (["purchase order", "purchasing", "supplier", "vendor", "reorder"].some((term) => lower.includes(term))) return "/app/job-tracker";
+  if (["approval", "needs approval", "waiting for approval"].some((term) => lower.includes(term))) return "/app/approvals";
+  if (["integration", "connection", "oauth", "provider account"].some((term) => lower.includes(term))) return "/app/integrations";
+  if (["automation", "background workflow", "recurring workflow"].some((term) => lower.includes(term))) return "/app/automation";
+  if (["report", "export", "printable", "print out"].some((term) => lower.includes(term))) return "/app/reports";
   if (lower.includes("call inbox") || lower.includes("show calls") || lower.includes("missed call") || lower.includes("phone history")) return "/app/calls";
+  if (["email inbox", "show email", "email status", "mailbox"].some((term) => lower.includes(term))) return "/app/email-watch";
   if (lower.includes("office manager") || lower.includes("reception") || lower.includes("phone call") || lower.includes("answer calls") || lower.includes("voice ai")) return "/app/office-manager";
   if (lower.includes("authority") || lower.includes("proof") || lower.includes("case study") || lower.includes("finished work") || lower.includes("completed job")) return "/app/authority";
   if (lower.includes("money") || lower.includes("revenue") || lower.includes("paid") || lower.includes("owed")) return "/app/revenue-growth";
-  if (lower.includes("job") || lower.includes("crew") || lower.includes("worker") || lower.includes("schedule")) return "/app/attention-command";
+  if (lower.includes("schedule") || lower.includes("dispatch") || lower.includes("appointment")) return "/app/schedule";
+  if (lower.includes("job") || lower.includes("estimate") || lower.includes("crew") || lower.includes("worker") || lower.includes("material")) return "/app/job-tracker";
   if (lower.includes("error") || lower.includes("health") || lower.includes("broken")) return "/app/system-health";
   if (lower.includes("alert")) return "/app/alerts";
   return "/app/attention-command";

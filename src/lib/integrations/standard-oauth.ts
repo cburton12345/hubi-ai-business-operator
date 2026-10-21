@@ -28,6 +28,40 @@ export type StandardOAuthTokenSet = {
   tokenType: string;
 };
 
+export type OAuthScopeAssessment = {
+  status: "verified" | "insufficient" | "unverified";
+  effectiveScopes: string[];
+  grantedScopes: string[];
+  missingScopes: string[];
+};
+
+function normalizedScopes(scopes: string[]) {
+  return [...new Set(scopes.map((scope) => scope.trim()).filter(Boolean))];
+}
+
+const protocolScopes = new Set(["openid", "email", "profile", "offline_access"]);
+
+export function assessOAuthScopes(requestedScopes: string[], providerReportedScopes: string[]): OAuthScopeAssessment {
+  const requested = normalizedScopes(requestedScopes);
+  const granted = normalizedScopes(providerReportedScopes);
+  if (!granted.length) {
+    return {
+      status: "unverified",
+      effectiveScopes: requested,
+      grantedScopes: [],
+      missingScopes: [],
+    };
+  }
+  const grantedSet = new Set(granted);
+  const missingScopes = requested.filter((scope) => !protocolScopes.has(scope) && !grantedSet.has(scope));
+  return {
+    status: missingScopes.length ? "insufficient" : "verified",
+    effectiveScopes: granted,
+    grantedScopes: granted,
+    missingScopes,
+  };
+}
+
 type OAuthClient = {
   clientId: string;
   clientSecret: string;
@@ -130,7 +164,7 @@ export async function exchangeStandardOAuthAuthorizationCode(input: {
         ...(jobber && input.codeVerifier ? { code_verifier: input.codeVerifier } : {}),
         ...(microsoft ? {
           scope: input.provider === "microsoft_calendar"
-            ? "offline_access openid profile User.Read Calendars.ReadWrite"
+            ? "offline_access openid profile User.Read Calendars.Read"
             : input.provider === "microsoft_mailbox"
               ? "offline_access openid profile User.Read Mail.Read"
               : "offline_access https://ads.microsoft.com/msads.manage"

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { evaluateGoldenLoop } from "@/lib/business-loop/golden-loop";
-import { snapshotFromDatabaseRow, type RawLoopEvidence } from "@/lib/business-loop/sync-golden-loop";
+import { certificationStatusForRun, snapshotFromDatabaseRow, type RawLoopEvidence } from "@/lib/business-loop/sync-golden-loop";
 
 function row(overrides: Partial<RawLoopEvidence> = {}): RawLoopEvidence {
   return {
     run_id: "run-1",
     mode: "observed",
     run_status: "active",
+    run_metadata: { createdBy: "certification_request" },
     lead_id: "lead-1",
     brand_id: "brand-1",
     customer_id: "customer-1",
@@ -51,9 +52,26 @@ describe("golden loop database evidence", () => {
     expect(result.handoffGaps).toContain("payment_received");
   });
 
+  it("does not treat a void invoice as issued", () => {
+    const result = evaluateGoldenLoop(snapshotFromDatabaseRow(row({ invoice_status: "void" })));
+    expect(result.currentStage).toBe("invoice_issued");
+    expect(result.status).not.toBe("completed");
+  });
+
   it("requires an approved, attributable margin record after payment", () => {
     const result = evaluateGoldenLoop(snapshotFromDatabaseRow(row({ margin_record_id: null })));
     expect(result.currentStage).toBe("margin_recorded");
     expect(result.status).toBe("active");
+  });
+
+  it("never converts a synthetic QA fixture into a real certification", () => {
+    expect(certificationStatusForRun({
+      evaluationStatus: "completed",
+      metadata: { createdBy: "qa_golden_loop_certification", qaOnly: true }
+    })).toEqual({ synthetic: true, status: "running" });
+    expect(certificationStatusForRun({
+      evaluationStatus: "completed",
+      metadata: { createdBy: "certification_request" }
+    })).toEqual({ synthetic: false, status: "certified" });
   });
 });

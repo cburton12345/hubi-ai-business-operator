@@ -15,15 +15,15 @@ export function PublicCommandStory({ children }: { children?: ReactNode }) {
   return (
     <section className="panel public-command-story" id="ask-ferocity">
       <div>
-        <p className="eyebrow">See how Ferocity would help your business</p>
-        <h2>Tell Ferocity what you run. Get a practical first plan.</h2>
+        <p className="eyebrow">Continue with the real Ask Ferocity experience</p>
+        <h2>Diagnose the problem, clarify the economics, and move toward a useful next action.</h2>
         <p className="muted">
-          Describe the business, a goal, a weak spot, or a capability you wish you had. Ferocity will identify the most useful first moves, explain what it could improve or build, and show where it can begin—without making you choose a tool first.
+          Describe the business, a goal, a weak spot, or a capability you wish you had. Ferocity will ask only for the context it needs, identify a practical path, explain what it can actually handle, and make the next step obvious—without making you choose a tool first.
         </p>
         <div className="public-command-examples" aria-label="Example Ferocity commands">
           {examples.map((example) => <span key={example}>{example}</span>)}
         </div>
-        <p className="public-command-outcome">No form first. No sales call required. Just ask the question.</p>
+        <p className="public-command-outcome">No generic feature tour. Ask the question and move toward a concrete evaluation or action.</p>
       </div>
 
       {children ?? <div className="public-command-preview" aria-label="Example Ask Ferocity result">

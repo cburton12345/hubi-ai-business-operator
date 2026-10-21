@@ -58,6 +58,30 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
         <section className="panel span-12">
           <div className="list-row flush-row">
             <div>
+              <h2>Job margin</h2>
+              <p className="muted">Invoice value and collected cash stay separate. Refunds, labor, materials, direct expenses, and explicitly approved overhead are counted once.</p>
+            </div>
+            <span className="pill">{job.margin.complete ? "evidence complete" : "missing evidence"}</span>
+          </div>
+          <dl className="detail-grid section-actions">
+            <Detail label="Invoiced" value={job.margin.invoiced} />
+            <Detail label="Collected" value={job.margin.collected} />
+            <Detail label="Refunded" value={job.margin.refunded} />
+            <Detail label="Written off" value={job.margin.writtenOff} />
+            <Detail label="Labor" value={job.margin.labor} />
+            <Detail label="Materials" value={job.margin.materials} />
+            <Detail label="Direct expenses" value={job.margin.directExpenses} />
+            <Detail label="Approved overhead" value={job.margin.approvedOverhead} />
+            <Detail label="Total cost" value={job.margin.totalCost} />
+            <Detail label="Invoice margin" value={`${job.margin.invoiceMargin}${job.margin.invoiceMarginPercent === null ? "" : ` (${job.margin.invoiceMarginPercent}%)`}`} />
+            <Detail label="Cash margin" value={`${job.margin.cashMargin}${job.margin.cashMarginPercent === null ? "" : ` (${job.margin.cashMarginPercent}%)`}`} />
+          </dl>
+          {!job.margin.complete ? <p className="notice-card">Missing source evidence: {job.margin.missingEvidence.join(", ")}. Ferocity will not describe this margin as final until those records exist.</p> : null}
+        </section>
+
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
               <h2>Authority Engine</h2>
               <p className="muted">
                 When the job is completed, Ferocity can prepare the proof, review request, case study, FAQ, social posts, website improvements, and video script for approval.

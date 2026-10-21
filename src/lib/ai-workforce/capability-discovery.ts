@@ -115,7 +115,7 @@ export function discoverRelevantCapabilities(command: string, state: CapabilityD
     href: "/app/team"
   });
 
-  const local = mentions(command, ["google business", "local seo", "maps", "review", "reputation", "local search", "ranking", "service area"]);
+  const local = mentions(command, ["google business", "local seo", "maps", "customer review", "reviews", "reputation", "local search", "ranking", "service area"]);
   add(recommendations, setup || local, {
     key: "local_presence", score: local ? 93 : 63,
     title: "Strengthen local discovery and reputation",

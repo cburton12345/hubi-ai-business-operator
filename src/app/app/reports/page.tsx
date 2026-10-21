@@ -4,7 +4,7 @@ import { getOwnerNeeds, type OwnerNeed } from "@/lib/owner-command-center/get-ow
 import { getReportingDashboard } from "@/lib/reports/get-reporting-dashboard";
 import { getServicePerformanceDashboard } from "@/lib/reports/get-service-performance-dashboard";
 import Link from "next/link";
-import { saveGrowthBaselineAction } from "./actions";
+import { GrowthBaselineForm } from "./GrowthBaselineForm";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -22,26 +22,26 @@ export default async function ReportsPage() {
   return (
     <QueuePageShell
       eyebrow="Reporting"
-      title="Workspace Performance"
-      description="Lead, content, approval, AI generation, and integration-readiness reporting for the selected organization."
+      title="Business Performance"
+      description="See results, trends, money, service delivery, and the few areas that need attention."
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>Business Command Center</h2>
+            <h2>Business summary</h2>
             <p className="muted">What is working, what is stuck, and what to do next.</p>
           </div>
           <div className="button-row">
-            <Link className="button" href="/app/build-system">Let Ferocity set it up</Link>
-            <Link className="button secondary-button" href="/app/operator">Open operator console</Link>
-            <Link className="button secondary-button" href="/app/growth">Open growth loop</Link>
+            <Link className="button" href="/app/ferocity">Ask Ferocity</Link>
+            <Link className="button secondary-button" href="/app/operator">Sales pipeline</Link>
+            <Link className="button secondary-button" href="/app/growth">Growth</Link>
           </div>
         </div>
         <div className="grid section-actions">
           <Metric label="Revenue collected" value={money(report.leadToRevenue.collectedRevenueCents)} />
           <Metric label="Open pipeline" value={money(report.leadToRevenue.openPipelineCents)} />
           <Metric label="Needs attention" value={snapshot.todayPlan.length + report.activeAlerts + ownerNeeds.length} />
-          <Metric label="Provider gaps" value={report.providerGaps.length} />
+          <Metric label="Missing connections" value={report.providerGaps.length} />
         </div>
       </section>
 
@@ -49,7 +49,7 @@ export default async function ReportsPage() {
         <div className="list-row flush-row">
           <div>
             <h2>Service Delivery Performance</h2>
-            <p className="muted">Operational measures come from canonical visits, timestamps, assignments, memberships, equipment, callbacks, inbox state, and the pricebook.</p>
+            <p className="muted">Completed visits, arrival times, assignments, capacity, callbacks, and pricing show how reliably work is being delivered.</p>
           </div>
           <div className="button-row">
             <Link className="mini-button" href="/app/schedule">Open schedule</Link>
@@ -138,55 +138,7 @@ export default async function ReportsPage() {
             Add the best known numbers from before Ferocity or day one. Revenue, leads, and jobs compare this month-to-date against
             that baseline month. Review counts stay provider-verified once review connections are live.
           </p>
-          <form action={saveGrowthBaselineAction} className="stacked-form">
-            <div className="grid">
-              <label className="span-3">
-                Baseline date
-                <input name="baselineDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
-              </label>
-              <label className="span-3">
-                Monthly revenue
-                <input name="monthlyRevenue" inputMode="decimal" placeholder="25000" />
-              </label>
-              <label className="span-3">
-                Monthly leads
-                <input name="monthlyLeads" inputMode="numeric" placeholder="40" />
-              </label>
-              <label className="span-3">
-                Booked jobs
-                <input name="monthlyBookedJobs" inputMode="numeric" placeholder="12" />
-              </label>
-              <label className="span-3">
-                Ad spend
-                <input name="monthlyAdSpend" inputMode="decimal" placeholder="1500" />
-              </label>
-              <label className="span-3">
-                Average ticket
-                <input name="averageTicket" inputMode="decimal" placeholder="2500" />
-              </label>
-              <label className="span-3">
-                Close rate %
-                <input name="closeRatePercent" inputMode="decimal" placeholder="30" />
-              </label>
-              <label className="span-3">
-                Review count
-                <input name="reviewCount" inputMode="numeric" placeholder="50" />
-              </label>
-              <label className="span-3">
-                Review rating
-                <input name="reviewRating" inputMode="decimal" placeholder="4.7" />
-              </label>
-              <label className="span-3">
-                Website sessions
-                <input name="websiteSessions" inputMode="numeric" placeholder="1200" />
-              </label>
-            </div>
-            <label>
-              Notes
-              <textarea name="notes" placeholder="Where did these numbers come from?" />
-            </label>
-            <button className="button" type="submit">Save baseline</button>
-          </form>
+          <GrowthBaselineForm />
         </details>
       </section>
 
@@ -210,6 +162,9 @@ export default async function ReportsPage() {
           <summary>More tax and accounting exports</summary>
           <div className="button-row section-actions">
             <Link className="mini-button" href={`/api/reports/profit-loss?year=${currentYear}&basis=accrual`}>{currentYear} accrual P&amp;L</Link>
+            <Link className="mini-button secondary-button" href={`/app/reports/expense-tax-print?year=${currentYear}`}>{currentYear} printable property packet</Link>
+            <Link className="mini-button secondary-button" href={`/app/reports/income-tax-print?year=${currentYear}`}>{currentYear} printable deposits packet</Link>
+            <Link className="mini-button secondary-button" href={`/app/reports/statement-packets?year=${currentYear}`}>{currentYear} reconciled statement packets</Link>
             <Link className="mini-button secondary-button" href={`/api/reports/expense-tax-export?year=${currentYear}`}>{currentYear} expense detail</Link>
             <Link className="mini-button secondary-button" href={`/api/reports/profit-loss?year=${currentYear - 1}&basis=cash`}>{currentYear - 1} cash P&amp;L</Link>
             <Link className="mini-button secondary-button" href={`/api/reports/expense-tax-export?year=${currentYear - 1}`}>{currentYear - 1} expense detail</Link>
@@ -252,10 +207,10 @@ export default async function ReportsPage() {
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <h2>What Ferocity Needs From You</h2>
-            <p className="muted">The short owner list behind the reporting: keys, items to review, stuck automation, low-confidence AI, customer issues, workforce checks, and report follow-up.</p>
+            <h2>What needs your attention</h2>
+            <p className="muted">Only decisions, missing connections, uncertain items, and customer or team issues that still need judgment.</p>
           </div>
-          <Link className="button secondary-button" href="/app/owner-command-center">Owner Events</Link>
+          <Link className="button secondary-button" href="/app/owner-command-center">View all</Link>
         </div>
         <ul className="list">
           {ownerNeeds.slice(0, 6).map((need) => (
@@ -266,8 +221,8 @@ export default async function ReportsPage() {
       </section>
 
       <details className="panel section-actions">
-        <summary>Open detailed analytics and diagnostics</summary>
-        <p className="muted">Channel, funnel, provider, event, and diagnostic detail for owners who want to investigate beyond the summary above.</p>
+        <summary>More reports and diagnostics</summary>
+        <p className="muted">Channel, sales, connection, event, and troubleshooting detail when you need to investigate beyond the summary.</p>
 
       <div className="grid section-actions">
         <section className="panel span-6">
@@ -298,8 +253,8 @@ export default async function ReportsPage() {
             </li>
             <li className="list-row">
               <div>
-                <h3>Close provider gaps</h3>
-                <p className="muted">{report.providerGaps.length} provider gaps are keeping Ferocity in manual or review mode.</p>
+                <h3>Connect missing accounts</h3>
+                <p className="muted">{report.providerGaps.length} missing connections are keeping some work manual or review-only.</p>
               </div>
               <Link className="mini-button" href="/app/integrations">Connect</Link>
             </li>
@@ -394,8 +349,8 @@ export default async function ReportsPage() {
         </section>
 
         <section className="panel span-6">
-          <h2>Provider Gaps</h2>
-          <p className="muted">The missing connections that keep Ferocity in reviewed/manual mode.</p>
+          <h2>Missing connections</h2>
+          <p className="muted">Accounts that must be connected before Ferocity can carry the related work through.</p>
           <ul className="list">
             {report.providerGaps.map((gap) => (
               <li className="list-row" key={gap.provider}>

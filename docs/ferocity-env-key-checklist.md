@@ -27,6 +27,7 @@ A code change is needed when Ferocity does not yet have:
 - `CREDENTIAL_ENCRYPTION_KEY`
 - `SECURITY_HMAC_KEY`
 - `FEROCITY_APP_URL`
+- `MCP_ALLOWED_HOSTS` (exact comma-separated MCP request hosts; proposed production value `api.ferocity.live,ferocity.live`)
 
 ## AI
 
@@ -154,9 +155,25 @@ Redirect:
 
 - `MARKETPLACEPRO_WEBHOOK_SECRET`
 
+## Homes4Rent bridge
+
+- `H4R_SMS_BRIDGE_SECRET` — shared server-to-server HMAC secret; despite the historical name, it signs the H4R SMS, status, operator, and document-intelligence bridge requests.
+- `H4R_DOCUMENT_ORIGIN` — exact HTTPS origin of H4R's Supabase project. Lease analysis accepts short-lived private `h4r-documents` signed URLs only from this origin.
+- `H4R_CONTEXT_URL` — H4R's signed, read-only `ferocity-brain-context` endpoint. It returns aggregate operating context without tenant PII, ledger rows, payment credentials, document contents, or signature evidence.
+- `H4R_OPERATOR_URL`
+- `H4R_OPERATOR_MODE`
+
+H4R separately stores `FEROCITY_LEASE_ANALYSIS_URL` and the same bridge secret as `FEROCITY_SMS_BRIDGE_SECRET`. None of these values belongs in browser code.
+
 ## Worker/automation jobs
 
 - `AI_WORKFORCE_CRON_TOKEN`
+- `AUTOMATION_TENANT_BATCH_SIZE` — maximum workspaces selected per scheduled run; default `50`, hard maximum `250`.
+- `AUTOMATION_AGENT_BATCH_SIZE` — maximum due AI-workforce jobs selected after tenant processing; default `50`, hard maximum `250`.
+- `AUTOMATION_TENANT_CONCURRENCY` — workspaces processed concurrently; default `2`, hard maximum `4`.
+- `AUTOMATION_GOAL_PLAN_BATCH_SIZE` — due persistent outcomes planned per workspace/run; default `8`, hard maximum `25`.
+- `AUTOMATION_GOAL_PLANNING_CONCURRENCY` — plans reasoned concurrently inside one workspace; default `2`, hard maximum `3` so aggregate work remains below the global AI concurrency guard.
+- `AUTOMATION_GOAL_STEP_BATCH_SIZE` — due persistent-outcome steps advanced per workspace/run; default `50`, hard maximum `100`.
 
 ## Rule
 

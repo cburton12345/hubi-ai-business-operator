@@ -4,6 +4,8 @@ import { evaluateOrganicContentWinners } from "@/lib/marketing/ai-content-produc
 import { safeLogAppError } from "@/lib/observability/log-error";
 import { runClosedLoopGrowthController } from "./closed-loop-controller";
 import { ensureCoreMarketingPlaybooks, runComposableGrowthIntelligence, syncSharedMarketingBrain } from "./composable-growth-intelligence";
+import { researchMarketTrendsForTenant } from "./market-trend-research";
+import { refreshPaidMediaCohortLearning } from "./paid-media-cohort-learning";
 
 export type OwnerInvolvement = "automatic" | "approval" | "personal";
 export type GrowthDepartmentAction = {
@@ -51,6 +53,7 @@ type EvidenceSnapshot = {
   controller: Record<string, unknown> | null;
   marketingBrain: Record<string, unknown> | null;
   playbooks: Record<string, unknown>[];
+  cohortBenchmarks: Record<string, unknown>[];
   capabilityAssessment: GrowthCapabilityAssessment;
 };
 
@@ -84,6 +87,24 @@ const allowedCategories = new Set<GrowthDepartmentAction["category"]>([
 ]);
 const allowedInvolvement = new Set<OwnerInvolvement>(["automatic", "approval", "personal"]);
 
+type GrowthActionIdentity = Pick<GrowthDepartmentAction, "key" | "title" | "whyNow" | "nextStep" | "evidence">;
+
+export function getGrowthActionDedupeKey(action: GrowthActionIdentity) {
+  const normalizedKey = action.key.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 120);
+  const text = [action.title, action.whyNow, action.nextStep, ...(action.evidence ?? [])]
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+
+  // Different evidence sources can describe the same missing conversion path.
+  // Keep one owner-facing action instead of presenting each phrasing as new work.
+  if (/(lead capture|capture (forms?|mechanisms?)|tracked (contact|inquiry|lead)|forms? (or|and) leads?)/.test(text)) {
+    return "growth-gap:lead-capture";
+  }
+
+  return `growth-action:${normalizedKey}`;
+}
+
 export function normalizeGrowthDepartmentActions(actions: GrowthDepartmentAction[], maxActions = 5) {
   const seen = new Set<string>();
   return actions
@@ -100,7 +121,13 @@ export function normalizeGrowthDepartmentActions(actions: GrowthDepartmentAction
       evidence: Array.isArray(action.evidence) ? action.evidence.filter(Boolean).slice(0, 8) : [],
       channels: Array.isArray(action.channels) ? action.channels.filter(Boolean).slice(0, 8) : []
     }))
-    .filter((action) => action.key && !seen.has(action.key) && (seen.add(action.key), true))
+    .filter((action) => {
+      if (!action.key) return false;
+      const dedupeKey = getGrowthActionDedupeKey(action);
+      if (seen.has(dedupeKey)) return false;
+      seen.add(dedupeKey);
+      return true;
+    })
     .sort((a, b) => b.priorityScore - a.priorityScore || b.confidenceScore - a.confidenceScore)
     .slice(0, Math.max(1, Math.min(maxActions, 10)));
 }
@@ -118,7 +145,7 @@ function fallbackActions(snapshot: EvidenceSnapshot): GrowthDepartmentAction[] {
 }
 
 async function loadEvidence(tenantId: string, brandId: string): Promise<EvidenceSnapshot> {
-  const [brand, profile, services, locations, outcomes, conversations, opportunities, attribution, website, memory, objectives, idealCustomers, idealJobs, offers, voiceOfCustomer, controller, marketingBrain, playbooks, capabilities] = await Promise.all([
+  const [brand, profile, services, locations, outcomes, conversations, opportunities, attribution, website, memory, objectives, idealCustomers, idealJobs, offers, voiceOfCustomer, controller, marketingBrain, playbooks, cohortBenchmarks, capabilities] = await Promise.all([
     queryPostgres(`select id, name, industry, primary_location, status from public.brands where tenant_id = $1 and id = $2 limit 1`, [tenantId, brandId]),
     queryPostgres(`select company_name, website_url, brand_voice, ideal_customers, services_json, service_areas_json, offers_json, reviews_json, audience_json, positioning_json, proof_json, marketing_rules_json from public.marketing_os_business_profiles where tenant_id = $1 and brand_id = $2 and status <> 'archived' limit 1`, [tenantId, brandId]),
     queryPostgres(`select name, description, priority from public.brand_services where tenant_id = $1 and brand_id = $2 and active = true order by priority desc limit 30`, [tenantId, brandId]),
@@ -139,11 +166,18 @@ async function loadEvidence(tenantId: string, brandId: string): Promise<Evidence
     queryPostgres(`select playbook.playbook_key,playbook.name,playbook.purpose,playbook.category,version.version,version.required_context_json,version.workflow_json,version.decision_rules_json,version.outputs_json,version.quality_checks_json,version.success_metrics_json,version.permissions_json
       from public.marketing_playbooks playbook join public.marketing_playbook_versions version on version.playbook_id=playbook.id and version.tenant_id=playbook.tenant_id
       where playbook.tenant_id=$1 and playbook.status='active' and version.status='active' and version.version=playbook.current_version order by playbook.playbook_key`, [tenantId]),
+    queryPostgres(`select strategy_key,contributing_tenants,sample_count,qualified_rate,booked_rate,won_rate,revenue_per_sample_cents,
+      spend_cents,gross_profit_cents,gross_profit_return,cost_per_qualified_lead_cents,customer_acquisition_cost_cents,
+      confidence_score,evidence_window_start,evidence_window_end,measurement_kind
+      from public.aggregate_growth_playbooks where status='eligible' and cohort_key=(
+        select lower(regexp_replace(coalesce(nullif(industry,''),nullif(vertical,''),'general'),'[^a-zA-Z0-9]+','_','g'))
+        from public.brands where tenant_id=$1 and id=$2 limit 1
+      ) order by confidence_score desc,evidence_window_end desc limit 40`, [tenantId, brandId]),
     queryPostgres<Record<string, string>>(`select (select count(*) from public.brands where tenant_id=$1 and id=$2 and status='active')::text as brands, (select count(*) from public.brand_services where tenant_id=$1 and brand_id=$2 and active=true)::text as services, (select count(*) from public.brand_locations where tenant_id=$1 and brand_id=$2 and active=true)::text as locations, (select count(*) from public.forms where tenant_id=$1 and brand_id=$2)::text as forms, (select count(*) from public.leads where tenant_id=$1 and brand_id=$2)::text as leads, (select count(*) from public.follow_up_workflows where tenant_id=$1 and brand_id=$2)::text as follow_ups, (select count(*) from public.review_request_workflows where tenant_id=$1 and brand_id=$2)::text as reviews, ((select count(*) from public.ugc_assets where tenant_id=$1 and brand_id=$2)+(select count(*) from public.marketing_media_assets where tenant_id=$1 and brand_id=$2 and approved_for_ai_reuse=true))::text as proof, (select count(*) from public.content_studio_outputs where tenant_id=$1 and brand_id=$2)::text as content_outputs, (select count(*) from public.publishing_queue where tenant_id=$1 and brand_id=$2)::text as publishing, (select count(*) from public.service_estimates where tenant_id=$1 and brand_id=$2)::text as estimates, (select count(*) from public.service_jobs where tenant_id=$1 and brand_id=$2)::text as jobs, (select count(*) from public.service_invoices where tenant_id=$1 and brand_id=$2)::text as invoices, (select count(*) from public.service_invoice_payments where tenant_id=$1 and brand_id=$2 and status in ('succeeded','manual'))::text as payments, (select count(*) from public.growth_attribution_touches where tenant_id=$1 and brand_id=$2)::text as attribution, (select count(*) from public.marketing_memory_items where tenant_id=$1 and brand_id=$2 and status <> 'archived')::text as memory`, [tenantId, brandId])
   ]);
   const raw = capabilities?.rows[0] ?? {};
   const capabilityAssessment = buildGrowthCapabilityAssessment({ brands: Number(raw.brands ?? 0), services: Number(raw.services ?? 0), locations: Number(raw.locations ?? 0), forms: Number(raw.forms ?? 0), leads: Number(raw.leads ?? 0), followUps: Number(raw.follow_ups ?? 0), reviews: Number(raw.reviews ?? 0), proof: Number(raw.proof ?? 0), contentOutputs: Number(raw.content_outputs ?? 0), publishing: Number(raw.publishing ?? 0), estimates: Number(raw.estimates ?? 0), jobs: Number(raw.jobs ?? 0), invoices: Number(raw.invoices ?? 0), payments: Number(raw.payments ?? 0), attribution: Number(raw.attribution ?? 0), memory: Number(raw.memory ?? 0) });
-  return { brand: brand?.rows[0] ?? null, profile: profile?.rows[0] ?? null, services: services?.rows ?? [], locations: locations?.rows ?? [], recentOutcomes: outcomes?.rows ?? [], conversations: conversations?.rows ?? [], opportunities: opportunities?.rows ?? [], attribution: attribution?.rows ?? [], websiteSignals: website?.rows ?? [], existingMemory: memory?.rows ?? [], objectives: objectives?.rows ?? [], idealCustomers: idealCustomers?.rows ?? [], idealJobs: idealJobs?.rows ?? [], offers: offers?.rows ?? [], voiceOfCustomer: voiceOfCustomer?.rows ?? [], controller: controller?.rows[0] ?? null, marketingBrain: marketingBrain?.rows[0] ?? null, playbooks: playbooks?.rows ?? [], capabilityAssessment };
+  return { brand: brand?.rows[0] ?? null, profile: profile?.rows[0] ?? null, services: services?.rows ?? [], locations: locations?.rows ?? [], recentOutcomes: outcomes?.rows ?? [], conversations: conversations?.rows ?? [], opportunities: opportunities?.rows ?? [], attribution: attribution?.rows ?? [], websiteSignals: website?.rows ?? [], existingMemory: memory?.rows ?? [], objectives: objectives?.rows ?? [], idealCustomers: idealCustomers?.rows ?? [], idealJobs: idealJobs?.rows ?? [], offers: offers?.rows ?? [], voiceOfCustomer: voiceOfCustomer?.rows ?? [], controller: controller?.rows[0] ?? null, marketingBrain: marketingBrain?.rows[0] ?? null, playbooks: playbooks?.rows ?? [], cohortBenchmarks: cohortBenchmarks?.rows ?? [], capabilityAssessment };
 }
 
 export async function runAiGrowthDepartment(input: { tenantId: string; brandId?: string | null; userId?: string | null; maxActions?: number; intelligencePrepared?: boolean }) {
@@ -158,7 +192,7 @@ export async function runAiGrowthDepartment(input: { tenantId: string; brandId?:
     const response = await generateJsonWithAiService<GrowthDepartmentResponse>({
       tenantId: input.tenantId, brandId: brand.id, userId: input.userId ?? null,
       featureKey: "ai_marketing_department", runType: "ai_growth_department",
-      system: "You are Ferocity's evidence-led AI Growth Department. Return JSON only. Compose the supplied versioned playbooks; do not invent a giant one-off workflow. Work from the supplied Marketing Brain as shared truth and flag missing context instead of guessing. Use only supplied evidence. Never invent competitors, claims, customer language, market facts, or platform access. Respect the latest closed-loop controller directive: repair data before guessing, constrain demand when margin or capacity is unsafe, and expand only when evidence and capacity support it. Prefer useful organic work before paid advertising. Optimize for qualified leads, completed work, collected revenue and profit—not impressions or content volume. Paid spend is never an automatic action. Keep the owner to at most five valuable actions. ownerInvolvement must be automatic only for safe internal analysis or already-authorized work, approval for external/publishing/outreach work, and personal for a true business decision or missing owner knowledge.",
+      system: "You are Ferocity's evidence-led AI Growth Department. Return JSON only. Compose the supplied versioned playbooks; do not invent a giant one-off workflow. Work from the supplied Marketing Brain as shared truth and flag missing context instead of guessing. Use only supplied evidence. Never invent competitors, claims, customer language, market facts, or platform access. Current, unexpired market-trend memories may inform a hypothesis only to the confidence and source quality shown. Deidentified cohort benchmarks are priors for similar industries, never proof that a strategy will work for this business; the tenant's own campaign and source-to-profit outcomes override them. Respect the latest closed-loop controller directive and campaign spend checkpoints: repair data before guessing, enforce stop-loss warnings, constrain demand when margin or capacity is unsafe, and expand only when mature evidence and capacity support it. Prefer useful organic work before paid advertising. Optimize for qualified leads, completed work, collected revenue and profit—not impressions or content volume. Paid spend is never an automatic action. Keep the owner to at most five valuable actions. ownerInvolvement must be automatic only for safe internal analysis or already-authorized work, approval for external/publishing/outreach work, and personal for a true business decision or missing owner knowledge.",
       user: `Analyze this evidence snapshot and return {\"actions\":[],\"memory\":[]}. Each action needs key, category, title, whyNow, nextStep, ownerInvolvement, organicFirst, priorityScore, confidenceScore, estimatedValueCents, evidence, channels. Each memory item needs type, title, summary, confidenceScore, evidence. Evidence:\n${JSON.stringify(snapshot)}`,
       fallback, temperature: 0.2, metadata: { strategy: "organic_first", evidenceOnly: true }
     });
@@ -166,7 +200,7 @@ export async function runAiGrowthDepartment(input: { tenantId: string; brandId?:
     allActions.push(...actions);
 
     for (const action of actions) {
-      await queryPostgres(`insert into public.marketing_campaign_recommendations (tenant_id, brand_id, recommendation_key, title, trigger_reason, primary_goal, recommended_channels, recommended_outputs_json, expected_impact, difficulty, priority_score, status, source_signals_json, metadata_json, opportunity_category, recommended_action_key, owner_involvement, organic_first, estimated_value_cents, confidence_score, evidence_json, handled_at, expires_at, updated_at, capability_keys, execution_status, assessment_json) values ($1,$2,$3,$4,$5,'grow_profitable_revenue',$6::text[],$7::jsonb,$8,'medium',$9,$10,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,now() + interval '14 days',now(),$21::text[],$22,$23::jsonb) on conflict (tenant_id, brand_id, recommendation_key) do update set title=excluded.title, trigger_reason=excluded.trigger_reason, recommended_channels=excluded.recommended_channels, recommended_outputs_json=excluded.recommended_outputs_json, priority_score=excluded.priority_score, status=excluded.status, source_signals_json=excluded.source_signals_json, metadata_json=excluded.metadata_json, opportunity_category=excluded.opportunity_category, recommended_action_key=excluded.recommended_action_key, owner_involvement=excluded.owner_involvement, organic_first=excluded.organic_first, estimated_value_cents=excluded.estimated_value_cents, confidence_score=excluded.confidence_score, evidence_json=excluded.evidence_json, handled_at=excluded.handled_at, expires_at=excluded.expires_at, capability_keys=excluded.capability_keys, execution_status=case when public.marketing_campaign_recommendations.execution_status in ('completed','measuring') then public.marketing_campaign_recommendations.execution_status else excluded.execution_status end, assessment_json=excluded.assessment_json, updated_at=now()`, [input.tenantId, brand.id, `growth-department:${action.key}`, action.title, action.whyNow, action.channels, JSON.stringify([{ nextStep: action.nextStep }]), action.nextStep, action.priorityScore, action.ownerInvolvement === "approval" ? "needs_review" : "recommended", JSON.stringify({ evidence: action.evidence }), JSON.stringify({ generatedBy: "ai_growth_department", organicFirst: action.organicFirst }), action.category, action.key, action.ownerInvolvement, action.organicFirst, action.estimatedValueCents, action.confidenceScore, JSON.stringify(action.evidence), action.ownerInvolvement === "automatic" ? new Date().toISOString() : null, [action.key.startsWith("capability:") ? action.key.replace("capability:", "") : action.category], action.ownerInvolvement === "approval" ? "waiting_approval" : "suggested", JSON.stringify(snapshot.capabilityAssessment)]);
+      await queryPostgres(`insert into public.marketing_campaign_recommendations (tenant_id, brand_id, recommendation_key, title, trigger_reason, primary_goal, recommended_channels, recommended_outputs_json, expected_impact, difficulty, priority_score, status, source_signals_json, metadata_json, opportunity_category, recommended_action_key, owner_involvement, organic_first, estimated_value_cents, confidence_score, evidence_json, handled_at, expires_at, updated_at, capability_keys, execution_status, assessment_json) values ($1,$2,$3,$4,$5,'grow_profitable_revenue',$6::text[],$7::jsonb,$8,'medium',$9,'recommended',$10::jsonb,$11::jsonb,$12,$13,$14,$15,$16,$17,$18::jsonb,null,now() + interval '14 days',now(),$19::text[],'suggested',$20::jsonb) on conflict (tenant_id, brand_id, recommendation_key) do update set title=excluded.title, trigger_reason=excluded.trigger_reason, recommended_channels=excluded.recommended_channels, recommended_outputs_json=excluded.recommended_outputs_json, priority_score=excluded.priority_score, status=case when public.marketing_campaign_recommendations.status in ('approved','turned_into_campaign') then public.marketing_campaign_recommendations.status else excluded.status end, source_signals_json=excluded.source_signals_json, metadata_json=excluded.metadata_json, opportunity_category=excluded.opportunity_category, recommended_action_key=excluded.recommended_action_key, owner_involvement=excluded.owner_involvement, organic_first=excluded.organic_first, estimated_value_cents=excluded.estimated_value_cents, confidence_score=excluded.confidence_score, evidence_json=excluded.evidence_json, expires_at=excluded.expires_at, capability_keys=excluded.capability_keys, execution_status=case when public.marketing_campaign_recommendations.execution_status in ('prepared','executing','completed','measuring') then public.marketing_campaign_recommendations.execution_status else excluded.execution_status end, assessment_json=excluded.assessment_json, updated_at=now()`, [input.tenantId, brand.id, `growth-department:${action.key}`, action.title, action.whyNow, action.channels, JSON.stringify([{ nextStep: action.nextStep }]), action.nextStep, action.priorityScore, JSON.stringify({ evidence: action.evidence }), JSON.stringify({ generatedBy: "ai_growth_department", organicFirst: action.organicFirst }), action.category, action.key, action.ownerInvolvement, action.organicFirst, action.estimatedValueCents, action.confidenceScore, JSON.stringify(action.evidence), [action.key.startsWith("capability:") ? action.key.replace("capability:", "") : action.category], JSON.stringify(snapshot.capabilityAssessment)]);
     }
     for (const item of (response.memory ?? []).slice(0, 20)) {
       if (!item?.title || !item?.type || !Array.isArray(item.evidence) || item.evidence.length === 0) continue;
@@ -175,7 +209,14 @@ export async function runAiGrowthDepartment(input: { tenantId: string; brandId?:
   }
 
   const unique = normalizeGrowthDepartmentActions(allActions, Math.max(5, input.maxActions ?? 5));
-  return { worthwhile: unique.length, handledAutomatically: unique.filter((a) => a.ownerInvolvement === "automatic").length, needsApproval: unique.filter((a) => a.ownerInvolvement === "approval").length, needsOwner: unique.filter((a) => a.ownerInvolvement === "personal").length, actions: unique };
+  return {
+    worthwhile: unique.length,
+    handledAutomatically: 0,
+    readyForFerocity: unique.filter((action) => action.ownerInvolvement !== "personal").length,
+    needsApproval: 0,
+    needsOwner: unique.filter((action) => action.ownerInvolvement === "personal").length,
+    actions: unique
+  };
 }
 
 export async function runAiGrowthDepartmentSweep(options: { tenantLimit?: number; tenantId?: string | null } = {}) {
@@ -204,13 +245,15 @@ export async function runAiGrowthDepartmentSweep(options: { tenantLimit?: number
   let failed = 0;
   for (const tenant of tenants?.rows ?? []) {
     try {
+      const marketResearch = await researchMarketTrendsForTenant(tenant.tenant_id);
+      await refreshPaidMediaCohortLearning(tenant.tenant_id);
       const intelligence = await runComposableGrowthIntelligence(tenant.tenant_id);
       const controller = await runClosedLoopGrowthController({ tenantId: tenant.tenant_id });
       const result = await runAiGrowthDepartment({ tenantId: tenant.tenant_id, maxActions: 5, intelligencePrepared: true });
       const contentLearning = await evaluateOrganicContentWinners({ tenantId: tenant.tenant_id });
       await queryPostgres(
         `insert into public.operator_timeline_events (tenant_id, event_family, event_type, title, body, metadata_json) values ($1,'marketing','ai_growth_department_daily',$2,$3,$4::jsonb)`,
-        [tenant.tenant_id, `Ferocity found ${result.worthwhile} worthwhile growth actions`, `${result.handledAutomatically} handled safely, ${result.needsApproval} need approval, and ${result.needsOwner} need the owner personally.`, JSON.stringify({ generatedBy: "ai_growth_department", intelligence, controller, ...result, contentLearning, actions: result.actions.map(({ key, title }) => ({ key, title })) })]
+        [tenant.tenant_id, `Ferocity found ${result.worthwhile} worthwhile growth actions`, `${result.readyForFerocity} ready for Ferocity, ${result.needsApproval} awaiting approval, and ${result.needsOwner} need the owner personally.`, JSON.stringify({ generatedBy: "ai_growth_department", marketResearch, intelligence, controller, ...result, contentLearning, actions: result.actions.map(({ key, title }) => ({ key, title })) })]
       );
       processed += 1;
       actions += result.worthwhile;

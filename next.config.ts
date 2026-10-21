@@ -2,9 +2,25 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: {
+    serverActions: {
+      // Document bytes upload directly to private storage. This limit covers
+      // structured form metadata and the existing CSV import surface only.
+      bodySizeLimit: "3mb"
+    }
+  },
   // Scanned-PDF OCR renders pages with a platform-native canvas binary. Keep
   // it out of webpack so each server runtime loads its own optional package.
-  serverExternalPackages: ["@napi-rs/canvas"],
+  // Spreadsheet parsing is server-only. Externalizing these Node packages keeps
+  // webpack from resolving unzipper's unused, lazy S3 adapter while local buffer
+  // parsing continues through Node's native module loader at runtime.
+  serverExternalPackages: [
+    "@napi-rs/canvas",
+    "pdfjs-dist",
+    "read-excel-file",
+    "unpdf",
+    "unzipper",
+  ],
   allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.1.173"],
   turbopack: {
     root: __dirname

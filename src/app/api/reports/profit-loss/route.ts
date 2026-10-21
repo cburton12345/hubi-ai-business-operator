@@ -1,6 +1,6 @@
 import { buildManagementPnl } from "@/lib/accounting/management-pnl";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 type Basis = "cash" | "accrual";

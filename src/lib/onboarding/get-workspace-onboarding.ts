@@ -1,4 +1,5 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export type WorkspaceOnboardingRow = {
   id: string;
@@ -13,6 +14,7 @@ export type WorkspaceOnboardingRow = {
 };
 
 export async function getWorkspaceOnboardingRows() {
+  await requirePermission("platform:manage");
   const result = await queryPostgres<{
     id: string;
     name: string;

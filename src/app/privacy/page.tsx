@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalPageShell eyebrow="Privacy" title="Privacy Policy" updated="August 17, 2026">
+    <LegalPageShell eyebrow="Privacy" title="Privacy Policy" updated="October 14, 2026">
       <p>
         This Privacy Policy explains how Ferocity collects, uses, discloses, and protects information when people visit ferocity.live, request information, create or use a Ferocity workspace, connect a provider, or communicate with us.
       </p>
@@ -41,6 +41,9 @@ export default function PrivacyPage() {
       <h2>Connected providers</h2>
       <p>
         External services—including communications, calendars, payments, advertising, analytics, reviews, websites, accounting, voice, and media providers—are optional. Ferocity uses their credentials, tokens, data, and callbacks only after an authorized user connects or configures the service. Those providers process information under their own terms and privacy policies. Workspace owners may disconnect supported providers, subject to security, fraud-prevention, legal, and record-retention requirements.
+      </p>
+      <p>
+        A workspace may optionally connect a compatible external AI assistant that its users already use. Ferocity works without this connection. Before creating access, an owner or administrator selects narrow scopes and acknowledges that the external provider may process the specific workspace data returned through those scopes under the customer&apos;s agreement with that provider. Ferocity does not intentionally provide an external assistant with Ferocity source code, private prompts, credentials, direct database access, or proprietary orchestration logic. Connections are tenant-bound, expiring, revocable, audited, and filtered for secrets and internal implementation details.
       </p>
 
       <h2>SMS and mobile information</h2>

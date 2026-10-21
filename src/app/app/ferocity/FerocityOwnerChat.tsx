@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useActionState,
   useCallback,
   useEffect,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import {
   ArrowRight,
@@ -29,6 +31,8 @@ import {
 } from "lucide-react";
 import { decideApproval } from "@/app/app/approvals/actions";
 import {
+  completeH4rOwnerPaymentAuthorizationAction,
+  controlOperatingGoalAction,
   createFerocityThreadAction,
   executeFerocityChatAction,
 } from "@/app/app/ferocity/actions";
@@ -41,6 +45,12 @@ import {
   type FerocityGoal,
 } from "@/lib/ai-workforce/guided-conversation";
 import type { CapabilityRecommendation } from "@/lib/ai-workforce/capability-discovery";
+import { validateExpenseDocumentSelection } from "@/lib/document-intelligence/upload-policy";
+import { PendingSubmitButton } from "@/components/forms/PendingSubmitButton";
+import { uploadAndProcessExpenseDocuments } from "@/lib/document-intelligence/direct-upload-client";
+import type { StatementYearCoverage } from "@/lib/document-intelligence/statement-year-coverage";
+import type { FerocityArtifactLink, FerocityCustomerMode } from "@/lib/ferocity/conversation-runtime";
+import { presentFerocityMessage } from "@/lib/ui/ferocity-message";
 
 type ChatTurn = {
   id: string;
@@ -49,11 +59,62 @@ type ChatTurn = {
   prepared: string[];
   blocked: string[];
   href?: string;
+  actionLabel?: string;
   runId?: string;
+  intent?: string;
   needsInput?: boolean;
   uploaded?: { name: string; status: string }[];
   recommended?: CapabilityRecommendation[];
+  statementCoverage?: StatementYearCoverage;
+  artifacts?: FerocityArtifactLink[];
 };
+
+function documentStatusLabel(status: string) {
+  switch (status) {
+    case "already imported":
+      return "already here";
+    case "needs_review":
+      return "quick check needed";
+    case "duplicate":
+      return "possible duplicate";
+    case "auto_approved":
+    case "approved":
+      return "ready";
+    case "failed":
+      return "could not read";
+    default:
+      return status.replaceAll("_", " ");
+  }
+}
+
+function FerocityAnswer({ message }: { message: string }) {
+  const presentation = presentFerocityMessage(message);
+  return (
+    <>
+      <strong>{presentation.message}</strong>
+      {presentation.technicalNotices.length ? (
+        <details className="ferocity-response-diagnostics">
+          <summary>How Ferocity handled this</summary>
+          {presentation.technicalNotices.map((notice) => <p key={notice}>{notice}</p>)}
+        </details>
+      ) : null}
+    </>
+  );
+}
+
+function formatWorkspaceTime(
+  value: string,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  try {
+    return new Intl.DateTimeFormat("en", { ...options, timeZone }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en", { ...options, timeZone: "UTC" }).format(date);
+  }
+}
 
 type SourceEvent = {
   platformName: string;
@@ -111,6 +172,22 @@ type ActivityItem = {
 };
 type SetupItem = { label: string; complete: boolean; href: string };
 type LeaderRecommendation = { title: string; detail: string; href: string; command: string };
+type OperatingGoalItem = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  authorityMode: string;
+  summary: string | null;
+  nextEvaluationAt: string;
+  outcomeVerified: boolean;
+  stepsTotal: number;
+  stepsCompleted: number;
+  stepsActive: number;
+  stepsNeedOwner: number;
+  currentStepTitle: string | null;
+  currentStepHref: string | null;
+};
 
 type VoiceMode = "off" | "dictation" | "conversation";
 type BrowserSpeechRecognition = {
@@ -157,7 +234,12 @@ export function FerocityOwnerChat({
   activity,
   setupProgress,
   workspaceRole,
+  canControlGoals,
+  customerMode,
+  workspaceTimeZone,
   leaderRecommendation,
+  operatingGoalTotal,
+  operatingGoals,
 }: {
   initialCommand: string;
   sourceEvent: SourceEvent | null;
@@ -173,8 +255,14 @@ export function FerocityOwnerChat({
   activity: ActivityItem[];
   setupProgress: SetupItem[];
   workspaceRole: string;
+  canControlGoals: boolean;
+  customerMode: FerocityCustomerMode;
+  workspaceTimeZone: string;
   leaderRecommendation: LeaderRecommendation;
+  operatingGoalTotal: number;
+  operatingGoals: OperatingGoalItem[];
 }) {
+  const router = useRouter();
   const [command, setCommand] = useState(initialCommand);
   const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
   const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
@@ -206,10 +294,40 @@ export function FerocityOwnerChat({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);
   const autoSubmitVoiceRef = useRef(false);
+  const queuedCommandRef = useRef<string | null>(null);
   const recordedResponse = useRef<string | null>(null);
-  const [state, action, pending] = useActionState(executeFerocityChatAction, {
+  const h4rAuthorizationHandledRef = useRef(false);
+  const [state, action, actionPending] = useActionState(executeFerocityChatAction, {
     ok: false,
   });
+  const [uploading, setUploading] = useState(false);
+  const [dispatchPending, startDispatch] = useTransition();
+  const [requestDelayed, setRequestDelayed] = useState(false);
+  const pending = actionPending || uploading || dispatchPending;
+  const latestRecommendations = command.trim() || pending
+    ? []
+    : turns.at(-1)?.recommended ?? [];
+  const showSuggestions = latestRecommendations.length > 0
+    || (turns.length === 0 && guideStep === "idle");
+
+  useEffect(() => {
+    if (h4rAuthorizationHandledRef.current || typeof window === "undefined") return;
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const proofToken = fragment.get("h4r_authorization");
+    if (!proofToken) return;
+    h4rAuthorizationHandledRef.current = true;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    startDispatch(async () => {
+      setVoiceStatus("Verifying the signed-in H4R workspace connection…");
+      try {
+        const result = await completeH4rOwnerPaymentAuthorizationAction(proofToken);
+        setVoiceStatus(result.message);
+        if (result.ok) router.refresh();
+      } catch {
+        setVoiceStatus("Ferocity could not verify the H4R connection. Reconnect while signed into the intended H4R workspace.");
+      }
+    });
+  }, [router]);
 
   const startListening = useCallback((mode: Exclude<VoiceMode, "off">) => {
     const Recognition = getSpeechRecognitionConstructor();
@@ -277,11 +395,12 @@ export function FerocityOwnerChat({
     const responseKey = `${submittedCommand}:${state.runId ?? state.href ?? state.message}`;
     if (recordedResponse.current === responseKey) return;
     recordedResponse.current = responseKey;
+    setRequestDelayed(false);
     if (state.threadId) {
       window.history.replaceState(
         null,
         "",
-        `/app/ferocity?thread=${state.threadId}`,
+        `/app/ferocity?thread=${state.threadId}${onboardingMode ? "&onboarding=1" : ""}`,
       );
     }
     setTurns((current) => [
@@ -293,23 +412,44 @@ export function FerocityOwnerChat({
         prepared: state.prepared ?? [],
         blocked: state.blocked ?? [],
         href: state.href,
+        actionLabel: state.actionLabel,
         runId: state.runId,
+        intent: state.intent,
         needsInput: state.needsInput,
         uploaded: state.uploaded,
         recommended: state.recommended,
+        artifacts: state.artifacts,
       },
     ]);
-    setCommand("");
+    const failedNames = new Set(
+      (state.uploaded ?? [])
+        .filter((file) => file.status === "failed")
+        .map((file) => file.name),
+    );
+    const selectedFiles = Array.from(fileInputRef.current?.files ?? []);
+    const failedFiles = selectedFiles.filter((file) => failedNames.has(file.name));
+    setCommand(failedFiles.length ? submittedCommand : "");
+    if (!failedFiles.length && voiceMode !== "conversation") {
+      setVoiceStatus("");
+    }
     setGuideStep("idle");
     setGuideMessage("");
     setGuideOwnerMessage("");
-    setAttachmentNames([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) {
+      const transfer = new DataTransfer();
+      failedFiles.forEach((file) => transfer.items.add(file));
+      fileInputRef.current.files = transfer.files;
+    }
+    setAttachmentNames(failedFiles.map((file) => file.name));
+    router.refresh();
+    if (failedFiles.length) {
+      setVoiceStatus(`${failedFiles.length} failed file${failedFiles.length === 1 ? " is" : "s are"} still selected. Fix the issue and send again; successful files will not be reprocessed.`);
+    }
     requestAnimationFrame(() => {
       composerRef.current?.querySelector("textarea")?.focus();
     });
     if (voiceMode === "conversation" && "speechSynthesis" in window) {
-      const spoken = new SpeechSynthesisUtterance(state.message);
+      const spoken = new SpeechSynthesisUtterance(presentFerocityMessage(state.message).message);
       spoken.rate = 1;
       spoken.onstart = () => setVoiceStatus("Ferocity is speaking…");
       spoken.onend = () => {
@@ -320,7 +460,7 @@ export function FerocityOwnerChat({
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(spoken);
     }
-  }, [startListening, state, submittedCommand, voiceMode]);
+  }, [onboardingMode, router, startListening, state, submittedCommand, voiceMode]);
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({
@@ -330,9 +470,21 @@ export function FerocityOwnerChat({
   }, [guideStep, pending, showAttention, turns]);
 
   useEffect(() => {
+    if (!pending) return;
+    const timer = window.setTimeout(() => setRequestDelayed(true), 45_000);
+    return () => window.clearTimeout(timer);
+  }, [pending, submittedCommand]);
+
+  useEffect(() => {
     if (!autoSubmitVoiceRef.current || pending || command.trim().length < 2)
       return;
     autoSubmitVoiceRef.current = false;
+    composerRef.current?.requestSubmit();
+  }, [command, pending]);
+
+  useEffect(() => {
+    if (!queuedCommandRef.current || pending || command !== queuedCommandRef.current) return;
+    queuedCommandRef.current = null;
     composerRef.current?.requestSubmit();
   }, [command, pending]);
 
@@ -353,6 +505,17 @@ export function FerocityOwnerChat({
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     setVoiceMode("off");
     setVoiceStatus("");
+  }
+
+  function submitSuggestedCommand(value: string) {
+    if (pending) return;
+    if (command === value) {
+      queuedCommandRef.current = null;
+      composerRef.current?.requestSubmit();
+      return;
+    }
+    queuedCommandRef.current = value;
+    setCommand(value);
   }
 
   function chooseGoal(goal: FerocityGoal) {
@@ -397,7 +560,11 @@ export function FerocityOwnerChat({
     setCommand("");
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (pending) {
+      event.preventDefault();
+      return;
+    }
     if (guideStep === "industry") {
       event.preventDefault();
       const nextIndustry = command.trim();
@@ -419,7 +586,45 @@ export function FerocityOwnerChat({
       setCommand("");
       return;
     }
-    setSubmittedCommand(command.trim());
+    const trimmedCommand = command.trim();
+    if (trimmedCommand.length < 2 && attachmentNames.length === 0) {
+      event.preventDefault();
+      setVoiceStatus("Enter a request or attach at least one document.");
+      return;
+    }
+    event.preventDefault();
+    setRequestDelayed(false);
+    const outgoingCommand = trimmedCommand || `Attached ${attachmentNames.length} document${attachmentNames.length === 1 ? "" : "s"} for review`;
+    const payload = new FormData(event.currentTarget);
+    payload.set("clientRequestId", crypto.randomUUID());
+    setVoiceStatus("Ferocity is reviewing the request…");
+    setSubmittedCommand(outgoingCommand);
+    setCommand("");
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    if (files.length) {
+      setUploading(true);
+      try {
+        const processed = await uploadAndProcessExpenseDocuments({
+          files,
+          sourceProduct: "ferocity",
+          sourceMessageRef: currentThreadId,
+          suppliedText: trimmedCommand || null,
+          onProgress: setVoiceStatus
+        });
+        payload.delete("documents");
+        payload.set("processedDocuments", JSON.stringify(processed.results));
+        startDispatch(() => action(payload));
+      } catch (uploadError) {
+        setRequestDelayed(false);
+        setCommand(trimmedCommand);
+        setSubmittedCommand("");
+        setVoiceStatus(uploadError instanceof Error ? uploadError.message : "The document upload failed. Your files remain selected.");
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+    startDispatch(() => action(payload));
   }
 
   const conversationContext = turns
@@ -430,8 +635,9 @@ export function FerocityOwnerChat({
   const awaitingClarification = turns.at(-1)?.needsInput === true;
   const currentThreadId = state.threadId ?? activeThreadId;
   const visibleSetupProgress = onboardingMode
-    ? setupProgress
+    ? setupProgress.filter((item) => !item.complete).slice(0, 1)
     : setupProgress.filter((item) => !item.complete);
+  const remainingSetupSteps = setupProgress.filter((item) => !item.complete).length;
 
   return (
     <main className="ferocity-chat-shell">
@@ -480,10 +686,10 @@ export function FerocityOwnerChat({
                 >
                   <span>{thread.title}</span>
                   <small>
-                    {new Intl.DateTimeFormat("en", {
+                    {formatWorkspaceTime(thread.updated_at, workspaceTimeZone, {
                       month: "short",
                       day: "numeric",
-                    }).format(new Date(thread.updated_at))}
+                    })}
                   </small>
                 </Link>
               ))}
@@ -505,39 +711,36 @@ export function FerocityOwnerChat({
                 ? "I’ll guide this one step at a time. Tell me what is slowing the business down or what result you want—there is no setup manual to learn."
                 : leaderRecommendation.detail}
             </p>
-            {!onboardingMode ? <div className="button-row"><button className="mini-button" type="button" onClick={() => setCommand(leaderRecommendation.command)}>Lead this now</button><Link className="mini-button secondary-button" href={leaderRecommendation.href}>See why</Link></div> : null}
+            {!onboardingMode ? <div className="button-row"><button className="mini-button" type="button" onClick={() => submitSuggestedCommand(leaderRecommendation.command)}>Lead this now</button><Link className="mini-button secondary-button" href={leaderRecommendation.href}>See why</Link></div> : null}
           </div>
         </article>
 
-        {(onboardingMode || visibleSetupProgress.length > 0) &&
-        turns.length === 0 ? (
+        {(onboardingMode || (visibleSetupProgress.length > 0 && turns.length === 0)) ? (
           <article className="ferocity-chat-message ferocity-chat-message-ai">
             <span className="ferocity-chat-avatar">
               <CheckCircle2 size={18} />
             </span>
             <div className="ferocity-chat-bubble ferocity-setup-card">
-              <strong>Your simple setup path</strong>
-              <p>
-                You do not have to hunt through settings. Tell me what you want,
-                or open only the step that needs you.
-              </p>
-              <div className="ferocity-setup-progress">
-                {visibleSetupProgress.map((item) => (
-                  <Link
-                    href={item.href}
-                    key={item.label}
-                    className={item.complete ? "complete" : ""}
-                  >
-                    {item.complete ? (
-                      <CheckCircle2 size={15} />
-                    ) : (
-                      <span className="setup-step-dot" />
-                    )}
-                    <span>{item.label}</span>
-                    <small>{item.complete ? "Ready" : "Finish"}</small>
-                  </Link>
-                ))}
-              </div>
+              <details className="ferocity-context-disclosure" open={onboardingMode}>
+                <summary>
+                  <span>
+                    <strong>Setup</strong>
+                    <small>{remainingSetupSteps} step{remainingSetupSteps === 1 ? "" : "s"} remaining</small>
+                  </span>
+                </summary>
+                <div>
+                  <p>{onboardingMode ? "Continue from the exact unfinished step." : "Open only the setup step that needs you."}</p>
+                  <div className="ferocity-setup-progress">
+                    {visibleSetupProgress.map((item) => (
+                      <Link href={item.href} key={item.label} className={item.complete ? "complete" : ""}>
+                        {item.complete ? <CheckCircle2 size={15} /> : <span className="setup-step-dot" />}
+                        <span>{item.label}</span>
+                        <small>{item.complete ? "Ready" : "Finish"}</small>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </details>
             </div>
           </article>
         ) : null}
@@ -548,8 +751,14 @@ export function FerocityOwnerChat({
               <BellRing size={18} />
             </span>
             <div className="ferocity-chat-bubble">
-              <strong>{opportunityBrief.headline}</strong>
-              <p>{opportunityBrief.summary}</p>
+              <details className="ferocity-context-disclosure">
+                <summary>
+                  <span>
+                    <strong>{opportunityBrief.mattersNowCount} business priorit{opportunityBrief.mattersNowCount === 1 ? "y" : "ies"}</strong>
+                    <small>{opportunityBrief.summary}</small>
+                  </span>
+                </summary>
+                <div>
               <div className="button-row">
                 <button
                   className="mini-button"
@@ -564,7 +773,7 @@ export function FerocityOwnerChat({
                   className="mini-button secondary-button"
                   type="button"
                   onClick={() =>
-                    setCommand(
+                    submitSuggestedCommand(
                       "Run the safe business scans across every connected area. Prepare or perform every safe authorized fix, then bring me only the three highest-value items and decisions that still need me.",
                     )
                   }
@@ -595,13 +804,98 @@ export function FerocityOwnerChat({
                               : "Connection needed"}
                         </small>
                       </div>
-                      <Link href={item.href}>
-                        Open <ArrowRight size={12} />
-                      </Link>
+                      {item.handling === "ferocity_can_prepare" ? (
+                        <button
+                          className="mini-button"
+                          type="button"
+                          disabled={pending}
+                          onClick={() => submitSuggestedCommand(
+                            `Handle this business priority now: ${item.title}. ${item.detail} Use verified workspace evidence, complete every safe authorized internal step, and return the finished work or the exact decision still needed.`,
+                          )}
+                        >
+                          Have Ferocity handle this <ArrowRight size={12} />
+                        </button>
+                      ) : (
+                        <Link href={item.href}>
+                          {item.handling === "owner_decision" ? "Review decision" : "Connect"} <ArrowRight size={12} />
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>
               ) : null}
+                </div>
+              </details>
+            </div>
+          </article>
+        ) : null}
+
+        {operatingGoals.length ? (
+          <article className="ferocity-chat-message ferocity-chat-message-ai">
+            <span className="ferocity-chat-avatar">
+              <Sparkles size={18} />
+            </span>
+            <div className="ferocity-chat-bubble">
+              <details className="ferocity-context-disclosure">
+                <summary>
+                  <span>
+                    <strong>Ferocity is continuing {operatingGoalTotal} outcome{operatingGoalTotal === 1 ? "" : "s"}</strong>
+                    <small>Background work stays tied to evidence, authority, and the next real dependency.</small>
+                  </span>
+                </summary>
+                <div>
+                  <ul className="ferocity-background-goals">
+                    {operatingGoals.map((goal) => (
+                      <li key={goal.id}>
+                        <div>
+                          <strong>{goal.title}</strong>
+                          <small>{goal.summary ?? "Ferocity will evaluate this again when evidence or a dependency changes."}</small>
+                          {goal.stepsTotal > 0 ? (
+                            <small className="ferocity-goal-progress">
+                              {goal.stepsCompleted}/{goal.stepsTotal} plan steps done
+                              {goal.stepsActive ? ` · ${goal.stepsActive} active` : ""}
+                              {goal.stepsNeedOwner ? ` · ${goal.stepsNeedOwner} needs review` : ""}
+                              {goal.outcomeVerified ? " · outcome verified" : " · outcome evidence pending"}
+                            </small>
+                          ) : null}
+                          {goal.currentStepTitle ? (
+                            goal.currentStepHref ? (
+                              <Link className="ferocity-goal-current-step" href={goal.currentStepHref}>
+                                Next: {goal.currentStepTitle} <ArrowRight size={12} />
+                              </Link>
+                            ) : (
+                              <small className="ferocity-goal-current-step">Next: {goal.currentStepTitle}</small>
+                            )
+                          ) : null}
+                          {canControlGoals ? <form action={controlOperatingGoalAction} className="ferocity-goal-controls">
+                            <input type="hidden" name="goalId" value={goal.id} />
+                            {goal.status === "paused" ? (
+                              <PendingSubmitButton className="mini-button" name="control" value="resume" pendingLabel="Resuming…">Resume</PendingSubmitButton>
+                            ) : (
+                              <PendingSubmitButton className="mini-button secondary-button" name="control" value="pause" pendingLabel="Pausing…">Pause</PendingSubmitButton>
+                            )}
+                            {["blocked", "needs_owner", "waiting"].includes(goal.status) ? (
+                              <PendingSubmitButton className="mini-button secondary-button" name="control" value="retry" pendingLabel="Retrying…">Retry</PendingSubmitButton>
+                            ) : null}
+                            <PendingSubmitButton className="mini-button danger-button" name="control" value="cancel" pendingLabel="Canceling…">Cancel</PendingSubmitButton>
+                          </form> : null}
+                        </div>
+                        <span className={`pill ${goal.status === "needs_owner" || goal.status === "blocked" ? "high" : goal.status === "paused" ? "medium" : "ready"}`}>
+                          {goal.status === "needs_owner" ? "Needs you" : goal.status.replaceAll("_", " ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {operatingGoalTotal > operatingGoals.length ? (
+                    <p className="muted">
+                      {operatingGoalTotal - operatingGoals.length} more outcome{operatingGoalTotal - operatingGoals.length === 1 ? " is" : "s are"} continuing in the background.
+                    </p>
+                  ) : null}
+                  <Link className="mini-button secondary-button" href="/app/automation-timeline">
+                    See background progress <ArrowRight size={13} />
+                  </Link>
+                </div>
+              </details>
             </div>
           </article>
         ) : null}
@@ -633,15 +927,14 @@ export function FerocityOwnerChat({
               <ShieldCheck size={18} />
             </span>
             <div className="ferocity-chat-bubble">
-              <strong>
-                {approvals.length} approval{approvals.length === 1 ? "" : "s"}{" "}
-                ready for your decision
-              </strong>
-              <p>
-                Review and decide here. You do not need to leave the
-                conversation.
-              </p>
-              <div className="ferocity-inline-approvals">
+              <details className="ferocity-context-disclosure">
+                <summary>
+                  <span>
+                    <strong>{approvals.length} approval{approvals.length === 1 ? "" : "s"} ready</strong>
+                    <small>Open when you are ready to review and decide.</small>
+                  </span>
+                </summary>
+                <div className="ferocity-inline-approvals">
                 {approvals.map((approval) => (
                   <form action={decideApproval} key={approval.id}>
                     <input
@@ -667,31 +960,14 @@ export function FerocityOwnerChat({
                       placeholder="Optional note or requested change"
                     />
                     <div className="button-row">
-                      <button
-                        className="mini-button"
-                        name="decision"
-                        value="approved"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="mini-button secondary-button"
-                        name="decision"
-                        value="changes_requested"
-                      >
-                        Request changes
-                      </button>
-                      <button
-                        className="mini-button danger-button"
-                        name="decision"
-                        value="rejected"
-                      >
-                        Reject
-                      </button>
+                      <PendingSubmitButton className="mini-button" name="decision" value="approved" pendingLabel="Saving…">Approve</PendingSubmitButton>
+                      <PendingSubmitButton className="mini-button secondary-button" name="decision" value="changes_requested" pendingLabel="Saving…">Request changes</PendingSubmitButton>
+                      <PendingSubmitButton className="mini-button danger-button" name="decision" value="rejected" pendingLabel="Saving…">Reject</PendingSubmitButton>
                     </div>
                   </form>
                 ))}
               </div>
+              </details>
             </div>
           </article>
         ) : null}
@@ -771,12 +1047,18 @@ export function FerocityOwnerChat({
                     className={`pill ${turn.blocked.length ? "high" : turn.needsInput ? "medium" : "ready"}`}
                   >
                     {turn.needsInput
-                      ? "Needs your answer"
+                      ? turn.href === "/app/expenses" ? "Attach files" : "Needs your answer"
                       : turn.blocked.length
                         ? "Needs attention"
-                        : "Completed"}
+                        : turn.runId
+                          ? "Prepared"
+                          : turn.intent === "read_only"
+                            ? "Checked"
+                            : turn.intent === "document_intake"
+                              ? "Imported"
+                              : "Handled"}
                   </span>
-                  <strong>{turn.message}</strong>
+                  <FerocityAnswer message={turn.message} />
                 </div>
                 {turn.uploaded?.length ? (
                   <div className="ferocity-upload-results">
@@ -784,7 +1066,7 @@ export function FerocityOwnerChat({
                     {turn.uploaded.map((file) => (
                       <span key={`${file.name}-${file.status}`}>
                         <FileText size={14} /> {file.name} ·{" "}
-                        {file.status.replaceAll("_", " ")}
+                        {documentStatusLabel(file.status)}
                       </span>
                     ))}
                   </div>
@@ -813,37 +1095,35 @@ export function FerocityOwnerChat({
                     </ul>
                   </div>
                 ) : null}
-                {turn.recommended?.length ? (
+                {turn.artifacts?.length ? (
                   <div className="ferocity-result-section">
-                    <p className="eyebrow">Worth using next</p>
-                    <p>
-                      I found these because they match what you asked for—not
-                      because you need to learn every Ferocity feature.
-                    </p>
-                    <div className="ferocity-chat-next-choices">
-                      {turn.recommended.map((item) => (
-                        <button
-                          type="button"
-                          key={item.key}
-                          onClick={() => setCommand(item.command)}
-                        >
-                          <span>
-                            <strong>{item.title}</strong>
-                            <small>{item.why}</small>
-                          </span>
-                          <ArrowRight size={14} />
-                        </button>
+                    <p className="eyebrow">{turn.artifacts.some((artifact) => artifact.status === "completed") ? "Finished work" : "Prepared work"}</p>
+                    <div className="button-row">
+                      {turn.artifacts.map((artifact) => (
+                        <Link className="mini-button" href={artifact.href} key={artifact.id}>
+                          {artifact.title} <ArrowRight size={13} />
+                        </Link>
                       ))}
                     </div>
                   </div>
                 ) : null}
                 <div className="button-row">
-                  {turn.href ? (
-                    <Link className="mini-button" href={turn.href}>
-                      Continue where needed <ArrowRight size={13} />
+                  {turn.runId && !turn.needsInput && !turn.artifacts?.some((artifact) => artifact.href === `/app/ai-workforce/results/${turn.runId}`) ? (
+                    <Link
+                      className="mini-button"
+                      href={`/app/ai-workforce/results/${turn.runId}`}
+                    >
+                      Open command details <ArrowRight size={13} />
                     </Link>
                   ) : null}
-                  {turn.runId ? (
+                  {turn.href ? (
+                    <Link className={`mini-button ${turn.runId && !turn.needsInput ? "secondary-button" : ""}`} href={turn.href}>
+                      {turn.actionLabel ?? (turn.href === "/app/expenses"
+                        ? "Review receipts & statements"
+                        : "Open the finished work")} <ArrowRight size={13} />
+                    </Link>
+                  ) : null}
+                  {turn.runId && turn.needsInput ? (
                     <Link
                       className="mini-button secondary-button"
                       href={`/app/ai-workforce/results/${turn.runId}`}
@@ -857,13 +1137,29 @@ export function FerocityOwnerChat({
           </div>
         ))}
 
+        {pending && submittedCommand ? (
+          <article className="ferocity-chat-message ferocity-chat-message-owner" aria-label="Your message was sent">
+            <div className="ferocity-chat-bubble">
+              <p>{submittedCommand}</p>
+            </div>
+          </article>
+        ) : null}
+
         {pending ? (
           <article className="ferocity-chat-message ferocity-chat-message-ai">
             <span className="ferocity-chat-avatar">
               <Sparkles size={18} />
             </span>
-            <div className="ferocity-chat-bubble ferocity-chat-thinking">
-              Ferocity is checking the business and preparing the next action…
+            <div className="ferocity-chat-bubble ferocity-chat-thinking" role="status">
+              {requestDelayed ? (
+                <>
+                  <strong>This request is taking longer than normal.</strong>
+                  <p>Ferocity has not marked it complete. Reload to check the durable conversation record before retrying, so work is not duplicated.</p>
+                  <button className="mini-button secondary-button" type="button" onClick={() => window.location.reload()}>
+                    Reload conversation status
+                  </button>
+                </>
+              ) : "Ferocity is checking the business and preparing the next action…"}
             </div>
           </article>
         ) : null}
@@ -885,12 +1181,12 @@ export function FerocityOwnerChat({
                     {item.detail ? <p>{item.detail}</p> : null}
                   </div>
                   <small>
-                    {new Intl.DateTimeFormat("en", {
+                    {formatWorkspaceTime(item.occurredAt, workspaceTimeZone, {
                       month: "short",
                       day: "numeric",
                       hour: "numeric",
                       minute: "2-digit",
-                    }).format(new Date(item.occurredAt))}
+                    })}
                   </small>
                 </article>
               ))}
@@ -902,47 +1198,6 @@ export function FerocityOwnerChat({
         ) : null}
         <div ref={conversationEndRef} aria-hidden="true" />
       </section>
-
-      {turns.length === 0 && guideStep === "idle" && !command.trim() ? (
-        <>
-          {onboardingMode ? <div
-            className="ferocity-goal-grid"
-            aria-label="Choose what you want to accomplish"
-          >
-            {ferocityGoals.map((goal) => (
-              <button
-                type="button"
-                key={goal.key}
-                onClick={() => chooseGoal(goal)}
-              >
-                <strong>{goal.label}</strong>
-                <span>{goal.description}</span>
-              </button>
-            ))}
-          </div> : null}
-          <div className="ferocity-chat-suggestions" aria-label="Quick actions">
-            {(onboardingMode ? [
-              "Find my biggest bottleneck", "Add a customer", "Create a job", "Schedule work", "Log an expense"
-            ] : [
-              "Lead the business and handle the top priority",
-              "Handle every safe action and show me decisions only",
-              "Find the next three revenue or cash opportunities"
-            ]).map((suggestion) => (
-              <button
-                type="button"
-                key={suggestion}
-                onClick={() =>
-                  setCommand(
-                    `${suggestion}. Ask me only for the details Ferocity does not already know.`,
-                  )
-                }
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : null}
 
       <form
         ref={composerRef}
@@ -962,6 +1217,7 @@ export function FerocityOwnerChat({
           name="onboardingMode"
           value={onboardingMode ? "true" : "false"}
         />
+        <input type="hidden" name="onboardingIndustry" value={guideIndustry} />
         <input
           type="hidden"
           name="inputMode"
@@ -1016,14 +1272,15 @@ export function FerocityOwnerChat({
           name="documents"
           type="file"
           ref={fileInputRef}
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,.csv,.tsv,.txt,.xlsx,.xml,.ofx,.qfx,.qbo"
           multiple
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
-            if (files.length > 25) {
+            const selectionError = validateExpenseDocumentSelection(files);
+            if (selectionError) {
               event.currentTarget.value = "";
               setAttachmentNames([]);
-              setVoiceStatus("Choose up to 25 files in one batch.");
+              setVoiceStatus(selectionError);
               return;
             }
             setAttachmentNames(files.map((file) => file.name));
@@ -1047,7 +1304,7 @@ export function FerocityOwnerChat({
             </p>
           ) : null}
           <label className="sr-only" htmlFor="ferocity-owner-command">
-            Ask Ferocity or tell it what to do
+            Tell Ferocity what to do or ask a question
           </label>
           <textarea
             id="ferocity-owner-command"
@@ -1059,7 +1316,7 @@ export function FerocityOwnerChat({
                 event.key === "Enter" &&
                 !event.shiftKey &&
                 !pending &&
-                command.trim().length >= 2
+                (command.trim().length >= 2 || attachmentNames.length > 0)
               ) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
@@ -1075,18 +1332,17 @@ export function FerocityOwnerChat({
             minLength={2}
             maxLength={2000}
             rows={3}
-            required
             autoFocus
             aria-describedby="ferocity-composer-hint"
           />
           <small className="ferocity-composer-hint" id="ferocity-composer-hint">
-            Enter sends · Shift+Enter adds a line · up to 25 files
+            Enter sends · Shift+Enter adds a line · 15 MB per file, 25 files per batch
           </small>
         </div>
         <button
           className="button"
           type="submit"
-          disabled={pending || command.trim().length < 2}
+          disabled={pending || (command.trim().length < 2 && attachmentNames.length === 0)}
           aria-label="Send to Ferocity"
         >
           <Send size={17} />
@@ -1097,11 +1353,57 @@ export function FerocityOwnerChat({
           {voiceStatus}
         </p>
       ) : null}
+      {!command.trim() && !pending && showSuggestions ? (
+        <div className="ferocity-chat-suggestions" aria-label={latestRecommendations.length ? "Relevant next actions" : "Quick actions"}>
+          {latestRecommendations.length ? latestRecommendations.map((item) => (
+            <button
+              type="button"
+              key={item.key}
+              onClick={() => {
+                setCommand(item.command);
+                requestAnimationFrame(() => composerRef.current?.querySelector("textarea")?.focus());
+              }}
+            >
+              <strong>{item.title}</strong>
+              <span>{item.why}</span>
+            </button>
+          )) : turns.length === 0 && guideStep === "idle" ? (onboardingMode ? [
+            "Find my biggest bottleneck", "Add a customer", "Create a job", "Schedule work", "Log an expense"
+          ] : [
+            "Lead the business and handle the top priority",
+            "Handle every safe action and show me decisions only",
+            "Find the next three revenue or cash opportunities"
+          ]).map((suggestion) => (
+            <button
+              type="button"
+              key={suggestion}
+              onClick={() => {
+                setCommand(`${suggestion}. Ask me only for the details Ferocity does not already know.`);
+                requestAnimationFrame(() => composerRef.current?.querySelector("textarea")?.focus());
+              }}
+            >
+              {suggestion}
+            </button>
+          )) : null}
+        </div>
+      ) : null}
+      {turns.length === 0 && guideStep === "idle" && !command.trim() && onboardingMode ? (
+        <div className="ferocity-goal-grid" aria-label="Choose what you want to accomplish">
+          {ferocityGoals.map((goal) => (
+            <button type="button" key={goal.key} onClick={() => chooseGoal(goal)}>
+              <strong>{goal.label}</strong>
+              <span>{goal.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="ferocity-chat-footer">
         <p className="ferocity-chat-footnote">
-          Ferocity follows your authority settings.{" "}
+          {customerMode === "active_customer" || customerMode === "internal_operator"
+            ? "Ferocity carries authorized work through connected workflows and returns only missing information, approvals, or unavailable connections. "
+            : "Ferocity can evaluate the business now and make the required execution path explicit. "}
           {workspaceRole === "owner"
-            ? "You control spending, publishing, payments, customer-facing messages, and other consequential actions. Voice can prepare them, but a visible click is still required to approve them."
+            ? "Spending, publishing, payments, customer-facing messages, and other consequential actions remain visibly approval-controlled."
             : "Your workspace role controls which actions you can approve."}
         </p>
         <Link href="/app/full">

@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -17,6 +17,7 @@ type VisitRow = {
   location_name: string | null;
   address: string | null;
   assigned_workers: string | null;
+  assigned_worker_details: { id: string; name: string }[] | null;
   assigned_count: string;
   required_crew_size: number;
   open_conflicts: string;
@@ -62,6 +63,8 @@ export async function getScheduleDashboard() {
         l.name as location_name,
         nullif(concat_ws(', ', l.address_line1, l.city, l.state, l.postal_code), '') as address,
         string_agg(distinct w.name, ', ' order by w.name) filter (where w.id is not null) as assigned_workers,
+        jsonb_agg(distinct jsonb_build_object('id', w.id, 'name', w.name))
+          filter (where w.id is not null) as assigned_worker_details,
         count(distinct va.worker_id) filter (
           where va.worker_id is not null and va.status in ('proposed','assigned','acknowledged','dispatched')
         )::text as assigned_count,
@@ -75,6 +78,7 @@ export async function getScheduleDashboard() {
       join public.customers c on c.id = v.customer_id and c.tenant_id = v.tenant_id
       left join public.customer_locations l on l.id = v.location_id and l.tenant_id = v.tenant_id
       left join public.service_visit_assignments va on va.visit_id = v.id and va.tenant_id = v.tenant_id
+        and va.status in ('proposed','assigned','acknowledged','dispatched')
       left join public.operations_workers w on w.id = va.worker_id and w.tenant_id = v.tenant_id
       left join public.service_visit_conflicts vc on vc.visit_id = v.id and vc.tenant_id = v.tenant_id
       left join lateral (
@@ -91,7 +95,7 @@ export async function getScheduleDashboard() {
           or v.scheduled_start between now() - interval '1 day' and now() + interval '45 days'
           or v.status in ('dispatched','en_route','arrived','in_progress','paused')
         )
-        and v.status not in ('completed','canceled','no_show')
+        and v.status not in ('completed','canceled')
       group by v.id, c.name, l.name, l.address_line1, l.city, l.state, l.postal_code, token.public_token
       order by
         case when v.status = 'unscheduled' then 0 else 1 end,
@@ -158,6 +162,7 @@ export async function getScheduleDashboard() {
     locationName: row.location_name,
     address: row.address,
     assignedWorkers: row.assigned_workers,
+    assignedWorkerList: row.assigned_worker_details ?? [],
     assignedCount: Number(row.assigned_count),
     requiredCrewSize: row.required_crew_size,
     openConflicts: Number(row.open_conflicts),

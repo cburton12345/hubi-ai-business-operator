@@ -28,7 +28,7 @@ export async function importPublicChatHandoff(input: {
     `
     select id
     from public.ferocity_chat_threads
-    where tenant_id = $1
+    where tenant_id = $1 and audience='owner'
       and exists (
         select 1 from public.ferocity_chat_messages m
         where m.tenant_id = $1 and m.thread_id = ferocity_chat_threads.id

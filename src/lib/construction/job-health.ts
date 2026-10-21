@@ -36,6 +36,7 @@ export type ConstructionJobHealthInput = {
   estimateId: string | null;
   estimateTotalCents: number;
   approvedChangeCents: number;
+  approvedChangeEstimatedCostCents?: number;
   pendingChangeCount: number;
   expenseCents: number;
   materialActualCents: number;
@@ -63,6 +64,7 @@ export type ConstructionJobHealth = {
   severity: ConstructionRisk["severity"];
   projectValueCents: number;
   trackedCostCents: number;
+  projectedCostCents: number;
   committedCostCents: number;
   invoicedCents: number;
   paidCents: number;
@@ -99,6 +101,7 @@ export function assessConstructionJobHealth(input: ConstructionJobHealthInput): 
   const projectValueCents = Math.max(input.estimateTotalCents + input.approvedChangeCents, input.invoiceTotalCents);
   const materialBasisCents = Math.max(input.expenseCents, input.materialActualCents, input.materialLogCents);
   const trackedCostCents = materialBasisCents + input.peoplePaidCents;
+  const projectedCostCents = trackedCostCents + Math.max(0, input.approvedChangeEstimatedCostCents ?? 0);
   const costToValuePercent = projectValueCents > 0 ? (trackedCostCents / projectValueCents) * 100 : null;
   const risks: ConstructionRisk[] = [];
   const jobHref = `/app/service/jobs/${input.id}`;
@@ -253,6 +256,7 @@ export function assessConstructionJobHealth(input: ConstructionJobHealthInput): 
   const summaryEvidence = [
     evidence("service_estimates", "Project value", money(projectValueCents), "Estimate, approved changes, or invoiced value."),
     evidence("operations_costs", "Tracked cost", money(trackedCostCents), "Directional cost basis with anti-duplication assumption."),
+    evidence("estimate_change_orders", "Approved change forecast", money(input.approvedChangeEstimatedCostCents ?? 0), "Forecast only; this does not claim the cost was incurred."),
     evidence("service_invoices", "Paid", money(input.invoicePaidCents), "Recorded invoice payments."),
     evidence("purchase_orders", "Committed purchasing", money(input.committedPurchaseOrderCents), "Open purchase orders.")
   ];
@@ -266,6 +270,7 @@ export function assessConstructionJobHealth(input: ConstructionJobHealthInput): 
     severity,
     projectValueCents,
     trackedCostCents,
+    projectedCostCents,
     committedCostCents: input.committedPurchaseOrderCents,
     invoicedCents: input.invoiceTotalCents,
     paidCents: input.invoicePaidCents,
@@ -286,6 +291,7 @@ type JobAggregateRow = {
   estimate_id: string | null;
   estimate_total_cents: string | number;
   approved_change_cents: string | number;
+  approved_change_estimated_cost_cents: string | number;
   pending_change_count: string | number;
   expense_cents: string | number;
   material_actual_cents: string | number;
@@ -348,6 +354,7 @@ export async function getConstructionJobHealthDashboardForTenant(tenantId: strin
         j.estimate_id,
         coalesce(e.total_cents, 0) as estimate_total_cents,
         coalesce((select sum(amount_cents) from public.estimate_change_orders co where co.tenant_id = j.tenant_id and co.estimate_id = j.estimate_id and co.status = 'approved'), 0) as approved_change_cents,
+        coalesce((select sum(estimated_cost_cents) from public.estimate_change_orders co where co.tenant_id = j.tenant_id and co.estimate_id = j.estimate_id and co.status = 'approved'), 0) as approved_change_estimated_cost_cents,
         coalesce((select count(*) from public.estimate_change_orders co where co.tenant_id = j.tenant_id and co.estimate_id = j.estimate_id and co.status in ('draft', 'sent_manually')), 0) as pending_change_count,
         coalesce((select sum(amount_cents + tax_cents) from public.operations_expenses x where x.tenant_id = j.tenant_id and x.service_job_id = j.id and x.status <> 'rejected'), 0) as expense_cents,
         coalesce((select sum(actual_cost_cents) from public.job_material_list_items m where m.tenant_id = j.tenant_id and m.service_job_id = j.id and m.status <> 'cancelled'), 0) as material_actual_cents,
@@ -355,7 +362,7 @@ export async function getConstructionJobHealthDashboardForTenant(tenantId: strin
         coalesce((select sum(amount_cents) from public.operations_worker_payments wp where wp.tenant_id = j.tenant_id and wp.service_job_id = j.id and wp.status in ('recorded', 'reviewed')), 0) as people_paid_cents,
         coalesce((select sum(total_cents) from public.service_invoices i where i.tenant_id = j.tenant_id and i.job_id = j.id and i.status <> 'void'), 0) as invoice_total_cents,
         coalesce((select sum(amount_paid_cents) from public.service_invoices i where i.tenant_id = j.tenant_id and i.job_id = j.id and i.status <> 'void'), 0) as invoice_paid_cents,
-        coalesce((select count(*) from public.service_invoices i where i.tenant_id = j.tenant_id and i.job_id = j.id and i.status = 'overdue' and i.total_cents > i.amount_paid_cents), 0) as overdue_invoice_count,
+        coalesce((select count(*) from public.service_invoices i where i.tenant_id = j.tenant_id and i.job_id = j.id and i.status = 'overdue' and i.total_cents > i.amount_paid_cents + i.write_off_cents), 0) as overdue_invoice_count,
         coalesce((select count(*) from public.operations_expenses x where x.tenant_id = j.tenant_id and x.service_job_id = j.id and x.status = 'needs_review'), 0) as unreviewed_expense_count,
         coalesce((select count(*) from public.estimate_warnings w where w.tenant_id = j.tenant_id and w.estimate_id = j.estimate_id and w.status = 'open' and w.severity = 'blocking'), 0) as blocking_warning_count,
         coalesce((select count(*) from public.estimate_warnings w where w.tenant_id = j.tenant_id and w.estimate_id = j.estimate_id and w.status = 'open' and w.severity <> 'blocking'), 0) as open_warning_count,
@@ -405,6 +412,7 @@ export async function getConstructionJobHealthDashboardForTenant(tenantId: strin
     estimateId: row.estimate_id,
     estimateTotalCents: Number(row.estimate_total_cents ?? 0),
     approvedChangeCents: Number(row.approved_change_cents ?? 0),
+    approvedChangeEstimatedCostCents: Number(row.approved_change_estimated_cost_cents ?? 0),
     pendingChangeCount: Number(row.pending_change_count ?? 0),
     expenseCents: Number(row.expense_cents ?? 0),
     materialActualCents: Number(row.material_actual_cents ?? 0),

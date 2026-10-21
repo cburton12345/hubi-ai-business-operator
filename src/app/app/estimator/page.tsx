@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Calculator, ClipboardCheck, PackageSearch, ShieldAlert, ShoppingCart } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getEstimatorDashboard } from "@/lib/estimator/get-estimator-dashboard";
+import { randomUUID } from "node:crypto";
 import {
   createBidFromTakeoffAction,
   createChangeOrderAction,
+  sendChangeOrderAction,
   createEstimatorReviewRecordAction,
   createEstimatorTakeoffAction,
   createOrderListFromTakeoffAction,
@@ -420,6 +422,7 @@ export default async function EstimatorPage() {
         <section className="panel span-6">
           <h2>Add Change Order</h2>
           <form action={createChangeOrderAction} className="stacked-form">
+            <input name="idempotencyKey" type="hidden" value={randomUUID()} />
             <label>
               Estimate
               <select name="estimateId" required defaultValue="">
@@ -440,7 +443,11 @@ export default async function EstimatorPage() {
                   <option value="other">Other</option>
                 </select>
               </label>
-              <label>Amount<input name="amount" inputMode="decimal" placeholder="0.00" /></label>
+              <label>Customer price change<input name="amount" inputMode="decimal" placeholder="0.00" /></label>
+            </div>
+            <div className="form-grid two">
+              <label>Estimated added cost<input name="estimatedCost" inputMode="decimal" placeholder="0.00" /></label>
+              <label>Schedule impact (hours)<input name="scheduleImpactHours" inputMode="decimal" placeholder="0" /></label>
             </div>
             <label>Title<input name="title" placeholder="Decking repair after tear-off" required /></label>
             <label>Description<textarea name="description" rows={3} placeholder="What changed, why it changed, and what needs approval." /></label>
@@ -678,7 +685,7 @@ function EstimatorReviewList({
 }: {
   title: string;
   empty: string;
-  items: { id: string; label: string; detail: string; status: string; tone: string; actionKind?: "quote" | "inventory" | "package" | "approval" }[];
+  items: { id: string; label: string; detail: string; status: string; tone: string; actionKind?: "quote" | "inventory" | "package" | "approval" | "change_order" }[];
 }) {
   return (
     <section className="panel span-6">
@@ -711,6 +718,7 @@ function EstimatorReviewList({
                   <InlineAction id={item.id} label="Dismiss" action={updateEstimatorApprovalAction} status="dismissed" />
                 </>
               ) : null}
+              {item.actionKind === "change_order" ? <InlineAction id={item.id} label="Make available" action={sendChangeOrderAction} /> : null}
             </div>
           </li>
         ))}

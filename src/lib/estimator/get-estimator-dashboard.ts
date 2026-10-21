@@ -40,7 +40,7 @@ export type EstimatorPurchasingRow = {
   detail: string;
   status: string;
   tone: string;
-  actionKind?: "quote" | "inventory" | "package" | "approval";
+  actionKind?: "quote" | "inventory" | "package" | "approval" | "change_order";
 };
 
 export type EstimatorOption = {
@@ -221,9 +221,9 @@ export async function getEstimatorDashboard(): Promise<EstimatorDashboard> {
       `,
       [tenantId]
     ).catch(() => ({ rows: [] })),
-    queryPostgres<{ id: string; title: string; change_type: string; status: string; amount_cents: number }>(
+    queryPostgres<{ id: string; title: string; change_type: string; status: string; amount_cents: number; estimated_cost_cents: number; schedule_impact_minutes: number }>(
       `
-      select id, title, change_type, status, amount_cents
+      select id, title, change_type, status, amount_cents, estimated_cost_cents, schedule_impact_minutes
       from public.estimate_change_orders
       where tenant_id = $1 and status in ('draft', 'sent_manually')
       order by created_at desc
@@ -443,9 +443,10 @@ export async function getEstimatorDashboard(): Promise<EstimatorDashboard> {
     changeOrders: (changeOrdersResult?.rows ?? []).map((row) => ({
       id: row.id,
       label: row.title,
-      detail: `${row.change_type.replaceAll("_", " ")} / ${formatMoney(row.amount_cents)}. Original estimate stays preserved.`,
+      detail: `${row.change_type.replaceAll("_", " ")} / customer ${formatMoney(row.amount_cents)} / forecast cost ${formatMoney(row.estimated_cost_cents)}${row.schedule_impact_minutes > 0 ? ` / +${(row.schedule_impact_minutes / 60).toFixed(1)} hours` : ""}. Original estimate stays preserved.`,
       status: row.status,
-      tone: row.status === "draft" ? "medium" : ""
+      tone: row.status === "draft" ? "medium" : "",
+      actionKind: row.status === "draft" ? "change_order" : undefined
     })),
     planValidations: (planValidationsResult?.rows ?? []).map((row) => ({
       id: row.id,

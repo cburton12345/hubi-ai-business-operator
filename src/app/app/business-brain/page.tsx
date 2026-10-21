@@ -173,6 +173,7 @@ export default async function BusinessBrainPage() {
         <BrainList title="Customer Signals" description="Customer history that should guide follow-up, service, reviews, and retention." rows={brain.customerSignals} empty="No customers yet." />
         <BrainList title="Proof And Documents" description="Photos, videos, proof, reviews, assets, and permissions that can power trustworthy marketing." rows={brain.documentsAndProof} empty="No proof assets yet." />
         <BrainList title="Connected Tools" description="Provider connections Ferocity can use for email, payments, calendar, ads, publishing, marketplace, and events." rows={brain.integrations} empty="No integrations connected yet." />
+        <BrainList title="Authoritative Companion Products" description="Minimized operating context Ferocity can reason across while each connected product keeps ownership of its records and workflows." rows={brain.companionProducts} empty="No companion-product context captured yet." />
         <BrainList title="Where AI Reads This" description="The AI helpers that should use this business info before acting." rows={brain.aiReadsFrom} empty="No AI readers configured." />
       </section>
     </QueuePageShell>

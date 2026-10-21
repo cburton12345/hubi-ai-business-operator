@@ -12,6 +12,24 @@ type GeneratedVisit = {
  * The plan/date external key makes repeated automation runs idempotent.
  */
 export async function generateDueMembershipVisits(tenantId: string, customerId?: string) {
+  await queryPostgres(
+    `update public.recurring_service_plans plan
+     set visits_remaining=program.visits_per_year,
+       renews_at=case program.billing_frequency
+         when 'monthly' then (plan.renews_at+interval '1 month')::date
+         when 'quarterly' then (plan.renews_at+interval '3 months')::date
+         when 'annual' then (plan.renews_at+interval '1 year')::date
+         else plan.renews_at end,
+       billing_status=case when plan.billing_status='past_due' then 'past_due' else 'active' end,
+       metadata_json=coalesce(plan.metadata_json,'{}'::jsonb)||jsonb_build_object('lastRenewedAt',now()),
+       updated_at=now()
+     from public.membership_programs program
+     where plan.tenant_id=$1 and ($2::uuid is null or plan.customer_id=$2)
+       and plan.membership_program_id=program.id and program.tenant_id=plan.tenant_id
+       and plan.status='active' and plan.auto_renew and plan.renews_at is not null
+       and plan.renews_at<=current_date and plan.billing_status<>'past_due'`,
+    [tenantId, customerId ?? null]
+  );
   const result = await queryPostgres<GeneratedVisit>(
     `
     with due as (
@@ -25,6 +43,7 @@ export async function generateDueMembershipVisits(tenantId: string, customerId?:
       where p.tenant_id = $1
         and ($2::uuid is null or p.customer_id = $2)
         and p.status = 'active'
+        and (p.visits_remaining is null or p.visits_remaining > 0)
         and p.next_service_date is not null
         and p.next_service_date <= current_date + 45
         and not exists (

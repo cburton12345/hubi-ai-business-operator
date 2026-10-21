@@ -13,6 +13,7 @@ import {
   convertGrowthOpportunityToLeadAction,
   createConversationAcquisitionLinkAction,
   createGrowthObjectiveAction,
+  handleGrowthRecommendationWithFerocityAction,
   queueGrowthResponseAction,
   queueFacebookCommunityJoinAction,
   queueFacebookCommunityPostAction,
@@ -71,7 +72,10 @@ export default async function GrowthOperatorPage() {
           </div>
           <div className="inline-actions">
             <span className="pill low">{dashboard.dailyGrowthDepartment.handledAutomatically} handled safely</span>
-            <Link className="mini-button" href="/app/approvals">{dashboard.dailyGrowthDepartment.needsApproval} need approval</Link>
+            <span className="pill low">{dashboard.dailyGrowthDepartment.readyForFerocity} ready for Ferocity</span>
+            {dashboard.dailyGrowthDepartment.needsApproval > 0 ? (
+              <Link className="mini-button" href="/app/approvals">{dashboard.dailyGrowthDepartment.needsApproval} awaiting approval</Link>
+            ) : <span className="pill low">0 awaiting approval</span>}
             <span className={`pill ${dashboard.dailyGrowthDepartment.needsOwner ? "high" : "low"}`}>{dashboard.dailyGrowthDepartment.needsOwner} need you personally</span>
           </div>
         </div>
@@ -88,14 +92,21 @@ export default async function GrowthOperatorPage() {
                 <span className="pill">{action.category.replaceAll("_", " ")}</span>
                 <span className="pill">{action.executionStatus.replaceAll("_", " ")}</span>
                 {action.organicFirst ? <span className="pill low">organic first</span> : null}
-                <span className={`pill ${action.ownerInvolvement === "personal" ? "high" : action.ownerInvolvement === "automatic" ? "low" : ""}`}>{action.ownerInvolvement}</span>
+                <span className={`pill ${action.ownerInvolvement === "personal" ? "high" : action.ownerInvolvement === "automatic" ? "low" : ""}`}>
+                  {action.ownerInvolvement === "approval" ? "approval before external action" : action.ownerInvolvement}
+                </span>
                 <span className="pill">{action.confidenceScore}% confidence</span>
                 {action.effectivenessScore != null ? <span className="pill low">{action.effectivenessScore}% effective</span> : null}
-                {action.assessmentScore != null ? <span className="pill">business loop {action.assessmentScore}%</span> : null}
-                {!["attribution", "follow_up", "retention"].includes(action.category) ? (
+                <form action={handleGrowthRecommendationWithFerocityAction}>
+                  <input name="recommendationId" type="hidden" value={action.id} />
+                  <button className="mini-button" type="submit">
+                    {action.ownerInvolvement === "personal" ? "Work through this with Ferocity" : "Have Ferocity handle this"}
+                  </button>
+                </form>
+                {action.category === "content" ? (
                   <form action={prepareGrowthContentPackageAction}>
                     <input name="recommendationId" type="hidden" value={action.id} />
-                    <button className="mini-button" type="submit">Prepare content package</button>
+                    <button className="mini-button secondary-button" type="submit">Prepare draft package</button>
                   </form>
                 ) : null}
               </div>
@@ -136,6 +147,15 @@ export default async function GrowthOperatorPage() {
         </section>
       </div>
 
+      <details className="panel progressive-disclosure section-actions">
+        <summary>
+          <div>
+            <span className="eyebrow">Growth workspace</span>
+            <h2>Campaigns, channels, publishing, attribution, and history</h2>
+            <p className="muted">Open the full operating workspace only when you need to configure or inspect the machinery behind today’s priorities.</p>
+          </div>
+        </summary>
+        <div className="progressive-disclosure-body">
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
@@ -755,6 +775,8 @@ export default async function GrowthOperatorPage() {
           </ul>
         </section>
       </div>
+        </div>
+      </details>
     </QueuePageShell>
   );
 }

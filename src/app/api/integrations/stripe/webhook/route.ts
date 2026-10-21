@@ -13,6 +13,9 @@ import {
   reconcileStripeSubscriptionInvoice,
   type StripeSubscriptionInvoiceEvent
 } from "@/lib/billing/subscription-lifecycle";
+import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
+import { recordPlatformSubscriptionRefundEvent } from "@/lib/billing/platform-subscription-revenue";
+import { recordInvoiceRefund } from "@/lib/billing/invoice-payment-adjustments";
 
 type StripeEvent = {
   id: string;
@@ -347,9 +350,10 @@ async function handleServiceInvoicePayment(event: StripeEvent, object: Record<st
     ),
     updated_invoice as (
       update public.service_invoices i
-      set amount_paid_cents = least(i.total_cents, i.amount_paid_cents + p.amount_cents),
+      set amount_paid_cents = least(greatest(i.total_cents-i.write_off_cents,0), i.amount_paid_cents + p.amount_cents),
           status = case
-            when least(i.total_cents, i.amount_paid_cents + p.amount_cents) >= i.total_cents then 'paid'
+            when i.amount_paid_cents + p.amount_cents + i.write_off_cents >= i.total_cents
+              then case when i.write_off_cents>0 then 'written_off' else 'paid' end
             else 'partially_paid'
           end,
           updated_at = now()
@@ -384,12 +388,27 @@ async function handleServiceInvoicePayment(event: StripeEvent, object: Record<st
 
 async function recordStripePaymentException(event: StripeEvent, object: Record<string, unknown>, status: "failed" | "refunded" | "partially_refunded") {
   const meta = metadata(object);
-  const tenantId = textValue(meta, "tenant_id");
-  const invoiceId = textValue(meta, "invoice_id");
+  let tenantId = textValue(meta, "tenant_id");
+  let invoiceId = textValue(meta, "invoice_id");
   const paymentIntentId = textValue(object, "payment_intent") ?? textValue(object, "id");
   const amountCents = status === "failed"
     ? numberValue(object, "amount") ?? Number(textValue(meta, "amount_cents") ?? 0)
     : numberValue(object, "amount_refunded") ?? numberValue(object, "amount") ?? Number(textValue(meta, "amount_cents") ?? 0);
+
+  if (status !== "failed" && paymentIntentId) {
+    const paymentBinding = await queryPostgres<{ tenant_id: string; invoice_id: string }>(
+      `select tenant_id,invoice_id from public.service_invoice_payments
+       where provider='stripe' and provider_payment_id=$1
+       limit 1`,
+      [paymentIntentId]
+    );
+    const binding = paymentBinding?.rows[0];
+    if (binding && ((tenantId && tenantId !== binding.tenant_id) || (invoiceId && invoiceId !== binding.invoice_id))) {
+      throw new Error("Stripe refund metadata did not match its authoritative payment binding.");
+    }
+    tenantId = tenantId ?? binding?.tenant_id ?? null;
+    invoiceId = invoiceId ?? binding?.invoice_id ?? null;
+  }
 
   if (!tenantId || !invoiceId) {
     await queryPostgres(
@@ -402,7 +421,39 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
     return;
   }
 
-  const affectedPayments = await queryPostgres<{ id: string; refund_delta_cents: number }>(
+  if (status !== "failed") {
+    if (!paymentIntentId || amountCents <= 0) {
+      await queryPostgres(
+        `insert into public.payment_provider_account_events (tenant_id,provider,event_type,event_status,provider_event_id,metadata_json)
+         values ($1,'stripe',$2,'failed',$3,$4::jsonb)`,
+        [tenantId, event.type, event.id, JSON.stringify({ reason: "refund_missing_exact_payment_binding", invoiceId })]
+      );
+      return;
+    }
+    const refund = await recordInvoiceRefund({
+      tenantId,
+      invoiceId,
+      provider: "stripe",
+      providerPaymentId: paymentIntentId,
+      amountCents: Math.round(amountCents),
+      amountMode: "cumulative",
+      idempotencyKey: `stripe:${event.id}`,
+      providerRefundId: event.id,
+      reason: "Stripe payment refund recorded.",
+      source: "stripe_webhook",
+      metadata: { stripeEventId: event.id, eventType: event.type }
+    });
+    if (refund.status === "payment_not_found") {
+      await queryPostgres(
+        `insert into public.payment_provider_account_events (tenant_id,provider,event_type,event_status,provider_event_id,metadata_json)
+         values ($1,'stripe',$2,'failed',$3,$4::jsonb)`,
+        [tenantId, event.type, event.id, JSON.stringify({ reason: "refund_payment_not_found", invoiceId, paymentIntentId })]
+      );
+    }
+    return;
+  }
+
+  await queryPostgres(
     `
     with prior as materialized (
       select id,refunded_amount_cents from public.service_invoice_payments
@@ -421,16 +472,6 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
     [tenantId, invoiceId, paymentIntentId, status, JSON.stringify({ stripeEventId: event.id, eventType: event.type }), Math.round(amountCents)]
   );
 
-  if (status !== "failed") {
-    for (const payment of affectedPayments?.rows ?? []) {
-      if (payment.refund_delta_cents <= 0) continue;
-      await queryPostgres(
-        `select public.adjust_earn_for_refund($1,$2,$3,'refund')`,
-        [payment.id, payment.refund_delta_cents, `stripe:${event.id}`]
-      );
-    }
-  }
-
   await queryPostgres(
     `
     insert into public.service_ledger_entries (
@@ -445,18 +486,18 @@ async function recordStripePaymentException(event: StripeEvent, object: Record<s
     [
       tenantId,
       invoiceId,
-      status === "failed" ? "payment_failed" : "refund",
+      "payment_failed",
       Math.round(amountCents),
-      status === "failed" ? "Stripe payment failed or expired." : "Stripe payment refund recorded.",
+      "Stripe payment failed or expired.",
       event.id,
       JSON.stringify({ eventType: event.type, providerPaymentId: paymentIntentId })
     ]
   );
 }
 
-async function recordStripeProviderEvent(event: StripeEvent, object: Record<string, unknown>) {
+async function recordStripeProviderEvent(event: StripeEvent, object: Record<string, unknown>, resolvedTenantId?: string | null) {
   const meta = metadata(object);
-  const tenantId = textValue(meta, "tenant_id") ?? textValue(meta, "ferocity_tenant_id");
+  const tenantId = resolvedTenantId ?? textValue(meta, "tenant_id") ?? textValue(meta, "ferocity_tenant_id");
   const connectedAccountId =
     event.account ?? textValue(object, "account") ?? textValue(object, "destination") ?? textValue(meta, "connected_account_id");
   const fallbackTenant = "11111111-1111-4111-8111-111111111111";
@@ -477,6 +518,92 @@ async function recordStripeProviderEvent(event: StripeEvent, object: Record<stri
     `,
     [tenantId ?? "", fallbackTenant, event.type, event.id, textValue(object, "id") ?? "", connectedAccountId ?? "", JSON.stringify(meta)]
   );
+}
+
+async function recordStripePaymentDispute(event: StripeEvent, object: Record<string, unknown>): Promise<string | null> {
+  const providerDisputeId = textValue(object, "id");
+  const providerPaymentId = textValue(object, "payment_intent") ?? textValue(object, "charge");
+  if (!providerDisputeId || !providerPaymentId) return null;
+
+  const payment = await queryPostgres<{ id: string; tenant_id: string; invoice_id: string; amount_cents: number }>(
+    `select id,tenant_id,invoice_id,amount_cents
+     from public.service_invoice_payments
+     where provider='stripe' and provider_payment_id=$1
+     limit 1`,
+    [providerPaymentId]
+  );
+  const bound = payment?.rows[0];
+  if (!bound) return null;
+
+  const providerStatus = textValue(object, "status") ?? "";
+  const status = event.type === "charge.dispute.closed"
+    ? providerStatus === "won" ? "won" : providerStatus === "lost" ? "lost" : "closed"
+    : event.type === "charge.dispute.funds_reinstated"
+      ? "won"
+      : event.type === "charge.dispute.funds_withdrawn"
+        ? "under_review"
+        : event.type === "charge.dispute.warning_closed"
+          ? "closed"
+          : event.type === "charge.dispute.warning_needs_response"
+            ? "warning"
+            : "needs_response";
+  const amountCents = Math.max(0, Math.round(numberValue(object, "amount") ?? bound.amount_cents));
+
+  await queryPostgres(
+    `insert into public.payment_disputes (
+       tenant_id,payment_id,provider_dispute_id,amount_cents,status,reason,response_due_at,evidence_json
+     ) values ($1,$2,$3,$4,$5,$6,to_timestamp(nullif($7,0)),$8::jsonb)
+     on conflict (tenant_id,provider_dispute_id) where provider_dispute_id is not null do update
+     set amount_cents=excluded.amount_cents,status=excluded.status,reason=excluded.reason,
+         response_due_at=excluded.response_due_at,
+         evidence_json=public.payment_disputes.evidence_json || excluded.evidence_json,
+         updated_at=now()`,
+    [
+      bound.tenant_id,
+      bound.id,
+      providerDisputeId,
+      amountCents,
+      status,
+      textValue(object, "reason"),
+      numberValue(object, "evidence_details_due_by") ?? numberValue(object, "created") ?? 0,
+      JSON.stringify({ stripeEventId: event.id, eventType: event.type, providerStatus })
+    ]
+  );
+
+  if (["warning", "needs_response", "under_review", "lost"].includes(status)) {
+    await queryPostgres(
+      `with stopped as (
+         update public.follow_up_workflows
+         set status='canceled',completed_at=now(),
+             metadata_json=metadata_json || jsonb_build_object('stoppedBy','payment_dispute','paymentDisputeId',$3::text),
+             updated_at=now()
+         where tenant_id=$1 and invoice_id=$2 and workflow_type='invoice_followup'
+           and status in ('open','scheduled')
+         returning id
+       )
+       update public.outbound_action_queue q
+       set status='canceled',last_error='Collection communication stopped because the payment is disputed.',updated_at=now()
+       where q.tenant_id=$1 and q.target_type='follow_up_workflow'
+         and q.target_id in (select id from stopped)
+         and q.status in ('draft','needs_review','approved','queued')`,
+      [bound.tenant_id, bound.invoice_id, providerDisputeId]
+    );
+  }
+
+  if (status === "lost" && amountCents > 0) {
+    await recordInvoiceRefund({
+      tenantId: bound.tenant_id,
+      paymentId: bound.id,
+      amountCents,
+      amountMode: "cumulative",
+      idempotencyKey: `stripe-dispute-lost:${providerDisputeId}`,
+      providerRefundId: `dispute:${providerDisputeId}`,
+      reason: "Stripe dispute was lost; customer payment was reversed.",
+      source: "stripe_dispute",
+      metadata: { stripeEventId: event.id, providerDisputeId, reversalType: "chargeback" }
+    });
+  }
+  return bound.tenant_id;
 }
 
 async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<string, unknown>) {
@@ -557,7 +684,7 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
   }
 
   if (customerId && subscriptionId) {
-    await queryPostgres(
+    const reconciled = await queryPostgres<{ tenant_id: string; plan_key: string }>(
       `
       update public.billing_subscriptions
       set status = $2,
@@ -565,9 +692,14 @@ async function handleSubscriptionLifecycle(event: StripeEvent, object: Record<st
           metadata_json = metadata_json || $4::jsonb,
           updated_at = now()
       where external_customer_ref = $1
+      returning tenant_id, plan_key
       `,
       [customerId, mappedStatus, subscriptionId, JSON.stringify({ stripeEventId: event.id, stripeStatus: status })]
     );
+    if (!reconciled) throw new Error("The Stripe subscription could not be reconciled.");
+    for (const row of reconciled.rows) {
+      await applyPlanEntitlements({ tenantId: row.tenant_id, planKey: row.plan_key, billingStatus: mappedStatus });
+    }
     if (mappedStatus === "cancelled") {
       await queryPostgres(
         `with due as (
@@ -716,6 +848,7 @@ export async function POST(request: Request) {
       const amountRefunded = numberValue(object, "amount_refunded") ?? 0;
       const amount = numberValue(object, "amount") ?? 0;
       await recordStripePaymentException(event, object, amountRefunded >= amount ? "refunded" : "partially_refunded");
+      await recordPlatformSubscriptionRefundEvent({ eventId: event.id, charge: object });
     }
 
     if (
@@ -724,7 +857,61 @@ export async function POST(request: Request) {
       event.type.startsWith("transfer.") ||
       event.type === "account.updated"
     ) {
-      await recordStripeProviderEvent(event, object);
+      const disputeTenantId = event.type.startsWith("charge.dispute.")
+        ? await recordStripePaymentDispute(event, object)
+        : null;
+      await recordStripeProviderEvent(event, object, disputeTenantId);
+    }
+
+    const goalTenantId = textValue(eventMeta, "tenant_id") ?? textValue(eventMeta, "ferocity_tenant_id");
+    const goalInvoiceId = textValue(eventMeta, "invoice_id");
+    if (goalTenantId && goalInvoiceId) {
+      try {
+        const paymentStatus = textValue(object, "payment_status");
+        const paymentSucceeded =
+          ["checkout.session.completed", "checkout.session.async_payment_succeeded", "invoice.paid"].includes(event.type) &&
+          (!paymentStatus || ["paid", "no_payment_required"].includes(paymentStatus));
+        const paymentException =
+          event.type.includes("failed") || event.type.includes("expired") || event.type.startsWith("charge.refund");
+        await captureIntegrationGoalObservation({
+          tenantId: goalTenantId,
+          platformKey: "stripe",
+          platformName: "Stripe",
+          externalEventId: event.id,
+          eventType: event.type,
+          title: paymentSucceeded ? "Invoice payment verified" : paymentException ? "Invoice payment needs attention" : "Invoice payment updated",
+          summary: paymentSucceeded
+            ? "Stripe verified the service-invoice payment."
+            : "Stripe reported a service-invoice payment exception or state change.",
+          severity: paymentException ? "high" : "info",
+          status: paymentSucceeded ? "resolved" : "open",
+          recommendedAction: paymentException ? "Resolve the payment exception through the existing collection and approval workflow." : null,
+          moneyCents: numberValue(object, "amount_total") ?? numberValue(object, "amount_paid") ?? 0,
+          riskType: paymentException ? "financial" : null,
+          metadata: {
+            invoiceId: goalInvoiceId,
+            paymentId: textValue(object, "payment_intent") ?? textValue(object, "id"),
+            accountId: event.account ?? textValue(eventMeta, "connected_account_id"),
+            authoritativeOutcomeVerified: paymentSucceeded,
+            outcomeEvidence: paymentSucceeded
+              ? {
+                  stripeEventId: event.id,
+                  paymentStatus: paymentStatus ?? event.type,
+                  amountCents: numberValue(object, "amount_total") ?? numberValue(object, "amount_paid") ?? null,
+                }
+              : null,
+          },
+        });
+      } catch (goalError) {
+        await logAppError({
+          source: "api.integrations.stripe.webhook.goal-observation",
+          tenantId: goalTenantId,
+          message: goalError instanceof Error ? goalError.message : "Stripe goal observation failed.",
+          severity: "warning",
+          retryable: true,
+          metadata: { eventId: event.id, eventType: event.type, invoiceId: goalInvoiceId },
+        });
+      }
     }
 
     await logAppError({

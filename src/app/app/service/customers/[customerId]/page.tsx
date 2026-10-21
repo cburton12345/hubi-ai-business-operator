@@ -9,20 +9,28 @@ import {
   disableCustomerPortalAction,
   enableCustomerPortalAction,
   generateDueMembershipVisitsAction,
+  updateMembershipLifecycleAction,
   mergeDuplicateCustomerAction
 } from "@/app/app/service/actions";
 import { getCustomerDetail } from "@/lib/service-ops/get-customer-detail";
+import { isCustomerPortalToken } from "@/lib/service-ops/customer-portal-token";
 import { ContactCommunicationPreferences } from "@/components/preferences/ContactCommunicationPreferences";
 import { getContactCommunicationPreference } from "@/lib/preferences/contact-communication-preferences";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
-export default async function CustomerDetailPage({ params }: { params: Promise<{ customerId: string }> }) {
-  const { customerId } = await params;
+export default async function CustomerDetailPage({ params, searchParams }: {
+  params: Promise<{ customerId: string }>;
+  searchParams: Promise<{ portalToken?: string }>;
+}) {
+  const [{ customerId }, query] = await Promise.all([params, searchParams]);
   const [customer, workspaceId] = await Promise.all([getCustomerDetail(customerId), getCurrentWorkspaceId()]);
 
   if (!customer) {
     notFound();
   }
+  const oneTimePortalUrl = query.portalToken && isCustomerPortalToken(query.portalToken)
+    ? `/portal/${query.portalToken}`
+    : "";
   const contactPreference = await getContactCommunicationPreference(workspaceId, `customer:${customer.id}`);
 
   return (
@@ -63,13 +71,21 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <p className="muted">One customer link for service requests, messages, estimates, visits, equipment, invoices, payments, memberships, documents, and job proof.</p>
           {customer.portal?.enabled ? (
             <div className="form-stack">
-              <label>
-                Portal link
-                <input readOnly value={customer.portal.url} />
-              </label>
+              {oneTimePortalUrl ? (
+                <>
+                  <div className="success-card">Copy this portal link now. Ferocity stores only its secure hash and cannot display this same link again.</div>
+                  <label>New portal link<input readOnly value={oneTimePortalUrl} /></label>
+                </>
+              ) : (
+                <p className="muted">The portal is active. Its bearer link is not stored in readable form. Rotate it below if the customer needs a new copy.</p>
+              )}
               <p className="muted">Last viewed: {customer.portal.lastViewedAt}</p>
               <div className="button-row">
-                <Link className="button secondary-button" href={customer.portal.url}>Open portal</Link>
+                {oneTimePortalUrl ? <Link className="button secondary-button" href={oneTimePortalUrl}>Open new portal link</Link> : null}
+                <form action={enableCustomerPortalAction}>
+                  <input type="hidden" name="customerId" value={customer.id} />
+                  <button className="button secondary-button" type="submit">Rotate portal link</button>
+                </form>
                 <form action={disableCustomerPortalAction}>
                   <input type="hidden" name="customerId" value={customer.id} />
                   <button className="button secondary-button" type="submit">Disable portal</button>
@@ -109,24 +125,24 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </section>
 
         <section className="panel span-6">
-          <h2>Equipment & assets</h2>
+          <h2>Properties, equipment & assets</h2>
           <ul className="list">
             {customer.assets.map((asset) => <li className="list-row" key={asset.id}><div><strong>{asset.name}</strong><p className="muted">{asset.detail} / {asset.warranty}</p></div><span className="pill">{asset.condition}</span></li>)}
             {customer.assets.length === 0 ? <li className="list-row"><span className="muted">No equipment recorded yet.</span></li> : null}
           </ul>
           {customer.locations.length ? (
             <details className="section-actions">
-              <summary>Add equipment</summary>
+              <summary>Add property, unit, or equipment</summary>
               <form action={createCustomerAssetAction} className="form-stack section-actions">
                 <input name="customerId" type="hidden" value={customer.id} />
                 <select name="locationId" defaultValue={customer.locations[0]?.id}>{customer.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-                <div className="form-grid two"><input name="name" placeholder="Main furnace" required /><input name="assetType" placeholder="HVAC, roof, vehicle, panel" defaultValue="equipment" /></div>
+                <div className="form-grid two"><input name="name" placeholder="Main furnace or 125 Maple Street" required /><input name="assetType" placeholder="Equipment, property, unit, vehicle" defaultValue="equipment" /></div>
                 <div className="form-grid three"><input name="manufacturer" placeholder="Manufacturer" /><input name="model" placeholder="Model" /><input name="serialNumber" placeholder="Serial number" /></div>
                 <div className="form-grid two"><select name="condition" defaultValue="unknown"><option value="unknown">Unknown condition</option><option value="new">New</option><option value="good">Good</option><option value="fair">Fair</option><option value="poor">Poor</option><option value="failed">Failed</option><option value="retired">Retired</option></select><label>Warranty expires<input name="warrantyExpiresAt" type="date" /></label></div>
-                <button className="mini-button" type="submit">Save equipment</button>
+                <button className="mini-button" type="submit">Save asset</button>
               </form>
             </details>
-          ) : <p className="muted">Add a service location before adding equipment.</p>}
+          ) : <p className="muted">Add a service location before adding a property, unit, or equipment.</p>}
         </section>
 
         <section className="panel span-6">
@@ -179,7 +195,22 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                   <p className="muted">{plan.frequency} / next {plan.nextServiceDate} / {plan.price}</p>
                   {plan.nextAction ? <p>{plan.nextAction}</p> : null}
                 </div>
-                <span className="pill">{plan.status}</span>
+                <div className="form-stack">
+                  <span className="pill">{plan.status}</span>
+                  {plan.status !== "canceled" ? (
+                    <form action={updateMembershipLifecycleAction} className="compact-form">
+                      <input name="planId" type="hidden" value={plan.id} />
+                      <input name="idempotencyKey" type="hidden" value={crypto.randomUUID()} />
+                      <select name="nextStatus" defaultValue={plan.status} aria-label={`Status for ${plan.title}`}>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                        <option value="canceled">Canceled</option>
+                      </select>
+                      <input name="cancellationReason" placeholder="Reason if canceled" />
+                      <button className="mini-button" type="submit">Update</button>
+                    </form>
+                  ) : null}
+                </div>
               </li>
             ))}
             {customer.recurringPlans.length === 0 ? <li className="list-row"><span className="muted">No recurring plans yet.</span></li> : null}

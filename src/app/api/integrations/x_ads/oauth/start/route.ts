@@ -5,6 +5,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { requestXOAuthToken } from "@/lib/integrations/x-ads-oauth1";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { normalizeOAuthReturnTo } from "@/lib/onboarding/oauth-return";
 
 function appRedirect(request: Request, setup: string) {
   const url = new URL("/app/integrations", request.url);
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     return appRedirect(request, "missing_credentials");
   }
   const workspaceId = await getCurrentWorkspaceId();
+  const returnTo = normalizeOAuthReturnTo(new URL(request.url).searchParams.get("returnTo"));
   try {
     const token = await requestXOAuthToken({
       consumerKey: env.X_ADS_CONSUMER_KEY,
@@ -33,6 +35,7 @@ export async function GET(request: Request) {
       [workspaceId, JSON.stringify({
         provider: "x_ads",
         oauthToken: token.token,
+        returnTo,
         oauthTokenSecret: {
           encryptedSecret: sealed.encryptedSecret,
           encryptionIv: sealed.encryptionIv,

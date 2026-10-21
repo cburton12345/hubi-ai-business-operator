@@ -71,6 +71,7 @@ Ferocity Calls remains part of the existing Ferocity tenant, identity, Business 
 - [x] Unit-test managed-number activation, grace, restriction, restoration, retention, port-out protection, release policy, and current Retell weighted-agent payloads.
 - [x] Run typecheck, lint, targeted tests, production build, and non-persisting migration validation.
 - [x] Run current production and provider readiness checks without changing the deployment.
+- [x] Reconcile and remotely verify the production support assistant's authorized human-transfer tool without placing a call or enabling outbound calling.
 - [ ] After deployment configuration is available: run live end-to-end certification.
 
 ## Release handoff (not performed)
@@ -88,7 +89,7 @@ Ferocity Calls remains part of the existing Ferocity tenant, identity, Business 
 These items do not block Ferocity Calls itself, but the platform must not present them as healthy until reauthorized:
 
 - [ ] Reauthorize Jobber for read analysis. A later call-log write-back grant will require the separately approved narrow write scope and tenant reauthorization.
-- [ ] Reauthorize TikTok; its stored access token is expired and the provider rejected the stored refresh token.
+- [x] Refresh TikTok access in both connected workspaces; its current access and refresh credentials are healthy as of October 8, 2026. API for Business approval remains separate provider-review work.
 
 ## Explicitly excluded
 

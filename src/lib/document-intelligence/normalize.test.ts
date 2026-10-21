@@ -6,6 +6,10 @@ describe("normalizeExpenseDocument", () => {
     const result = normalizeExpenseDocument({
       document_type: "purchase order",
       vendor_name: "ABC Supply",
+      merchant_address: "100 Supply Way",
+      merchant_city: "Springfield",
+      merchant_state: "il",
+      merchant_postal_code: "62701",
       document_date: "9/10/2026",
       subtotal_cents: "10000",
       tax_cents: 550,
@@ -15,6 +19,7 @@ describe("normalizeExpenseDocument", () => {
     });
     expect(result.documentType).toBe("purchase_order");
     expect(result.totalCents).toBe(10550);
+    expect(result).toMatchObject({ merchantCity: "Springfield", merchantState: "IL", merchantPostalCode: "62701" });
     expect(result.lineItems[0].description).toBe("Roofing screws");
   });
 
@@ -36,6 +41,51 @@ describe("normalizeExpenseDocument", () => {
     expect(result.statementTransactions[0]).toMatchObject({ amountCents: 8421, direction: "debit", suggestedCategory: "materials" });
     expect(result.statementTransactions[1]).toMatchObject({ direction: "credit", isTransfer: true });
     expect(result.statementTransactions[0].sourceKey).toHaveLength(64);
+  });
+
+  it("preserves sparse Cash App counterparty evidence for deposit review", () => {
+    const result = normalizeExpenseDocument({
+      document_type: "statement",
+      vendor_name: "Cash App",
+      document_date: "2026-09-30",
+      overall_confidence: 0.93,
+      statement_transactions: [{
+        transaction_date: "2026-09-12", description: "Payment received", counterparty_name: "Jane R",
+        counterparty_handle: "$janerenter", note: "October rent", transaction_type: "payment",
+        provider_status: "completed", amount_cents: 125000, direction: "credit", confidence: 0.91
+      }]
+    });
+    expect(result.statementTransactions[0]).toMatchObject({
+      direction: "credit", counterpartyName: "Jane R", counterpartyHandle: "$janerenter",
+      note: "October rent", transactionType: "payment", providerStatus: "completed", isTransfer: false,
+      transferReason: null,
+    });
+  });
+
+  it("does not discard a named Cash App payment received as an own-account transfer", () => {
+    const result = normalizeExpenseDocument({
+      document_type: "statement",
+      vendor_name: "Cash App",
+      document_date: "2026-08-31",
+      overall_confidence: 0.95,
+      statement_transactions: [{
+        transaction_date: "2026-08-08",
+        description: "$325.00 Payment received",
+        counterparty_name: "Named renter",
+        amount_cents: 32500,
+        direction: "credit",
+        is_transfer: true,
+        transfer_reason: "Likely account or card payment",
+        confidence: 0.95,
+      }],
+    });
+    expect(result.statementTransactions[0]).toMatchObject({
+      direction: "credit",
+      amountCents: 32500,
+      counterpartyName: "Named renter",
+      isTransfer: false,
+      transferReason: null,
+    });
   });
 
   it("trusts an explicit debit direction even when a bank exports the amount as negative", () => {

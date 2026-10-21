@@ -3,6 +3,8 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { safelyEvaluateAndStoreCallManagementDecision } from "@/lib/office-manager/call-management";
 import { getPhoneProvider } from "@/lib/phone/provider-registry";
 import { releaseOutboundCapacityReservation } from "@/lib/phone/outbound-capacity";
+import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
+import { safeLogAppError } from "@/lib/observability/log-error";
 
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 500) : null;
@@ -131,6 +133,39 @@ export async function POST(
         }
       })
     : null;
+
+  try {
+    const needsFollowUp = ["missed", "failed"].includes(event.status) || metadata.ownerRequested === true;
+    await captureIntegrationGoalObservation({
+      tenantId,
+      platformKey: providerKey,
+      platformName: providerKey.replaceAll("_", " "),
+      externalEventId: event.providerEventId,
+      eventType: `phone.call.${event.status}`,
+      title: needsFollowUp ? "Phone call needs follow-up" : "Phone call updated",
+      summary: text(metadata.summary) ?? "The connected phone provider reported a call event.",
+      severity: event.status === "failed" ? "high" : needsFollowUp ? "medium" : "info",
+      status: "open",
+      ownerAttention: callDecision?.shouldInterruptOwner ?? false,
+      recommendedAction: needsFollowUp ? "Handle the callback or follow-up through the existing consent and call controls." : null,
+      riskType: event.status === "failed" ? "customer" : null,
+      metadata: {
+        callId,
+        providerCallId: event.providerCallId,
+        direction: text(metadata.direction) ?? "inbound",
+        providerStatus: event.status,
+      },
+    });
+  } catch (goalError) {
+    await safeLogAppError({
+      tenantId,
+      source: "api.integrations.phone.goal-observation",
+      message: goalError instanceof Error ? goalError.message : "Phone goal observation failed.",
+      severity: "warning",
+      retryable: true,
+      metadata: { providerKey, providerEventId: event.providerEventId, callId },
+    });
+  }
 
   return NextResponse.json({
     ok: true,

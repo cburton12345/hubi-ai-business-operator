@@ -79,7 +79,9 @@ async function main() {
   `, [row.tenant_id, threadId]);
 
   if (imported.rows.length !== 2) throw new Error(`Expected two imported turns; found ${imported.rows.length}.`);
-  if (imported.rows[0]?.role !== "owner" || imported.rows[1]?.role !== "ferocity") throw new Error("Imported roles did not preserve the conversation.");
+  if (imported.rows[0]?.role !== "owner" || imported.rows[1]?.role !== "ferocity") {
+    throw new Error(`Imported roles did not preserve the conversation: ${JSON.stringify(imported.rows.map((message) => ({ role: message.role, body: message.body })))}`);
+  }
   if (imported.rows.some((message) => message.source !== "public_sales_handoff" || message.original_session_id !== sessionId || !message.no_action)) {
     throw new Error("Imported messages did not preserve safe handoff evidence.");
   }

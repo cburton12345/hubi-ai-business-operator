@@ -1,4 +1,5 @@
 import { queryPostgres } from "@/lib/db/postgres";
+import { reconcileOutboundActionDelivery } from "@/lib/actions-queue/outbound-action-state";
 import { recordCapabilityDeliveryEvidence } from "@/lib/reliability/capability-runtime";
 
 export const normalizedDeliveryStatuses = [
@@ -164,8 +165,9 @@ export async function recordMessageDeliveryReceipt(receipt: DeliveryReceipt) {
     delivery_status: NormalizedDeliveryStatus;
     delivery_final: boolean;
     delivery_updated_at: Date | null;
+    metadata_json: Record<string, unknown> | null;
   }>(
-    `select id, conversation_id, delivery_status, delivery_final, delivery_updated_at
+    `select id, conversation_id, delivery_status, delivery_final, delivery_updated_at, metadata_json
      from public.messages
      where tenant_id=$1 and provider_key=$2 and provider_message_ref=$3
      order by created_at desc limit 1`,
@@ -245,6 +247,22 @@ export async function recordMessageDeliveryReceipt(receipt: DeliveryReceipt) {
         error: unhealthyStatuses.has(receipt.normalizedStatus) ? receipt.safeReason ?? `Delivery ${receipt.normalizedStatus}.` : null
       });
     }
+  }
+
+  const rawQueueId = message.metadata_json?.queueId;
+  const queueId = typeof rawQueueId === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawQueueId)
+    ? rawQueueId
+    : null;
+  if (queueId) {
+    await reconcileOutboundActionDelivery({
+      tenantId: receipt.tenantId,
+      queueId,
+      normalizedStatus: receipt.normalizedStatus,
+      providerMessageId: receipt.providerMessageId,
+      safeReason: receipt.safeReason,
+      isFinal,
+    });
   }
 
   const alertKey = `message-health:${message.id}`;

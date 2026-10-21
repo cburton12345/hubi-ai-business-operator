@@ -167,8 +167,11 @@ export async function runRevenueGrowthScanAction() {
       coalesce(nullif(l.source_detail, ''), nullif(l.source, ''), 'unknown'),
       'first_touch',
       i.total_cents,
-      p.amount_cents,
-      p.amount_cents - coalesce(mat.material_cents, 0) - coalesce(pay.worker_cents, 0),
+      greatest(p.amount_cents-p.refunded_amount_cents,0),
+      greatest(p.amount_cents-p.refunded_amount_cents,0) - case when i.total_cents>0 then round(
+        (coalesce(mat.material_cents,0)+coalesce(pay.worker_cents,0))::numeric
+        * greatest(p.amount_cents-p.refunded_amount_cents,0)::numeric / i.total_cents
+      )::bigint else 0 end,
       jsonb_build_object('createdBy', 'revenue_growth_scan', 'provider', p.provider),
       coalesce(p.paid_at, p.received_at, p.created_at),
       now()
@@ -189,7 +192,7 @@ export async function runRevenueGrowthScanAction() {
       where status in ('recorded','reviewed')
       group by tenant_id, service_job_id
     ) pay on pay.tenant_id = i.tenant_id and pay.service_job_id = i.job_id
-    where p.tenant_id = $1 and p.status in ('succeeded','manual')
+    where p.tenant_id = $1 and p.status in ('succeeded','manual','partially_refunded','refunded')
     on conflict (tenant_id, entity_type, entity_id, attribution_model) do update set
       brand_id = excluded.brand_id,
       lead_id = excluded.lead_id,
@@ -299,7 +302,7 @@ async function seedRevenueRecommendations(workspaceId: string) {
         (select count(*) from public.revenue_appointments where tenant_id = $1 and status = 'no_show' and created_at >= now() - interval '90 days') as no_shows,
         (select count(*) from public.service_estimates where tenant_id = $1 and status in ('sent_manually','approved') and created_at < now() - interval '3 days') as aging_estimates,
         (select coalesce(sum(total_cents),0) from public.service_estimates where tenant_id = $1 and status = 'sent_manually' and created_at < now() - interval '3 days') as aging_estimate_cents,
-        (select coalesce(sum(greatest(total_cents - amount_paid_cents, 0)),0) from public.service_invoices where tenant_id = $1 and status in ('sent_manually','partially_paid','overdue')) as outstanding_cents
+        (select coalesce(sum(greatest(total_cents - amount_paid_cents - write_off_cents, 0)),0) from public.service_invoices where tenant_id = $1 and status in ('sent_manually','partially_paid','overdue')) as outstanding_cents
     ),
     recs as (
       select 'qualification_drop' as recommendation_key,
@@ -454,15 +457,22 @@ async function seedConversionEvents(workspaceId: string) {
       concat('payment_collected:', p.id),
       'payment_collected',
       'provider_agnostic',
-      'needs_review',
+      case when greatest(p.amount_cents-p.refunded_amount_cents,0)=0 then 'canceled' else 'needs_review' end,
       true,
       true,
       concat('payment_collected:', p.id),
-      jsonb_build_object('paymentId', p.id, 'amountCents', p.amount_cents, 'provider', p.provider, 'noSensitiveCustomerPayload', true),
+      jsonb_build_object('paymentId', p.id, 'amountCents', greatest(p.amount_cents-p.refunded_amount_cents,0), 'provider', p.provider, 'noSensitiveCustomerPayload', true),
       now()
     from public.service_invoice_payments p
-    where p.tenant_id = $1 and p.status in ('succeeded','manual')
-    on conflict (tenant_id, provider, idempotency_key) do nothing
+    where p.tenant_id = $1 and p.status in ('succeeded','manual','partially_refunded','refunded')
+    on conflict (tenant_id, provider, idempotency_key) do update set
+      payload_json=excluded.payload_json,
+      status=case
+        when greatest((excluded.payload_json->>'amountCents')::integer,0)=0
+          and public.revenue_conversion_event_queue.status in ('needs_review','approved','queued') then 'canceled'
+        else public.revenue_conversion_event_queue.status
+      end,
+      updated_at=now()
     `,
     [workspaceId]
   );
@@ -635,7 +645,7 @@ async function createApprovedRecommendationWork(workspaceId: string, recommendat
       from public.service_invoices i
       where i.tenant_id = $1
         and i.status in ('sent_manually','partially_paid','overdue')
-        and greatest(i.total_cents - i.amount_paid_cents, 0) > 0
+        and greatest(i.total_cents - i.amount_paid_cents - i.write_off_cents, 0) > 0
         and not exists (
           select 1 from public.follow_up_workflows f
           where f.tenant_id = i.tenant_id

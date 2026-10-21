@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
@@ -10,6 +11,7 @@ import {
   saveEstimateLineItemAction,
   updateEstimateAction
 } from "../../actions";
+import { createChangeOrderAction, sendChangeOrderAction } from "@/app/app/estimator/actions";
 
 const statuses = ["draft", "sent_manually", "approved", "declined", "expired"];
 
@@ -49,9 +51,11 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                   <input name="description" defaultValue={item.description} placeholder="Description" />
                   <input name="quantity" defaultValue={item.quantity} inputMode="decimal" />
                   <input name="unitPrice" defaultValue={item.unitPriceValue} inputMode="decimal" />
+                  <input name="unitCost" defaultValue={item.unitCostValue} inputMode="decimal" aria-label="Unit cost" />
+                  <label className="inline-checkbox"><input name="taxable" type="checkbox" defaultChecked={item.taxable} /> Taxable</label>
                   <button className="mini-button" type="submit">Save</button>
                 </form>
-                <span className="pill">{item.total}</span>
+                <span className="pill">{item.total}{item.optional ? item.selected ? " / option selected" : " / option" : ""}</span>
                 <form action={deleteEstimateLineItemAction}>
                   <input name="estimateId" type="hidden" value={estimate.id} />
                   <input name="itemId" type="hidden" value={item.id} />
@@ -66,8 +70,18 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
             <input name="description" placeholder="Description" />
             <input name="quantity" defaultValue="1" inputMode="decimal" />
             <input name="unitPrice" placeholder="Unit price" inputMode="decimal" />
+            <input name="unitCost" placeholder="Unit cost" inputMode="decimal" />
+            <label className="inline-checkbox"><input name="taxable" type="checkbox" /> Taxable</label>
             <button className="mini-button" type="submit">Add item</button>
           </form>
+          <div className="notice-card section-actions">
+            <div>
+              <strong>Pricing check</strong>
+              <p className="muted">Subtotal {estimate.subtotal} / discount {estimate.discount} / tax {estimate.tax} / customer total {estimate.total}</p>
+              <p className="muted">Tracked cost {estimate.estimatedCost} / projected gross profit {estimate.grossProfit}{estimate.grossMarginPercent === null ? "" : ` / ${estimate.grossMarginPercent.toFixed(2)}% margin`}</p>
+              {estimate.pricingWarnings.map((warning) => <p className="form-error" key={warning}>{warning}</p>)}
+            </div>
+          </div>
           <div className="inline-actions section-actions">
             <Link className="button secondary-button" href={`/app/service/customers/${estimate.customerId}`}>View customer</Link>
             <Link className="button secondary-button" href={`/app/service/estimates/${estimate.id}/preview`}>Preview customer version</Link>
@@ -116,6 +130,14 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 <label>
                   Payment terms
                   <input name="paymentTerms" defaultValue={estimate.paymentTerms} placeholder="50% deposit, balance due on completion" />
+                </label>
+                <label>
+                  Discount
+                  <input name="discount" defaultValue={estimate.discountValue} inputMode="decimal" />
+                </label>
+                <label>
+                  Tax rate (%)
+                  <input name="taxRatePercent" defaultValue={estimate.taxRatePercent} inputMode="decimal" />
                 </label>
               </div>
               <label>
@@ -197,6 +219,52 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
             <input name="expiresInDays" inputMode="numeric" defaultValue="30" aria-label="Expires in days" />
             <label className="inline-checkbox"><input type="checkbox" name="sendEmail" /> Send by email if ready</label>
             <button className="mini-button" type="submit">Create customer link</button>
+          </form>
+        </section>
+        <section className="panel span-12">
+          <div className="list-row flush-row">
+            <div>
+              <h2>Change Orders</h2>
+              <p className="muted">Preserve the accepted estimate, state the added customer price and forecast cost separately, and collect a signed decision through the existing customer link.</p>
+            </div>
+            <span className="pill">{estimate.changeOrders.length}</span>
+          </div>
+          <ul className="list section-actions">
+            {estimate.changeOrders.map((change) => (
+              <li className="list-row" key={change.id}>
+                <div>
+                  <h3>{change.title}</h3>
+                  {change.description ? <p>{change.description}</p> : null}
+                  <p className="muted">Customer price {change.amount} / forecast cost {change.estimatedCost} / schedule {change.scheduleImpact}</p>
+                  {change.decidedBy ? <p className="muted">{change.status} by {change.decidedBy}{change.decidedAt ? ` on ${change.decidedAt}` : ""}</p> : null}
+                </div>
+                <div className="inline-actions">
+                  <span className="pill">{change.status.replaceAll("_", " ")}</span>
+                  {change.status === "draft" ? (
+                    <form action={sendChangeOrderAction}>
+                      <input name="id" type="hidden" value={change.id} />
+                      <button className="mini-button" type="submit">Make available</button>
+                    </form>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+            {estimate.changeOrders.length === 0 ? <li className="list-row"><span className="muted">No change orders.</span></li> : null}
+          </ul>
+          <form action={createChangeOrderAction} className="stacked-form section-actions">
+            <input name="estimateId" type="hidden" value={estimate.id} />
+            <input name="idempotencyKey" type="hidden" value={randomUUID()} />
+            <div className="form-grid two">
+              <label>Type<select name="changeType" defaultValue="scope_change"><option value="scope_change">Scope change</option><option value="hidden_damage">Hidden damage</option><option value="customer_upgrade">Customer upgrade</option><option value="additional_labor">Additional labor</option><option value="additional_materials">Additional materials</option><option value="other">Other</option></select></label>
+              <label>Customer price change<input name="amount" inputMode="decimal" placeholder="0.00" /></label>
+            </div>
+            <div className="form-grid two">
+              <label>Estimated added cost<input name="estimatedCost" inputMode="decimal" placeholder="0.00" /></label>
+              <label>Schedule impact (hours)<input name="scheduleImpactHours" inputMode="decimal" placeholder="0" /></label>
+            </div>
+            <label>Title<input name="title" required placeholder="Additional approved work" /></label>
+            <label>Description<textarea name="description" rows={3} required placeholder="What changed, why, and what the customer receives." /></label>
+            <button className="button" type="submit">Create change order</button>
           </form>
         </section>
         <section className="panel span-12">

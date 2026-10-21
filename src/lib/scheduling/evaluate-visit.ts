@@ -46,6 +46,7 @@ export async function evaluateVisitSchedule(params: {
   tenantId: string;
   visitId: string;
   persist?: boolean;
+  candidateWorkerId?: string;
 }) {
   const visitResult = await queryPostgres<VisitRow>(
     `
@@ -76,6 +77,16 @@ export async function evaluateVisitSchedule(params: {
     [params.tenantId, params.visitId]
   );
   const assignments = assignmentResult?.rows ?? [];
+  if (params.candidateWorkerId && !assignments.some((row) => row.worker_id === params.candidateWorkerId)) {
+    const candidateResult = await queryPostgres<{ id: string; name: string }>(
+      `select id, name from public.operations_workers
+        where tenant_id=$1 and id=$2 and availability_status <> 'inactive'
+        limit 1`,
+      [params.tenantId, params.candidateWorkerId]
+    );
+    const candidate = candidateResult?.rows[0];
+    if (candidate) assignments.push({ worker_id: candidate.id, worker_name: candidate.name });
+  }
   const workerAssignments = assignments.filter((row) => row.worker_id);
   const conflicts: VisitConflict[] = [];
 

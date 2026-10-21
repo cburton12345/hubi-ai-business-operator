@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -73,9 +73,9 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
   if (!customer) return null;
 
   const [portalResult, sourceLeadResult, leadEventsResult, estimatesResult, jobsResult, invoicesResult, recurringPlansResult, membershipProgramsResult, locationsResult, assetsResult, tagsResult, duplicatesResult] = await Promise.all([
-    queryPostgres<{ public_token: string; enabled: boolean; last_viewed_at: Date | null }>(
+    queryPostgres<{ enabled: boolean; last_viewed_at: Date | null }>(
       `
-      select public_token, enabled, last_viewed_at
+      select enabled, last_viewed_at
       from public.customer_portal_access
       where tenant_id = $1 and customer_id = $2
       limit 1
@@ -296,7 +296,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
     portal: portalAccess
       ? {
           enabled: portalAccess.enabled,
-          url: `/portal/${portalAccess.public_token}`,
+          url: "",
           lastViewedAt: portalAccess.last_viewed_at ? formatTimelineDate(portalAccess.last_viewed_at) : "Not viewed yet"
         }
       : null,

@@ -17,7 +17,7 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 |---:|---|---|---|
 | 1 | Business objective engine | Foundation added | Existing `growth_objectives` now carries collected cash, gross profit, unit economics, margin floors, CAC/ROAS limits, capacity and backlog constraints. |
 | 2 | Reverse revenue planning | Foundation added | Deterministic, tested planner works backward from collected cash through the funnel, labels assumptions, supplies ranges and checks capacity/economics. |
-| 3 | Market intelligence | Partial / extend | Growth opportunities, SEO signals, conversation intelligence, weather demand and marketing memory exist; structured market snapshots and refresh policy can be deepened. |
+| 3 | Market intelligence | Foundation added | Existing growth/SEO/conversation/weather evidence now joins weekly live-web research with returned citations, source quality, cost telemetry, prompt-injection boundaries, expiry, and business-specific applicability. Live credential certification remains required. |
 | 4 | Voice of customer | Foundation added | `growth_voc_signals` preserves source, excerpt, normalized insight, confidence, evidence and review state; ingestion automations remain an iterative expansion. |
 | 5 | ICP engine | Foundation added | Structured ICP profiles complement the existing Marketing OS profile rather than replacing it. |
 | 6 | Ideal job profile | Foundation added | Structured job value, margin, geography, capacity and qualification criteria added. |
@@ -42,14 +42,14 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 | 25 | Canonical growth events | Strong existing | `growth_events` is the shared event spine. |
 | 26 | Attribution | Strong existing | Growth touches plus Revenue Growth attribution connect source through collected cash and profit fields. |
 | 27 | Downstream conversion feedback | Strong existing | Provider-neutral conversion event queue exists; each ad provider still needs supported credentials/capabilities. |
-| 28 | Adaptive optimization event | Partial / extend | Organic winner evaluation and marketing memory exist; thresholds must remain evidence- and sample-size-aware. |
+| 28 | Adaptive optimization event | Foundation added | Paid channels now compare current and prior 30-day source-to-cash outcomes and remain hypothesis/learning until minimum evidence is met; organic winner evaluation and Marketing Memory remain canonical. |
 | 29 | Local Services Ads | External / roadmap | No claim of live automation until Google access and supported APIs are verified; manual/export boundary is appropriate. |
 | 30 | Direct booking / partner roadmap | External / roadmap | Existing integration registry/action layer is the correct boundary; partner-specific certification remains separate. |
 | 31 | Proof library | Strong existing | Reviews, UGC, approved media and `/app/proof` already exist. |
 | 32 | Reputation and review engine | Strong existing | Review request workflows, consent-aware messaging and proof reuse are present. |
 | 33 | Evidence-driven creative | Strong existing | Content generation already requires supplied evidence and blocks invented claims. |
 | 34 | Experiment engine | Foundation added | Existing ad experiments now support hypotheses, primary/secondary/guardrail metrics, observation thresholds and decisions. |
-| 35 | Growth memory | Strong existing | Tenant-scoped Marketing Memory and lifecycle learning exist with evidence/confidence. Cross-tenant learning remains aggregated and gated. |
+| 35 | Growth memory | Strong existing | Tenant-scoped Marketing Memory now receives campaign spend checkpoints and expiring market evidence. Cross-tenant industry/channel learning remains opt-in, deidentified, and gated at five businesses / 50 samples. |
 | 36 | Retargeting / lifecycle audiences | Partial / extend | Lifecycle states and provider-neutral conversion queue exist; external audience sync is provider-specific. |
 | 37 | Sales conversation intelligence | Partial / extend | Conversations, calls/transcripts, summaries and customer lifecycle data exist; coaching scorecards can deepen. |
 | 38 | Lost opportunity intelligence | Strong existing | Lost/not-yet/no-response sequences and memory signals exist. |
@@ -59,7 +59,7 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 | 42 | Identity resolution | Strong existing | Contact identities and canonical customer/lead records exist; deterministic matches stay preferred over guesses. |
 | 43 | Consent / communication permission | Strong existing | Consent and opt-out checks exist in communication workflows and provider lanes. |
 | 44 | Autonomy levels | Strong existing | Suggest/approve/autopilot, live-action policies, approvals and action audit trails exist. |
-| 45 | Budget guardrails | Partial / extend | Budget modes and approval requirements exist; objective-level CAC/ROAS constraints were added. Paid increases remain approval-only. |
+| 45 | Budget guardrails | Foundation added | Budget modes, approval requirements, exact-cent allocation, objective CAC/ROAS constraints, capacity limits, and fail-closed profit/attribution checks are connected. Paid increases remain approval-only. |
 | 46 | Capacity-aware growth | Foundation added | Controller constrains demand when capacity is full and exposes target/capacity conflicts. |
 | 47 | Geographic profitability | Partial / extend | Locations, jobs and attribution provide inputs; explicit area-level cost/profit rollups need more implementation. |
 | 48 | Weather / event-responsive growth | Strong existing | Weather demand signals, recommendations and notifications already exist. |
@@ -69,7 +69,7 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 | 52 | Content atomization | Partial / extend | Multi-format output exists; source-to-derivative lineage should continue through variant keys and campaigns. |
 | 53 | Referral engine | Partial / extend | Customer/lifecycle messaging can support referrals; a specialized incentive/accounting model remains future work. |
 | 54 | Reactivation engine | Strong existing | Context-aware lifecycle recovery and past-customer sequences exist. |
-| 55 | Profit-weighted acquisition | Foundation added | Objective economics and controller can block unsafe expansion; job-cost completeness determines confidence. |
+| 55 | Profit-weighted acquisition | Foundation added | The controller now uses actual normalized paid spend, sold jobs, attributed revenue, gross profit, confidence, and current-versus-prior movement. Missing profit or weak attribution blocks expansion. |
 | 56 | Forecast before spending | Foundation added | Reverse plan estimates funnel volume, acquisition spend, contribution and ROAS; no paid spend is changed automatically. |
 | 57 | Owner Command Center growth briefing | Partial / extend | Timeline/notifications/recommendations exist; controller snapshots now supply concise reasons and directive for the briefing UI. |
 | 58 | Explainable AI actions | Strong existing | Recommendations preserve evidence, reason, next step, confidence and authority. |
@@ -77,11 +77,11 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 | 60 | AI workforce architecture | Strong existing | Specialized roles share an orchestrated business action/evidence layer rather than pretending to be isolated people. |
 | 61 | Ferocity Connect / bring-your-own agent | Strong existing | Provider-neutral business action layer and MCP/connector architecture exist under tenant identity, permissions and auditing. |
 | 62 | Model / provider routing | Strong existing | AI service/model routing and provider registry exist; provider-specific logic stays behind abstractions. |
-| 63 | Marketing as closed-loop controller | Foundation added | Daily Growth sweep now computes controller snapshots before the AI Growth Department chooses actions. |
+| 63 | Marketing as closed-loop controller | Foundation added | Daily Growth sweep computes actual-economics controller snapshots and channel evidence states before the AI Growth Department chooses actions. |
 | 64 | Cross-module intelligence | Strong existing | Growth reads brand, leads, conversations, jobs, invoices, payments, proof, SEO, weather and memory; new structured evidence joins that snapshot. |
 | 65 | Opportunity detection | Strong existing | Growth opportunities, SEO opportunities, weather demand and lifecycle recommendations exist. |
-| 66 | Anomaly detection | Partial / extend | Workflow/provider health and warnings exist; broader statistical business anomaly detection needs calibrated baselines. |
-| 67 | Data quality / attribution health | Foundation added | Controller computes conservative completeness and attribution coverage, and emits `repair_data` instead of pretending certainty. |
+| 66 | Anomaly detection | Partial / extend | Workflow/provider health, campaign `$5` spend milestones, measurement failures, stop-loss warnings, and current-versus-prior return declines exist; broader statistical business anomaly thresholds still require live calibration. |
+| 67 | Data quality / attribution health | Foundation added | Controller computes conservative completeness and attribution coverage; paid spend without complete profit/source-to-cash measurement emits `repair_data` instead of trusting projected ROAS. |
 | 68 | Tracking / UTM governance | Partial / extend | Sources, campaign keys, landing pages and attribution records exist; centralized naming enforcement can be tightened. |
 | 69 | First-party data strategy | Strong existing | Canonical tenant-owned events, attribution, conversations, operational records, proof and memory remain Ferocity-owned and provider-neutral. |
 
@@ -94,6 +94,7 @@ This audit treats the two-part specification as additive. Existing Ferocity syst
 5. Fed the controller and new structured evidence into the existing AI Growth Department daily sweep.
 6. Extended existing experiment and creative tables instead of creating parallel systems.
 7. Preserved the rule that paid spend is never increased automatically.
+8. Replaced projected ROAS in runtime growth direction with actual paid-media economics and recorded current-versus-prior channel assessments.
 
 ## Deliberately not overwritten
 

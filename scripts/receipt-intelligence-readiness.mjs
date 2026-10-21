@@ -18,7 +18,26 @@ const requiredTables = [
   "document_intelligence_line_items",
   "document_intelligence_transactions",
   "document_intelligence_allocations",
-  "document_intelligence_events"
+  "document_intelligence_events",
+  "document_intelligence_projects",
+  "document_intelligence_import_batches",
+  "document_intelligence_import_batch_items",
+  "ai_independent_reviews"
+];
+const requiredSourceMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "application/pdf",
+  "text/csv",
+  "text/tab-separated-values",
+  "text/plain",
+  "application/xml",
+  "application/x-ofx",
+  "application/vnd.intu.qfx",
+  "application/vnd.intu.qbo",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ];
 
 const client = new pg.Client({
@@ -59,7 +78,15 @@ try {
     : { rows: [] };
   const migrationsResult = await client.query(
       `select version from public.schema_migrations
-        where version in ('211_shared_document_expense_intelligence', '212_expense_email_intake_routes', '213_statement_transaction_intelligence')
+        where version in (
+          '211_shared_document_expense_intelligence',
+          '212_expense_email_intake_routes',
+          '213_statement_transaction_intelligence',
+          '234_receipt_structured_file_storage',
+          '235_independent_ai_reviews',
+          '236_named_incoming_payment_correction',
+          '249_document_intelligence_batches'
+        )
         order by version`
     ).catch(() => ({ rows: [] }));
 
@@ -67,16 +94,22 @@ try {
   const missingTables = requiredTables.filter((name) => !tables.has(name));
   const rlsDisabled = requiredTables.filter((name) => tables.has(name) && !tables.get(name));
   const bucket = bucketResult.rows[0];
+  const allowedMimeTypes = Array.isArray(bucket?.allowed_mime_types) ? bucket.allowed_mime_types : [];
   const aliases = aliasResult.rows[0] ?? { eligible_workspaces: 0, active_receipt_aliases: 0 };
   const appliedMigrations = migrationsResult.rows.map((row) => row.version);
 
   const checks = {
     schema: missingTables.length === 0,
     rowLevelSecurity: rlsDisabled.length === 0,
-    privateSourceStorage: Boolean(bucket && bucket.public === false && Number(bucket.file_size_limit) >= 15 * 1024 * 1024),
+    privateSourceStorage: Boolean(
+      bucket &&
+      bucket.public === false &&
+      Number(bucket.file_size_limit) >= 15 * 1024 * 1024 &&
+      requiredSourceMimeTypes.every((mimeType) => allowedMimeTypes.includes(mimeType))
+    ),
     receiptAliases: Number(aliases.active_receipt_aliases) === Number(aliases.eligible_workspaces),
     featureRegistration: !featureTableExists || featureResult.rows[0]?.status === "enabled",
-    migrationsApplied: appliedMigrations.length === 3
+    migrationsApplied: appliedMigrations.length === 7
   };
   const ok = Object.values(checks).every(Boolean);
 

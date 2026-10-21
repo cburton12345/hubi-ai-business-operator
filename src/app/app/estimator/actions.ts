@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { calculateMaterialTakeoff, extractMeasurementsFromNote, type MeasurementInput, type TradeKey } from "@/lib/estimator/takeoff-calculators";
 import { queryPostgres } from "@/lib/db/postgres";
 import { dollarsToCents } from "@/lib/service-ops/money";
+import { sendChangeOrderForCustomer } from "@/lib/service-ops/change-orders";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const tradeKeys = [
@@ -121,7 +122,10 @@ const changeOrderSchema = z.object({
   changeType: z.enum(["scope_change", "hidden_damage", "customer_upgrade", "additional_labor", "additional_materials", "deductible_or_insurance", "other"]),
   title: z.string().min(1).max(180),
   description: z.string().max(1200).optional(),
-  amountCents: z.number().int().min(0)
+  amountCents: z.number().int().min(-100_000_000).max(100_000_000),
+  estimatedCostCents: z.number().int().min(0).max(100_000_000),
+  scheduleImpactMinutes: z.number().int().min(0).max(525_600),
+  idempotencyKey: z.string().uuid()
 });
 
 const validationSchema = z.object({
@@ -1442,17 +1446,22 @@ export async function createChangeOrderAction(formData: FormData) {
     changeType: text(formData, "changeType") ?? "scope_change",
     title: text(formData, "title"),
     description: text(formData, "description"),
-    amountCents: cents(text(formData, "amount"))
+    amountCents: cents(text(formData, "amount")),
+    estimatedCostCents: cents(text(formData, "estimatedCost")),
+    scheduleImpactMinutes: Math.round(Number(text(formData, "scheduleImpactHours") ?? 0) * 60),
+    idempotencyKey: text(formData, "idempotencyKey")
   });
   if (!parsed.success) return;
   const tenantId = await getCurrentWorkspaceId();
-  await createEstimateVersionSnapshot(tenantId, parsed.data.estimateId, "before_change_order");
-  await queryPostgres(
+  const inserted = await queryPostgres<{ id: string }>(
     `
     insert into public.estimate_change_orders (
-      tenant_id, estimate_id, change_type, title, description, amount_cents, metadata_json
+      tenant_id, estimate_id, change_type, title, description, amount_cents,
+      estimated_cost_cents, schedule_impact_minutes, idempotency_key, metadata_json
     )
-    values ($1,$2,$3,$4,$5,$6,$7::jsonb)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+    on conflict (tenant_id, idempotency_key) where idempotency_key is not null do nothing
+    returning id
     `,
     [
       tenantId,
@@ -1461,11 +1470,31 @@ export async function createChangeOrderAction(formData: FormData) {
       parsed.data.title,
       parsed.data.description ?? null,
       parsed.data.amountCents,
+      parsed.data.estimatedCostCents,
+      parsed.data.scheduleImpactMinutes,
+      parsed.data.idempotencyKey,
       JSON.stringify({ source: "estimator_ui", approvalRequired: true })
     ]
   );
+  if (!inserted) throw new Error("Ferocity could not save the change order.");
+  if (inserted.rows[0]) {
+    await createEstimateVersionSnapshot(tenantId, parsed.data.estimateId, "before_change_order");
+  }
   revalidateEstimator();
   revalidatePath(`/app/service/estimates/${parsed.data.estimateId}`);
+}
+
+export async function sendChangeOrderAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const changeOrderId = text(formData, "id");
+  if (!changeOrderId || !z.string().uuid().safeParse(changeOrderId).success) return;
+  const tenantId = await getCurrentWorkspaceId();
+  const result = await sendChangeOrderForCustomer({ tenantId, changeOrderId });
+  if (result.status === "not_ready") {
+    throw new Error("Create an active customer estimate link before making this change order available.");
+  }
+  revalidateEstimator();
+  if (result.estimateId) revalidatePath(`/app/service/estimates/${result.estimateId}`);
 }
 
 export async function createEstimatorReviewRecordAction(formData: FormData) {

@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/auth/require-permission";
-import { queryPostgres } from "@/lib/db/postgres";
+import { listExpenseTaxPacketRows } from "@/lib/reports/expense-tax-packet";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getFinancialWorkpaperReadiness } from "@/lib/document-intelligence/financial-workpaper-readiness";
 
 function csvEscape(value: string | number | null | undefined) {
   const text = String(value ?? "");
@@ -23,57 +24,29 @@ function yearFromUrl(request: Request) {
   return requested;
 }
 
+function scopeFromUrl(request: Request) {
+  const searchParams = new URL(request.url).searchParams;
+  const validUuid = (value: string | null) => value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
+  return { projectId: validUuid(searchParams.get("project")), batchId: validUuid(searchParams.get("batch")) };
+}
+
 export async function GET(request: Request) {
   await requirePermission("tenant:view");
   const tenantId = await getCurrentWorkspaceId();
   const year = yearFromUrl(request);
+  const scope = scopeFromUrl(request);
 
-  const expenses = await queryPostgres<{
-    id: string;
-    expense_date: Date | null;
-    vendor: string | null;
-    category: string;
-    assign_to: string;
-    job_title: string | null;
-    worker_name: string | null;
-    amount_cents: number;
-    tax_cents: number;
-    total_cents: number;
-    reimbursement_status: string;
-    status: string;
-    receipt_url: string | null;
-    notes: string | null;
-  }>(
-    `
-    select
-      e.id,
-      e.expense_date,
-      e.vendor,
-      e.category,
-      e.assign_to,
-      j.title as job_title,
-      w.name as worker_name,
-      e.amount_cents,
-      e.tax_cents,
-      e.amount_cents + e.tax_cents as total_cents,
-      e.reimbursement_status,
-      e.status,
-      e.receipt_url,
-      coalesce(e.reimbursement_notes, e.ai_summary) as notes
-    from public.operations_expenses e
-    left join public.service_jobs j on j.id = e.service_job_id
-    left join public.operations_workers w on w.id = e.worker_id
-    where e.tenant_id = $1
-      and e.status <> 'rejected'
-      and coalesce(e.expense_date, e.created_at::date) >= make_date($2::int, 1, 1)
-      and coalesce(e.expense_date, e.created_at::date) < make_date(($2::int + 1), 1, 1)
-    order by coalesce(e.expense_date, e.created_at::date), e.created_at, e.vendor
-    `,
-    [tenantId, year]
-  );
+  const [expenses, readiness] = await Promise.all([
+    listExpenseTaxPacketRows(tenantId, year, scope),
+    getFinancialWorkpaperReadiness(tenantId, year, scope),
+  ]);
 
   const header = [
     "expense_id",
+    "source_type",
+    "source_document_id",
     "expense_date",
     "vendor",
     "category",
@@ -86,12 +59,19 @@ export async function GET(request: Request) {
     "reimbursement_status",
     "review_status",
     "receipt_saved",
-    "notes"
+    "notes",
+    "workpaper_status",
+    "workpaper_blockers",
+    "workpaper_next_action",
+    "statement_coverage_status",
+    "missing_statement_months"
   ];
 
-  const rows = (expenses?.rows ?? []).map((expense) => [
+  const rows = expenses.map((expense) => [
     expense.id,
-    expense.expense_date ? new Date(expense.expense_date).toISOString().slice(0, 10) : "",
+    expense.source_kind,
+    expense.document_id ?? "",
+    expense.expense_date,
     expense.vendor ?? "",
     expense.category,
     expense.assign_to,
@@ -99,12 +79,21 @@ export async function GET(request: Request) {
     expense.worker_name ?? "",
     dollars(expense.amount_cents),
     dollars(expense.tax_cents),
-    dollars(expense.total_cents),
+    dollars(expense.amount_cents + expense.tax_cents),
     expense.reimbursement_status,
-    expense.status,
+    expense.review_status,
     expense.receipt_url ? "yes" : "no",
-    expense.notes ?? ""
+    expense.source_description ?? "",
+    readiness.label,
+    readiness.blocks.map((block) => `${block.code}: ${block.message}`).join(" | "),
+    readiness.nextAction ?? "",
+    readiness.coverage ? readiness.coverage.message : "No verified annual statement coverage",
+    readiness.coverage?.missingMonths.join("; ") ?? ""
   ]);
+
+  if (!rows.length) {
+    rows.push(["", "readiness_summary", "", "", "", "", "", "", "", "", "", "", "", "", "", "", readiness.label, readiness.blocks.map((block) => `${block.code}: ${block.message}`).join(" | "), readiness.nextAction ?? "", readiness.coverage?.message ?? "No verified annual statement coverage", readiness.coverage?.missingMonths.join("; ") ?? ""]);
+  }
 
   const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
   const fileName = `ferocity-expense-tax-export-${year}.csv`;

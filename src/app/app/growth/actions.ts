@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
@@ -12,6 +13,7 @@ import { runAiGrowthDepartment } from "@/lib/growth/ai-growth-department";
 import { prepareAiContentPackage } from "@/lib/marketing/ai-content-production";
 import { buildReverseRevenuePlan } from "@/lib/growth/reverse-revenue-plan";
 import { createConversationAcquisitionLink } from "@/lib/growth/conversation-acquisition";
+import { executeFerocityChatAction } from "../ferocity/actions";
 
 const qualityReviewSchema = z.object({
   reviewId: z.string().min(1),
@@ -271,7 +273,14 @@ export async function scanGrowthLoopAction() {
         where i.tenant_id = $1
           and i.status in ('sent_manually', 'partially_paid', 'overdue')
           and coalesce(i.due_date, i.created_at::date) <= current_date
-          and i.amount_paid_cents < i.total_cents
+          and i.amount_paid_cents + i.write_off_cents < i.total_cents
+          and not exists (
+            select 1 from public.payment_disputes d
+            join public.service_invoice_payments disputed_payment
+              on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+            where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+              and d.status in ('warning','needs_response','under_review')
+          )
       ) as overdue_invoices,
       (
         select count(*)
@@ -613,14 +622,21 @@ export async function scanGrowthLoopAction() {
       jsonb_build_object(
         'createdByScan', 'growth_loop',
         'invoiceStatus', i.status,
-        'balanceDueCents', greatest(i.total_cents - i.amount_paid_cents, 0),
+        'balanceDueCents', greatest(i.total_cents - i.amount_paid_cents - i.write_off_cents, 0),
         'dueDate', i.due_date
       )
     from public.service_invoices i
     where i.tenant_id = $1
       and i.status in ('sent_manually', 'partially_paid', 'overdue')
       and coalesce(i.due_date, i.created_at::date) <= current_date
-      and i.amount_paid_cents < i.total_cents
+      and i.amount_paid_cents + i.write_off_cents < i.total_cents
+      and not exists (
+        select 1 from public.payment_disputes d
+        join public.service_invoice_payments disputed_payment
+          on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+        where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+          and d.status in ('warning','needs_response','under_review')
+      )
       and not exists (
         select 1 from public.follow_up_workflows f
         where f.tenant_id = i.tenant_id and f.invoice_id = i.id and f.workflow_type = 'invoice_followup' and f.status in ('open', 'scheduled')
@@ -666,7 +682,7 @@ export async function scanGrowthLoopAction() {
     family: "marketing",
     type: "ai_growth_department_scan",
     title: `Ferocity found ${department.worthwhile} worthwhile growth actions`,
-    body: `${department.handledAutomatically} handled safely, ${department.needsApproval} need approval, and ${department.needsOwner} need the owner personally.`,
+    body: `${department.readyForFerocity} ready for Ferocity, ${department.needsApproval} awaiting approval, and ${department.needsOwner} need the owner personally.`,
     metadata: { ...department, actions: department.actions.map(({ key, title, ownerInvolvement }) => ({ key, title, ownerInvolvement })) }
   });
 
@@ -683,6 +699,47 @@ export async function prepareGrowthContentPackageAction(formData: FormData) {
   await insertTimeline({ tenantId: workspaceId, family: "marketing", type: "organic_content_package_prepared", title: result.created ? `Prepared an organic content package with ${result.outputs} concepts` : "Organic content package already exists", body: "Ferocity used the Growth Department's evidence, Brand Voice, approved assets, customer signals, and platform context. Every concept remains in review; no content was published and no ad spend was authorized.", entityType: "content_campaign", entityId: result.campaignId, sourceTable: "content_studio_campaigns", sourceId: result.campaignId, metadata: { organicFirst: true, noPaidSpendAuthorized: true } });
   revalidatePath("/app/growth");
   revalidatePath("/app/marketing-os");
+}
+
+export async function handleGrowthRecommendationWithFerocityAction(formData: FormData) {
+  await requirePermission("ai:queue");
+  const recommendationId = z.string().uuid().safeParse(formData.get("recommendationId"));
+  if (!recommendationId.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  const recommendationResult = await queryPostgres<{
+    id: string;
+    title: string;
+    trigger_reason: string;
+    recommended_outputs_json: Array<{ nextStep?: string }>;
+  }>(
+    `select id,title,trigger_reason,recommended_outputs_json
+       from public.marketing_campaign_recommendations
+      where tenant_id=$1 and id=$2
+        and recommendation_key like 'growth-department:%'
+        and status in ('recommended','needs_review','approved','turned_into_campaign')
+        and (expires_at is null or expires_at > now())
+      limit 1`,
+    [workspaceId, recommendationId.data],
+  );
+  const recommendation = recommendationResult?.rows[0];
+  if (!recommendation) return;
+
+  const nextStep = recommendation.recommended_outputs_json?.[0]?.nextStep
+    ?? "Choose and complete the next authorized step.";
+  const command = [
+    `Handle this growth priority now: ${recommendation.title}.`,
+    `Reason: ${recommendation.trigger_reason}`,
+    `Intended next step: ${nextStep}`,
+    `Use growth recommendation ${recommendation.id} and the current workspace evidence.`,
+    "Complete every safe authorized internal step, preserve approval for publishing, outreach, spend, or other consequential actions, and return the finished work or the exact blocker."
+  ].join(" ").slice(0, 4000);
+  const commandForm = new FormData();
+  commandForm.set("command", command);
+  commandForm.set("inputMode", "text");
+  commandForm.set("processedDocuments", "[]");
+  const result = await executeFerocityChatAction({ ok: false }, commandForm);
+  revalidatePath("/app/growth");
+  redirect(result.threadId ? `/app/ferocity?thread=${result.threadId}` : "/app/ferocity");
 }
 
 export async function updateContentQualityReviewAction(formData: FormData) {

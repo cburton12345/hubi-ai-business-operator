@@ -1,4 +1,5 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import type pg from "pg";
+import { withPostgresTransactionResult } from "@/lib/db/postgres";
 
 type ServiceJobKernelRow = {
   id: string;
@@ -54,7 +55,22 @@ export async function ensureServiceKernelForJob(params: {
   jobId: string;
   eventSource?: "system" | "user" | "worker" | "customer" | "ai" | "provider";
 }): Promise<KernelLink | null> {
-  const jobResult = await queryPostgres<ServiceJobKernelRow>(
+  const transaction = await withPostgresTransactionResult((client) => synchronizeServiceKernelForJob(client, params));
+  if (!transaction.ok) {
+    throw new Error("Ferocity could not synchronize the service job safely.", { cause: transaction.error });
+  }
+  return transaction.value;
+}
+
+export async function synchronizeServiceKernelForJob(
+  client: pg.PoolClient,
+  params: {
+    tenantId: string;
+    jobId: string;
+    eventSource?: "system" | "user" | "worker" | "customer" | "ai" | "provider";
+  }
+): Promise<KernelLink | null> {
+  const jobResult = await client.query<ServiceJobKernelRow>(
     `
     select id, tenant_id, brand_id, customer_id, source_lead_id, estimate_id,
            work_order_id, title, status, scheduled_start, scheduled_end,
@@ -69,7 +85,7 @@ export async function ensureServiceKernelForJob(params: {
   const job = jobResult?.rows[0];
   if (!job) return null;
 
-  const locationResult = await queryPostgres<{ id: string }>(
+  const locationResult = await client.query<{ id: string }>(
     `
     insert into public.customer_locations (
       tenant_id, brand_id, customer_id, name, location_type, address_line1,
@@ -91,7 +107,7 @@ export async function ensureServiceKernelForJob(params: {
   const locationId = locationResult?.rows[0]?.id;
   if (!locationId) return null;
 
-  const priorWorkOrderResult = await queryPostgres<{ id: string; status: string }>(
+  const priorWorkOrderResult = await client.query<{ id: string; status: string }>(
     `
     select id, status
     from public.service_work_orders
@@ -103,7 +119,7 @@ export async function ensureServiceKernelForJob(params: {
   const priorWorkOrder = priorWorkOrderResult?.rows[0];
 
   const nextWorkOrderStatus = workOrderStatus(job.status);
-  const workOrderResult = await queryPostgres<{ id: string }>(
+  const workOrderResult = await client.query<{ id: string }>(
     `
     insert into public.service_work_orders (
       tenant_id, brand_id, customer_id, location_id, source_lead_id, estimate_id,
@@ -164,7 +180,7 @@ export async function ensureServiceKernelForJob(params: {
   const workOrderId = workOrderResult?.rows[0]?.id;
   if (!workOrderId) return null;
 
-  await queryPostgres(
+  await client.query(
     `
     update public.service_jobs
     set location_id = $3, work_order_id = $4
@@ -174,7 +190,7 @@ export async function ensureServiceKernelForJob(params: {
     [params.tenantId, job.id, locationId, workOrderId]
   );
 
-  const priorVisitResult = await queryPostgres<{ id: string; status: string }>(
+  const priorVisitResult = await client.query<{ id: string; status: string }>(
     `
     select id, status
     from public.service_visits
@@ -186,7 +202,7 @@ export async function ensureServiceKernelForJob(params: {
   const priorVisit = priorVisitResult?.rows[0];
   const nextVisitStatus = visitStatus(job.status);
 
-  const visitResult = await queryPostgres<{ id: string }>(
+  const visitResult = await client.query<{ id: string }>(
     `
     insert into public.service_visits (
       tenant_id, brand_id, work_order_id, customer_id, location_id,
@@ -249,7 +265,7 @@ export async function ensureServiceKernelForJob(params: {
     priorVisit.status !== nextVisitStatus;
 
   if (changed) {
-    await queryPostgres(
+    await client.query(
       `
       insert into public.service_operating_events (
         tenant_id, brand_id, customer_id, location_id, work_order_id, visit_id,

@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getEmployeeAccessContext } from "@/lib/employee/employee-access";
 
 function dateTime(value: Date | null, language: "en" | "es" = "en") {
@@ -84,11 +84,10 @@ export async function getEmployeeWorkday() {
       role_type: string;
       trade: string | null;
       availability_status: string;
-      hourly_rate_cents: number;
       preferred_language: "en" | "es";
     }>(
       `
-      select id, name, role_type, trade, availability_status, hourly_rate_cents, preferred_language
+      select id, name, role_type, trade, availability_status, preferred_language
       from public.operations_workers
       where tenant_id = $1 and id = $2 and availability_status <> 'inactive'
       limit 1
@@ -107,12 +106,12 @@ export async function getEmployeeWorkday() {
       status: string;
       priority: string;
       task_count: string;
-      ai_dispatch_notes: string | null;
+      task_list_json: unknown;
     }>(
       `
       select a.id, a.service_visit_id, a.title, w.name as worker, c.name as crew, a.jobsite,
         a.scheduled_start, a.scheduled_end, a.status, a.priority,
-        jsonb_array_length(a.task_list_json) as task_count, a.ai_dispatch_notes
+        jsonb_array_length(a.task_list_json) as task_count, a.task_list_json
       from public.operations_assignments a
       left join public.operations_workers w on w.id = a.worker_id and w.tenant_id = a.tenant_id
       left join public.operations_crews c on c.id = a.crew_id and c.tenant_id = a.tenant_id
@@ -188,7 +187,6 @@ export async function getEmployeeWorkday() {
           roleType: worker.role_type,
           trade: worker.trade ?? "General",
           status: worker.availability_status,
-          hourlyRate: worker.hourly_rate_cents ? `$${(worker.hourly_rate_cents / 100).toFixed(2)}` : "No rate"
         }]
       : [],
     assignments: (assignmentsResult?.rows ?? []).map((row) => ({
@@ -202,7 +200,20 @@ export async function getEmployeeWorkday() {
       status: row.status,
       priority: row.priority,
       tasks: Number(row.task_count ?? 0),
-      aiNotes: row.ai_dispatch_notes ?? "No dispatch recommendation."
+      taskList: Array.isArray(row.task_list_json)
+        ? row.task_list_json.slice(0, 50).map((task, index) => {
+            const item = task && typeof task === "object" && !Array.isArray(task)
+              ? task as Record<string, unknown>
+              : {};
+            return {
+              index,
+              title: typeof item.title === "string" && item.title.trim()
+                ? item.title.trim().slice(0, 240)
+                : `${language === "es" ? "Tarea" : "Task"} ${index + 1}`,
+              status: item.status === "done" ? "done" as const : "open" as const
+            };
+          })
+        : [],
     })),
     openTimeEntry: timeResult?.rows[0]
       ? {

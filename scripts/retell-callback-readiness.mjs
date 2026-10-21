@@ -74,6 +74,9 @@ try {
     : null;
 
   const certified = Boolean(evidence && remoteNumber.inbound_webhook_url && fallbackAgentBound);
+  const previousTestedAt = number.callback_last_tested_at ? new Date(number.callback_last_tested_at).getTime() : Number.NaN;
+  const previousCertificationExpired = number.callback_status === "certified"
+    && (!Number.isFinite(previousTestedAt) || previousTestedAt < cutoff);
   if (certify && certified) {
     await client.query(
       `update public.telephony_numbers
@@ -87,6 +90,8 @@ try {
   console.log(JSON.stringify({
     ok: certified,
     callbackStatus: certify && certified ? "certified" : number.callback_status,
+    evidenceWindowDays: 30,
+    previousCertificationExpired,
     inboundWebhookConfigured: Boolean(remoteNumber.inbound_webhook_url),
     fallbackAgentBound,
     realInboundEvidenceFound: Boolean(evidence),
@@ -100,7 +105,9 @@ try {
       ? (certify || number.callback_status === "certified"
           ? "The caller ID is certified for production use."
           : "Run again with --certify to record the successful callback test.")
-      : "Place a real callback to the displayed number after its carrier route is restored, then run this check again."
+      : previousCertificationExpired
+        ? "The prior real-call evidence is older than 30 days. Call the displayed number from a real handset, then run this check again with --certify. If the call never reaches Retell, investigate the upstream carrier route."
+        : "Call the displayed number from a real handset, then run this check again with --certify. If the call never reaches Retell, investigate the upstream carrier route."
   }, null, 2));
 
   if (!certified) process.exitCode = 2;

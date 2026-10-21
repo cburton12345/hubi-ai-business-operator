@@ -34,4 +34,12 @@ describe("contextual capability discovery", () => {
     expect(results).toHaveLength(3);
     expect(new Set(results.map((item) => item.key)).size).toBe(3);
   });
+
+  it("does not confuse reviewing financial documents with reputation reviews", () => {
+    const results = discoverRelevantCapabilities(
+      "How many financial documents need review? Do not change anything.",
+      { ...allAvailable, hasImportedExpenseDocuments: true },
+    );
+    expect(results.some((item) => item.key === "local_presence")).toBe(false);
+  });
 });

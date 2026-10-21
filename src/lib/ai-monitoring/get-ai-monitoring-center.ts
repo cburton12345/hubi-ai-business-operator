@@ -515,7 +515,7 @@ export async function generateDailyOwnerBriefing(tenantId: string) {
       severity, status, owner_attention, ai_handled, ai_summary, recommended_action, action_href, risk_type, confidence_score, metadata_json
     )
     values ($1, 'ferocity', 'Ferocity', $2, 'daily_brief.generated', $3, $4, $5, 'ai_handled', false, true, $4, 'Open the AI Monitoring & Briefing Center.', '/app/ai-monitoring', 'approval', 92, $6::jsonb)
-    on conflict (tenant_id, platform_key, external_event_id)
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
     do update set
       title = excluded.title,
       summary = excluded.summary,

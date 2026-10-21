@@ -2,6 +2,8 @@
 
 Status: live and ready for the first paying subscriber on 2026-08-16.
 
+Historical certification notice: this document records the August 2026 production state. The September 2026 commercial reset superseded its Starter/Growth/Operator prices with $149/$349/$699 for new sales. It must not be used as the current catalog or as proof that the post-reset release has been live-certified.
+
 ## Customer purchase path
 
 - Ferocity uses Stripe-hosted Checkout in subscription mode.

@@ -6,8 +6,9 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
-import { evaluateVisitCompletion } from "@/lib/field-ops/evaluate-visit-completion";
+import { completeVisitAtomically } from "@/lib/field-ops/evaluate-visit-completion";
 import { evaluateVisitSchedule } from "@/lib/scheduling/evaluate-visit";
+import { canTransitionVisitStatus, type VisitStatus } from "@/lib/scheduling/visit-lifecycle";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 const scheduleSchema = z.object({
@@ -18,6 +19,11 @@ const scheduleSchema = z.object({
 });
 
 const assignmentSchema = z.object({
+  visitId: z.string().uuid(),
+  workerId: z.string().uuid()
+});
+
+const removeAssignmentSchema = z.object({
   visitId: z.string().uuid(),
   workerId: z.string().uuid()
 });
@@ -176,6 +182,7 @@ export async function scheduleVisitAction(formData: FormData) {
     select status, scheduled_start, scheduled_end, service_job_id
     from public.service_visits
     where tenant_id = $1 and id = $2 and not schedule_locked
+      and status not in ('completed','canceled')
     limit 1
     `,
     [tenantId, parsed.data.visitId]
@@ -209,7 +216,7 @@ export async function scheduleVisitAction(formData: FormData) {
         scheduled_end = $4,
         arrival_window_start = $3,
         arrival_window_end = $4,
-        status = case when status in ('unscheduled','tentative') then 'scheduled' else status end,
+        status = case when status in ('unscheduled','tentative','no_show') then 'scheduled' else status end,
         service_type_id = coalesce($5::uuid, service_type_id),
         expected_duration_minutes = coalesce($6, expected_duration_minutes),
         required_crew_size = coalesce($7, required_crew_size),
@@ -217,6 +224,7 @@ export async function scheduleVisitAction(formData: FormData) {
         required_certifications_json = coalesce($9::jsonb, required_certifications_json),
         updated_at = now()
     where tenant_id = $1 and id = $2 and not schedule_locked
+      and status not in ('completed','canceled')
     returning service_job_id
     `,
     [
@@ -237,7 +245,7 @@ export async function scheduleVisitAction(formData: FormData) {
   await queryPostgres(
     `
     update public.service_work_orders wo
-    set status = case when wo.status in ('draft','approved','ready_to_schedule') then 'scheduled' else wo.status end,
+    set status = case when wo.status in ('draft','approved','ready_to_schedule','canceled') then 'scheduled' else wo.status end,
         requested_start = $3, requested_end = $4, updated_at = now()
     from public.service_visits v
     where wo.tenant_id = $1 and v.tenant_id = wo.tenant_id
@@ -250,7 +258,7 @@ export async function scheduleVisitAction(formData: FormData) {
     await queryPostgres(
       `
       update public.service_jobs
-      set status = case when status = 'unscheduled' then 'scheduled' else status end,
+      set status = case when status in ('unscheduled','canceled') then 'scheduled' else status end,
           scheduled_start = $3, scheduled_end = $4, updated_at = now()
       where tenant_id = $1 and id = $2
       `,
@@ -310,6 +318,16 @@ export async function assignVisitWorkerAction(formData: FormData) {
   );
   const worker = workerResult?.rows[0];
   if (!worker) return;
+
+  const candidateConflicts = await evaluateVisitSchedule({
+    tenantId,
+    visitId: parsed.data.visitId,
+    candidateWorkerId: parsed.data.workerId,
+    persist: false
+  });
+  if (candidateConflicts.some(
+    (conflict) => conflict.severity === "blocking" && conflict.workerId === parsed.data.workerId
+  )) return;
 
   const operationsResult = await queryPostgres<{ id: string }>(
     `
@@ -406,6 +424,50 @@ export async function assignVisitWorkerAction(formData: FormData) {
   await refreshSchedulePaths(parsed.data.visitId, visit.service_job_id);
 }
 
+export async function removeVisitWorkerAction(formData: FormData) {
+  await requirePermission("lead:manage");
+  const parsed = removeAssignmentSchema.safeParse({
+    visitId: formData.get("visitId"),
+    workerId: formData.get("workerId")
+  });
+  if (!parsed.success) return;
+
+  const tenantId = await getCurrentWorkspaceId();
+  const result = await queryPostgres<{ service_job_id: string | null; worker_name: string }>(
+    `with visit as (
+       select service_job_id from public.service_visits where tenant_id=$1 and id=$2
+     ), removed_visit_assignment as (
+       update public.service_visit_assignments
+          set status='removed', removed_at=now(), removal_reason='Reassigned from schedule board', updated_at=now()
+        where tenant_id=$1 and visit_id=$2 and worker_id=$3 and status <> 'removed'
+        returning operations_assignment_id
+     ), archived_operation as (
+       update public.operations_assignments
+          set status='archived', updated_at=now()
+        where tenant_id=$1 and id in (select operations_assignment_id from removed_visit_assignment)
+     )
+     select visit.service_job_id, worker.name as worker_name
+       from visit
+       join public.operations_workers worker on worker.tenant_id=$1 and worker.id=$3
+      where exists (select 1 from removed_visit_assignment)`,
+    [tenantId, parsed.data.visitId, parsed.data.workerId]
+  );
+  const removed = result?.rows[0];
+  if (!removed) return;
+
+  await evaluateVisitSchedule({ tenantId, visitId: parsed.data.visitId });
+  await insertVisitEvent({
+    tenantId,
+    visitId: parsed.data.visitId,
+    type: "worker_removed",
+    title: `${removed.worker_name} removed from visit`,
+    detail: "The assignment was removed and schedule eligibility was recalculated.",
+    previous: { workerId: parsed.data.workerId },
+    next: { workerId: null }
+  });
+  await refreshSchedulePaths(parsed.data.visitId, removed.service_job_id);
+}
+
 export async function updateVisitDispatchStatusAction(formData: FormData) {
   await requirePermission("lead:manage");
   const parsed = statusSchema.safeParse({
@@ -415,12 +477,20 @@ export async function updateVisitDispatchStatusAction(formData: FormData) {
   if (!parsed.success) return;
 
   const tenantId = await getCurrentWorkspaceId();
+  const currentResult = await queryPostgres<{ status: VisitStatus }>(
+    "select status from public.service_visits where tenant_id=$1 and id=$2 limit 1",
+    [tenantId, parsed.data.visitId]
+  );
+  const current = currentResult?.rows[0]?.status;
+  if (!current || !canTransitionVisitStatus(current, parsed.data.status)) return;
   const conflicts = await evaluateVisitSchedule({ tenantId, visitId: parsed.data.visitId });
   const dispatching = ["dispatched", "en_route", "arrived", "in_progress"].includes(parsed.data.status);
   if (dispatching && conflicts.some((conflict) => conflict.severity === "blocking")) return;
   if (parsed.data.status === "completed") {
-    const completion = await evaluateVisitCompletion({ tenantId, visitId: parsed.data.visitId });
-    if (!completion.ready) return;
+    const completion = await completeVisitAtomically({ tenantId, visitId: parsed.data.visitId });
+    if (completion.status !== "completed" && completion.status !== "already_completed") return;
+    await refreshSchedulePaths(parsed.data.visitId, completion.serviceJobId);
+    return;
   }
 
   const result = await queryPostgres<{
@@ -476,9 +546,7 @@ export async function updateVisitDispatchStatusAction(formData: FormData) {
     [
       tenantId,
       row.work_order_id,
-      parsed.data.status === "completed"
-        ? "completed"
-        : parsed.data.status === "canceled" || parsed.data.status === "no_show"
+      parsed.data.status === "canceled" || parsed.data.status === "no_show"
           ? "canceled"
           : ["arrived", "in_progress", "paused"].includes(parsed.data.status)
             ? "in_progress"

@@ -13,15 +13,14 @@ import {
 } from "@/lib/integrations/tiktok-oauth";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { handleStandardOAuthCallback } from "@/lib/integrations/complete-standard-oauth";
+import { oauthAppRedirect } from "@/lib/onboarding/oauth-return";
 
-function appRedirect(request: Request, params: Record<string, string>) {
-  const url = new URL("/app/integrations", request.url);
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return NextResponse.redirect(url);
+function appRedirect(request: Request, params: Record<string, string>, returnTo?: string | null) {
+  return oauthAppRedirect(request, params, returnTo);
 }
 
 async function claimOAuthJob(workspaceId: string, state: string, provider: "tiktok" | "tiktok_content") {
-  const result = await queryPostgres<{ id: string; credential_profile: string | null }>(
+  const result = await queryPostgres<{ id: string; credential_profile: string | null; return_to: string | null }>(
     `
     update public.integration_jobs
     set status = 'running',
@@ -39,7 +38,8 @@ async function claimOAuthJob(workspaceId: string, state: string, provider: "tikt
       limit 1
       for update skip locked
     )
-    returning id, payload_json->>'credentialProfile' as credential_profile
+    returning id, payload_json->>'credentialProfile' as credential_profile,
+      payload_json->>'returnTo' as return_to
     `,
     [workspaceId, state, provider]
   );
@@ -197,7 +197,7 @@ async function handleTikTokCallback(request: Request, provider: "tiktok" | "tikt
   const providerError = url.searchParams.get("error") || url.searchParams.get("error_code");
   if (providerError) {
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "authorization_denied" }, providerError);
-    return appRedirect(request, { provider, setup: "denied" });
+    return appRedirect(request, { provider, setup: "denied" }, job.return_to);
   }
 
   const code = url.searchParams.get("code");
@@ -206,7 +206,7 @@ async function handleTikTokCallback(request: Request, provider: "tiktok" | "tikt
   const redirectUri = provider === "tiktok_content" ? env.TIKTOK_CONTENT_REDIRECT_URI : env.TIKTOK_OAUTH_REDIRECT_URI;
   if (!code || !clientKey || !clientSecret || !redirectUri) {
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "incomplete_callback" }, "TikTok callback was incomplete.");
-    return appRedirect(request, { provider, setup: "failed" });
+    return appRedirect(request, { provider, setup: "failed" }, job.return_to);
   }
   if (!hasCredentialEncryptionKey()) {
     await finishOAuthJob(
@@ -215,7 +215,7 @@ async function handleTikTokCallback(request: Request, provider: "tiktok" | "tikt
       { safeMode: true, reason: "credential_encryption_unavailable" },
       "Encrypted credential storage is not configured."
     );
-    return appRedirect(request, { provider, setup: "encryption_required" });
+    return appRedirect(request, { provider, setup: "encryption_required" }, job.return_to);
   }
 
   try {
@@ -265,7 +265,7 @@ async function handleTikTokCallback(request: Request, provider: "tiktok" | "tikt
       credentialProfile: useSandboxCredentials ? "sandbox" : "production",
       liveActionsEnabled: false
     });
-    return appRedirect(request, { provider, setup: "connected" });
+    return appRedirect(request, { provider, setup: "connected", onboarding: "resumed" }, job.return_to);
   } catch (error) {
     const message = error instanceof Error ? error.message : "TikTok connection failed.";
     await finishOAuthJob(jobId, "failed", { safeMode: true, reason: "token_exchange_failed" }, message);
@@ -283,7 +283,7 @@ async function handleTikTokCallback(request: Request, provider: "tiktok" | "tikt
       `,
       [workspaceId, provider, provider === "tiktok_content" ? "TikTok Content Publishing" : "TikTok", JSON.stringify({ lastOAuthErrorAt: new Date().toISOString() })]
     );
-    return appRedirect(request, { provider, setup: "failed" });
+    return appRedirect(request, { provider, setup: "failed" }, job.return_to);
   }
 }
 

@@ -1,21 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { databaseSslOptions } from "./postgres";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("databaseSslOptions", () => {
-  it("retains encrypted compatibility when a project CA is not supplied", () => {
-    expect(databaseSslOptions("")).toEqual({ rejectUnauthorized: false });
+const { query } = vi.hoisted(() => ({ query: vi.fn() }));
+
+vi.mock("pg", () => ({
+  default: {
+    Pool: class {
+      query = query;
+    },
+  },
+}));
+
+vi.mock("@/lib/env", () => ({
+  env: { DATABASE_URL: "postgres://test", DATABASE_CA_CERT_BASE64: "" },
+}));
+
+describe("queryPostgresRequired", () => {
+  beforeEach(() => query.mockReset());
+
+  it("returns successful query results", async () => {
+    query.mockResolvedValue({ rows: [{ total: "4" }] });
+    const { queryPostgresRequired } = await import("./postgres");
+
+    await expect(queryPostgresRequired<{ total: string }>("select 4", [], "test-read"))
+      .resolves.toEqual({ rows: [{ total: "4" }] });
   });
 
-  it("enables certificate verification for a base64-encoded PEM CA", () => {
-    const pem = "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----";
-    expect(databaseSslOptions(Buffer.from(pem).toString("base64"))).toEqual({
-      rejectUnauthorized: true,
-      ca: pem
-    });
-  });
+  it("throws a sanitized typed error instead of returning a false empty result", async () => {
+    query.mockResolvedValue(null);
+    const { queryPostgresRequired } = await import("./postgres");
 
-  it("rejects malformed CA configuration", () => {
-    expect(() => databaseSslOptions(Buffer.from("not a certificate").toString("base64")))
-      .toThrow("not a valid PEM certificate");
+    await expect(queryPostgresRequired("select 1", [], "owner-dashboard"))
+      .rejects.toMatchObject({
+        name: "RequiredPostgresQueryError",
+        code: "DATABASE_QUERY_UNAVAILABLE",
+        context: "owner-dashboard",
+        message: "Required database query failed (owner-dashboard).",
+      });
   });
 });

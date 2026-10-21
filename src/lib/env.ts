@@ -158,7 +158,11 @@ const envSchema = z.object({
   NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: optionalString,
   WEB_PUSH_VAPID_PRIVATE_KEY: optionalString,
   WEB_PUSH_VAPID_SUBJECT: optionalString,
-  H4R_SMS_BRIDGE_SECRET: optionalSecret(24)
+  H4R_SMS_BRIDGE_SECRET: optionalSecret(24),
+  H4R_DOCUMENT_ORIGIN: optionalUrl,
+  H4R_CONTEXT_URL: optionalUrl,
+  H4R_OPERATOR_URL: optionalUrl,
+  H4R_OPERATOR_MODE: optionalString
 });
 
 export const env = envSchema.parse({
@@ -307,7 +311,11 @@ export const env = envSchema.parse({
   NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY,
   WEB_PUSH_VAPID_PRIVATE_KEY: process.env.WEB_PUSH_VAPID_PRIVATE_KEY,
   WEB_PUSH_VAPID_SUBJECT: process.env.WEB_PUSH_VAPID_SUBJECT,
-  H4R_SMS_BRIDGE_SECRET: process.env.H4R_SMS_BRIDGE_SECRET
+  H4R_SMS_BRIDGE_SECRET: process.env.H4R_SMS_BRIDGE_SECRET,
+  H4R_DOCUMENT_ORIGIN: process.env.H4R_DOCUMENT_ORIGIN,
+  H4R_CONTEXT_URL: process.env.H4R_CONTEXT_URL,
+  H4R_OPERATOR_URL: process.env.H4R_OPERATOR_URL,
+  H4R_OPERATOR_MODE: process.env.H4R_OPERATOR_MODE
 });
 
 export function hasSupabaseBrowserConfig() {

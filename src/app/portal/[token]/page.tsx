@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { ProofCaptureShell } from "@/app/proof/[token]/page";
 import { getCustomerPortal } from "@/lib/service-ops/get-customer-portal";
@@ -143,6 +144,7 @@ export default async function CustomerPortalPage({
             <p className="muted">Tell the office what you need. A preferred time is a request, not a confirmed appointment.</p>
             <form action={createPortalRequestAction} className="form-stack">
               <input name="token" type="hidden" value={token} />
+              <input name="idempotencyKey" type="hidden" value={randomUUID()} />
               <label>Request type
                 <select name="requestType" defaultValue="service">
                   <option value="service">Request service</option>
@@ -164,6 +166,7 @@ export default async function CustomerPortalPage({
             <h2>Message the office</h2>
             <form action={sendPortalMessageAction} className="form-stack">
               <input name="token" type="hidden" value={token} />
+              <input name="idempotencyKey" type="hidden" value={randomUUID()} />
               <label>Message<textarea name="body" rows={4} required maxLength={3000} /></label>
               <button className="button secondary-button" type="submit">Send message</button>
             </form>

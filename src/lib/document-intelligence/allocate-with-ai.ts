@@ -2,6 +2,7 @@ import { generateJsonWithAiService } from "@/lib/ai/ai-service";
 import { suggestAllocations } from "./allocate";
 import { confidence } from "./normalize";
 import type { AllocationSuggestion, AllocationTarget, NormalizedExpenseDocument } from "./types";
+import { untrustedContentPolicy, untrustedPromptData } from "@/lib/security/untrusted-content";
 
 export async function suggestAllocationsWithAi(input: {
   workspaceId: string;
@@ -24,17 +25,17 @@ export async function suggestAllocationsWithAi(input: {
       runType: ambiguousAllocation ? "expense_allocation_reasoning_advanced" : "expense_allocation_reasoning",
       aiCategory: "core",
       temperature: 0.05,
-      system: "Allocate an expense document only to candidate business entities supplied by the consuming application. Return JSON only. Never invent an entity or ID. Prefer one target when evidence is clear; suggest multiple only when the document genuinely spans them.",
+      system: `Allocate an expense document only to candidate business entities supplied by the consuming application. Return JSON only. Never invent an entity or ID. Prefer one target when evidence is clear; suggest multiple only when the document genuinely spans them. ${untrustedContentPolicy}`,
       user: JSON.stringify({
         instruction: "Return suggestions with target_key, confidence 0-1, rationale, and allocation_percent. Percentages must total 100 when multiple targets are returned.",
-        document: input.document,
-        candidates: input.targets.slice(0, 250).map((target) => ({
+        documentEvidence: untrustedPromptData("expense_document", input.document, 30_000),
+        candidateEvidence: untrustedPromptData("workspace_allocation_candidates", input.targets.slice(0, 250).map((target) => ({
           target_key: `${target.type}|${target.ref ?? ""}`,
           type: target.type,
           label: target.label,
           aliases: target.aliases ?? [],
           context: target.context ?? null
-        }))
+        })), 30_000),
       }),
       fallback: { suggestions: fallback.map((item) => ({
         target_key: `${item.targetType}|${item.targetRef ?? ""}`,

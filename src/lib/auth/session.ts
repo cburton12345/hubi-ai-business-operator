@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { queryPostgres } from "@/lib/db/postgres";
 import { hashSessionToken } from "@/lib/auth/password";
 import type { PlatformRole } from "@/types/core";
@@ -14,7 +15,7 @@ export type CurrentAppSession = {
   selectedTenantId: string | null;
 };
 
-export async function getCurrentAppSession(): Promise<CurrentAppSession | null> {
+export const getCurrentAppSession = cache(async (): Promise<CurrentAppSession | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(appSessionCookieName)?.value;
   if (!token) return null;
@@ -55,4 +56,4 @@ export async function getCurrentAppSession(): Promise<CurrentAppSession | null> 
     platformRole: row.platform_role,
     selectedTenantId: row.selected_tenant_id
   };
-}
+});

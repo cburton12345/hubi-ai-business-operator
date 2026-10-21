@@ -1,6 +1,6 @@
 import { getBillingOverview } from "@/lib/billing/get-billing-overview";
 import { manualSmsHref } from "@/lib/communication/manual-sms";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -13,6 +13,7 @@ export type CashCollectionDashboard = {
     paymentRequests: number;
     paymentsReceived: number;
     ledgerEntries: number;
+    activeDisputes: number;
   };
   readiness: {
     stripeStatus: "ready" | "needs_setup" | "blocked";
@@ -35,6 +36,7 @@ export type CashCollectionDashboard = {
     dueDate: string;
     smsHref: string;
     canText: boolean;
+    collectionPaused: boolean;
     href: string;
   }[];
   paymentRequests: {
@@ -92,6 +94,7 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
       payment_requests: string;
       payments_received: string;
       ledger_entries: string;
+      active_disputes: string;
     }>(
       `
       select
@@ -100,10 +103,17 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
           select count(*) from public.service_invoices
           where tenant_id = $1 and status in ('sent_manually','partially_paid','overdue')
             and coalesce(due_date, created_at::date) <= current_date
-            and amount_paid_cents < total_cents
+            and amount_paid_cents + write_off_cents < total_cents
+            and not exists (
+              select 1 from public.payment_disputes d
+              join public.service_invoice_payments disputed_payment
+                on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+              where d.tenant_id=service_invoices.tenant_id and disputed_payment.invoice_id=service_invoices.id
+                and d.status in ('warning','needs_response','under_review')
+            )
         )::text as overdue_invoices,
         (
-          select coalesce(sum(greatest(total_cents - amount_paid_cents, 0)), 0)
+          select coalesce(sum(greatest(total_cents - amount_paid_cents - write_off_cents, 0)), 0)
           from public.service_invoices
           where tenant_id = $1 and status in ('draft','sent_manually','partially_paid','overdue')
         )::text as balance_due_cents,
@@ -114,7 +124,8 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
         )::text as collected_revenue_cents,
         (select count(*) from public.service_invoice_payment_links where tenant_id = $1)::text as payment_requests,
         (select count(*) from public.service_invoice_payments where tenant_id = $1 and status in ('succeeded','recorded'))::text as payments_received,
-        (select count(*) from public.service_ledger_entries where tenant_id = $1)::text as ledger_entries
+        (select count(*) from public.service_ledger_entries where tenant_id = $1)::text as ledger_entries,
+        (select count(*) from public.payment_disputes where tenant_id=$1 and status in ('warning','needs_response','under_review'))::text as active_disputes
       `,
       [workspaceId]
     ),
@@ -126,11 +137,20 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
       status: string;
       total_cents: number;
       amount_paid_cents: number;
+      write_off_cents: number;
       due_date: Date | null;
       created_at: Date;
+      collection_paused: boolean;
     }>(
       `
-      select i.id, i.title, c.name as customer_name, c.phone as customer_phone, i.status, i.total_cents, i.amount_paid_cents, i.due_date, i.created_at
+      select i.id, i.title, c.name as customer_name, c.phone as customer_phone, i.status, i.total_cents, i.amount_paid_cents, i.write_off_cents, i.due_date, i.created_at,
+        exists(
+          select 1 from public.payment_disputes d
+          join public.service_invoice_payments disputed_payment
+            on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+          where d.tenant_id=i.tenant_id and disputed_payment.invoice_id=i.id
+            and d.status in ('warning','needs_response','under_review')
+        ) as collection_paused
       from public.service_invoices i
       join public.customers c on c.id = i.customer_id
       where i.tenant_id = $1 and i.status in ('draft','sent_manually','partially_paid','overdue')
@@ -208,9 +228,18 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
   const row = counts?.rows[0];
   const openInvoices = n(row?.open_invoices);
   const overdueInvoices = n(row?.overdue_invoices);
+  const activeDisputes = n(row?.active_disputes);
   const stripe = billing.readiness.find((item) => item.label === "Stripe connection");
   const invoiceRows = invoices?.rows ?? [];
   const nextActions = [
+    activeDisputes > 0
+      ? {
+          title: `${activeDisputes} payment dispute${activeDisputes === 1 ? "" : "s"} need review`,
+          detail: "Collection messages are paused for disputed payments. Resolve the provider dispute before restarting collection work.",
+          href: "/app/cash-collection",
+          urgency: "high" as const
+        }
+      : null,
     overdueInvoices > 0
       ? {
           title: `${overdueInvoices} overdue invoice${overdueInvoices === 1 ? "" : "s"}`,
@@ -245,7 +274,8 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
       collectedRevenue: formatMoney(n(row?.collected_revenue_cents)),
       paymentRequests: n(row?.payment_requests),
       paymentsReceived: n(row?.payments_received),
-      ledgerEntries: n(row?.ledger_entries)
+      ledgerEntries: n(row?.ledger_entries),
+      activeDisputes
     },
     readiness: {
       stripeStatus: stripe?.status ?? "needs_setup",
@@ -253,7 +283,7 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
     },
     nextActions,
     invoices: invoiceRows.map((invoice) => {
-      const balance = Math.max(invoice.total_cents - invoice.amount_paid_cents, 0);
+      const balance = Math.max(invoice.total_cents - invoice.amount_paid_cents - invoice.write_off_cents, 0);
       const dueDate = dateLabel(invoice.due_date ?? invoice.created_at);
       return {
         id: invoice.id,
@@ -268,7 +298,8 @@ export async function getCashCollectionDashboard(): Promise<CashCollectionDashbo
           invoice.customer_phone,
           `Hi ${invoice.customer_name}, this is a quick reminder that ${invoice.title} has a balance of ${formatMoney(balance)} due ${dueDate}. Please reply if you already paid or need the payment link resent.`
         ),
-        canText: Boolean(invoice.customer_phone),
+        canText: Boolean(invoice.customer_phone) && !invoice.collection_paused,
+        collectionPaused: invoice.collection_paused,
         href: `/app/service/invoices/${invoice.id}`
       };
     }),

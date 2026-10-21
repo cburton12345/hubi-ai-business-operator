@@ -221,7 +221,8 @@ export async function retryMessageAction(formData: FormData) {
     providerSupportsCapability: provider?.supportsCapability(requiredCapability) ?? false
   });
   if (!assessment.allowed || !provider) return;
-  const idempotencyKey = `message-retry:${original.id}:${crypto.randomUUID()}`;
+  const retryAttempt = original.retry_attempt + 1;
+  const idempotencyKey = `message-retry:${original.id}:attempt:${retryAttempt}`;
   await sendMessage({
     tenantId,
     channel: manual ? "manual_sms" : original.channel === "manual_sms" ? "sms" : original.channel,
@@ -235,7 +236,7 @@ export async function retryMessageAction(formData: FormData) {
     authorization: { source: "message_health_manual_retry", humanApproved: true },
     metadata: {
       retryOfMessageId: original.id,
-      retryAttempt: original.retry_attempt + 1,
+      retryAttempt,
       requestedFrom: "message_health"
     }
   });
@@ -243,7 +244,12 @@ export async function retryMessageAction(formData: FormData) {
     `update public.messages
      set retry_of_message_id=$3, retry_attempt=$4
      where tenant_id=$1 and idempotency_key=$2`,
-    [tenantId, idempotencyKey, original.id, original.retry_attempt + 1]
+    [tenantId, idempotencyKey, original.id, retryAttempt]
+  );
+  await queryPostgres(
+    `update public.messages set retry_attempt = greatest(retry_attempt, $3)
+     where tenant_id = $1 and id = $2`,
+    [tenantId, original.id, retryAttempt]
   );
   revalidatePath("/app/messaging");
   revalidatePath("/app/alerts");

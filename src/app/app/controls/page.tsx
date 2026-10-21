@@ -16,7 +16,8 @@ function modeLabel(mode: string) {
   return "automatic";
 }
 
-export default async function ControlsPage() {
+export default async function ControlsPage({ searchParams }: { searchParams: Promise<{ onboarding?: string }> }) {
+  const params = await searchParams;
   const dashboard = await getServiceControls();
 
   return (
@@ -25,6 +26,31 @@ export default async function ControlsPage() {
       title="Service Controls And Limits"
       description="Choose what Ferocity can do, what stays draft-only, and where monthly limits stop paid provider usage."
     >
+      {params.onboarding === "1" ? (
+        <section className="panel section-actions">
+          <div>
+            <p className="eyebrow">Guided setup</p>
+            <h2>How much should Ferocity handle?</h2>
+            <p className="muted">Choose a starting rule. You can change individual services later, and financial, legal, spending, publishing, and customer-facing actions keep their separate safeguards.</p>
+          </div>
+          <div className="three-col">
+            {[
+              ["trusted_autopilot", "Handle routine work", "Carry safe internal work through and ask only for consequential decisions."],
+              ["owner_shield", "Prepare, then ask", "Prepare useful work but keep external actions and important changes behind review."],
+              ["manual_first", "Recommend only", "Keep work draft-first while Ferocity learns the business."],
+            ].map(([preset, label, detail]) => (
+              <form action={applyAutopilotPresetAction} className="status-card form-stack" key={preset}>
+                <input type="hidden" name="preset" value={preset} />
+                <input type="hidden" name="returnToOnboarding" value="true" />
+                <strong>{label}</strong>
+                <p className="muted">{detail}</p>
+                <button className="mini-button" type="submit">Choose this</button>
+              </form>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid section-actions">
         <Metric icon={<ToggleLeft size={18} />} label="Enabled" value={dashboard.summary.enabled} />
         <Metric icon={<ShieldCheck size={18} />} label="Needs review" value={dashboard.summary.reviewRequired} />

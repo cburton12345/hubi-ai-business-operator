@@ -6,7 +6,7 @@ import { z } from "zod";
 import { appSessionCookieName } from "@/lib/auth/session";
 import { hashPassword, hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres, withPostgresTransactionResult } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
 
@@ -57,96 +57,106 @@ export async function acceptInviteAction(formData: FormData) {
     password: parsed.data.password,
     name: parsed.data.name.trim()
   });
-  const userResult = await queryPostgres<{ id: string }>(
-    `
-    insert into public.users (email, name, platform_role, auth_user_id)
-    values (lower($1), $2, 'user', $3)
-    on conflict (email) do update
-    set name = excluded.name,
-        auth_user_id = coalesce(public.users.auth_user_id, excluded.auth_user_id),
-        updated_at = now()
-    returning id
-    `,
-    [invite.email, parsed.data.name.trim(), supabaseIdentity?.authUserId ?? null]
-  );
-  const userId = userResult?.rows[0]?.id;
-  if (!userId) redirect("/login?error=invite");
-
   const credential = hashPassword(parsed.data.password);
-  await queryPostgres(
-    `
-    insert into public.user_password_credentials (user_id, password_hash, password_salt, password_iterations, must_reset_password)
-    values ($1, $2, $3, $4, false)
-    on conflict (user_id) do update
-    set password_hash = excluded.password_hash,
-        password_salt = excluded.password_salt,
-        password_iterations = excluded.password_iterations,
-        must_reset_password = false,
-        updated_at = now()
-    `,
-    [userId, credential.hash, credential.salt, credential.iterations]
-  );
-
-  if (invite.invite_purpose === "employee" && invite.worker_id) {
-    const linked = await queryPostgres<{ id: string; name: string }>(
-      `
-      update public.operations_workers
-      set user_id = $3, email = lower($4), updated_at = now()
-      where tenant_id = $1
-        and id = $2
-        and availability_status <> 'inactive'
-        and (user_id is null or user_id = $3)
-        and not exists (
-          select 1 from public.operations_workers other
-          where other.tenant_id = $1 and other.user_id = $3 and other.id <> $2
-        )
-      returning id, name
-      `,
-      [invite.tenant_id, invite.worker_id, userId, invite.email]
+  const sessionToken = randomSessionToken();
+  const accepted = await withPostgresTransactionResult(async (client) => {
+    const lockedInvite = await client.query<{ id: string }>(
+      `select id from public.workspace_invites
+       where id = $1 and invite_token_hash = $2 and status = 'pending'
+         and (expires_at is null or expires_at > now())
+       for update`,
+      [invite.id, hashSessionToken(parsed.data.token)]
     );
-    if (!linked?.rows[0]) redirect("/login?error=employee-link");
-    await queryPostgres(
-      `insert into public.owner_command_events (
-        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
-        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
-        action_href, risk_type, confidence_score, metadata_json
-      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.access.connected', $3, $4,
-        'info', 'resolved', false, true, $5, $6, '/app/operations-workforce', 'approval', 100, $7::jsonb)
-      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
-      [
-        invite.tenant_id,
-        `employee-access-${invite.worker_id}-${userId}`,
-        `${linked.rows[0].name} connected employee access`,
-        "The private invitation was accepted and the employee record is now linked to the verified account email.",
-        "Ferocity linked only the employee record named in the one-time invitation.",
-        "No action is needed. You can review access and assignments in Workforce.",
-        JSON.stringify({ inviteId: invite.id, workerId: invite.worker_id, userId, email: invite.email })
-      ]
+    if (!lockedInvite.rows[0]) throw new Error("This invitation is no longer available.");
+
+    const userResult = await client.query<{ id: string }>(
+      `insert into public.users (email, name, platform_role, auth_user_id)
+       values (lower($1), $2, 'user', $3)
+       on conflict (email) do update
+       set name = excluded.name,
+           auth_user_id = coalesce(public.users.auth_user_id, excluded.auth_user_id),
+           updated_at = now()
+       returning id`,
+      [invite.email, parsed.data.name.trim(), supabaseIdentity?.authUserId ?? null]
     );
-  }
+    const userId = userResult.rows[0]?.id;
+    if (!userId) throw new Error("The invited user could not be created.");
 
-  await queryPostgres(
-    `
-    insert into public.tenant_users (tenant_id, user_id, role, status)
-    values ($1, $2, $3, 'active')
-    on conflict (tenant_id, user_id) do update
-    set role = case when $4 = 'employee' then public.tenant_users.role else excluded.role end,
-        status = 'active', updated_at = now()
-    `,
-    [invite.tenant_id, userId, invite.role, invite.invite_purpose]
-  );
+    await client.query(
+      `insert into public.user_password_credentials (user_id, password_hash, password_salt, password_iterations, must_reset_password)
+       values ($1, $2, $3, $4, false)
+       on conflict (user_id) do update
+       set password_hash = excluded.password_hash,
+           password_salt = excluded.password_salt,
+           password_iterations = excluded.password_iterations,
+           must_reset_password = false,
+           updated_at = now()`,
+      [userId, credential.hash, credential.salt, credential.iterations]
+    );
 
-  await queryPostgres(
-    `
-    update public.workspace_invites
-    set status = 'accepted',
-        accepted_user_id = $2,
-        accepted_at = now(),
-        updated_at = now()
-    where id = $1
-    `,
-    [invite.id, userId]
-  );
+    if (invite.invite_purpose === "employee" && invite.worker_id) {
+      const linked = await client.query<{ id: string; name: string }>(
+        `update public.operations_workers
+         set user_id = $3, email = lower($4), updated_at = now()
+         where tenant_id = $1
+           and id = $2
+           and availability_status <> 'inactive'
+           and (user_id is null or user_id = $3)
+           and not exists (
+             select 1 from public.operations_workers other
+             where other.tenant_id = $1 and other.user_id = $3 and other.id <> $2
+           )
+         returning id, name`,
+        [invite.tenant_id, invite.worker_id, userId, invite.email]
+      );
+      if (!linked.rows[0]) throw new Error("The employee record could not be linked safely.");
+      await client.query(
+        `insert into public.owner_command_events (
+          tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+          severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
+          action_href, risk_type, confidence_score, metadata_json
+        ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.access.connected', $3, $4,
+          'info', 'resolved', false, true, $5, $6, '/app/operations-workforce', 'approval', 100, $7::jsonb)
+        on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
+        [
+          invite.tenant_id,
+          `employee-access-${invite.worker_id}-${userId}`,
+          `${linked.rows[0].name} connected employee access`,
+          "The private invitation was accepted and the employee record is now linked to the verified account email.",
+          "Ferocity linked only the employee record named in the one-time invitation.",
+          "No action is needed. You can review access and assignments in Workforce.",
+          JSON.stringify({ inviteId: invite.id, workerId: invite.worker_id, userId, email: invite.email })
+        ]
+      );
+    }
+
+    await client.query(
+      `insert into public.tenant_users (tenant_id, user_id, role, status)
+       values ($1, $2, $3, 'active')
+       on conflict (tenant_id, user_id) do update
+       set role = case when $4 = 'employee' then public.tenant_users.role else excluded.role end,
+           status = 'active', updated_at = now()`,
+      [invite.tenant_id, userId, invite.role, invite.invite_purpose]
+    );
+
+    const consumed = await client.query<{ id: string }>(
+      `update public.workspace_invites
+       set status = 'accepted', accepted_user_id = $2, accepted_at = now(), updated_at = now()
+       where id = $1 and status = 'pending'
+       returning id`,
+      [invite.id, userId]
+    );
+    if (!consumed.rows[0]) throw new Error("The invitation was already used or revoked.");
+
+    await client.query(
+      `insert into public.app_sessions (user_id, session_token_hash, selected_tenant_id, expires_at)
+       values ($1, $2, $3, now() + interval '14 days')`,
+      [userId, hashSessionToken(sessionToken), invite.tenant_id]
+    );
+    return { userId };
+  });
+  if (!accepted.ok) redirect("/login?error=invite");
+  const userId = accepted.value.userId;
 
   await sendTransactionalEmail({
     to: invite.email,
@@ -170,15 +180,6 @@ Ferocity will open with a short guided conversation. Tell it what kind of busine
       userId
     }
   });
-
-  const sessionToken = randomSessionToken();
-  await queryPostgres(
-    `
-    insert into public.app_sessions (user_id, session_token_hash, selected_tenant_id, expires_at)
-    values ($1, $2, $3, now() + interval '14 days')
-    `,
-    [userId, hashSessionToken(sessionToken), invite.tenant_id]
-  );
 
   const cookieStore = await cookies();
   cookieStore.set(appSessionCookieName, sessionToken, {

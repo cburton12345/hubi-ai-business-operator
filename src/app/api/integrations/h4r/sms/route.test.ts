@@ -1,9 +1,8 @@
 import crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), send: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock("@/lib/db/postgres", () => ({ queryPostgres: mocks.query }));
-vi.mock("@/lib/messaging/messaging-engine", () => ({ sendMessage: mocks.send }));
 vi.mock("@/lib/env", () => ({ env: { H4R_SMS_BRIDGE_SECRET: "h4r-test-secret-that-is-long-enough" } }));
 
 import { POST } from "./route";
@@ -24,6 +23,11 @@ function body() {
     category: "payment_link",
     conversation_id: "conversation-1",
     prospect_id: "prospect-1",
+    contact_controls: {
+      sms_stopped: false,
+      twilio_sms_stopped: false,
+      ferocity_connect_allowed: true
+    },
     consent_evidence: {
       status: "granted",
       source: "tenant_service_agreement",
@@ -47,8 +51,8 @@ function signedRequest(rawBody = body(), timestamp = String(Math.floor(Date.now(
   });
 }
 
-function databaseFor(status: "review" | "active") {
-  mocks.query.mockImplementation((sql: string) => {
+function databaseFor(status: "review" | "active", automatic = false) {
+  mocks.query.mockImplementation((sql: string, values?: unknown[]) => {
     if (sql.includes("returning nonce")) return Promise.resolve({ rows: [{ nonce: "claimed" }] });
     if (sql.includes("from public.h4r_ferocity_bridge_workspaces")) {
       return Promise.resolve({ rows: [{
@@ -60,6 +64,12 @@ function databaseFor(status: "review" | "active") {
         metadata_json: {}
       }] });
     }
+    if (sql.includes("from public.live_action_policies")) {
+      return Promise.resolve({ rows: automatic ? [{ id: "policy-1", status: "live", requires_human_approval: false }] : [] });
+    }
+    if (sql.includes("insert into public.outbound_action_queue")) {
+      return Promise.resolve({ rows: [{ id: "55555555-5555-4555-8555-555555555555", status: values?.[1] }] });
+    }
     return Promise.resolve({ rows: [] });
   });
 }
@@ -67,7 +77,6 @@ function databaseFor(status: "review" | "active") {
 describe("H4R signed SMS ingress", () => {
   beforeEach(() => {
     mocks.query.mockReset();
-    mocks.send.mockReset();
   });
 
   it("rejects stale signed requests before touching the database", async () => {
@@ -76,36 +85,58 @@ describe("H4R signed SMS ingress", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
-  it("does not turn review mode into fake human approval", async () => {
+  it("persists review-mode handoffs without pretending they were approved or sent", async () => {
     databaseFor("review");
     const response = await POST(signedRequest());
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ ok: false, review_required: true });
-    expect(mocks.send).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ ok: true, status: "needs_review", review_required: true });
+    const queueCall = mocks.query.mock.calls.find(([sql]) => String(sql).includes("insert into public.outbound_action_queue"));
+    expect(queueCall?.[1]?.[1]).toBe("needs_review");
   });
 
-  it("normalizes the recipient and uses a server-derived idempotency key", async () => {
-    databaseFor("active");
-    mocks.send.mockResolvedValue({
-      ok: true,
-      providerKey: "ferocity_connect",
-      providerMessageId: "44444444-4444-4444-8444-444444444444",
-      status: "queued"
-    });
+  it("normalizes the recipient and queues automatic execution only under an explicit live policy", async () => {
+    databaseFor("active", true);
     const response = await POST(signedRequest());
     expect(response.status).toBe(200);
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      tenantId,
-      to: "+17155550199",
-      idempotencyKey: `h4r:${workspaceId}:${outboxId}`,
-      authorization: expect.objectContaining({ humanApproved: false, policyAllowsAuto: true }),
-      metadata: expect.objectContaining({
-        h4rConversationId: "conversation-1",
-        h4rProspectId: "prospect-1",
-        h4rCallbackUrl: "https://h4r.example/functions/v1/ferocity-sms-callback"
-      })
-    }));
+    expect(await response.json()).toMatchObject({ ok: true, status: "queued", review_required: false });
+    const queueCall = mocks.query.mock.calls.find(([sql]) => String(sql).includes("insert into public.outbound_action_queue"));
+    expect(queueCall?.[1]?.slice(0, 4)).toEqual([tenantId, "queued", "+17155550199", "Your payment link is ready."]);
+    expect(queueCall?.[1]?.[6]).toBe(`h4r:${workspaceId}:${outboxId}`);
+    expect(JSON.parse(String(queueCall?.[1]?.[5]))).toMatchObject({
+      h4rConversationId: "conversation-1",
+      h4rProspectId: "prospect-1",
+      h4rCallbackUrl: "https://h4r.example/functions/v1/ferocity-sms-callback"
+    });
     const consentCall = mocks.query.mock.calls.find(([sql]) => String(sql).includes("insert into public.messaging_consents"));
     expect(consentCall?.[1]?.slice(0, 2)).toEqual([tenantId, "+17155550199"]);
+    const canonicalConsentCall = mocks.query.mock.calls.find(([sql]) => String(sql).includes("insert into public.contact_consent_records"));
+    expect(canonicalConsentCall?.[1]?.slice(0, 2)).toEqual([tenantId, "+17155550199"]);
+  });
+
+  it("treats Twilio STOP as provider-specific and still prepares the Ferocity intent", async () => {
+    databaseFor("review");
+    const payload = JSON.parse(body());
+    payload.contact_controls.twilio_sms_stopped = true;
+    const response = await POST(signedRequest(JSON.stringify(payload)));
+    expect(response.status).toBe(202);
+    const queueCall = mocks.query.mock.calls.find(([sql]) => String(sql).includes("insert into public.outbound_action_queue"));
+    expect(JSON.parse(String(queueCall?.[1]?.[5]))).toMatchObject({
+      h4rContactControls: { smsStopped: false, twilioSmsStopped: true, ferocityConnectAllowed: true }
+    });
+  });
+
+  it.each([
+    ["global stop", { sms_stopped: true, twilio_sms_stopped: false, ferocity_connect_allowed: true }, "global_sms_stop"],
+    ["Ferocity disabled", { sms_stopped: false, twilio_sms_stopped: false, ferocity_connect_allowed: false }, "ferocity_connect_not_allowed"]
+  ])("rejects %s before storing consent or queueing", async (_label, contactControls, blockedBy) => {
+    databaseFor("active", true);
+    const payload = JSON.parse(body());
+    payload.contact_controls = contactControls;
+    const response = await POST(signedRequest(JSON.stringify(payload)));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, blocked_by: blockedBy });
+    expect(mocks.query.mock.calls.some(([sql]) => String(sql).includes("insert into public.messaging_consents"))).toBe(false);
+    expect(mocks.query.mock.calls.some(([sql]) => String(sql).includes("insert into public.contact_consent_records"))).toBe(false);
+    expect(mocks.query.mock.calls.some(([sql]) => String(sql).includes("insert into public.outbound_action_queue"))).toBe(false);
   });
 });

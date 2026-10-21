@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Bot, BriefcaseBusiness, CircleDollarSign, ContactRound, Sparkles, TriangleAlert } from "lucide-react";
+import { BriefcaseBusiness, CircleDollarSign, ContactRound, Sparkles, TriangleAlert } from "lucide-react";
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
-import { getAttentionCommandDashboard } from "@/lib/attention-command/get-attention-command-dashboard";
 import { getRecentAiCommandRuns } from "@/lib/ai-workforce/command-runs";
+import { getTodayOverview } from "@/lib/dashboard/get-today-overview";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 import { redirect } from "next/navigation";
@@ -29,11 +29,16 @@ export default async function SimpleHomePage() {
     );
   }
   const [attention, recentCommands] = await Promise.all([
-    getAttentionCommandDashboard(),
+    getTodayOverview(workspaceId),
     getRecentAiCommandRuns(workspaceId, 3)
   ]);
-  const today = attention.doFirst.slice(0, 5);
-  const moneyMoves = attention.moneyMoves.slice(0, 3);
+  const today = attention.doFirst;
+  const moneyMoves = attention.moneyMoves;
+  const ownerSummary = attention.criticalIssues > 0
+    ? `${attention.criticalIssues} critical ${attention.criticalIssues === 1 ? "issue needs" : "issues need"} a decision. Start with: ${attention.direction.title}.`
+    : attention.ownerNeeds > 0
+      ? `${attention.ownerNeeds} ${attention.ownerNeeds === 1 ? "item needs" : "items need"} your attention. Start with: ${attention.direction.title}.`
+      : `Nothing urgent needs your attention. A useful next step is: ${attention.direction.title}.`;
 
   return (
     <section className="simple-home page-section">
@@ -41,8 +46,8 @@ export default async function SimpleHomePage() {
         <div>
           <p className="eyebrow">Today</p>
           <h1>{attention.workspaceName}</h1>
-          <p className="simple-home-brief">{attention.briefing}</p>
-          <p className="muted">Ferocity keeps the full system underneath. You only need to choose what you want to handle next.</p>
+          <p className="simple-home-brief">{ownerSummary}</p>
+          <p className="muted">Ferocity keeps the system underneath and brings forward the decisions that still need you.</p>
         </div>
         <Link className="button secondary-button" href="/app/full">Open full Command Center</Link>
       </section>
@@ -54,7 +59,7 @@ export default async function SimpleHomePage() {
             <strong>Today</strong>
             <span>Decisions, follow-ups, reminders, and problems that need attention.</span>
           </div>
-          <small>{attention.metrics.ownerNeeds} need owner attention</small>
+          <small>{attention.ownerNeeds} need owner attention</small>
         </Link>
         <Link className="simple-destination-card" href="/app/lead-command">
           <ContactRound size={22} />
@@ -62,7 +67,7 @@ export default async function SimpleHomePage() {
             <strong>Customers</strong>
             <span>Leads, conversations, estimates, follow-up, and customer history.</span>
           </div>
-          <small>{money(attention.metrics.openPipelineCents)} open pipeline</small>
+          <small>{money(attention.openPipelineCents)} open pipeline</small>
         </Link>
         <Link className="simple-destination-card" href="/app/job-tracker">
           <BriefcaseBusiness size={22} />
@@ -78,7 +83,7 @@ export default async function SimpleHomePage() {
             <strong>Money</strong>
             <span>Invoices, customer balances, payments, expenses, and profit.</span>
           </div>
-          <small>{attention.metrics.unpaidInvoices} unpaid invoices</small>
+          <small>{attention.unpaidInvoices} unpaid invoices</small>
         </Link>
       </section>
 
@@ -154,34 +159,36 @@ export default async function SimpleHomePage() {
         </article>
       </section>
 
-      <section className="panel">
-        <div className="list-row flush-row">
-          <div>
-            <p className="eyebrow">Recent Ferocity work</p>
-            <h2>What you recently asked</h2>
+      {recentCommands.length > 0 ? (
+        <details className="panel progressive-disclosure">
+          <summary>
+            <div>
+              <p className="eyebrow">Recent Ferocity work</p>
+              <h2>What you recently asked</h2>
+            </div>
+            <span className="muted">{recentCommands.length} recent</span>
+          </summary>
+          <div className="progressive-disclosure-body">
+            <div className="list-row flush-row">
+              <span className="muted">Prepared work, results, and anything still waiting on you.</span>
+              <Link className="mini-button" href="/app/ai-workforce">Open Ask Ferocity</Link>
+            </div>
+            <ul className="list">
+              {recentCommands.map((run) => (
+                <li className="list-row" key={run.id}>
+                  <div>
+                    <strong>{run.command}</strong>
+                    <p className="muted">
+                      {run.prepared[0] ?? run.missingInfo[0] ?? run.blocked[0] ?? "Ferocity recorded the request."}
+                    </p>
+                  </div>
+                  <span className="pill">{run.status.replaceAll("_", " ")}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <Link className="mini-button" href="/app/ai-workforce">Open Ask Ferocity</Link>
-        </div>
-        <ul className="list">
-          {recentCommands.map((run) => (
-            <li className="list-row" key={run.id}>
-              <div>
-                <strong>{run.command}</strong>
-                <p className="muted">
-                  {run.prepared[0] ?? run.missingInfo[0] ?? run.blocked[0] ?? "Ferocity recorded the request."}
-                </p>
-              </div>
-              <span className="pill">{run.status.replaceAll("_", " ")}</span>
-            </li>
-          ))}
-          {recentCommands.length === 0 ? (
-            <li className="list-row">
-              <Bot size={17} />
-              <span className="muted">Ask Ferocity for the first time and the result will appear here.</span>
-            </li>
-          ) : null}
-        </ul>
-      </section>
+        </details>
+      ) : null}
     </section>
   );
 }

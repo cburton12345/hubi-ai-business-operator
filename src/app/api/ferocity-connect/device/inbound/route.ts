@@ -64,7 +64,6 @@ export async function POST(request: Request) {
   const conversationId = await recordInboundResponse({
     tenantId: auth.identity.tenantId, channel: "sms", providerKey: "ferocity_connect",
     providerMessageId: parsed.data.eventId,
-    sourceMessageId: parsed.data.eventId,
     externalConversationRef: `ferocity-connect:${auth.identity.deviceId}:${sender}`,
     from: sender, to: parsed.data.recipient ?? null, body: parsed.data.body, subject: "SMS conversation"
   });
@@ -72,7 +71,7 @@ export async function POST(request: Request) {
     await queryPostgres(
       `update public.messages
        set metadata_json=metadata_json || $3::jsonb
-       where tenant_id=$1 and source_message_id=$2`,
+       where tenant_id=$1 and provider_key='ferocity_connect' and provider_message_ref=$2`,
       [auth.identity.tenantId, parsed.data.eventId, JSON.stringify({
         source: "h4r",
         h4rWorkspaceId: h4rMetadata.h4rWorkspaceId ?? null,

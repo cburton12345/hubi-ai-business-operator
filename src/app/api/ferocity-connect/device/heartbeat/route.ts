@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const { identity } = auth;
   await queryPostgres(
     `update public.ferocity_connect_devices set app_version=$3,android_version=$4,battery_percent=$5,
-       charging=$6,network_type=$7,last_heartbeat_at=now(),status=case when status='paired' then 'active' else status end,updated_at=now()
+       charging=$6,network_type=$7,last_heartbeat_at=now(),status=case when status in ('paired','offline') then 'active' else status end,updated_at=now()
      where id=$1 and tenant_id=$2`,
     [identity.deviceId, identity.tenantId, parsed.data.appVersion, parsed.data.androidVersion, parsed.data.batteryPercent ?? null, parsed.data.charging ?? null, parsed.data.networkType ?? null]
   );

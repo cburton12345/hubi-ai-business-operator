@@ -1,5 +1,6 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
+import { hashCustomerPortalToken } from "@/lib/service-ops/customer-portal-token";
 
 export type CustomerPortal = {
   customerName: string;
@@ -28,6 +29,7 @@ function formatDay(value: Date | null) {
 }
 
 export async function getCustomerPortal(publicToken: string): Promise<CustomerPortal | null> {
+  const tokenHash = hashCustomerPortalToken(publicToken);
   const accessResult = await queryPostgres<{
     tenant_id: string;
     customer_id: string;
@@ -55,19 +57,19 @@ export async function getCustomerPortal(publicToken: string): Promise<CustomerPo
     from public.customer_portal_access a
     join public.customers c on c.id = a.customer_id and c.tenant_id = a.tenant_id
     join public.tenants t on t.id = a.tenant_id
-    where a.public_token = $1
+    where a.token_hash = $1
       and a.enabled = true
       and (a.expires_at is null or a.expires_at > now())
     limit 1
     `,
-    [publicToken]
+    [tokenHash]
   );
 
   const access = accessResult?.rows[0];
   if (!access) return null;
 
-  await queryPostgres("update public.customer_portal_access set last_viewed_at = now(), updated_at = now() where public_token = $1", [
-    publicToken
+  await queryPostgres("update public.customer_portal_access set last_viewed_at = now(), updated_at = now() where token_hash = $1", [
+    tokenHash
   ]);
 
   const [locationsResult, assetsResult, estimatesResult, visitsResult, jobsResult, invoicesResult, recurringPlansResult, requestsResult, messagesResult, documentsResult] = await Promise.all([
@@ -123,15 +125,24 @@ export async function getCustomerPortal(publicToken: string): Promise<CustomerPo
       `,
       [access.tenant_id, access.customer_id]
     ),
-    queryPostgres<{ id: string; title: string; status: string; total_cents: number; amount_paid_cents: number; due_date: Date | null; payment_url: string | null }>(
+    queryPostgres<{ id: string; title: string; status: string; total_cents: number; amount_paid_cents: number; write_off_cents: number; due_date: Date | null; payment_url: string | null }>(
       `
-      select i.id, i.title, i.status, i.total_cents, i.amount_paid_cents, i.due_date,
+      select i.id, i.title, i.status, i.total_cents, i.amount_paid_cents, i.write_off_cents, i.due_date,
         (select p.payment_url from public.service_invoice_payment_links p
           where p.tenant_id = i.tenant_id and p.invoice_id = i.id
             and p.status in ('ready', 'sent')
+            and greatest(i.total_cents-i.amount_paid_cents-i.write_off_cents,0)>0
+            and not exists (
+              select 1 from public.payment_disputes d
+              join public.service_invoice_payments payment
+                on payment.tenant_id=d.tenant_id and payment.id=d.payment_id
+              where d.tenant_id=i.tenant_id and payment.invoice_id=i.id
+                and d.status in ('warning','needs_response','under_review','lost')
+            )
           order by p.created_at desc limit 1) as payment_url
       from public.service_invoices i
-      where i.tenant_id = $1 and i.customer_id = $2 and i.status <> 'void'
+      where i.tenant_id = $1 and i.customer_id = $2
+        and i.status in ('sent_manually','partially_paid','paid','overdue','written_off')
       order by coalesce(i.due_date, i.created_at) desc
       limit 20
       `,

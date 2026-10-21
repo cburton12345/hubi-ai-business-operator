@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { queryPostgres } from "@/lib/db/postgres";
+import { requirePermission } from "@/lib/auth/require-permission";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 import {
   emptyToNull,
   parseLines,
@@ -30,6 +32,7 @@ function pageType(line: string) {
 }
 
 export async function createWorkspaceOnboardingAction(formData: FormData) {
+  await requirePermission("platform:manage");
   const parsed = workspaceOnboardingSchema.safeParse({
     organizationName: formData.get("organizationName"),
     workspaceSlug: formData.get("workspaceSlug") ?? "",
@@ -77,13 +80,13 @@ export async function createWorkspaceOnboardingAction(formData: FormData) {
   const workspaceResult = await queryPostgres<{ id: string; slug: string }>(
     `
     insert into public.tenants (name, slug, account_type, status, billing_status, plan_key, onboarding_status, onboarding_completed_at)
-    values ($1, $2, 'customer', 'trial', 'trialing', 'starter', 'completed', now())
+    values ($1, $2, 'customer', 'trial', 'trialing', 'starter', 'in_progress', null)
     on conflict (slug) do update
     set name = excluded.name,
         account_type = 'customer',
         status = case when public.tenants.status = 'archived' then 'trial' else public.tenants.status end,
-        onboarding_status = 'completed',
-        onboarding_completed_at = now(),
+        onboarding_status = case when public.tenants.onboarding_status='completed' then 'completed' else 'in_progress' end,
+        onboarding_completed_at = case when public.tenants.onboarding_status='completed' then public.tenants.onboarding_completed_at else null end,
         updated_at = now()
     returning id, slug
     `,
@@ -305,6 +308,8 @@ export async function createWorkspaceOnboardingAction(formData: FormData) {
     `,
     [workspace.id, brand.id, JSON.stringify({ workspaceSlug, brandSlug, publicKey })]
   );
+
+  await syncCustomerOnboardingForTenant(workspace.id);
 
   revalidatePath("/app");
   revalidatePath("/app/onboarding");

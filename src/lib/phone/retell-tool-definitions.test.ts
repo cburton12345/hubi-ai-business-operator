@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { retellBusinessTools } from "./retell-tool-definitions";
+import { reconcileRetellTransferPrompt, retellBusinessTools } from "./retell-tool-definitions";
 
 describe("retellBusinessTools", () => {
   it("always gives the receptionist a safe way to finish a completed call", () => {
@@ -37,5 +37,22 @@ describe("retellBusinessTools", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["transfer_to_office", "transfer_to_on_call_tech"]);
     expect(tools.map((tool) => (tool.transfer_destination as { number: string }).number))
       .toEqual(["+17155550111", "+17155550222"]);
+  });
+});
+
+describe("reconcileRetellTransferPrompt", () => {
+  it("replaces the legacy callback-only instruction when a verified destination exists", () => {
+    const prompt = reconcileRetellTransferPrompt(
+      "Base prompt.\nThis Ferocity support number does not currently have a live-transfer destination. Never say you are transferring the caller. When a caller asks for a person or needs protected human review, capture a complete callback request with create_sales_callback and explain that the right person will receive it. Do not promise an exact callback time.",
+      true,
+    );
+    expect(prompt).toContain("Verified human-transfer tools are available");
+    expect(prompt).not.toContain("does not currently have a live-transfer destination");
+  });
+
+  it("keeps exactly one callback-only instruction when no destination exists", () => {
+    const once = reconcileRetellTransferPrompt("Base prompt.", false);
+    const twice = reconcileRetellTransferPrompt(once, false);
+    expect(twice).toBe(once);
   });
 });

@@ -1,5 +1,15 @@
 import type { HumanTransferDestination } from "@/lib/phone/transfer-routing";
 
+const LEGACY_NO_TRANSFER_GUIDANCE = "This Ferocity support number does not currently have a live-transfer destination. Never say you are transferring the caller. When a caller asks for a person or needs protected human review, capture a complete callback request with create_sales_callback and explain that the right person will receive it. Do not promise an exact callback time.";
+
+const VERIFIED_TRANSFER_GUIDANCE = "Verified human-transfer tools are available. When the caller asks for a person or the escalation rules require one, invoke the matching transfer tool promptly. Never say a transfer is ringing or completed unless the provider tool confirms it. If a destination is unavailable or the transfer fails, capture a complete callback request without promising an exact callback time.";
+
+export function reconcileRetellTransferPrompt(prompt: string, hasVerifiedDestination: boolean) {
+  const normalized = prompt.replace(LEGACY_NO_TRANSFER_GUIDANCE, "").replace(VERIFIED_TRANSFER_GUIDANCE, "").trim();
+  const guidance = hasVerifiedDestination ? VERIFIED_TRANSFER_GUIDANCE : LEGACY_NO_TRANSFER_GUIDANCE;
+  return normalized ? `${normalized}\n${guidance}` : guidance;
+}
+
 function toolName(label: string, index: number) {
   const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
   return `transfer_to_${slug || `human_${index + 1}`}`;

@@ -17,7 +17,10 @@ export default async function runBusinessAutomationBackground(request: Request) 
   const result = await runBusinessAutomationLoop({
     tenantLimit: boundedInt(Netlify.env.get("AUTOMATION_TENANT_BATCH_SIZE"), 50, 250),
     agentLimit: boundedInt(Netlify.env.get("AUTOMATION_AGENT_BATCH_SIZE"), 50, 250),
-    tenantConcurrency: boundedInt(Netlify.env.get("AUTOMATION_TENANT_CONCURRENCY"), 2, 4)
+    tenantConcurrency: boundedInt(Netlify.env.get("AUTOMATION_TENANT_CONCURRENCY"), 2, 4),
+    goalPlanningLimit: boundedInt(Netlify.env.get("AUTOMATION_GOAL_PLAN_BATCH_SIZE"), 8, 25),
+    goalPlanningConcurrency: boundedInt(Netlify.env.get("AUTOMATION_GOAL_PLANNING_CONCURRENCY"), 2, 3),
+    goalStepLimit: boundedInt(Netlify.env.get("AUTOMATION_GOAL_STEP_BATCH_SIZE"), 50, 100)
   });
   console.log("Business automation background run completed", {
     skipped: result.skipped,

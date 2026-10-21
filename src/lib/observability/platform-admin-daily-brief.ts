@@ -10,6 +10,8 @@ type PlatformBriefCounts = {
   provider_risks: string;
   active_critical_alerts: string;
   month_provider_cost_cents: string;
+  month_subscription_cash_cents: string;
+  month_subscription_refund_cents: string;
 };
 
 export async function sendPlatformAdminDailyBrief(now = new Date()) {
@@ -30,7 +32,9 @@ export async function sendPlatformAdminDailyBrief(now = new Date()) {
       (select count(*) from public.app_error_events where created_at >= current_date and source like 'automation.%' and resolved_at is null)::text as failed_automations,
       (select count(*) from public.provider_connection_lanes where connection_status in ('blocked','needs_attention') or credentials_status in ('expired','revoked'))::text as provider_risks,
       (select count(*) from public.platform_admin_alerts where status='active' and severity in ('high','critical'))::text as active_critical_alerts,
-      (select coalesce(sum(provider_cost_cents),0) from public.usage_meter_events where billing_period_start=date_trunc('month',now())::date and status not in ('void','failed'))::text as month_provider_cost_cents`
+      (select coalesce(sum(provider_cost_cents),0) from public.usage_meter_events where billing_period_start=date_trunc('month',now())::date and status not in ('void','failed'))::text as month_provider_cost_cents,
+      (select coalesce(sum(gross_amount_cents),0) from public.platform_subscription_revenue_events where financial_status='collected' and occurred_at>=date_trunc('month',now()))::text as month_subscription_cash_cents,
+      (select coalesce(sum(refund_amount_cents),0) from public.platform_subscription_revenue_events where financial_status='refunded' and occurred_at>=date_trunc('month',now()))::text as month_subscription_refund_cents`
   );
   const row = result?.rows[0];
   const values = {
@@ -41,13 +45,16 @@ export async function sendPlatformAdminDailyBrief(now = new Date()) {
     failedAutomations: Number(row?.failed_automations ?? 0),
     providerRisks: Number(row?.provider_risks ?? 0),
     activeCriticalAlerts: Number(row?.active_critical_alerts ?? 0),
-    monthProviderCostCents: Number(row?.month_provider_cost_cents ?? 0)
+    monthProviderCostCents: Number(row?.month_provider_cost_cents ?? 0),
+    monthSubscriptionCashCents: Number(row?.month_subscription_cash_cents ?? 0),
+    monthSubscriptionRefundCents: Number(row?.month_subscription_refund_cents ?? 0)
   };
   const body = [
     `${values.newSubscriptions} new paid subscription(s) today; ${values.cancellations} cancellation(s).`,
     `${values.onboardingErrors} onboarding error(s); ${values.unresolvedSupport} unresolved support request(s).`,
     `${values.failedAutomations} automation failure(s); ${values.providerRisks} provider connection risk(s).`,
     `${values.activeCriticalAlerts} active high/critical platform alert(s).`,
+    `Verified subscription cash this month: $${(values.monthSubscriptionCashCents / 100).toFixed(2)}; refunds: $${(values.monthSubscriptionRefundCents / 100).toFixed(2)}.`,
     `Recorded provider cost this month: $${(values.monthProviderCostCents / 100).toFixed(2)}.`
   ].join("\n");
 

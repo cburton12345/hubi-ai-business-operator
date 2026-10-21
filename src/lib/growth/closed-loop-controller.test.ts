@@ -6,6 +6,8 @@ const healthy = { targetCollectedRevenueCents: 1_000_000, collectedRevenueCents:
 describe("closed loop growth controller", () => {
   it("expands only when target gap, evidence, capacity and economics agree", () => expect(chooseGrowthDirective(healthy).directive).toBe("expand"));
   it("repairs data before changing demand", () => expect(chooseGrowthDirective({ ...healthy, dataCompletenessScore: 20, attributionCoverageRate: 0.1 }).directive).toBe("repair_data"));
+  it("repairs paid measurement instead of trusting projected economics", () => expect(chooseGrowthDirective({ ...healthy, paidSpendCents: 50_000, paidEconomicsComplete: false }).directive).toBe("repair_data"));
+  it("constrains paid demand when current spend has no attributed sale", () => expect(chooseGrowthDirective({ ...healthy, paidSpendCents: 50_000, paidSoldJobs: 0, paidEconomicsComplete: true }).directive).toBe("constrain"));
   it("constrains growth when capacity is full", () => expect(chooseGrowthDirective({ ...healthy, committedJobs: 20 }).directive).toBe("constrain"));
   it("holds when the target is met", () => expect(chooseGrowthDirective({ ...healthy, collectedRevenueCents: 1_000_000 }).directive).toBe("hold"));
 });

@@ -22,7 +22,24 @@ import { getAttentionCommandDashboard } from "@/lib/attention-command/get-attent
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { classifyAiCommandIntent, readOnlyRouteForCommand, workspaceRouteForCommand } from "@/lib/ai-workforce/command-intent";
-import { commandSearchText, understandFerocityCommand } from "@/lib/ai-workforce/command-understanding";
+import {
+  clarificationQuestionForUnderstanding,
+  commandSearchText,
+  groundFerocityUnderstandingInEvidence,
+  understandFerocityCommand,
+} from "@/lib/ai-workforce/command-understanding";
+import { applyCommandActionPolicy, isFinancialDocumentCommand } from "@/lib/ai-workforce/command-action-policy";
+import {
+  correctLatestOperatingGoalFromThread,
+  createOperatingGoal,
+  getActiveOperatingGoalContextForThread,
+} from "@/lib/operations/goal-engine";
+import {
+  correctedOperatingGoalOutcome,
+  isExplicitOperatingGoalCorrection,
+  operatingGoalCandidateFromCommand,
+  operatingGoalCandidateFromPlannedOutcome,
+} from "@/lib/operations/goal-intake";
 import { discoverRelevantCapabilities, type CapabilityRecommendation } from "@/lib/ai-workforce/capability-discovery";
 import { readBusinessActionForCommand, summarizeBusinessActionItems } from "@/lib/ai-workforce/business-action-routing";
 import { invokeBusinessAction, type BusinessActionPrincipal } from "@/lib/business-actions/gateway";
@@ -30,6 +47,18 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { createOwnerGrowthObjectiveFromCommand } from "@/lib/growth/composable-growth-intelligence";
 import { processNewestWebsiteImportForUrl } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getLatestCompanionContextSummaryForAi } from "@/lib/integrations/h4r/brain-context";
+import {
+  applyFerocityConversationMemory,
+  getFerocityConversationMemory,
+  getFerocityCustomerRuntime,
+  recordFerocityActionReceipts,
+  type FerocityActionReceiptInput,
+  type FerocityArtifactLink,
+  type FerocityPlannedActionKey,
+} from "@/lib/ferocity/conversation-runtime";
+import { independentlyReviewFerocityCommandPlan } from "@/lib/ferocity/command-plan-review";
+import { collectFerocityScopedEvidence, scopedEvidencePrompt } from "@/lib/ferocity/scoped-business-evidence";
 
 type AiWorkforceState = {
   ok: boolean;
@@ -39,14 +68,40 @@ type AiWorkforceState = {
   runId?: string;
   intent?: string;
   href?: string;
+  actionLabel?: string;
   needsInput?: boolean;
   recommended?: CapabilityRecommendation[];
+  artifacts?: FerocityArtifactLink[];
 };
+
+function resultActionLabel(href: string) {
+  if (href.startsWith("/app/leads") || href === "/app/lead-command") return "Open matching leads";
+  if (href === "/app/cash-collection") return "Review balances and collections";
+  if (href === "/app/expenses") return "Review documents and transactions";
+  if (href === "/app/pos") return "Open sales and inventory";
+  if (href === "/app/reports") return "Open reports and downloads";
+  if (href === "/app/approvals") return "Review required approvals";
+  if (href === "/app/integrations") return "Review provider connections";
+  if (href === "/app/automation") return "Review active automations";
+  if (href === "/app/email-watch") return "Open connected email";
+  if (href === "/app/schedule") return "Open schedule and dispatch";
+  if (href === "/app/marketing-os" || href === "/app/growth") return "Open campaign work";
+  if (href === "/app/authority") return "Review proof and reputation work";
+  if (href === "/app/job-tracker") return "Open job and cost work";
+  if (href.startsWith("/app/operations-workforce")) return "Open team work";
+  if (href === "/app/notifications") return "Open reminders";
+  if (href === "/app/seo") return "Review website and SEO work";
+  if (href === "/app/review" || href === "/app/actions") return "Review prepared actions";
+  if (href === "/app/controls") return "Resolve required controls";
+  if (href === "/app/attention-command") return "Open this priority";
+  return "Open the finished work";
+}
 
 const commandSchema = z.object({
   command: z.string().trim().min(2).max(2000),
   conversationContext: z.string().trim().max(6000).optional(),
-  onboardingMode: z.enum(["true", "false"]).default("false")
+  onboardingMode: z.enum(["true", "false"]).default("false"),
+  threadId: z.string().uuid().optional(),
 });
 
 function hasAny(value: string, terms: string[]) {
@@ -223,7 +278,7 @@ async function createCommandTask(input: {
       money_cents, risk_type, confidence_score, metadata_json
     )
     values ($1, 'ferocity', 'Ferocity', $2, 'ai.command.task_created', $3, $4, $5, 'needs_owner', true, false, $6, $7, $8, 0, $9, 82, $10::jsonb)
-    on conflict (tenant_id, platform_key, external_event_id)
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
     do update set
       title = excluded.title,
       summary = excluded.summary,
@@ -276,15 +331,16 @@ async function createCommandReminder(input: {
     `,
     [input.workspaceId, input.userId, input.title, input.body, input.reminderType, input.remindAt.toISOString()]
   );
-  if (duplicate?.rows[0]?.id) return;
+  if (duplicate?.rows[0]?.id) return duplicate.rows[0].id;
 
-  await queryPostgres(
+  const result = await queryPostgres<{ id: string }>(
     `
     insert into public.owner_reminders (
       tenant_id, user_id, title, body, reminder_type, priority, remind_at, recurrence,
       push_enabled, action_url, next_due_at, metadata_json
     )
     values ($1, $2, $3, $4, $5, $6, $7, 'none', true, $8, $7, $9::jsonb)
+    returning id
     `,
     [
       input.workspaceId,
@@ -298,6 +354,7 @@ async function createCommandReminder(input: {
       JSON.stringify({ source: "ai_workforce_command", command: input.command })
     ]
   );
+  return result?.rows[0]?.id ?? null;
 }
 
 async function ownerCommandEvent(workspaceId: string, command: string, prepared: string[], blocked: string[]) {
@@ -318,7 +375,7 @@ async function ownerCommandEvent(workspaceId: string, command: string, prepared:
       $5, $6, $7, $8, $9, $10, '/app/build-system',
       0, $11, $12, $13::jsonb
     )
-    on conflict (tenant_id, platform_key, external_event_id)
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null
     do update set
       title = excluded.title,
       summary = excluded.summary,
@@ -370,8 +427,14 @@ function routesForCommand(command: string, blocked: string[]) {
   if (hasAny(lower, ["authority", "proof", "case study", "finished work", "completed job", "job into marketing", "turn this job into marketing", "reviews from jobs"])) {
     routes.unshift({ label: "Authority Engine", href: "/app/authority", reason: "Turn completed work into proof, reviews, case studies, posts, website trust, and video scripts." });
   }
-  if (hasAny(lower, ["receipt", "expense", "bid", "quote", "material", "profit", "job cost"])) {
-    routes.unshift({ label: "Jobs & Money", href: "/app/job-tracker", reason: "Finish job money, receipt, material, or bid details." });
+  if (hasAny(lower, ["receipt", "expense", "tax", "deduction", "deposit", "statement"])) {
+    routes.unshift({ label: "Expenses", href: "/app/expenses", reason: "Review imported documents and classified transactions." });
+  }
+  if (hasAny(lower, ["print", "report", "summary", "download", "export"]) && hasAny(lower, ["expense", "tax", "deposit", "statement"])) {
+    routes.unshift({ label: "Reports", href: "/app/reports", reason: "Open printable summaries and downloads." });
+  }
+  if (hasAny(lower, ["bid", "quote", "material", "profit", "job cost"])) {
+    routes.unshift({ label: "Jobs & Money", href: "/app/job-tracker", reason: "Finish job money, material, bid, or profit details." });
   }
   if (hasAny(lower, ["hours", "clock", "timesheet", "worker", "crew", "schedule", "dispatch"])) {
     routes.unshift({ label: "Team", href: "/app/operations-workforce", reason: "Finish time, crew, assignment, or field details." });
@@ -447,7 +510,8 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   const parsed = commandSchema.safeParse({
     command: formData.get("command"),
     conversationContext: formData.get("conversationContext") || undefined,
-    onboardingMode: formData.get("onboardingMode") ?? "false"
+    onboardingMode: formData.get("onboardingMode") ?? "false",
+    threadId: formData.get("threadId") || undefined,
   });
   if (!parsed.success) {
     return { ok: false, message: "Tell the AI Workforce what you want done in normal words." };
@@ -456,6 +520,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   const command = parsed.data.command;
   const workspaceId = await getCurrentWorkspaceId();
   const session = await getCurrentAppSession();
+  const threadId = parsed.data.threadId ?? null;
   const discoveryState = await queryPostgres<Record<string, string>>(`
     select
       (select count(*) from public.workspace_feature_entitlements where tenant_id=$1 and feature_key='closed_loop_growth_controller' and status <> 'disabled')::text has_growth_controller,
@@ -474,47 +539,123 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     hasFerocityConnect: Number(discovery.has_ferocity_connect ?? 0) > 0,
     hasPairedAndroidDevice: Number(discovery.paired_android_devices ?? 0) > 0
   });
-  if (parsed.data.onboardingMode === "true") {
-    await queryPostgres(
-      `update public.tenants
-          set onboarding_status = 'completed',
-              onboarding_completed_at = coalesce(onboarding_completed_at, now()),
-              updated_at = now()
-        where id = $1 and onboarding_status <> 'completed'`,
+  const [brandResult, companionContext, customerRuntime, memoryContext, activeGoalContext] = await Promise.all([
+    queryPostgres<{ id: string; name: string; industry: string | null; business_model: string | null }>(
+      `select id, name, industry, business_model from public.brands where tenant_id = $1 order by created_at asc limit 1`,
       [workspaceId]
-    );
-  }
-  const brandResult = await queryPostgres<{ id: string; name: string; industry: string | null; business_model: string | null }>(
-    `select id, name, industry, business_model from public.brands where tenant_id = $1 order by created_at asc limit 1`,
-    [workspaceId]
-  );
+    ),
+    getLatestCompanionContextSummaryForAi(workspaceId),
+    getFerocityCustomerRuntime(workspaceId),
+    getFerocityConversationMemory({
+      tenantId: workspaceId,
+      userId: session?.userId ?? null,
+      query: command,
+    }),
+    getActiveOperatingGoalContextForThread({ tenantId: workspaceId, threadId }),
+  ]);
   const brand = brandResult?.rows[0];
-  const understanding = await understandFerocityCommand({
+  const initialUnderstanding = await understandFerocityCommand({
     tenantId: workspaceId,
     userId: session?.userId ?? null,
     command,
     conversationContext: parsed.data.conversationContext,
-    businessContext: brand
-      ? `Business: ${brand.name}. Industry: ${brand.industry ?? "not set"}. Business model: ${brand.business_model ?? "not set"}.`
-      : "No business profile is available yet."
+    memoryContext,
+    customerContext: customerRuntime.promptContext,
+    businessContext: [
+      brand
+        ? `Business: ${brand.name}. Industry: ${brand.industry ?? "not set"}. Business model: ${brand.business_model ?? "not set"}.`
+        : "No business profile is available yet.",
+      companionContext,
+      activeGoalContext,
+    ].filter(Boolean).join("\n")
   });
-  if (understanding.needsClarification && understanding.clarifyingQuestion) {
+  const preliminaryFinancialDocumentScope = isFinancialDocumentCommand({
+    command,
+    conversationContext: parsed.data.conversationContext,
+  });
+  const scopedEvidence = await collectFerocityScopedEvidence({
+    tenantId: workspaceId,
+    command,
+    // A model may infer adjacent capabilities, but a narrowly financial question
+    // must not surface unrelated growth, workforce, or customer evidence.
+    capabilities: preliminaryFinancialDocumentScope ? [] : initialUnderstanding.capabilities,
+  });
+  const understanding = await groundFerocityUnderstandingInEvidence({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    command,
+    understanding: initialUnderstanding,
+    evidence: scopedEvidencePrompt(scopedEvidence),
+    customerContext: customerRuntime.promptContext,
+  });
+  const memoryChange = await applyFerocityConversationMemory({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    threadId,
+    command,
+    candidates: understanding.memoryCandidates,
+  });
+  const independentReview = await independentlyReviewFerocityCommandPlan({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    command,
+    understanding,
+    evidence: scopedEvidence.map((item) => ({ key: item.key, status: item.status, summary: item.summary })),
+  });
+  const reviewedAnswerText = independentReview.status === "passed" || independentReview.status === "not_required"
+    ? understanding.answer
+    : `${understanding.answer}\n\nIndependent review ${independentReview.status === "disagreed" ? "found a disagreement" : "is currently unavailable"}. Ferocity will keep consequential ${independentReview.domain.replaceAll("_", " ")} work in review instead of treating this analysis as final.`;
+  const aiStatusNotice = understanding.planningAiStatus === "fallback"
+    ? "Workspace evidence was still checked, but AI action planning used the safe fallback. I did not execute an inferred action plan."
+    : understanding.responseAiStatus === "fallback"
+      ? "Workspace evidence was checked, but the evidence-synthesis model was unavailable. The response below uses the safe interpretation plus the verified facts listed with it."
+      : "";
+  const requestedMemoryChange = /^\s*(?:remember|forget)\b/i.test(command);
+  const memoryConfirmation = memoryChange.forgotten > 0
+    ? `I removed ${memoryChange.forgotten} remembered item${memoryChange.forgotten === 1 ? "" : "s"}.`
+    : memoryChange.saved > 0
+      ? `I saved ${memoryChange.saved} durable ${memoryChange.saved === 1 ? "memory" : "memories"} for this workspace.`
+      : requestedMemoryChange && !memoryChange.available
+        ? "Durable memory storage is not available yet, so I did not claim that this was remembered."
+        : "";
+  const answerText = [reviewedAnswerText, aiStatusNotice, memoryConfirmation].filter(Boolean).join("\n\n");
+  const actionPolicy = applyCommandActionPolicy({
+    command,
+    conversationContext: parsed.data.conversationContext,
+    plannedActions: understanding.plannedActions.map((item) => item.key),
+  });
+  const financialDocumentScope = actionPolicy.financialDocumentScope;
+  const plannedActionKeys = new Set<FerocityPlannedActionKey>(actionPolicy.plannedActions);
+  const plans = (key: FerocityPlannedActionKey) => plannedActionKeys.has(key);
+  const readOnlyArtifacts = (receipt: FerocityActionReceiptInput) => recordFerocityActionReceipts({
+    tenantId: workspaceId,
+    threadId,
+    receipts: [receipt],
+  });
+  const clarifyingQuestion = clarificationQuestionForUnderstanding({
+    needsClarification: understanding.needsClarification,
+    clarifyingQuestion: understanding.clarifyingQuestion,
+    safePlannedActionCount: actionPolicy.plannedActions.length,
+  });
+  if (clarifyingQuestion) {
     return {
       ok: true,
       needsInput: true,
-      message: understanding.clarifyingQuestion,
+      message: clarifyingQuestion,
       prepared: [],
       blocked: []
     };
   }
   const interpretedCommand = commandSearchText(command, understanding.capabilities);
   const literalIntent = classifyAiCommandIntent(command);
-  const intent = literalIntent === "read_only" && ["draft_preparation", "workspace_changing"].includes(understanding.requestedMode)
+  const intent = actionPolicy.readOnlyRequested
+    ? "read_only"
+    : literalIntent === "read_only" && ["draft_preparation", "workspace_changing"].includes(understanding.requestedMode)
     ? understanding.requestedMode
     : literalIntent;
   if (intent === "read_only") {
     const businessRead = readBusinessActionForCommand(interpretedCommand);
-    if (businessRead && session?.userId) {
+    if (businessRead && session?.userId && scopedEvidence.length <= 1) {
       const principal: BusinessActionPrincipal = {
         principalId: `user:${session.userId}`,
         principalType: "user",
@@ -532,16 +673,63 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       });
       if (actionResult.ok) {
         const prepared = summarizeBusinessActionItems(businessRead.action, actionResult.data);
+        const artifacts = await readOnlyArtifacts({
+          receiptKind: "inspection",
+          title: resultActionLabel(businessRead.href),
+          summary: answerText,
+          status: "completed",
+          href: businessRead.href,
+          evidence: { action: businessRead.action, itemCount: prepared.length },
+        });
         return {
           ok: true,
           intent,
           href: businessRead.href,
-          message: `${understanding.answer}\n\nI checked the authorized workspace records directly and did not change or contact anything.`,
+          actionLabel: resultActionLabel(businessRead.href),
+          message: `${answerText}\n\nI checked the authorized workspace records directly and did not change or contact anything.`,
           prepared: prepared.length ? prepared : ["No matching records currently need attention."],
           blocked: [],
           recommended,
+          artifacts,
         };
       }
+    }
+    if (scopedEvidence.length) {
+      const artifacts = await recordFerocityActionReceipts({
+        tenantId: workspaceId,
+        threadId,
+        receipts: scopedEvidence.map((item): FerocityActionReceiptInput => ({
+          receiptKind: "inspection",
+          title: item.title,
+          summary: item.summary,
+          status: item.status === "unavailable" ? "failed" : "completed",
+          href: item.href,
+          evidence: {
+            evidenceDomain: item.key,
+            checkedAt: item.checkedAt,
+            status: item.status,
+            facts: item.facts,
+          },
+        })),
+      });
+      const verified = scopedEvidence.filter((item) => item.status !== "unavailable");
+      const unavailable = scopedEvidence.filter((item) => item.status === "unavailable");
+      const primaryHref = financialDocumentScope
+        ? "/app/expenses"
+        : verified[0]?.href ?? scopedEvidence[0].href;
+      return {
+        ok: unavailable.length === 0,
+        intent,
+        href: primaryHref,
+        actionLabel: resultActionLabel(primaryHref),
+        message: unavailable.length
+          ? `${answerText}\n\nI checked ${verified.length} workspace area${verified.length === 1 ? "" : "s"}; ${unavailable.length} could not be verified during this request and is not being treated as empty.`
+          : `${answerText}\n\nI checked the relevant workspace records directly and did not change or contact anything.`,
+        prepared: scopedEvidence.flatMap((item) => [item.summary, ...item.facts]).slice(0, 12),
+        blocked: unavailable.map((item) => `${item.title} could not be verified during this request.`),
+        recommended,
+        artifacts,
+      };
     }
     const href = readOnlyRouteForCommand(interpretedCommand);
     const canAnswerFromOperatingSnapshot = hasAny(interpretedCommand, [
@@ -552,37 +740,156 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       const items = hasAny(interpretedCommand, ["money", "revenue", "invoice", "paid", "lead", "opportunit"])
         ? dashboard.moneyMoves
         : dashboard.doFirst;
+      const resultHref = items[0]?.href ?? dashboard.direction.href;
+      const artifacts = await readOnlyArtifacts({
+        receiptKind: "inspection",
+        title: dashboard.direction.title,
+        summary: dashboard.direction.detail,
+        status: "completed",
+        href: resultHref,
+        evidence: { itemCount: items.length, source: "attention_command" },
+      });
       return {
         ok: true,
         intent,
-        href: items[0]?.href ?? dashboard.direction.href,
-        message: `${understanding.answer}\n\nCurrent workspace evidence — ${dashboard.direction.title}: ${dashboard.direction.detail}`,
+        href: resultHref,
+        actionLabel: resultActionLabel(resultHref),
+        message: `${answerText}\n\nCurrent workspace evidence — ${dashboard.direction.title}: ${dashboard.direction.detail}`,
         prepared: items.slice(0, 4).map((item) => `${item.title} — ${item.detail}`),
         blocked: [],
-        recommended
+        recommended,
+        artifacts,
       };
     }
     return {
       ok: true,
       intent,
       href,
-      message: `${advisoryText(understanding.answer, understanding.nextSteps)}\n\nI kept this read-only and did not create, update, send, publish, or schedule anything.`,
+      actionLabel: resultActionLabel(href),
+      message: `${advisoryText(answerText, understanding.nextSteps)}\n\nI kept this read-only and did not create, update, send, publish, or schedule anything.`,
       prepared: [`Open ${href} to review the current workspace state.`],
       blocked: [],
-      recommended
+      recommended,
+      artifacts: [],
     };
   }
 
   const lower = interpretedCommand.toLowerCase();
   const prepared: string[] = [];
   const blocked: string[] = [];
+  const verifiedActionReceipts: FerocityActionReceiptInput[] = [];
+  if (independentReview.tier === "critical" && independentReview.status !== "passed") {
+    blocked.push(
+      independentReview.status === "disagreed"
+        ? `Independent review found ${independentReview.issues.length || 1} issue(s) in this ${independentReview.domain.replaceAll("_", " ")} plan. Consequential execution remains blocked for human review.`
+        : `The independent reviewer is unavailable for this critical ${independentReview.domain.replaceAll("_", " ")} request. Ferocity can prepare review work, but consequential execution remains blocked.`,
+    );
+  }
+
+  if (!financialDocumentScope && isExplicitOperatingGoalCorrection(command)) {
+    const correctedOutcome = correctedOperatingGoalOutcome(command);
+    if (!threadId || !correctedOutcome) {
+      return {
+        ok: false,
+        message: "I recognized this as a correction, but I could not identify an active outcome in this chat safely. Name the outcome you want corrected in one sentence.",
+        prepared: [],
+        blocked: ["No active chat outcome was identified, so no record or workflow was changed."],
+        needsInput: true,
+        recommended,
+        artifacts: [],
+      };
+    }
+    const correctedGoal = await correctLatestOperatingGoalFromThread({
+      tenantId: workspaceId,
+      threadId,
+      correctedOutcome,
+      correctedTitle: understanding.goalTitle,
+      actorUserId: session?.userId ?? null,
+    });
+    if (!correctedGoal) {
+      return {
+        ok: false,
+        message: "I recognized this as a correction, but this chat has no active persistent outcome to update. Tell me which existing outcome this replaces.",
+        prepared: [],
+        blocked: ["No active persistent outcome in this chat was changed."],
+        needsInput: true,
+        recommended,
+        artifacts: [],
+      };
+    }
+    const correctionBlocked = correctedGoal.inProgressStepCount > 0
+      ? [`${correctedGoal.inProgressStepCount} already-running step${correctedGoal.inProgressStepCount === 1 ? " needs" : "s need"} review; Ferocity did not silently cancel work that may already have changed an external system.`]
+      : [];
+    const artifacts = await recordFerocityActionReceipts({
+      tenantId: workspaceId,
+      threadId,
+      receipts: [{
+        receiptKind: "goal",
+        title: correctedGoal.title,
+        summary: correctedGoal.desiredOutcome,
+        status: correctionBlocked.length ? "blocked" : "prepared",
+        href: "/app/attention-command",
+        targetTable: "operating_goals",
+        targetId: correctedGoal.id,
+        operatingGoalId: correctedGoal.id,
+        evidence: {
+          correctedExistingGoal: true,
+          canceledUnstartedStepCount: correctedGoal.canceledUnstartedStepCount,
+          inProgressStepCount: correctedGoal.inProgressStepCount,
+        },
+      }],
+    });
+    revalidatePath("/app/attention-command");
+    revalidatePath("/app/ferocity");
+    return {
+      ok: correctionBlocked.length === 0,
+      message: correctionBlocked.length
+        ? "I updated the existing outcome and stopped its unstarted stale plan. Work already in progress remains visible for review instead of being hidden or canceled blindly."
+        : "I updated the existing outcome in this chat, canceled its unstarted stale plan, and queued the corrected outcome for replanning.",
+      prepared: [`Updated outcome: ${correctedGoal.desiredOutcome}`, `${correctedGoal.canceledUnstartedStepCount} unstarted stale step${correctedGoal.canceledUnstartedStepCount === 1 ? " was" : "s were"} canceled.`],
+      blocked: correctionBlocked,
+      recommended,
+      href: "/app/attention-command",
+      actionLabel: "Review the corrected outcome",
+      artifacts,
+    };
+  }
+
+  const goalCandidate = financialDocumentScope ? null : operatingGoalCandidateFromCommand(command) ?? operatingGoalCandidateFromPlannedOutcome({
+    command,
+    goalIntent: understanding.goalIntent,
+    goalTitle: understanding.goalTitle,
+    desiredOutcome: understanding.desiredOutcome,
+    capabilities: understanding.capabilities,
+  });
+  let operatingGoalId: string | null = null;
+  if (goalCandidate) {
+    const goal = await createOperatingGoal({
+      tenantId: workspaceId,
+      brandId: brand?.id ?? null,
+      ...goalCandidate,
+      authorityMode: "prepare",
+      sourceType: "ask_ferocity",
+      completionRules: {
+        requiresOutcomeEvidence: true,
+        actionCompletionIsNotOutcomeCompletion: true,
+      },
+      constraints: {
+        preserveAuthoritativeDomainState: true,
+        externalAndConsequentialActionsRemainApprovalGated: true,
+        ...(threadId ? { sourceThreadId: threadId } : {}),
+      },
+    });
+    operatingGoalId = goal.id;
+    prepared.push(`Started a persistent outcome (${goal.id}). Ferocity will keep its state, dependencies, next check, and completion evidence instead of treating this message as a one-time task.`);
+  }
 
   const isExplicitGrowthOutcome = hasAny(command.toLowerCase(), [
     "fill next week", "fill our schedule", "fill my schedule", "fill the calendar", "fill our calendar",
     "get me more", "get us more", "grow ", "more profitable jobs", "without increasing ad spend",
     "improve our google visibility", "improve my google visibility", "improve our search visibility", "improve my search visibility"
   ]);
-  if (brand?.id && isExplicitGrowthOutcome && understanding.capabilities.some((capability) => ["growth_revenue", "marketing", "seo"].includes(capability))) {
+  if (!financialDocumentScope && brand?.id && isExplicitGrowthOutcome && understanding.capabilities.some((capability) => ["growth_revenue", "marketing", "seo"].includes(capability))) {
     const objective = await createOwnerGrowthObjectiveFromCommand({
       tenantId: workspaceId,
       brandId: brand.id,
@@ -596,8 +903,8 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     blocked.push("External actions stay gated. Ferocity can prepare drafts and review records, but sending, publishing, ad spend, payments, and payouts require separate provider approval.");
   }
 
-  const explicitlyRequestsSetup = understanding.capabilities.includes("setup") || hasAny(command.toLowerCase(), ["set up", "setup", "configure", "onboard"]);
-  if (explicitlyRequestsSetup) {
+  const explicitlyRequestsSetup = plans("apply_setup_plan") || understanding.capabilities.includes("setup") || hasAny(command.toLowerCase(), ["set up", "setup", "configure", "onboard"]);
+  if (!financialDocumentScope && explicitlyRequestsSetup) {
     const setupForm = new FormData();
     setupForm.set("request", setupRequestFor(command));
     const setupResult = await applySetupPlanAction({ ok: false }, setupForm);
@@ -608,13 +915,13 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     }
   }
 
-  if (understanding.capabilities.some((capability) => ["setup", "growth_revenue", "marketing", "seo", "website", "reporting_attention"].includes(capability))) {
+  if (!financialDocumentScope && (plans("refresh_business_memory") || understanding.capabilities.some((capability) => ["setup", "growth_revenue", "marketing", "seo", "website", "reporting_attention"].includes(capability)))) {
     await refreshBusinessProfileMemoryAction(new FormData());
     prepared.push("Refreshed business profile memory from existing brand, services, areas, proof, offers, and marketing settings.");
   }
 
   const websiteUrl = firstUrl(command);
-  if (websiteUrl) {
+  if (!financialDocumentScope && websiteUrl && (plans("import_website") || understanding.capabilities.includes("website") || hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow"]))) {
     const websiteForm = new FormData();
     websiteForm.set("websiteUrl", websiteUrl);
     await requestWebsiteImportAction(websiteForm);
@@ -625,11 +932,11 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     } else {
       blocked.push(`Website import needs attention: ${importResult.message}`);
     }
-  } else if (hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow"])) {
+  } else if (!financialDocumentScope && hasAny(lower, ["website", "homepage", "site", "wordpress", "webflow"])) {
     blocked.push("Website import needs the site URL. Add the URL to the command, such as: Improve my website https://example.com.");
   }
 
-  if (hasAny(lower, ["video", "ad video", "commercial", "youtube short", "tiktok", "reel", "platforms", "post it", "auto post", "advertise"])) {
+  if (!financialDocumentScope && hasAny(lower, ["video", "ad video", "commercial", "youtube short", "tiktok", "reel", "platforms", "post it", "auto post", "advertise"])) {
     const adForm = new FormData();
     adForm.set("businessThought", command);
     adForm.set("publishMode", hasAny(lower, ["auto post", "post it", "automatically post"]) ? "auto_when_connected" : "approval_required");
@@ -641,7 +948,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     for (const platform of platformsFrom(command)) adForm.append("platforms", platform);
     await createAdAutopilotPackageAction(adForm);
     prepared.push("Created an Ad Autopilot package with platform variants, video brief, review queue item, and publish-mode record.");
-  } else if (hasAny(lower, ["campaign", "storm", "hail", "facebook", "instagram", "ad", "promotion", "content", "blog", "gbp", "email", "sms", "referral"])) {
+  } else if (!financialDocumentScope && (plans("prepare_marketing") || hasAny(lower, ["campaign", "storm", "hail", "facebook", "instagram", "ad", "promotion", "content", "blog", "gbp", "email", "sms", "referral"]))) {
     const blueprintKey = campaignKeyFor(command);
     if (blueprintKey) {
       const campaignForm = new FormData();
@@ -657,15 +964,15 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     }
   }
 
-  if (hasAny(lower, ["seo", "rank", "city", "service page", "location", "website", "homepage", "blog"])) {
+  if (!financialDocumentScope && (plans("prepare_seo") || hasAny(lower, ["seo", "rank", "city", "service page", "location", "website", "homepage", "blog"]))) {
     await generateSeoAutopilotAction();
     prepared.push("Ran SEO autopilot through existing draft/page/calendar systems.");
   }
 
-  if (hasAny(lower, [
+  if (!financialDocumentScope && (plans("scan_revenue_loop") || hasAny(lower, [
     "follow", "reactivate", "old lead", "stale", "missed call", "callback", "estimate", "invoice", "review",
     "make more money", "revenue opportunit", "new customers", "bring in more", "get paid faster", "growth system"
-  ])) {
+  ]))) {
     await scanLeadToJobLoopAction();
     await scanGrowthLoopAction();
     await scanServiceOpsAction();
@@ -673,14 +980,14 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     prepared.push("Checked the full revenue path for lead gaps, stalled follow-up, estimates, scheduled work, invoices, reviews, attribution, and approval-ready opportunities.");
   }
 
-  if (hasAny(lower, ["authority", "proof", "case study", "finished work", "completed job", "job into marketing", "turn this job into marketing", "reviews from jobs"])) {
+  if (!financialDocumentScope && (plans("prepare_authority") || hasAny(lower, ["authority", "proof", "case study", "finished work", "completed job", "job into marketing", "turn this job into marketing", "reviews from jobs"]))) {
     await processCompletedJobsForAuthorityAction();
     prepared.push("Ran Authority Engine against completed jobs and prepared proof, review, content, publishing, score, and timeline records.");
   }
 
-  if (hasAny(lower, ["receipt", "expense", "reimburse", "reimbursement", "tax", "deduct", "deduction"])) {
+  if (plans("create_expense_review_task") || hasAny(lower, ["receipt", "expense", "reimburse", "reimbursement", "tax", "deduct", "deduction"])) {
     const amount = moneyFrom(command);
-    await createCommandTask({
+    const taskId = await createCommandTask({
       workspaceId,
       userId: session?.userId ?? null,
       command,
@@ -688,14 +995,24 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       category: "money",
       priority: "high",
       dueAt: dueDateFrom(command),
-      recommendedAction: "Open Jobs & Money or Team to attach the receipt/photo, confirm amount, category, reimbursement, job, and tax/P&L treatment.",
-      actionHref: "/app/job-tracker"
+      recommendedAction: "Open Expenses to attach the source document and confirm amount, category, property or job, and tax treatment.",
+      actionHref: "/app/expenses"
     });
-    prepared.push("Created a money task for receipt, reimbursement, tax, and P&L review. Add the photo/details in Jobs & Money or Team.");
+    prepared.push("Created an expense-review task. Add or review the source document in Expenses; no tax conclusion was assumed.");
+    if (taskId) verifiedActionReceipts.push({
+      receiptKind: "workspace_change",
+      title: "Expense and tax review task",
+      summary: "Verified the internal review task exists. No tax conclusion or external action was taken.",
+      status: "completed",
+      href: "/app/personal-ops",
+      targetTable: "personal_ops_items",
+      targetId: taskId,
+      evidence: { verifiedAfterWrite: true, reversibleInternalRecord: true },
+    });
   }
 
-  if (hasAny(lower, ["log my hours", "hours", "clock in", "clock out", "time card", "timesheet", "punch in", "punch out"])) {
-    await createCommandTask({
+  if (plans("create_time_review_task") || hasAny(lower, ["log my hours", "hours", "clock in", "clock out", "time card", "timesheet", "punch in", "punch out"])) {
+    const taskId = await createCommandTask({
       workspaceId,
       userId: session?.userId ?? null,
       command,
@@ -707,12 +1024,22 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       actionHref: "/app/operations-workforce#time-clock"
     });
     prepared.push("Created a time/hours task and routed it to Team because worker/job/time details must be confirmed.");
+    if (taskId) verifiedActionReceipts.push({
+      receiptKind: "workspace_change",
+      title: "Time and hours review task",
+      summary: "Verified the internal time-review task exists; payroll was not changed.",
+      status: "completed",
+      href: "/app/personal-ops",
+      targetTable: "personal_ops_items",
+      targetId: taskId,
+      evidence: { verifiedAfterWrite: true, payrollUnchanged: true },
+    });
   }
 
-  if (hasAny(lower, ["remind", "reminder", "call", "meeting", "goal", "tomorrow", "today"])) {
+  if (plans("create_reminder") || hasAny(lower, ["remind", "reminder", "call", "meeting", "goal", "tomorrow", "today"])) {
     const remindAt = dueDateFrom(command);
     const isPayment = hasAny(lower, ["pay", "invoice", "bill", "owe", "owed"]);
-    await createCommandReminder({
+    const reminderId = await createCommandReminder({
       workspaceId,
       userId: session?.userId ?? null,
       command,
@@ -724,10 +1051,20 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       actionUrl: isPayment ? "/app/cash-collection" : "/app/attention-command"
     });
     prepared.push(`Created an owner reminder for ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(remindAt)}.`);
+    if (reminderId) verifiedActionReceipts.push({
+      receiptKind: "workspace_change",
+      title: "Owner reminder",
+      summary: "Verified the reminder exists in the workspace notification system.",
+      status: "completed",
+      href: "/app/notifications",
+      targetTable: "owner_reminders",
+      targetId: reminderId,
+      evidence: { verifiedAfterWrite: true, remindAt: remindAt.toISOString() },
+    });
   }
 
-  if (hasAny(lower, ["bid", "quote", "material list", "materials", "scope", "estimate"])) {
-    await createCommandTask({
+  if (plans("create_job_estimate_task") || hasAny(lower, ["bid", "quote", "material list", "materials", "scope", "estimate"])) {
+    const taskId = await createCommandTask({
       workspaceId,
       userId: session?.userId ?? null,
       command,
@@ -739,9 +1076,19 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       actionHref: "/app/job-tracker"
     });
     prepared.push("Created a job/bid task routed to Jobs & Money for scope, materials, payment terms, and profit tracking.");
+    if (taskId) verifiedActionReceipts.push({
+      receiptKind: "workspace_change",
+      title: "Estimate and materials task",
+      summary: "Verified the internal estimate/materials task exists. No customer quote was sent.",
+      status: "completed",
+      href: "/app/personal-ops",
+      targetTable: "personal_ops_items",
+      targetId: taskId,
+      evidence: { verifiedAfterWrite: true, customerContacted: false },
+    });
   }
 
-  if (hasAny(lower, ["monitor", "optimize", "improve", "audit", "check everything", "run scans", "business scan", "connected area", "command center"])) {
+  if (!financialDocumentScope && (plans("scan_business") || hasAny(lower, ["monitor", "optimize", "improve", "audit", "check everything", "run scans", "business scan", "connected area", "command center"]))) {
     await scanLeadToJobLoopAction();
     await scanGrowthLoopAction();
     await scanServiceOpsAction();
@@ -760,6 +1107,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
       command,
       prepared,
       blocked,
+      evidenceDomains: scopedEvidence.map((item) => ({ key: item.key, status: item.status })),
       noDuplicateSystems: true,
       liveActionsStillRequireApproval: true
     }
@@ -785,18 +1133,63 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   revalidatePath("/app/authority");
   revalidatePath("/app/automation-timeline");
 
+  const resultRoute = routesForCommand(interpretedCommand, blocked)[0];
+  const resultHref = resultRoute?.href ?? workspaceRouteForCommand(interpretedCommand);
+  const receiptInputs: FerocityActionReceiptInput[] = [...verifiedActionReceipts];
+  if (operatingGoalId) {
+    receiptInputs.push({
+      receiptKind: "goal",
+      title: understanding.goalTitle || goalCandidate?.title || "Persistent Ferocity outcome",
+      summary: understanding.desiredOutcome || goalCandidate?.desiredOutcome || command,
+      status: "prepared",
+      href: "/app/attention-command",
+      targetTable: "operating_goals",
+      targetId: operatingGoalId,
+      operatingGoalId,
+      evidence: { persistent: true, authorityMode: "prepare" },
+    });
+  }
+  if (runId) {
+    receiptInputs.push({
+      receiptKind: intent === "workspace_changing" ? "workspace_change" : "draft",
+      title: understanding.goalTitle || titleFromCommand(command, "Ferocity command result"),
+      summary: answerText,
+      status: blocked.length ? "blocked" : verifiedActionReceipts.some((receipt) => receipt.status === "completed") ? "completed" : "prepared",
+      href: `/app/ai-workforce/results/${runId}`,
+      targetTable: "ai_command_runs",
+      targetId: runId,
+      evidence: {
+        preparedCount: prepared.length,
+        blockedCount: blocked.length,
+        verifiedCompletedActionCount: verifiedActionReceipts.filter((receipt) => receipt.status === "completed").length,
+        planningAiStatus: understanding.planningAiStatus,
+        responseAiStatus: understanding.responseAiStatus,
+        independentReviewStatus: independentReview.status,
+        plannedActions: [...plannedActionKeys],
+        evidenceDomains: scopedEvidence.map((item) => ({ key: item.key, status: item.status, checkedAt: item.checkedAt })),
+      },
+    });
+  }
+  const artifacts = await recordFerocityActionReceipts({
+    tenantId: workspaceId,
+    threadId,
+    commandRunId: runId,
+    receipts: receiptInputs,
+  });
   return {
     ok: blocked.length === 0,
     message: blocked.length === 0
       ? didPrepareWork
-        ? `${understanding.answer}\n\nI prepared the work listed below. Nothing consequential went live without your approval.`
-        : `${advisoryText(understanding.answer, understanding.nextSteps)}\n\nI did not claim or record an execution because this request did not map to a verified action.`
-      : `${understanding.answer}\n\nI prepared what I safely could. One or more decisions still need your attention.`,
+        ? `${answerText}\n\nI prepared the work listed below. Nothing consequential went live without your approval.`
+        : `${advisoryText(answerText, understanding.nextSteps)}\n\nI did not claim or record an execution because this request did not map to a verified action.`
+      : `${answerText}\n\nI prepared what I safely could. One or more decisions still need your attention.`,
     prepared,
     blocked,
     recommended,
     runId: runId ?? undefined,
-    href: workspaceRouteForCommand(interpretedCommand)
+    href: resultHref,
+    actionLabel: resultRoute?.label ? `Open ${resultRoute.label}` : resultActionLabel(resultHref),
+    artifacts,
   };
 }
 

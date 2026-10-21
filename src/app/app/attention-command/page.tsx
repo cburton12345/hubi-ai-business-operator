@@ -4,8 +4,11 @@ import { BellRing, Bot, CircleDollarSign, Sparkles, TriangleAlert } from "lucide
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { rescheduleOwnerReminderAction, updateOwnerReminderStatusAction } from "@/app/app/notifications/actions";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
-import { getAttentionCommandDashboard, type AttentionCommandAction } from "@/lib/attention-command/get-attention-command-dashboard";
+import type { AttentionCommandAction } from "@/lib/attention-command/get-attention-command-dashboard";
 import { getCurrentActor } from "@/lib/auth/require-permission";
+import { getTodayOverview } from "@/lib/dashboard/get-today-overview";
+import { getOwnerRemindersDashboard } from "@/lib/reminders/owner-reminders";
+import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
@@ -30,12 +33,17 @@ function isoMinutesFromNow(minutes: number) {
 }
 
 export default async function AttentionCommandPage() {
-  const [dashboard, actor] = await Promise.all([getAttentionCommandDashboard(), getCurrentActor()]);
+  const workspaceId = await getCurrentWorkspaceId();
+  const [dashboard, actor, reminderDashboard] = await Promise.all([
+    getTodayOverview(workspaceId),
+    getCurrentActor(),
+    getOwnerRemindersDashboard(workspaceId),
+  ]);
   const isPlatformAdmin = actor.platformRole === "super_admin";
   const snoozeOneHour = isoMinutesFromNow(60);
   const setupNeeds = [
     ...dashboard.providerGaps.map((gap) => ({ title: `${gap.displayName} needs attention`, detail: gap.nextStep, href: "/app/integrations" })),
-    ...(isPlatformAdmin ? dashboard.safetyNeeds.map((need) => ({ title: need.title, detail: need.detail, href: need.href })) : [])
+    ...(isPlatformAdmin ? [{ title: "Review platform safety and readiness", detail: "Open the platform safety board before enabling consequential live actions.", href: "/app/safety-readiness" }] : [])
   ].filter((item, index, list) => list.findIndex((candidate) => candidate.title === item.title) === index).slice(0, 4);
   const customerSafeDoFirst = dashboard.doFirst.filter((action) => isPlatformAdmin || !isInternalControl(action));
 
@@ -47,9 +55,9 @@ export default async function AttentionCommandPage() {
 
     <section className="grid section-actions" aria-label="Business pulse">
       <Metric context="now" label="Needs you" value={customerSafeDoFirst.length} icon={<TriangleAlert size={16} />} tone={customerSafeDoFirst.length ? "high" : ""} href="#needs-you" />
-      <Metric context="due" label="Due today" value={dashboard.metrics.dueReminders} icon={<BellRing size={16} />} tone={dashboard.metrics.dueReminders ? "medium" : ""} href="#reminders" />
-      <Metric context="pipeline" label="Open pipeline" value={money(dashboard.metrics.openPipelineCents)} icon={<CircleDollarSign size={16} />} href="/app/lead-command" />
-      <Metric context="recorded" label="Collected" value={money(dashboard.metrics.collectedRevenueCents)} icon={<CircleDollarSign size={16} />} href="/app/reports" />
+      <Metric context="due" label="Due today" value={reminderDashboard.metrics.dueNow} icon={<BellRing size={16} />} tone={reminderDashboard.metrics.dueNow ? "medium" : ""} href="#reminders" />
+      <Metric context="pipeline" label="Open pipeline" value={money(dashboard.openPipelineCents)} icon={<CircleDollarSign size={16} />} href="/app/lead-command" />
+      <Metric context="recorded" label="Collected" value={money(dashboard.collectedRevenueCents)} icon={<CircleDollarSign size={16} />} href="/app/reports" />
     </section>
 
     <section className="panel simple-ask-card">
@@ -64,11 +72,11 @@ export default async function AttentionCommandPage() {
 
     <section className="panel section-actions" id="reminders">
       <div className="list-row flush-row"><div><p className="eyebrow">Today</p><h2>Reminders</h2></div><Link className="mini-button" href="/app/notifications">Manage reminders</Link></div>
-      <ul className="list">{dashboard.reminders.slice(0, 3).map((reminder) => <li className="list-row" key={reminder.id}><div><strong>{reminder.title}</strong><p className="muted">{reminder.body ?? "Business reminder"} · {dueLabel(reminder.nextDueAt)}</p></div><div className="inline-actions"><form action={rescheduleOwnerReminderAction}><input name="reminderId" type="hidden" value={reminder.id} /><input name="remindAt" type="hidden" value={snoozeOneHour} /><input name="recurrence" type="hidden" value={reminder.recurrence} /><button className="mini-button" type="submit">Snooze</button></form><form action={updateOwnerReminderStatusAction}><input name="reminderId" type="hidden" value={reminder.id} /><input name="status" type="hidden" value="completed" /><button className="mini-button" type="submit">Done</button></form></div></li>)}{dashboard.reminders.length === 0 ? <li className="list-row"><span className="muted">No reminders are due.</span></li> : null}</ul>
+      <ul className="list">{reminderDashboard.reminders.slice(0, 3).map((reminder) => <li className="list-row" key={reminder.id}><div><strong>{reminder.title}</strong><p className="muted">{reminder.body ?? "Business reminder"} · {dueLabel(reminder.nextDueAt)}</p></div><div className="inline-actions"><form action={rescheduleOwnerReminderAction}><input name="reminderId" type="hidden" value={reminder.id} /><input name="remindAt" type="hidden" value={snoozeOneHour} /><input name="recurrence" type="hidden" value={reminder.recurrence} /><button className="mini-button" type="submit">Snooze</button></form><form action={updateOwnerReminderStatusAction}><input name="reminderId" type="hidden" value={reminder.id} /><input name="status" type="hidden" value="completed" /><button className="mini-button" type="submit">Done</button></form></div></li>)}{reminderDashboard.reminders.length === 0 ? <li className="list-row"><span className="muted">No reminders are due.</span></li> : null}</ul>
     </section>
 
     <section className="grid section-actions">
-      <section className="panel span-6"><div className="list-row flush-row"><div><p className="eyebrow">Handled</p><h2>What Ferocity moved forward</h2></div><Bot size={20} /></div><ul className="list">{dashboard.aiActions.slice(0, 4).map((event) => <li className="list-row" key={event.id}><div><strong>{event.title}</strong><p className="muted">{event.aiSummary ?? event.summary}</p></div></li>)}{dashboard.aiActions.length === 0 ? <li className="list-row"><span className="muted">Completed Ferocity work will appear here.</span></li> : null}</ul></section>
+      <section className="panel span-6"><div className="list-row flush-row"><div><p className="eyebrow">Handled</p><h2>What Ferocity moved forward</h2></div><Bot size={20} /></div><ul className="list">{dashboard.aiActions.map((event) => <li className="list-row" key={event.id}><div><strong>{event.title}</strong><p className="muted">{event.ai_summary ?? event.summary}</p></div></li>)}{dashboard.aiActions.length === 0 ? <li className="list-row"><span className="muted">Completed Ferocity work will appear here.</span></li> : null}</ul></section>
       <section className="panel span-6"><div className="list-row flush-row"><div><p className="eyebrow">Cannot move yet</p><h2>Connections or controls to finish</h2></div><Link className="mini-button" href="/app/integrations">Connections</Link></div><ul className="list">{setupNeeds.map((item) => <li className="list-row" key={item.title}><div><strong>{item.title}</strong><p className="muted">{item.detail}</p></div><Link className="mini-button" href={item.href}>Fix</Link></li>)}{setupNeeds.length === 0 ? <li className="list-row"><span className="muted">No setup issue is blocking the next step.</span></li> : null}</ul></section>
     </section>
   </QueuePageShell>;

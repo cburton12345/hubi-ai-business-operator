@@ -55,11 +55,20 @@ export default async function AiCommandResultPage({ params }: { params: Promise<
     notFound();
   }
 
+  const pageTitle = run.status === "failed"
+    ? "This command did not finish."
+    : run.status === "needs_attention"
+      ? "Here is what Ferocity prepared and what remains."
+      : "Here is what Ferocity prepared.";
+  const pageDescription = run.status === "failed"
+    ? "No successful execution is implied. Review the recorded failure and retry only after the blocker is understood."
+    : "This receipt separates prepared work, missing details, blockers, and the exact places available for review.";
+
   return (
     <QueuePageShell
       eyebrow="Ferocity Command Result"
-      title="Here is what Ferocity did."
-      description="Every command gets a clear receipt: prepared work, missing details, blockers, and where to review or finish it."
+      title={pageTitle}
+      description={pageDescription}
     >
       <section className="panel section-actions">
         <div className="list-row flush-row">

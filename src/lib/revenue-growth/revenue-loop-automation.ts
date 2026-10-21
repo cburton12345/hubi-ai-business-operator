@@ -1,8 +1,14 @@
 import { queryPostgres } from "@/lib/db/postgres";
 import { scoreLeadsForTenant } from "@/lib/revenue-growth/score-leads";
+import { advanceIncomingLeadsForTenant, type IncomingLeadAutonomyResult } from "@/lib/leads/advance-incoming-leads";
+import { prepareContextAwareLeadFollowUps, type ContextAwareFollowUpResult } from "@/lib/customer-lifecycle/prepare-context-aware-followups";
+import { advanceRequestedAppointmentsForTenant, type RequestedAppointmentAdvanceResult } from "./advance-requested-appointments";
 
 export type RevenueLoopAutomationResult = {
   leadsScored: number;
+  incomingLeads: IncomingLeadAutonomyResult;
+  leadRecovery: ContextAwareFollowUpResult;
+  requestedAppointments: RequestedAppointmentAdvanceResult;
   appointmentsSynced: number;
   remindersPrepared: number;
   followupEnrollmentsCreated: number;
@@ -16,6 +22,9 @@ function changedRows(result: { rowCount?: number | null } | null) {
 
 export async function runRevenueLoopAutomationForTenant(tenantId: string): Promise<RevenueLoopAutomationResult> {
   const leadScoring = await scoreLeadsForTenant(tenantId);
+  const incomingLeads = await advanceIncomingLeadsForTenant(tenantId);
+  const leadRecovery = await prepareContextAwareLeadFollowUps(tenantId);
+  const requestedAppointments = await advanceRequestedAppointmentsForTenant(tenantId);
   const appointmentResult = await queryPostgres(
     `
     insert into public.revenue_appointments (
@@ -200,9 +209,14 @@ export async function runRevenueLoopAutomationForTenant(tenantId: string): Promi
       and first_step.step_number = 1
     where l.tenant_id = $1
       and l.status <> 'spam'
+      and not (l.metadata_json ? 'duplicateOfLeadId')
       and l.qualification_status = 'qualified'
       and l.consent_to_contact = true
       and (l.email is not null or l.phone is not null)
+      and not exists (
+        select 1 from public.customer_response_stops stop
+        where stop.tenant_id = l.tenant_id and stop.lead_id = l.id and stop.active = true
+      )
     on conflict (tenant_id, sequence_id, lead_id)
       where sequence_id is not null and lead_id is not null
       do nothing
@@ -261,6 +275,10 @@ export async function runRevenueLoopAutomationForTenant(tenantId: string): Promi
             and m.direction = 'inbound'
             and m.created_at >= e.created_at
         )
+        or exists (
+          select 1 from public.customer_response_stops stop
+          where stop.tenant_id = e.tenant_id and stop.lead_id = e.lead_id and stop.active = true
+        )
       )
     `,
     [tenantId]
@@ -301,6 +319,13 @@ export async function runRevenueLoopAutomationForTenant(tenantId: string): Promi
     join public.leads l on l.tenant_id = e.tenant_id and l.id = e.lead_id
     where e.tenant_id = $1
       and e.status = 'active'
+      and l.consent_to_contact = true
+      and l.status <> 'spam'
+      and not (l.metadata_json ? 'duplicateOfLeadId')
+      and not exists (
+        select 1 from public.customer_response_stops stop
+        where stop.tenant_id = e.tenant_id and stop.lead_id = e.lead_id and stop.active = true
+      )
       and not exists (
         select 1
         from public.follow_up_workflows f
@@ -314,6 +339,9 @@ export async function runRevenueLoopAutomationForTenant(tenantId: string): Promi
 
   return {
     leadsScored: leadScoring.scored,
+    incomingLeads,
+    leadRecovery,
+    requestedAppointments,
     appointmentsSynced: changedRows(appointmentResult),
     remindersPrepared: changedRows(reminderResult),
     followupEnrollmentsCreated: changedRows(enrollmentResult),

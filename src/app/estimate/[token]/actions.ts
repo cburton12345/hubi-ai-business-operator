@@ -14,6 +14,9 @@ import {
   stripeFormRequest
 } from "@/lib/payments/stripe-connect";
 import { ensureServiceKernelForJob } from "@/lib/service-ops/service-kernel";
+import { updateEstimateOptionSelection } from "@/lib/service-ops/estimate-pricing";
+import { convertEstimateToJob } from "@/lib/service-ops/lifecycle-transitions";
+import { decideChangeOrder } from "@/lib/service-ops/change-orders";
 
 const acceptEstimateSchema = z.object({
   token: z.string().min(8).max(120),
@@ -27,6 +30,46 @@ const estimateOptionsSchema = z.object({
   token: z.string().min(8).max(120),
   selectedItemIds: z.array(z.string().uuid()).max(100)
 });
+
+const changeOrderDecisionSchema = z.object({
+  token: z.string().min(8).max(120),
+  changeOrderId: z.string().uuid(),
+  decision: z.enum(["approved", "rejected"]),
+  decidedByName: z.string().trim().min(1).max(180),
+  decidedByEmail: z.string().email().optional().or(z.literal("")),
+  decisionNote: z.string().trim().max(1200).optional(),
+  electronicSignatureConsent: z.literal("on")
+});
+
+export async function decideChangeOrderAction(formData: FormData) {
+  const rawToken = String(formData.get("token") ?? "");
+  const parsed = changeOrderDecisionSchema.safeParse({
+    token: rawToken,
+    changeOrderId: formData.get("changeOrderId"),
+    decision: formData.get("decision"),
+    decidedByName: formData.get("decidedByName"),
+    decidedByEmail: formData.get("decidedByEmail"),
+    decisionNote: formData.get("decisionNote"),
+    electronicSignatureConsent: formData.get("electronicSignatureConsent")
+  });
+  if (!parsed.success) redirect(`/estimate/${rawToken}?change=invalid`);
+
+  const requestHeaders = await headers();
+  const result = await decideChangeOrder({
+    publicToken: parsed.data.token,
+    changeOrderId: parsed.data.changeOrderId,
+    decision: parsed.data.decision,
+    decidedByName: parsed.data.decidedByName,
+    decidedByEmail: parsed.data.decidedByEmail || null,
+    decisionNote: parsed.data.decisionNote || null,
+    ipAddress: requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    userAgent: requestHeaders.get("user-agent") ?? null
+  });
+  if (result.status === "not_found" || result.status === "not_ready") {
+    redirect(`/estimate/${parsed.data.token}?change=unavailable`);
+  }
+  redirect(`/estimate/${parsed.data.token}?change=${parsed.data.decision}`);
+}
 
 export async function updateEstimateOptionsAction(formData: FormData) {
   const parsed = estimateOptionsSchema.safeParse({
@@ -45,29 +88,11 @@ export async function updateEstimateOptionsAction(formData: FormData) {
   );
   const share = shareResult?.rows[0];
   if (!share) return;
-  await queryPostgres(
-    `
-    update public.estimate_line_items
-    set selected = case when id = any($3::uuid[]) then true else false end
-    where tenant_id = $1 and estimate_id = $2 and optional = true
-    `,
-    [share.tenant_id, share.estimate_id, parsed.data.selectedItemIds]
-  );
-  await queryPostgres(
-    `
-    update public.service_estimates e
-    set subtotal_cents = totals.subtotal,
-      total_cents = greatest(0, totals.subtotal - e.discount_cents + e.tax_cents),
-      updated_at = now()
-    from (
-      select coalesce(sum(total_cents), 0)::integer as subtotal
-      from public.estimate_line_items
-      where tenant_id = $1 and estimate_id = $2 and selected = true
-    ) totals
-    where e.tenant_id = $1 and e.id = $2
-    `,
-    [share.tenant_id, share.estimate_id]
-  );
+  await updateEstimateOptionSelection({
+    tenantId: share.tenant_id,
+    estimateId: share.estimate_id,
+    selectedItemIds: parsed.data.selectedItemIds
+  });
   redirect(`/estimate/${parsed.data.token}?options=updated`);
 }
 
@@ -235,29 +260,15 @@ export async function acceptEstimateAction(formData: FormData) {
     [share.tenant_id, share.estimate_id]
   );
 
-  const jobResult = await queryPostgres<{ id: string }>(
-    `
-    insert into public.service_jobs (
-      tenant_id, brand_id, customer_id, estimate_id, title, status, dispatcher_notes, ai_next_action
-    )
-    select $1, $2, $3, $4, $5, 'unscheduled', $6, $7
-    where not exists (
-      select 1 from public.service_jobs
-      where tenant_id = $1 and estimate_id = $4 and status <> 'lost'
-    )
-    returning id
-    `,
-    [
-      share.tenant_id,
-      share.brand_id,
-      share.customer_id,
-      share.estimate_id,
-      share.title,
-      parsed.data.acceptanceNote?.trim() || "Customer accepted the estimate from the public estimate page.",
-      "Customer accepted this estimate. Schedule the work, assign the crew, confirm materials, and prepare any deposit/payment request."
-    ]
-  );
-  const jobId = jobResult?.rows[0]?.id ?? null;
+  const conversion = await convertEstimateToJob({
+    tenantId: share.tenant_id,
+    estimateId: share.estimate_id,
+    scheduledStart: null,
+    scheduledEnd: null,
+    serviceArea: null,
+    dispatcherNotes: parsed.data.acceptanceNote?.trim() || "Customer accepted the estimate from the public estimate page."
+  });
+  const jobId = conversion.jobId;
   if (jobId) {
     await ensureServiceKernelForJob({ tenantId: share.tenant_id, jobId, eventSource: "customer" });
   }

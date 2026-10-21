@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -110,7 +110,14 @@ export async function getServiceOpsDashboard(): Promise<ServiceOpsDashboard> {
           select count(*) from public.service_invoices
           where tenant_id = $1 and status in ('sent_manually', 'partially_paid', 'overdue')
             and coalesce(due_date, created_at::date) <= current_date
-            and amount_paid_cents < total_cents
+            and amount_paid_cents + write_off_cents < total_cents
+            and not exists (
+              select 1 from public.payment_disputes d
+              join public.service_invoice_payments disputed_payment
+                on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+              where d.tenant_id=service_invoices.tenant_id and disputed_payment.invoice_id=service_invoices.id
+                and d.status in ('warning','needs_response','under_review')
+            )
         ) as overdue_invoices,
         (select count(*) from public.service_operational_tasks where tenant_id = $1 and status in ('open', 'scheduled')) as open_tasks,
         (select count(*) from public.review_request_workflows where tenant_id = $1 and status in ('draft', 'scheduled')) as review_requests_due,

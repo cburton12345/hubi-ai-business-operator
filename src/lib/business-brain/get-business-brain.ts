@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 export type BrainRow = {
@@ -32,6 +32,7 @@ export type BusinessBrainDashboard = {
   customerSignals: BrainRow[];
   documentsAndProof: BrainRow[];
   integrations: BrainRow[];
+  companionProducts: BrainRow[];
   aiReadsFrom: BrainRow[];
 };
 
@@ -58,7 +59,8 @@ export async function getBusinessBrainDashboard(): Promise<BusinessBrainDashboar
     profileResult,
     customerResult,
     proofResult,
-    integrationResult
+    integrationResult,
+    companionResult
   ] = await Promise.all([
     queryPostgres<{
       brands: string;
@@ -217,6 +219,22 @@ export async function getBusinessBrainDashboard(): Promise<BusinessBrainDashboar
       limit 12
       `,
       [workspaceId]
+    ),
+    queryPostgres<{
+      id: string;
+      product_key: string;
+      external_workspace_id: string;
+      source_generated_at: string;
+      metrics_json: Record<string, unknown>;
+      capabilities_json: Record<string, unknown>;
+      blind_spots_json: unknown[];
+    }>(
+      `select distinct on (product_key,external_workspace_id)
+         id,product_key,external_workspace_id,source_generated_at,metrics_json,capabilities_json,blind_spots_json
+       from public.companion_product_context_snapshots
+       where tenant_id=$1 and status='captured'
+       order by product_key,external_workspace_id,source_generated_at desc`,
+      [workspaceId]
     )
   ]);
 
@@ -311,6 +329,23 @@ export async function getBusinessBrainDashboard(): Promise<BusinessBrainDashboar
         "/app/integrations"
       )
     ),
+    companionProducts: (companionResult?.rows ?? []).map((snapshot) => {
+      const metrics = snapshot.metrics_json ?? {};
+      const details = snapshot.product_key === "h4r"
+        ? `${n(metrics.activeProperties as number)} properties / ${n(metrics.activeUnits as number)} units / ${n(metrics.activeTenants as number)} active tenants`
+        : "Aggregate companion-product context";
+      const attention = snapshot.product_key === "h4r"
+        ? `${n(metrics.urgentOwnerNotifications as number)} urgent item(s), ${n(metrics.openCollectionCases as number)} collection case(s), ${n(metrics.providerIssues as number)} provider issue(s)`
+        : `${snapshot.blind_spots_json.length} declared blind spot(s)`;
+      return row(
+        snapshot.id,
+        snapshot.product_key === "h4r" ? "Homes4Rent operating context" : `${snapshot.product_key} operating context`,
+        details,
+        "source_authoritative",
+        `${attention} / observed ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(snapshot.source_generated_at))}`,
+        "/app/owner-command-center",
+      );
+    }),
     aiReadsFrom: [
       row("setup", "Guided Setup", "Turns Business Info gaps into setup plans, workflows, drafts, and safe defaults.", "active", "AI Guided setup", "/app/build-system"),
       row("workforce", "AI Workforce", "Routes owner requests to operators for sales, marketing, reviews, collections, scheduling, and setup.", "active", "AI operators", "/app/ai-workforce"),

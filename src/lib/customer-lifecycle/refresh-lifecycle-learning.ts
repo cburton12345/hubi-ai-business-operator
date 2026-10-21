@@ -1,5 +1,3 @@
-import "server-only";
-
 import { queryPostgres } from "@/lib/db/postgres";
 
 /**
@@ -28,10 +26,10 @@ export async function refreshLifecycleLearning(tenantId: string) {
       coalesce(l.status='won',false),
       exists(select 1 from public.messaging_opt_outs o where o.tenant_id=f.tenant_id and o.active=true and o.created_at>=f.created_at and ((f.channel='sms' and lower(o.contact_value)=lower(l.phone)) or (f.channel='email' and lower(o.contact_value)=lower(l.email)))),
       coalesce((
-        select sum(p.amount_cents)::int
+        select sum(greatest(p.amount_cents-p.refunded_amount_cents,0))::int
         from public.service_jobs j
         join public.service_invoices i on i.tenant_id=j.tenant_id and i.job_id=j.id
-        join public.service_invoice_payments p on p.tenant_id=i.tenant_id and p.invoice_id=i.id and p.status in ('succeeded','manual')
+        join public.service_invoice_payments p on p.tenant_id=i.tenant_id and p.invoice_id=i.id and p.status in ('succeeded','manual','partially_refunded','refunded')
         where j.tenant_id=f.tenant_id and j.source_lead_id=f.lead_id and p.created_at>=f.created_at
       ),0),
       jsonb_build_object('measuredFrom','canonical_business_records'),

@@ -12,7 +12,7 @@ const providerSchema = z.enum(["google_calendar", "microsoft_calendar"]);
 const settingsSchema = z.object({
   providerKey: providerSchema, calendarId: z.string().min(1).max(500),
   syncDirection: z.enum(["inbound", "outbound", "two_way"]), conflictPolicy: z.enum(["review", "ferocity_wins", "provider_wins"]),
-  outboundWritesEnabled: z.boolean()
+  outboundWritesEnabled: z.boolean(), onboardingMode: z.boolean()
 });
 
 export async function refreshCalendarChoicesAction(formData: FormData) {
@@ -33,7 +33,8 @@ export async function saveCalendarSettingsAction(formData: FormData) {
   await requirePermission("tenant:manage");
   const parsed = settingsSchema.safeParse({
     providerKey: formData.get("providerKey"), calendarId: formData.get("calendarId"),
-    syncDirection: formData.get("syncDirection"), conflictPolicy: formData.get("conflictPolicy"), outboundWritesEnabled: formData.get("outboundWritesEnabled") === "true"
+    syncDirection: formData.get("syncDirection"), conflictPolicy: formData.get("conflictPolicy"), outboundWritesEnabled: formData.get("outboundWritesEnabled") === "true",
+    onboardingMode: formData.get("onboardingMode") === "true"
   });
   if (!parsed.success) redirect("/app/integrations/calendar?setup=invalid");
   const tenantId = await getCurrentWorkspaceId();
@@ -54,6 +55,15 @@ export async function saveCalendarSettingsAction(formData: FormData) {
        status=excluded.status,metadata_json=public.calendar_sync_settings.metadata_json || excluded.metadata_json,updated_at=now()`,
     [tenantId, connectionId, parsed.data.providerKey, parsed.data.calendarId, selectedCalendar.name, parsed.data.syncDirection, parsed.data.conflictPolicy, outbound, outbound ? "ready" : "ready_read_only", JSON.stringify({ writesRequireSeparateAuthorization: true, configuredAt: new Date().toISOString() })]
   );
+  if (parsed.data.onboardingMode) {
+    let discovery: Awaited<ReturnType<typeof runInboundCalendarSync>>;
+    try {
+      discovery = await runInboundCalendarSync({ tenantId, providerKey: parsed.data.providerKey });
+    } catch {
+      redirect("/app/integrations/calendar?onboarding=1&setup=discovery_failed");
+    }
+    redirect(`/app/ferocity?onboarding=1&command=${encodeURIComponent(`Review the newly connected calendar. Ferocity imported ${discovery.imported} event changes and found ${discovery.conflicts} possible conflicts. Summarize what this reveals about the business and complete the highest-value safe first action already authorized.`)}`);
+  }
   revalidatePath("/app/integrations/calendar");
 }
 

@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres, withPostgresTransactionResult } from "@/lib/db/postgres";
 import {
   emptyGoldenLoopSnapshot,
   evaluateGoldenLoop,
@@ -11,6 +11,7 @@ export type RawLoopEvidence = {
   run_id: string;
   mode: "observed" | "certification" | "live";
   run_status: string;
+  run_metadata: Record<string, unknown> | null;
   lead_id: string;
   brand_id: string | null;
   customer_id: string | null;
@@ -49,6 +50,18 @@ export type GoldenLoopSyncResult = {
   handoffGaps: number;
 };
 
+export function certificationStatusForRun(input: {
+  evaluationStatus: "active" | "completed";
+  metadata: Record<string, unknown> | null;
+}) {
+  const createdBy = typeof input.metadata?.createdBy === "string" ? input.metadata.createdBy : "";
+  const synthetic = input.metadata?.qaOnly === true || input.metadata?.syntheticFixture === true || createdBy.startsWith("qa_");
+  return {
+    synthetic,
+    status: input.evaluationStatus === "completed" && !synthetic ? "certified" as const : "running" as const
+  };
+}
+
 function count(result: { rowCount?: number | null } | null) {
   return Number(result?.rowCount ?? 0);
 }
@@ -82,7 +95,12 @@ export function snapshotFromDatabaseRow(row: RawLoopEvidence): GoldenLoopSnapsho
     row.scheduled_at
   );
   snapshot.work_completed = evidence(row.job_status === "completed", "service_job", row.job_id, row.completed_at);
-  snapshot.invoice_issued = evidence(Boolean(row.invoice_id) && row.invoice_status !== "draft", "service_invoice", row.invoice_id, row.invoice_created_at);
+  snapshot.invoice_issued = evidence(
+    Boolean(row.invoice_id) && ["sent_manually", "partially_paid", "paid", "overdue"].includes(row.invoice_status ?? ""),
+    "service_invoice",
+    row.invoice_id,
+    row.invoice_created_at
+  );
   snapshot.payment_received = evidence(Boolean(row.payment_id), "service_invoice_payment", row.payment_id, row.payment_received_at);
   snapshot.margin_recorded = evidence(Boolean(row.margin_record_id), "revenue_attribution_record", row.margin_record_id, row.margin_recorded_at);
   snapshot.review_requested = evidence(Boolean(row.review_id), "review_request_workflow", row.review_id, row.review_created_at);
@@ -97,7 +115,7 @@ export function snapshotFromDatabaseRow(row: RawLoopEvidence): GoldenLoopSnapsho
 }
 
 async function refreshPaymentMargins(tenantId: string) {
-  await queryPostgres(
+  const result = await queryPostgres(
     `
     insert into public.revenue_attribution_records (
       tenant_id, brand_id, lead_id, customer_id, estimate_id, job_id, invoice_id, payment_id,
@@ -109,8 +127,11 @@ async function refreshPaymentMargins(tenantId: string) {
       i.estimate_id, i.job_id, i.id, p.id, 'payment', p.id,
       coalesce(nullif(l.source, ''), 'unknown'),
       coalesce(nullif(l.source_detail, ''), nullif(l.source, ''), 'unknown'),
-      'first_touch', i.total_cents, p.amount_cents,
-      p.amount_cents - coalesce(mat.material_cents, 0) - coalesce(pay.worker_cents, 0),
+      'first_touch', i.total_cents, greatest(p.amount_cents-p.refunded_amount_cents,0),
+      greatest(p.amount_cents-p.refunded_amount_cents,0) - case when i.total_cents>0 then round(
+        (coalesce(mat.material_cents,0)+coalesce(pay.worker_cents,0))::numeric
+        * greatest(p.amount_cents-p.refunded_amount_cents,0)::numeric / i.total_cents
+      )::bigint else 0 end,
       jsonb_build_object('createdBy', 'certified_business_loop', 'provider', p.provider),
       coalesce(p.paid_at, p.received_at, p.created_at), now()
     from public.service_invoice_payments p
@@ -126,7 +147,7 @@ async function refreshPaymentMargins(tenantId: string) {
       select tenant_id, service_job_id, sum(amount_cents) as worker_cents
       from public.operations_worker_payments where status in ('recorded','reviewed') group by tenant_id, service_job_id
     ) pay on pay.tenant_id = i.tenant_id and pay.service_job_id = i.job_id
-    where p.tenant_id = $1 and p.status in ('succeeded','manual')
+    where p.tenant_id = $1 and p.status in ('succeeded','manual','partially_refunded','refunded')
     on conflict (tenant_id, entity_type, entity_id, attribution_model) do update set
       brand_id = excluded.brand_id, lead_id = excluded.lead_id, customer_id = excluded.customer_id,
       estimate_id = excluded.estimate_id, job_id = excluded.job_id, invoice_id = excluded.invoice_id,
@@ -137,11 +158,12 @@ async function refreshPaymentMargins(tenantId: string) {
     `,
     [tenantId]
   );
+  if (!result) throw new Error("Payment margin evidence could not be refreshed.");
 }
 
 async function preparePostJobGrowth(tenantId: string) {
   // Preparing a private capture link is reversible and does not contact the customer.
-  await queryPostgres(
+  const captureResult = await queryPostgres(
     `
     insert into public.ugc_capture_requests (
       tenant_id, brand_id, customer_id, job_id, public_token, request_type, status, metadata_json
@@ -162,12 +184,13 @@ async function preparePostJobGrowth(tenantId: string) {
     `,
     [tenantId]
   );
+  if (!captureResult) throw new Error("Post-job proof requests could not be prepared.");
 
   // This shared service is also used by the manual Proof action so there is one
   // implementation of consent-aware proof-to-content preparation.
   await prepareProofContentDrafts({ tenantId, limit: 20 });
 
-  await queryPostgres(
+  const recommendationResult = await queryPostgres(
     `
     insert into public.marketing_campaign_recommendations (
       tenant_id, brand_id, recommendation_key, title, trigger_reason, primary_goal,
@@ -197,13 +220,14 @@ async function preparePostJobGrowth(tenantId: string) {
     `,
     [tenantId]
   );
+  if (!recommendationResult) throw new Error("Post-job growth recommendations could not be prepared.");
 }
 
 async function loadLoopEvidence(tenantId: string, limit: number) {
   return queryPostgres<RawLoopEvidence>(
     `
     select
-      r.id as run_id, r.mode, r.status as run_status, l.id as lead_id, l.brand_id,
+      r.id as run_id, r.mode, r.status as run_status, r.metadata_json as run_metadata, l.id as lead_id, l.brand_id,
       coalesce(e.customer_id, j.customer_id, i.customer_id) as customer_id,
       e.id as estimate_id, e.status as estimate_status, j.id as job_id, j.status as job_status,
       i.id as invoice_id, i.status as invoice_status, p.id as payment_id, margin.id as margin_record_id,
@@ -244,7 +268,9 @@ async function loadLoopEvidence(tenantId: string, limit: number) {
     ) i on true
     left join lateral (
       select x.* from public.service_invoice_payments x
-      where x.tenant_id = r.tenant_id and x.invoice_id = i.id and x.status in ('succeeded','manual')
+      where x.tenant_id = r.tenant_id and x.invoice_id = i.id
+        and x.status in ('succeeded','manual','partially_refunded','refunded')
+        and greatest(x.amount_cents-x.refunded_amount_cents,0)>0
       order by x.received_at desc limit 1
     ) p on true
     left join lateral (
@@ -296,6 +322,7 @@ export async function syncGoldenBusinessLoopsForTenant(tenantId: string, limit =
     `,
     [tenantId, limit]
   );
+  if (!created) throw new Error("Golden business loop runs could not be synchronized.");
 
   await refreshPaymentMargins(tenantId);
   await preparePostJobGrowth(tenantId);
@@ -320,8 +347,9 @@ export async function syncGoldenBusinessLoopsForTenant(tenantId: string, limit =
       evidence: stage.evidence
     })));
 
-    await queryPostgres(
-      `
+    const persistence = await withPostgresTransactionResult(async (client) => {
+      await client.query(
+        `
       with incoming as (
         select * from jsonb_to_recordset($3::jsonb) as x(
           "stageKey" text, ordinal integer, label text, status text,
@@ -351,12 +379,12 @@ export async function syncGoldenBusinessLoopsForTenant(tenantId: string, limit =
           else public.business_loop_stage_runs.completed_at
         end,
         updated_at = now()
-      `,
-      [tenantId, row.run_id, stagesJson]
-    );
+        `,
+        [tenantId, row.run_id, stagesJson]
+      );
 
-    await queryPostgres(
-      `
+      const runUpdate = await client.query(
+        `
       update public.business_loop_runs
       set brand_id = coalesce($3::uuid, brand_id), customer_id = coalesce($4::uuid, customer_id),
           estimate_id = coalesce($5::uuid, estimate_id), job_id = coalesce($6::uuid, job_id),
@@ -368,14 +396,19 @@ export async function syncGoldenBusinessLoopsForTenant(tenantId: string, limit =
           metadata_json = metadata_json || jsonb_build_object('lastEvaluationSource','certified_business_loop'),
           updated_at = now()
       where tenant_id = $1 and id = $2
-      `,
-      [tenantId, row.run_id, row.brand_id, row.customer_id, row.estimate_id, row.job_id, row.invoice_id,
-        evaluation.status, evaluation.currentStage, evaluation.completedStages, evaluation.handoffGaps.length]
-    );
+        `,
+        [tenantId, row.run_id, row.brand_id, row.customer_id, row.estimate_id, row.job_id, row.invoice_id,
+          evaluation.status, evaluation.currentStage, evaluation.completedStages, evaluation.handoffGaps.length]
+      );
+      if (runUpdate.rowCount !== 1) throw new Error("The loop run was not updated.");
 
-    if (row.mode === "certification") {
-      await queryPostgres(
-        `
+      if (row.mode === "certification") {
+        const certification = certificationStatusForRun({
+          evaluationStatus: evaluation.status,
+          metadata: row.run_metadata
+        });
+        await client.query(
+          `
         insert into public.business_loop_certifications (
           tenant_id, certification_key, status, loop_run_id, passed_stage_count, failed_stage_count,
           evidence_json, started_at, certified_at, expires_at, updated_at
@@ -387,10 +420,18 @@ export async function syncGoldenBusinessLoopsForTenant(tenantId: string, limit =
           passed_stage_count = excluded.passed_stage_count, failed_stage_count = excluded.failed_stage_count,
           evidence_json = excluded.evidence_json, certified_at = excluded.certified_at,
           expires_at = excluded.expires_at, updated_at = now()
-        `,
-        [tenantId, evaluation.status === "completed" ? "certified" : "running", row.run_id,
-          evaluation.completedStages, evaluation.handoffGaps.length, JSON.stringify({ stages: evaluation.stages })]
-      );
+          `,
+          [tenantId, certification.status, row.run_id,
+            evaluation.completedStages, evaluation.handoffGaps.length, JSON.stringify({
+              stages: evaluation.stages,
+              evidenceKind: certification.synthetic ? "synthetic_fixture" : "observed_business_records",
+              certificationWithheld: certification.synthetic
+            })]
+        );
+      }
+    });
+    if (!persistence.ok) {
+      throw new Error(`Golden business loop ${row.run_id} could not be persisted safely.`, { cause: persistence.error });
     }
   }
 

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
+import { cache } from "react";
 import { env } from "@/lib/env";
 
 export const adminSessionCookieName = "ferocity_admin_session";
@@ -28,11 +29,11 @@ export function isAdminSessionCookieValid(value: string | undefined | null) {
   return expected.length === candidate.length && crypto.timingSafeEqual(expected, candidate);
 }
 
-export async function hasAdminSession() {
+export const hasAdminSession = cache(async () => {
   if (!isAdminTokenConfigured()) {
     return false;
   }
 
   const cookieStore = await cookies();
   return isAdminSessionCookieValid(cookieStore.get(adminSessionCookieName)?.value);
-}
+});

@@ -6,6 +6,8 @@ import { logAppError } from "@/lib/observability/log-error";
 import { triageOwnerEvent } from "@/lib/owner-command-center/triage-owner-event";
 import { getPushNotificationPreferences, pushPreferencesAllowEvent } from "@/lib/push/preferences";
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
+import { captureH4rGoalObservation } from "@/lib/integrations/h4r/goal-observation";
+import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
 
 const eventSchema = z.object({
   tenantId: z.string().uuid().optional(),
@@ -195,6 +197,48 @@ export async function POST(request: Request) {
       metadata: { platformKey: event.platformKey, externalEventId: event.externalEventId }
     });
     return NextResponse.json({ error: "Event was not saved." }, { status: 500 });
+  }
+
+  if (event.tenantId) {
+    try {
+      const goalEvent = {
+        tenantId: event.tenantId,
+        ownerEventId: result.rows[0].id,
+        externalEventId: event.externalEventId,
+        eventType: event.eventType,
+        title: event.title,
+        summary: event.summary,
+        severity: effectiveEvent.severity,
+        status: effectiveEvent.status,
+        ownerAttention: effectiveEvent.ownerAttention,
+        occurredAt: event.occurredAt,
+        riskType: effectiveEvent.riskType,
+        moneyCents: effectiveEvent.moneyCents,
+        recommendedAction: effectiveEvent.recommendedAction,
+        metadata: event.metadata,
+      };
+      if (event.platformKey === "h4r") {
+        await captureH4rGoalObservation(goalEvent);
+      } else {
+        await captureIntegrationGoalObservation({
+          ...goalEvent,
+          platformKey: event.platformKey,
+          platformName: event.platformName,
+        });
+      }
+    } catch (error) {
+      await logAppError({
+        tenantId: event.tenantId,
+        source: "api.owner-command-center.events.integration-goal",
+        message: error instanceof Error ? error.message : "Integration goal observation failed.",
+        severity: "warning",
+        retryable: true,
+        metadata: {
+          ownerEventId: result.rows[0].id,
+          externalEventId: event.externalEventId ?? null,
+        },
+      });
+    }
   }
 
   if (event.tenantId && triageDecision) {

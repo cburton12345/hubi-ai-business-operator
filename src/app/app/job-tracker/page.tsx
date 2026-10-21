@@ -112,25 +112,22 @@ export default async function ConstructionSimpleModePage() {
         </Link>
       </section>
 
-      <section className="panel section-actions" id="new-estimate">
-        <div className="list-row flush-row">
+      <details className="panel section-actions progressive-disclosure" id="new-estimate">
+        <summary>
           <div>
             <p className="eyebrow">Quick estimate</p>
-            <h2>Get the first draft out of your head.</h2>
-            <p className="muted">
-              This creates a real draft estimate. Open it afterward only if you
-              need detailed takeoffs, terms, materials, options, or customer
-              presentation controls.
-            </p>
+            <h2>Create a draft estimate</h2>
+            <p className="muted">Customer, scope, and a rough total. Open only when you need it.</p>
           </div>
+        </summary>
+        <div className="progressive-disclosure-body">
           <Link className="mini-button" href="/app/estimator">
             Use advanced estimator
           </Link>
-        </div>
-        <form
-          action={createSimpleBidAction}
-          className="stacked-form construction-quick-form"
-        >
+          <form
+            action={createSimpleBidAction}
+            className="stacked-form construction-quick-form"
+          >
           <div className="form-grid two">
             <label>
               Existing customer
@@ -205,8 +202,9 @@ export default async function ConstructionSimpleModePage() {
           <button className="button" type="submit">
             Create draft estimate
           </button>
-        </form>
-      </section>
+          </form>
+        </div>
+      </details>
 
       <section className="feature-split" id="active-work">
         <article className="panel">
@@ -277,24 +275,22 @@ export default async function ConstructionSimpleModePage() {
         </article>
       </section>
 
-      <section className="panel section-actions" id="record-cost">
-        <div className="list-row flush-row">
+      <details className="panel section-actions progressive-disclosure" id="record-cost">
+        <summary>
           <div>
             <p className="eyebrow">Quick receipt</p>
-            <h2>Capture the cost before it disappears.</h2>
-            <p className="muted">
-              A photo and job are enough to start. Ferocity keeps it in review
-              before using it in job profit.
-            </p>
+            <h2>Record a receipt or cost</h2>
+            <p className="muted">A photo and job are enough to start. Open only when you need it.</p>
           </div>
+        </summary>
+        <div className="progressive-disclosure-body">
           <Link className="mini-button" href="/app/job-tracker/full">
             Open receipt queue
           </Link>
-        </div>
-        <form
-          action={createReceiptExpenseAction}
-          className="stacked-form construction-quick-form"
-        >
+          <form
+            action={createReceiptExpenseAction}
+            className="stacked-form construction-quick-form"
+          >
           <div className="form-grid two">
             <label>
               Job
@@ -346,8 +342,9 @@ export default async function ConstructionSimpleModePage() {
           <button className="button" type="submit">
             Save receipt for review
           </button>
-        </form>
-      </section>
+          </form>
+        </div>
+      </details>
 
       <section className="panel simple-mode-next-step">
         <div>

@@ -1,5 +1,5 @@
 import { manualSmsHref } from "@/lib/communication/manual-sms";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { formatMoney } from "@/lib/service-ops/money";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
@@ -174,7 +174,7 @@ export async function getJobTrackerDashboard(): Promise<JobTrackerDashboard> {
           where tenant_id = $1 and status = 'needs_review'
         ) as receipts_need_review,
         (
-          select coalesce(sum(total_cents - amount_paid_cents), 0)
+          select coalesce(sum(greatest(total_cents - amount_paid_cents - write_off_cents,0)), 0)
           from public.service_invoices
           where tenant_id = $1 and status in ('sent_manually', 'partially_paid', 'overdue')
         ) as money_customers_owe_cents,
@@ -184,7 +184,14 @@ export async function getJobTrackerDashboard(): Promise<JobTrackerDashboard> {
           where tenant_id = $1 and status in ('sent_manually', 'partially_paid', 'overdue')
             and due_date is not null
             and due_date < current_date
-            and total_cents > amount_paid_cents
+            and total_cents > amount_paid_cents + write_off_cents
+            and not exists (
+              select 1 from public.payment_disputes d
+              join public.service_invoice_payments disputed_payment
+                on disputed_payment.tenant_id=d.tenant_id and disputed_payment.id=d.payment_id
+              where d.tenant_id=service_invoices.tenant_id and disputed_payment.invoice_id=service_invoices.id
+                and d.status in ('warning','needs_response','under_review')
+            )
         ) as overdue_invoices,
         (
           coalesce((select sum(amount_paid_cents) from public.service_invoices where tenant_id = $1 and updated_at >= now() - interval '30 days'), 0)

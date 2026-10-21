@@ -83,6 +83,18 @@ export async function scoreLeadsForTenant(tenantId: string) {
       updated_at=now()
     from public.revenue_lead_scores s
     where l.tenant_id=$1 and s.tenant_id=l.tenant_id and s.lead_id=l.id
+      and (
+        l.qualification_status is distinct from case
+          when s.qualification_status='qualified' then 'qualified'
+          when s.qualification_status='spam' then 'unqualified'
+          when s.qualification_status='disqualified' then 'disqualified'
+          else 'needs_review' end
+        or l.lead_score is distinct from s.qualification_score
+        or l.priority is distinct from case
+          when s.urgency_score>=75 then 'high'
+          when s.urgency_score<=25 then 'low'
+          else l.priority end
+      )
     `,
     [tenantId]
   );

@@ -10,8 +10,17 @@ const migration = fs.readFileSync(path.join(root, "supabase", "migrations", "204
 describe("H4R signed SMS bridge safety contract", () => {
   it("derives one canonical send key from the mapped workspace and outbox row", () => {
     expect(route).toContain("`h4r:${input.workspace_id}:${input.sms_outbox_id}`");
-    expect(route).toContain("mapping.status !== \"active\"");
-    expect(route).toContain("humanApproved: false");
+    expect(route).toContain("h4rCanonicalIdempotencyKey: idempotencyKey");
+    expect(route).toContain("insert into public.outbound_action_queue");
+    expect(route).toContain('automatic ? "queued" : "needs_review"');
+    expect(route).not.toContain("policyAllowsAuto: true");
+  });
+
+  it("keeps Twilio STOP provider-specific while enforcing global and handoff controls", () => {
+    expect(route).toContain("twilioSmsStopped: input.contact_controls?.twilio_sms_stopped");
+    expect(route).toContain("if (controls.smsStopped || !controls.ferocityConnectAllowed)");
+    expect(route).not.toContain("if (controls.twilioSmsStopped");
+    expect(route).toContain("Twilio STOP is provider-specific and does not revoke Ferocity Connect consent.");
   });
 
   it("uses only the server-side mapped callback and fully redacts message bodies in diagnostics", () => {

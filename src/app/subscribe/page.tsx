@@ -4,6 +4,8 @@ import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
 import { getPublicPlan, publicEarnPlan, publicPlans, publicPlanPrice, type BillingInterval } from "@/lib/billing/public-plans";
+import { queryPostgres } from "@/lib/db/postgres";
+import { hashSessionToken } from "@/lib/auth/password";
 
 const planDisplayOrder = ["starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
 const orderedPublicPlans = [...publicPlans].sort(
@@ -19,13 +21,21 @@ export const metadata: Metadata = {
 export default async function SubscribePage({
   searchParams
 }: {
-  searchParams: Promise<{ plan?: string; error?: string; billing?: string }>;
+  searchParams: Promise<{ plan?: string; error?: string; billing?: string; request?: string; handoff?: string }>;
 }) {
   const params = await searchParams;
   const plan = getPublicPlan(params.plan ?? "");
   const interval: BillingInterval = params.billing === "annual" && plan?.annualPrice ? "year" : "month";
   const displayedPrice = plan ? publicPlanPrice(plan, interval) : null;
   const isCallsPlan = plan?.key === "calls";
+  const handoff = params.request && params.handoff && /^[0-9a-f-]{36}$/i.test(params.request)
+    ? await queryPostgres<{ id: string; email: string; company_name: string | null; name: string | null }>(`
+        select id,email,company_name,name from public.access_requests
+        where id=$1 and metadata_json->>'checkoutHandoffTokenHash'=$2
+          and (metadata_json->>'checkoutHandoffExpiresAt')::timestamptz > now()
+          and requested_plan=$3 limit 1`, [params.request, hashSessionToken(params.handoff), plan?.key ?? ""])
+    : null;
+  const savedRequest = handoff?.rows[0] ?? null;
   const planGuidance = {
     ferocity_connect: "Turn an Android business phone into a Ferocity-controlled texting line.",
     calls: "Never let another valuable call reach a dead end.",
@@ -89,6 +99,12 @@ export default async function SubscribePage({
               <input name="plan" type="hidden" value={plan.key} />
               <input name="billingInterval" type="hidden" value={interval} />
               <input name="source" type="hidden" value="public_subscribe" />
+              {savedRequest && params.handoff ? (
+                <>
+                  <input name="accessRequestId" type="hidden" value={savedRequest.id} />
+                  <input name="checkoutHandoff" type="hidden" value={params.handoff} />
+                </>
+              ) : null}
 
               <div>
                 <p className="eyebrow">Account details</p>
@@ -104,15 +120,15 @@ export default async function SubscribePage({
 
               <label>
                 Work email
-                <input name="email" type="email" autoComplete="email" required />
+                <input name="email" type="email" autoComplete="email" defaultValue={savedRequest?.email ?? ""} required />
               </label>
               <label>
                 Company name
-                <input name="companyName" autoComplete="organization" required />
+                <input name="companyName" autoComplete="organization" defaultValue={savedRequest?.company_name ?? ""} required />
               </label>
               <label>
                 Your name <span className="muted">(optional)</span>
-                <input name="name" autoComplete="name" />
+                <input name="name" autoComplete="name" defaultValue={savedRequest?.name ?? ""} />
               </label>
               <label className="checkbox-row">
                 <input name="consentToContact" type="checkbox" required />

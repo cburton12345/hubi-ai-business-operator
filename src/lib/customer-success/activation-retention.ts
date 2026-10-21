@@ -1,5 +1,3 @@
-import "server-only";
-
 import { queryPostgres } from "@/lib/db/postgres";
 import { decideCustomerSuccessLifecycle } from "@/lib/customer-success/activation-retention-decision";
 
@@ -13,6 +11,7 @@ type SignalRow = {
   connected_systems: number;
   ferocity_commands: number;
   operational_records: number;
+  verified_results: number;
 };
 
 export async function syncCustomerActivationRetentionForTenant(tenantId: string) {
@@ -38,7 +37,12 @@ export async function syncCustomerActivationRetentionForTenant(tenantId: string)
       ((select count(*) from public.leads lead where lead.tenant_id=tenant.id)+
        (select count(*) from public.customers customer where customer.tenant_id=tenant.id)+
        (select count(*) from public.service_jobs job where job.tenant_id=tenant.id)+
-       (select count(*) from public.service_invoices invoice where invoice.tenant_id=tenant.id))::int as operational_records
+       (select count(*) from public.service_invoices invoice where invoice.tenant_id=tenant.id)+
+       (select count(*) from public.document_intelligence_documents document where document.tenant_id=tenant.id and document.status <> 'failed'))::int as operational_records
+      ,(select count(*)::int from public.ferocity_chat_action_receipts receipt
+          where receipt.tenant_id=tenant.id and receipt.status='completed'
+            and (receipt.receipt_kind in ('external','result')
+              or (receipt.receipt_kind='workspace_change' and receipt.evidence_json->>'verifiedAfterWrite'='true'))) as verified_results
     from public.tenants tenant
     left join public.billing_subscriptions subscription on subscription.tenant_id=tenant.id
     where tenant.id=$1 and tenant.status <> 'archived'
@@ -57,13 +61,15 @@ export async function syncCustomerActivationRetentionForTenant(tenantId: string)
     hasBusinessProfile: Number(row.business_profiles) > 0,
     connectedSystems: Number(row.connected_systems),
     ferocityCommands: Number(row.ferocity_commands),
-    operationalRecords: Number(row.operational_records)
+    operationalRecords: Number(row.operational_records),
+    verifiedResults: Number(row.verified_results)
   });
   const values = {
     businessProfile: Number(row.business_profiles) > 0,
     connectedSystems: Number(row.connected_systems),
     ferocityCommands: Number(row.ferocity_commands),
-    operationalRecords: Number(row.operational_records)
+    operationalRecords: Number(row.operational_records),
+    verifiedResults: Number(row.verified_results)
   };
 
   await queryPostgres(
@@ -85,11 +91,15 @@ export async function syncCustomerActivationRetentionForTenant(tenantId: string)
   );
 
   if (decision.stage === "at_risk" || (decision.stage === "onboarding" && Number(row.days_since_signup) >= 1)) {
-    const title = decision.stage === "at_risk" ? "Ferocity found the shortest path back to value" : "Let Ferocity produce the first useful result";
+    const billingNeedsAttention = decision.riskReasons.includes("The subscription needs billing attention.");
+    const title = billingNeedsAttention
+      ? "Restore Ferocity billing without losing your work"
+      : decision.stage === "at_risk" ? "Ferocity found the shortest path back to value" : "Let Ferocity produce the first useful result";
     const summary = decision.riskReasons.length
       ? `${decision.riskReasons.join(" ")} ${decision.nextBestAction}`
       : decision.nextBestAction;
     const command = encodeURIComponent(`Take the lead on activation and retention for this workspace. ${decision.nextBestAction} Handle every safe internal step, prepare protected actions for approval, and show me the result.`);
+    const actionHref = billingNeedsAttention ? "/app/billing" : `/app/ferocity?command=${command}`;
     await queryPostgres(
       `
       insert into public.owner_command_events (
@@ -103,7 +113,7 @@ export async function syncCustomerActivationRetentionForTenant(tenantId: string)
         metadata_json=public.owner_command_events.metadata_json || excluded.metadata_json,updated_at=now()
       `,
       [tenantId,`customer-success:${decision.stage}`,title,summary,decision.stage === "at_risk" ? "high" : "medium",
-        decision.nextBestAction,`/app/ferocity?command=${command}`,JSON.stringify({ decision, values })]
+        decision.nextBestAction,actionHref,JSON.stringify({ decision, values })]
     );
   }
 

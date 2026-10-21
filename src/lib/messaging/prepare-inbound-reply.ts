@@ -1,7 +1,8 @@
 import { generateJsonWithAiService } from "@/lib/ai/ai-service";
 import { queryPostgres } from "@/lib/db/postgres";
+import { untrustedContentPolicy, untrustedPromptData } from "@/lib/security/untrusted-content";
 
-type ReplyChannel = "sms" | "facebook";
+type ReplyChannel = "sms" | "email" | "facebook";
 
 type ReplyDraft = {
   reply: string;
@@ -15,6 +16,11 @@ function cleanReply(value: unknown, fallback: string) {
   return (reply || fallback).slice(0, 1200);
 }
 
+function replySubject(value?: string | null) {
+  const subject = value?.replace(/\s+/g, " ").trim() || "Your request";
+  return (/^re\s*:/i.test(subject) ? subject : `Re: ${subject}`).slice(0, 240);
+}
+
 export async function prepareInboundReply(input: {
   tenantId: string;
   brandId?: string | null;
@@ -24,6 +30,7 @@ export async function prepareInboundReply(input: {
   providerKey: string;
   from: string;
   body: string;
+  subject?: string | null;
   sourceUrl?: string | null;
   opportunityId?: string | null;
 }) {
@@ -48,12 +55,12 @@ export async function prepareInboundReply(input: {
     brandId: input.brandId,
     featureKey: "inbound_reply_draft",
     runType: `${input.channel}_inbound_reply_draft`,
-    system: `Prepare one concise customer reply for ${businessName}. Use only facts in the supplied business context and conversation. Never invent price, availability, guarantees, policies, or completed work. Ask one useful question when information is missing. Flag money, legal, safety, angry-customer, opt-out, or ambiguous matters for a human. Return JSON with reply, confidence from 0 to 100, requiresHuman, and reason.`,
+    system: `Prepare one concise customer reply for ${businessName}. Use only facts in the supplied business context and conversation. Never invent price, availability, guarantees, policies, or completed work. Ask one useful question when information is missing. Flag money, legal, safety, angry-customer, opt-out, or ambiguous matters for a human. ${untrustedContentPolicy} Return JSON with reply, confidence from 0 to 100, requiresHuman, and reason.`,
     user: JSON.stringify({
       channel: input.channel,
       business: { name: businessName, description: business?.description, industry: business?.industry },
-      latestInbound: input.body,
-      recentConversation: history
+      latestInbound: untrustedPromptData("latest_inbound_customer_message", input.body, 6_000),
+      recentConversation: untrustedPromptData("customer_conversation_history", history, 12_000),
     }),
     fallback: { reply: fallback, confidence: 40, requiresHuman: true, reason: "AI or verified business context was unavailable; safe acknowledgment prepared." },
     timeoutMs: 7_000,
@@ -78,18 +85,23 @@ export async function prepareInboundReply(input: {
     return { ...draft, mode: "prepared_for_review" as const };
   }
 
+  const actionKey = input.channel === "email" ? "inbound_email_reply" : "inbound_sms_reply";
+  const fallbackActionKey = input.channel === "email" ? "email_send" : "sms_send";
   const policy = await queryPostgres<{ id: string; status: string; requires_human_approval: boolean }>(`
     select id,status,requires_human_approval from public.live_action_policies
-    where tenant_id=$1 and action_key='inbound_sms_reply' and provider_key=$2 limit 1
-  `, [input.tenantId, input.providerKey]);
+    where tenant_id=$1 and action_key in ($3,$4)
+      and (provider_key=$2 or action_key=$4)
+    order by case when action_key=$3 and provider_key=$2 then 0 when action_key=$3 then 1 else 2 end
+    limit 1
+  `, [input.tenantId, input.providerKey, actionKey, fallbackActionKey]);
   const activePolicy = policy?.rows[0];
   const automatic = activePolicy?.status === "live" && !activePolicy.requires_human_approval && !draft.requiresHuman;
   const queued = await queryPostgres<{ id: string }>(`
     insert into public.outbound_action_queue (
       tenant_id,brand_id,action_type,provider_key,status,risk_level,target_type,target_id,
       subject,recipient_label,payload_json,policy_id,metadata_json
-    ) select $1,$2,'sms_send',$3,$4,$5,'messaging_conversation',$6,
-      'Prepared reply',$7,jsonb_build_object('body',$8),$9,$10::jsonb)
+    ) select $1,$2,$12,$3,$4,$5,'messaging_conversation',$6,
+      $13,$7,jsonb_build_object('body',$8),$9,$10::jsonb)
     where not exists (
       select 1 from public.outbound_action_queue
       where tenant_id=$1 and metadata_json->>'inboundMessageId'=$11
@@ -99,7 +111,8 @@ export async function prepareInboundReply(input: {
     JSON.stringify({
       source: "inbound_reply_draft", inboundMessageId: input.inboundMessageId, conversationId: input.conversationId,
       confidence: draft.confidence, requiresHuman: draft.requiresHuman, reason: draft.reason,
-      communicationMethod: "sms", messagePurpose: "transactional"
-    }), input.inboundMessageId]);
+      communicationMethod: input.channel, messagePurpose: "transactional"
+    }), input.inboundMessageId, input.channel === "email" ? "email_send" : "sms_send",
+    input.channel === "email" ? replySubject(input.subject) : "Prepared reply"]);
   return { ...draft, mode: automatic ? "queued_by_explicit_policy" as const : "prepared_for_review" as const, queueId: queued?.rows[0]?.id ?? null };
 }

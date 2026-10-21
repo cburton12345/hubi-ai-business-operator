@@ -7,6 +7,97 @@ function eventHash(event: ExternalCalendarEvent) {
   return createHash("sha256").update(JSON.stringify({ title: event.title, location: event.location, startsAt: event.startsAt, endsAt: event.endsAt, status: event.status, version: event.version })).digest("hex");
 }
 
+async function reconcileMappedRevenueAppointment(input: {
+  tenantId: string;
+  connectionId: string;
+  calendarId: string;
+  conflictPolicy: string;
+  external: ExternalCalendarEvent;
+}) {
+  const mapping = await queryPostgres<{ internal_id: string | null }>(
+    `select internal_id
+     from public.integration_object_mappings
+     where tenant_id=$1 and connection_id=$2 and object_type='calendar_event'
+       and internal_table='revenue_appointments' and external_scope=$3 and external_id=$4
+       and provider_deleted_at is null
+     limit 1`,
+    [input.tenantId, input.connectionId, input.calendarId, input.external.id],
+  );
+  const appointmentId = mapping?.rows[0]?.internal_id;
+  if (!appointmentId) return;
+
+  if (input.conflictPolicy === "provider_wins") {
+    if (input.external.status === "cancelled") {
+      await queryPostgres(
+        `update public.revenue_appointments
+         set status='canceled',metadata_json=metadata_json || $3::jsonb,updated_at=now()
+         where tenant_id=$1 and id=$2 and status<>'canceled'`,
+        [input.tenantId, appointmentId, JSON.stringify({
+          canceledFromExternalCalendar: true,
+          externalCalendarReconciledAt: new Date().toISOString(),
+        })],
+      );
+      return;
+    }
+    if (input.external.startsAt && input.external.endsAt) {
+      await queryPostgres(
+        `update public.revenue_appointments
+         set scheduled_start=$3::timestamptz,scheduled_end=$4::timestamptz,
+           metadata_json=metadata_json || $5::jsonb,updated_at=now()
+         where tenant_id=$1 and id=$2
+           and (scheduled_start is distinct from $3::timestamptz or scheduled_end is distinct from $4::timestamptz)`,
+        [input.tenantId, appointmentId, input.external.startsAt, input.external.endsAt, JSON.stringify({
+          rescheduledFromExternalCalendar: true,
+          externalCalendarReconciledAt: new Date().toISOString(),
+        })],
+      );
+    }
+    return;
+  }
+
+  if (input.conflictPolicy !== "review") return;
+  await queryPostgres(
+    `insert into public.owner_command_events (
+       tenant_id,platform_key,platform_name,external_event_id,event_type,title,summary,
+       severity,status,owner_attention,ai_handled,recommended_action,action_href,risk_type,
+       confidence_score,metadata_json
+     )
+     select appointment.tenant_id,'ferocity','Ferocity',
+       'calendar-change:' || $2::text || ':' || $3::text,
+       'calendar.external_change','A connected calendar changed a Ferocity appointment',
+       'The connected calendar changed or canceled an appointment that Ferocity created.',
+       'high','needs_owner',true,false,
+       'Choose whether Ferocity or the connected calendar should be authoritative for this change.',
+       '/app/integrations/calendar','customer',100,$5::jsonb
+     from public.revenue_appointments appointment
+     where appointment.tenant_id=$1 and appointment.id=$2
+       and (
+         $4='cancelled' and appointment.status<>'canceled'
+         or $6::timestamptz is not null and $7::timestamptz is not null
+           and (appointment.scheduled_start is distinct from $6::timestamptz
+             or appointment.scheduled_end is distinct from $7::timestamptz)
+       )
+     on conflict (tenant_id,platform_key,external_event_id) where external_event_id is not null
+     do update set status='needs_owner',owner_attention=true,summary=excluded.summary,
+       metadata_json=public.owner_command_events.metadata_json || excluded.metadata_json,updated_at=now()`,
+    [
+      input.tenantId,
+      appointmentId,
+      input.external.id,
+      input.external.status,
+      JSON.stringify({
+        appointmentId,
+        externalEventId: input.external.id,
+        externalStatus: input.external.status,
+        externalStartsAt: input.external.startsAt,
+        externalEndsAt: input.external.endsAt,
+      }),
+      input.external.startsAt,
+      input.external.endsAt,
+    ],
+  );
+}
+
 export async function discoverProviderCalendars(tenantId: string, providerKey: CalendarProviderKey) {
   return (await createCalendarProvider(tenantId, providerKey)).listCalendars();
 }
@@ -19,9 +110,9 @@ export async function runInboundCalendarSync(input: { tenantId: string; provider
   const connectionId = connectionResult?.rows[0]?.id;
   if (!connectionId) throw new Error("Connect the calendar provider before syncing.");
   const settingsResult = await queryPostgres<{
-    external_calendar_id: string | null; sync_window_past_days: number; sync_window_future_days: number; status: string;
+    external_calendar_id: string | null; sync_window_past_days: number; sync_window_future_days: number; status: string; conflict_policy: string;
   }>(
-    "select external_calendar_id,sync_window_past_days,sync_window_future_days,status from public.calendar_sync_settings where tenant_id=$1 and connection_id=$2 limit 1",
+    "select external_calendar_id,sync_window_past_days,sync_window_future_days,status,conflict_policy from public.calendar_sync_settings where tenant_id=$1 and connection_id=$2 limit 1",
     [input.tenantId, connectionId]
   );
   const settings = settingsResult?.rows[0];
@@ -82,6 +173,13 @@ export async function runInboundCalendarSync(input: { tenantId: string; provider
           last_synced_hash=excluded.last_synced_hash,last_synced_at=now(),provider_deleted_at=excluded.provider_deleted_at,updated_at=now()`,
         [input.tenantId, connectionId, input.providerKey, settings.external_calendar_id, external.id, external.version, eventHash(external), external.status === "cancelled" ? new Date().toISOString() : null]
       );
+      await reconcileMappedRevenueAppointment({
+        tenantId: input.tenantId,
+        connectionId,
+        calendarId: settings.external_calendar_id,
+        conflictPolicy: settings.conflict_policy,
+        external,
+      });
     }
     const conflictResult = await queryPostgres<{ count: string }>(
       `select count(distinct e.id)::text as count
@@ -167,6 +265,96 @@ export async function runOutboundCalendarSync(input: { tenantId: string; provide
        on conflict (connection_id,object_type,internal_table,internal_id,external_scope) do update set external_id=excluded.external_id,
          external_version=excluded.external_version,last_synced_hash=excluded.last_synced_hash,last_synced_at=now(),provider_deleted_at=null,updated_at=now()`,
       [input.tenantId, config.connection_id, input.providerKey, visit.id, config.external_calendar_id, external.id, external.version, hash]
+    );
+    written += 1;
+  }
+
+  const appointments = await queryPostgres<{
+    id: string;
+    appointment_type: string;
+    status: string;
+    scheduled_start: string;
+    scheduled_end: string;
+    contact_name: string;
+    contact_email: string | null;
+    external_id: string | null;
+    last_synced_hash: string | null;
+  }>(
+    `select appointment.id,appointment.appointment_type,appointment.status,
+       appointment.scheduled_start,appointment.scheduled_end,
+       coalesce(customer.name,lead.name,'Customer') as contact_name,
+       coalesce(customer.email,lead.email) as contact_email,
+       mapping.external_id,mapping.last_synced_hash
+     from public.revenue_appointments appointment
+     left join public.customers customer on customer.id=appointment.customer_id
+     left join public.leads lead on lead.id=appointment.lead_id
+     left join public.integration_object_mappings mapping
+       on mapping.connection_id=$2 and mapping.object_type='calendar_event'
+       and mapping.internal_table='revenue_appointments' and mapping.internal_id=appointment.id
+       and mapping.external_scope=$3
+     where appointment.tenant_id=$1
+       and appointment.status in ('booked','confirmed','showed','rescheduled','canceled')
+       and appointment.scheduled_start is not null and appointment.scheduled_end is not null
+       and appointment.scheduled_end>=now()-interval '30 days'
+       and appointment.scheduled_start<=now()+interval '365 days'`,
+    [input.tenantId, config.connection_id, config.external_calendar_id],
+  );
+  for (const appointment of appointments?.rows ?? []) {
+    if (appointment.status === "canceled") {
+      if (appointment.external_id) {
+        await provider.deleteEvent(config.external_calendar_id, appointment.external_id);
+        await queryPostgres(
+          `update public.integration_object_mappings
+           set provider_deleted_at=now(),updated_at=now()
+           where connection_id=$1 and internal_table='revenue_appointments'
+             and internal_id=$2 and external_scope=$3`,
+          [config.connection_id, appointment.id, config.external_calendar_id],
+        );
+        deleted += 1;
+      } else skipped += 1;
+      continue;
+    }
+    const title = `${appointment.contact_name} — ${appointment.appointment_type.replaceAll("_", " ")}`;
+    const hash = createHash("sha256").update(JSON.stringify({
+      title,
+      startsAt: appointment.scheduled_start,
+      endsAt: appointment.scheduled_end,
+      status: appointment.status,
+      attendee: appointment.contact_email,
+    })).digest("hex");
+    if (hash === appointment.last_synced_hash) {
+      skipped += 1;
+      continue;
+    }
+    const external = await provider.upsertEvent(config.external_calendar_id, {
+      externalId: appointment.external_id,
+      title,
+      description: "Appointment managed by Ferocity.",
+      startsAt: appointment.scheduled_start,
+      endsAt: appointment.scheduled_end,
+      timeZone: "UTC",
+      attendeeEmails: appointment.contact_email ? [appointment.contact_email] : [],
+      idempotencyKey: `revenue-appointment:${appointment.id}`,
+    });
+    await queryPostgres(
+      `insert into public.integration_object_mappings (
+         tenant_id,connection_id,provider_key,object_type,internal_table,internal_id,
+         external_scope,external_id,external_version,ownership_mode,last_synced_hash,last_synced_at
+       ) values ($1,$2,$3,'calendar_event','revenue_appointments',$4,$5,$6,$7,'ferocity',$8,now())
+       on conflict (connection_id,object_type,internal_table,internal_id,external_scope)
+       do update set external_id=excluded.external_id,external_version=excluded.external_version,
+         last_synced_hash=excluded.last_synced_hash,last_synced_at=now(),
+         provider_deleted_at=null,updated_at=now()`,
+      [
+        input.tenantId,
+        config.connection_id,
+        input.providerKey,
+        appointment.id,
+        config.external_calendar_id,
+        external.id,
+        external.version,
+        hash,
+      ],
     );
     written += 1;
   }

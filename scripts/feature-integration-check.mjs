@@ -245,7 +245,7 @@ const checks = [
     terms: [
       "addPricebookItemToEstimateAction",
       "pricebook_item_id",
-      "recalculateEstimateTotal",
+      "recalculateEstimatePricing",
     ],
   },
   {
@@ -274,6 +274,43 @@ const checks = [
       "adjustInventoryQuantityAction",
       "inventory_transactions",
       "quantity_delta",
+    ],
+  },
+  {
+    name: "POS stock changes preserve authoritative location balances",
+    file: "src/app/app/pos/actions.ts",
+    terms: [
+      "inventory_location_balances",
+      "inventory_reservations",
+      "from_location_id",
+      "to_location_id",
+      "unit_cost_cents",
+    ],
+  },
+  {
+    name: "multi-location inventory protects reserved stock and preserves count traceability",
+    file: "src/lib/service-ops/inventory-control.ts",
+    terms: [
+      "inventory_location_balances",
+      "inventory_reservations",
+      "inventory_stock_counts",
+      "pg_advisory_xact_lock",
+      "service_work_orders",
+      "Inventory totals are inconsistent",
+    ],
+  },
+  {
+    name: "supplier returns and unequal material splits preserve source quantity and job-cost evidence",
+    file: "src/lib/service-ops/inventory-cost-control.ts",
+    terms: [
+      "supplier_return_items",
+      "inventory_material_allocations",
+      "purchase_order_receipt_items",
+      "inventory_location_balances",
+      "job_material_list_items",
+      "allocated_cost_cents",
+      "cancellation_idempotency_key",
+      "Inventory totals are inconsistent",
     ],
   },
   {
@@ -317,13 +354,37 @@ const checks = [
     ],
   },
   {
-    name: "accounting export preparation connects invoices and vendor bills",
-    file: "src/app/app/purchasing/actions.ts",
+    name: "signed change orders propagate through canonical service records exactly once",
+    file: "src/lib/service-ops/change-orders.ts",
     terms: [
+      "decision_document_sha256",
+      "public.service_jobs",
+      "public.service_work_orders",
+      "public.service_visits",
+      "status='draft'",
+      "public.invoice_line_items",
+      "public.service_operating_events",
+      "already_decided",
+    ],
+  },
+  {
+    name: "portable accounting exports only authoritative invoices and vendor bills",
+    file: "src/app/api/reports/accounting-export/route.ts",
+    terms: [
+      "sent_manually",
+      "partially_paid",
+      "written_off",
+      "b.status in ('approved','exported','paid')",
+    ],
+  },
+  {
+    name: "purchasing does not expose an uncertified accounting synchronization queue",
+    file: "src/app/app/purchasing/actions.ts",
+    terms: ["createVendorBillAction", "updateVendorBillStatusAction"],
+    absentTerms: [
       "queueAccountingSyncAction",
       "accounting_sync_runs",
       "accounting_sync_records",
-      "vendor_bill",
     ],
   },
   {
@@ -451,9 +512,14 @@ const checks = [
 for (const check of checks) {
   const contents = source(check.file);
   const missing = check.terms.filter((term) => !contents.includes(term));
-  if (missing.length) {
+  const forbidden = (check.absentTerms ?? []).filter((term) => contents.includes(term));
+  if (missing.length || forbidden.length) {
+    const failures = [
+      missing.length ? `missing ${missing.join(", ")}` : "",
+      forbidden.length ? `unexpected ${forbidden.join(", ")}` : "",
+    ].filter(Boolean);
     throw new Error(
-      `${check.name} is disconnected in ${check.file}: missing ${missing.join(", ")}`,
+      `${check.name} is disconnected in ${check.file}: ${failures.join("; ")}`,
     );
   }
 }

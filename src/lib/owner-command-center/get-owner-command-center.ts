@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getDashboardSnapshot } from "@/lib/dashboard/get-dashboard-snapshot";
 import {
   getOwnerNeeds,

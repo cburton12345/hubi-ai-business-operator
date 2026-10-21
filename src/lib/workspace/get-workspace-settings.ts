@@ -37,7 +37,7 @@ export async function ensureWorkspaceSettings() {
 }
 
 export async function getWorkspaceSettings(): Promise<WorkspaceSettings> {
-  const workspace = await ensureWorkspaceSettings();
+  const workspace = await getCurrentWorkspace();
   const result = await queryPostgres<{
     display_name: string | null;
     timezone: string;

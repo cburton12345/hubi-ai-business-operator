@@ -17,6 +17,10 @@ describe("classifyAiCommandIntent", () => {
     expect(readOnlyRouteForCommand("Show revenue and money owed")).toBe("/app/revenue-growth");
     expect(readOnlyRouteForCommand("Show calls from yesterday")).toBe("/app/calls");
     expect(readOnlyRouteForCommand("Open the call inbox")).toBe("/app/calls");
+    expect(readOnlyRouteForCommand("Show the 2025 Cash App statement expenses")).toBe("/app/expenses");
+    expect(readOnlyRouteForCommand("Show inventory stock levels")).toBe("/app/pos");
+    expect(readOnlyRouteForCommand("Show provider connection status")).toBe("/app/integrations");
+    expect(readOnlyRouteForCommand("Show printable reports")).toBe("/app/reports");
   });
 });
 

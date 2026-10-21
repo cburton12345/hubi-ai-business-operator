@@ -24,6 +24,15 @@ type OpenAiChatResponse = {
   usage?: OpenAiUsage;
 };
 
+type OpenAiResponsesResponse = {
+  output?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string; annotations?: Array<{ type?: string; url?: string; title?: string }> }>;
+    action?: { sources?: Array<{ type?: string; url?: string; title?: string }> };
+  }>;
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+};
+
 type AiBudgetDecision = {
   allowed: boolean;
   reason: string;
@@ -231,6 +240,7 @@ async function recordAiUsageEvent(input: {
   errorCategory?: string | null;
   ownershipMode?: "ferocity_managed" | "workspace";
   metadata?: Record<string, unknown>;
+  extraCostCents?: number;
 }) {
   await queryPostgres(
     `
@@ -274,13 +284,106 @@ async function recordAiUsageEvent(input: {
       input.usage?.completion_tokens ?? 0,
       input.usage?.total_tokens ?? 0,
       input.mediaUnits ?? 0,
-      input.ownershipMode === "workspace" ? 0 : estimateTextCostCents(input.modelName, input.usage),
+      input.ownershipMode === "workspace" ? 0 : estimateTextCostCents(input.modelName, input.usage) + Math.max(0, input.extraCostCents ?? 0),
       input.latencyMs ?? null,
       input.fallbackUsed,
       input.errorCategory ?? null,
       JSON.stringify(input.metadata ?? {})
     ]
   );
+}
+
+export type WebResearchResult<T> = {
+  data: T;
+  sources: Array<{ url: string; title: string | null }>;
+  searched: boolean;
+  fallbackUsed: boolean;
+};
+
+export async function generateJsonWithWebSearch<T extends Record<string, unknown>>(
+  input: AiJsonRequest<T> & { allowedDomains?: string[]; searchContextSize?: "low" | "medium" | "high" }
+): Promise<WebResearchResult<T>> {
+  const featureKey = input.featureKey ?? "ai_generation";
+  const aiCategory = input.aiCategory ?? "core";
+  const gate = await getServiceGate(input.tenantId, featureKey);
+  if (!gate.enabled) {
+    await handleFallback(input, "fallback", `AI web research skipped: ${gate.reason}`, { gate });
+    return { data: input.fallback, sources: [], searched: false, fallbackUsed: true };
+  }
+  const budget = await getAiBudgetDecision(input.tenantId, aiCategory);
+  if (!budget.allowed) {
+    await handleFallback(input, "fallback", `AI web research skipped: ${budget.reason}`, { budget });
+    return { data: input.fallback, sources: [], searched: false, fallbackUsed: true };
+  }
+  const config = await resolveAiExecutionConfiguration({ tenantId: input.tenantId, runType: input.runType, requestType: "json" });
+  if (!config.apiKey || !config.baseUrl.includes("api.openai.com")) {
+    await handleFallback(input, "fallback", "Live web research requires a compatible OpenAI Responses API credential.", undefined, config);
+    return { data: input.fallback, sources: [], searched: false, fallbackUsed: true };
+  }
+  if (activeAiRequests >= maxConcurrentAiRequests()) {
+    await handleFallback(input, "fallback", "AI provider capacity is busy; web research was deferred safely.", { errorCategory: "local_capacity_limit" }, config);
+    return { data: input.fallback, sources: [], searched: false, fallbackUsed: true };
+  }
+
+  const startedAt = Date.now();
+  activeAiRequests += 1;
+  try {
+    const allowedDomains = [...new Set((input.allowedDomains ?? []).map((value) => value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]).filter(Boolean))].slice(0, 100);
+    const usesAstra = /^gpt-6-astra(?:-|$)/i.test(config.model);
+    const configuredAstraEffort = process.env.AI_REASONING_EFFORT_ADVANCED;
+    const astraEffort = ["low", "medium", "high", "xhigh", "max"].includes(configuredAstraEffort ?? "") ? configuredAstraEffort : "low";
+    const response = await resilientFetch(`${config.baseUrl}/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: config.model,
+        ...(usesAstra ? { reasoning: { effort: astraEffort } } : {}),
+        instructions: ensureJsonInstruction(input.system),
+        input: input.user,
+        tools: [{
+          type: "web_search",
+          search_context_size: input.searchContextSize ?? "low",
+          external_web_access: true,
+          ...(allowedDomains.length ? { filters: { allowed_domains: allowedDomains } } : {})
+        }],
+        tool_choice: "required",
+        include: ["web_search_call.action.sources"]
+      })
+    }, { timeoutMs: input.timeoutMs ?? 45_000 });
+    if (!response.ok) throw new Error((await response.text()).slice(0, 500));
+    const body = await response.json() as OpenAiResponsesResponse;
+    const text = (body.output ?? []).flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text ?? "").join("\n");
+    const parsed = parseJsonObject<T>(text);
+    if (!parsed) throw new Error("Web research provider returned non-JSON content.");
+    const sourceMap = new Map<string, { url: string; title: string | null }>();
+    for (const item of body.output ?? []) {
+      for (const source of item.action?.sources ?? []) if (source.url) sourceMap.set(source.url, { url: source.url, title: source.title ?? null });
+      for (const content of item.content ?? []) for (const annotation of content.annotations ?? []) if (annotation.url) sourceMap.set(annotation.url, { url: annotation.url, title: annotation.title ?? null });
+    }
+    const sources = [...sourceMap.values()].slice(0, 100);
+    const webSearchCalls = (body.output ?? []).filter((item) => item.type === "web_search_call").length;
+    const usage: OpenAiUsage = {
+      prompt_tokens: body.usage?.input_tokens ?? 0,
+      completion_tokens: body.usage?.output_tokens ?? 0,
+      total_tokens: body.usage?.total_tokens ?? 0
+    };
+    await Promise.all([
+      recordAiGenerationRun({ tenantId: input.tenantId, brandId: input.brandId, runType: input.runType, prompt: { system: input.system, user: input.user }, response: parsed, status: "completed", fallbackUsed: false, providerKey: config.providerKey, modelName: config.model }),
+      recordAiUsageEvent({
+        tenantId: input.tenantId, brandId: input.brandId, userId: input.userId, providerKey: config.providerKey,
+        modelName: config.model, featureKey, runType: input.runType, requestType: "json", aiCategory,
+        status: "completed", usage, latencyMs: Date.now() - startedAt, fallbackUsed: false,
+        ownershipMode: config.ownershipMode, extraCostCents: webSearchCalls,
+        metadata: { ...safeRecordedMetadata(input.metadata), webSearchCalls, sourceCount: sources.length, liveExternalResearch: true }
+      })
+    ]);
+    return { data: parsed, sources, searched: webSearchCalls > 0, fallbackUsed: false };
+  } catch (error) {
+    await handleFallback(input, "failed", error instanceof Error ? error.message : "AI web research failed.", { ...safeRecordedMetadata(input.metadata), latencyMs: Date.now() - startedAt }, config);
+    return { data: input.fallback, sources: [], searched: false, fallbackUsed: true };
+  } finally {
+    activeAiRequests = Math.max(0, activeAiRequests - 1);
+  }
 }
 
 export async function recordAiGenerationRun(input: {
@@ -516,11 +619,7 @@ export async function generateJsonWithAiService<T extends Record<string, unknown
 }
 
 export async function generateVisionJsonWithAiService<T extends Record<string, unknown>>(input: AiVisionJsonRequest<T>): Promise<T> {
-  if (input.mimeType && !input.mimeType.startsWith("image/")) {
-    return input.fallback;
-  }
-
-  return generateJsonWithAiService<T>({
+  const request: AiJsonRequest<T> = {
     ...input,
     requestType: "vision_json",
     user: input.userText,
@@ -532,5 +631,15 @@ export async function generateVisionJsonWithAiService<T extends Record<string, u
       mimeType: input.mimeType ?? null
     },
     system: input.system
-  });
+  };
+  if (input.mimeType && !input.mimeType.startsWith("image/")) {
+    return handleFallback(
+      request,
+      "fallback",
+      `Vision generation skipped because ${input.mimeType} is not a supported image MIME type.`,
+      { errorCategory: "unsupported_media_type", mimeType: input.mimeType },
+    );
+  }
+
+  return generateJsonWithAiService<T>(request);
 }

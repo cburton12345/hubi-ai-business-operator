@@ -76,15 +76,16 @@ export async function resolvePlatformAdminAlert(fingerprint: string) {
   );
 }
 
-export async function getActivePlatformAdminAlerts() {
+export async function getActivePlatformAdminAlerts(tenantId: string) {
   const result = await queryPostgres<{
     id: string; fingerprint: string; severity: PlatformAdminAlertSeverity; title: string; body: string;
     action_url: string | null; occurrence_count: number; last_seen_at: Date;
   }>(
     `select id, fingerprint, severity, title, body, action_url, occurrence_count, last_seen_at
-     from public.platform_admin_alerts where status='active'
+     from public.platform_admin_alerts where status='active' and tenant_id=$1
      order by case severity when 'critical' then 1 when 'high' then 2 when 'warning' then 3 else 4 end, last_seen_at desc
-     limit 100`
+     limit 100`,
+    [tenantId]
   );
   return (result?.rows ?? []).map((row) => ({
     id: row.id, fingerprint: row.fingerprint, severity: row.severity, title: row.title, body: row.body,

@@ -72,7 +72,13 @@ function statementTransaction(value: unknown): StatementTransaction | null {
   const explicitCredit = ["credit", "deposit", "refund", "reversal"].includes(rawDirection);
   const explicitDebit = ["debit", "charge", "purchase", "withdrawal", "fee"].includes(rawDirection);
   const creditLanguage = /\b(refund|reversal|deposit|cashback|cash back|interest paid|credit received)\b/i.test(normalizedDescription);
-  const paymentLanguage = /\b(payment (received|thank you)|autopay payment|online payment|card payment)\b/i.test(normalizedDescription);
+  const paymentReceivedLanguage = /\bpayment received\b/i.test(normalizedDescription);
+  const accountPaymentLanguage = /\b(payment thank you|autopay payment|online payment|card payment)\b/i.test(normalizedDescription);
+  const paymentLanguage = paymentReceivedLanguage || accountPaymentLanguage;
+  const counterpartyName = text(row.counterparty_name ?? row.display_name ?? row.recipient_name ?? row.sender_name);
+  const counterpartyHandle = text(row.counterparty_handle ?? row.cashtag ?? row.handle);
+  const namedIncomingPayment = paymentReceivedLanguage && Boolean(counterpartyName || counterpartyHandle);
+  const providerMarkedTransfer = row.is_transfer === true || String(row.is_transfer).toLowerCase() === "true";
   // Bank exports disagree about whether debits are positive or negative. An
   // explicit semantic direction therefore wins over the numeric sign. When a
   // provider omits direction, use narrow language signals and otherwise keep
@@ -92,13 +98,22 @@ function statementTransaction(value: unknown): StatementTransaction | null {
     postedDate,
     description,
     merchantName: text(row.merchant_name ?? row.vendor_name ?? row.merchant),
+    counterpartyName,
+    counterpartyHandle,
+    note: text(row.note ?? row.memo),
+    transactionType: text(row.transaction_type ?? row.type),
+    providerStatus: text(row.provider_status ?? row.status),
     referenceNumber,
     amountCents: Math.abs(amount),
+    feeCents: Math.max(0, cents(row.fee_cents) ?? 0),
     direction,
     balanceCents: cents(row.balance_cents ?? row.balance),
     suggestedCategory: text(row.suggested_category ?? row.category),
-    isTransfer: row.is_transfer === true || String(row.is_transfer).toLowerCase() === "true" || paymentLanguage,
-    transferReason: text(row.transfer_reason) ?? (paymentLanguage ? "Likely account or card payment" : null),
+    // Cash App and similar providers often label tenant/customer money as
+    // "Payment received". A named incoming payer is evidence of a deposit,
+    // not evidence of an own-account transfer, even if the model guessed true.
+    isTransfer: namedIncomingPayment ? false : providerMarkedTransfer || accountPaymentLanguage,
+    transferReason: namedIncomingPayment ? null : text(row.transfer_reason) ?? (accountPaymentLanguage ? "Likely account or card payment" : null),
     confidence: confidence(row.confidence, 0.5)
   };
 }
@@ -137,6 +152,19 @@ export function normalizeExpenseDocument(raw: Record<string, unknown>): Normaliz
     ? raw.review_reasons.map(text).filter((item): item is string => Boolean(item))
     : [];
   const overallConfidence = confidence(raw.overall_confidence ?? raw.confidence, 0.25);
+  const coverageRaw = raw.source_coverage && typeof raw.source_coverage === "object"
+    ? raw.source_coverage as Record<string, unknown>
+    : null;
+  const pageNumbers = (value: unknown) => Array.isArray(value)
+    ? value.map(Number).filter((page) => Number.isInteger(page) && page > 0)
+    : [];
+  const sourceCoverage = coverageRaw ? {
+    totalPages: Math.max(0, Number(coverageRaw.totalPages) || 0),
+    attemptedPages: pageNumbers(coverageRaw.attemptedPages),
+    readablePages: pageNumbers(coverageRaw.readablePages),
+    failedPages: pageNumbers(coverageRaw.failedPages),
+    omittedPages: pageNumbers(coverageRaw.omittedPages),
+  } : undefined;
 
   const normalizedDocumentType = documentType(raw.document_type);
   if (!vendorName) reviewReasons.push(normalizedDocumentType === "statement" ? "Financial institution could not be read confidently." : "Vendor could not be read confidently.");
@@ -149,6 +177,10 @@ export function normalizeExpenseDocument(raw: Record<string, unknown>): Normaliz
   return {
     documentType: normalizedDocumentType,
     vendorName,
+    merchantAddress: text(raw.merchant_address ?? raw.vendor_address),
+    merchantCity: text(raw.merchant_city ?? raw.vendor_city),
+    merchantState: text(raw.merchant_state ?? raw.vendor_state)?.toUpperCase() ?? null,
+    merchantPostalCode: text(raw.merchant_postal_code ?? raw.vendor_postal_code ?? raw.merchant_zip),
     documentNumber: text(raw.document_number ?? raw.invoice_number ?? raw.receipt_number ?? raw.order_number),
     documentDate,
     documentTime: time(raw.document_time ?? raw.time),
@@ -166,6 +198,7 @@ export function normalizeExpenseDocument(raw: Record<string, unknown>): Normaliz
     extractedText: text(raw.extracted_text) ?? "",
     fieldConfidence,
     overallConfidence,
-    reviewReasons: [...new Set(reviewReasons)]
+    reviewReasons: [...new Set(reviewReasons)],
+    sourceCoverage,
   };
 }

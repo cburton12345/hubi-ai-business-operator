@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { queryPostgres } from "@/lib/db/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { hashCustomerPortalToken } from "@/lib/service-ops/customer-portal-token";
 
 export type ProofSubmissionRow = {
   id: string;
@@ -294,6 +295,7 @@ export async function getProofDashboard(): Promise<ProofDashboard> {
 }
 
 export async function getPortalProofContext(publicToken: string): Promise<ProofPublicContext | null> {
+  const tokenHash = hashCustomerPortalToken(publicToken);
   const result = await queryPostgres<{
     tenant_id: string;
     brand_id: string | null;
@@ -333,12 +335,12 @@ export async function getPortalProofContext(publicToken: string): Promise<ProofP
     from public.customer_portal_access a
     join public.customers c on c.id = a.customer_id and c.tenant_id = a.tenant_id
     join public.tenants t on t.id = a.tenant_id
-    where a.public_token = $1
+    where a.token_hash = $1
       and a.enabled = true
       and (a.expires_at is null or a.expires_at > now())
     limit 1
     `,
-    [publicToken]
+    [tokenHash]
   );
 
   const row = result?.rows[0];

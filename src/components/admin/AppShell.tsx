@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { FerocityBrandMark } from "@/components/public/FerocityBrandMark";
+import { WorkspaceNavMenu } from "@/components/admin/WorkspaceNavMenu";
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
@@ -262,17 +263,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
-              <details className="nav-menu">
-                <summary
-                  aria-label={
-                    simpleCustomerExperience
-                      ? "Open more workspace areas"
-                      : "Open all tools"
-                  }
-                >
-                  {simpleCustomerExperience ? "More" : "All Tools"}
-                </summary>
-                <div className="nav-menu-panel">
+              <WorkspaceNavMenu
+                summaryLabel={simpleCustomerExperience ? "More" : "All Tools"}
+              >
                   {callsOnly ? (
                     callsToolSections.map((section) => (
                       <section key={section.label}>
@@ -440,8 +433,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                       ) : null}
                     </>
                   )}
-                </div>
-              </details>
+              </WorkspaceNavMenu>
             </nav>
           ) : null}
           {!onboardingExperience && workspaces.length > 1 ? (

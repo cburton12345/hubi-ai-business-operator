@@ -10,9 +10,9 @@ const COSTS = Object.freeze({
 const PLANS = [
   { key: "job_tracker", price: 39, voiceIncluded: 0, aiIncluded: 25, managedPhone: false },
   { key: "calls", price: 49, voiceIncluded: 0, aiIncluded: 0, managedPhone: true },
-  { key: "starter", price: 79, voiceIncluded: 25, aiIncluded: 200, managedPhone: true },
-  { key: "growth", price: 199, voiceIncluded: 100, aiIncluded: 1000, managedPhone: true },
-  { key: "operator", price: 399, voiceIncluded: 300, aiIncluded: 5000, managedPhone: true }
+  { key: "starter", price: 149, voiceIncluded: 25, aiIncluded: 200, managedPhone: true },
+  { key: "growth", price: 349, voiceIncluded: 100, aiIncluded: 1000, managedPhone: true },
+  { key: "operator", price: 699, voiceIncluded: 300, aiIncluded: 5000, managedPhone: true }
 ];
 
 const SCENARIOS = {
@@ -67,4 +67,3 @@ for (const [scenarioName, planScenarios] of Object.entries(SCENARIOS)) {
 
 console.log("\nAssumptions");
 console.table(COSTS);
-

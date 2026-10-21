@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres, withPostgresTransactionResult } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { connectorCanBeMarkedReady } from "@/lib/integrations/connector-runtime";
 import { missingEnvVars } from "@/lib/env";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/integrations/provider-certification";
 import { markAdapterBuildReleased, queueAdapterFactoryBuild, reviewAdapterBuild } from "@/lib/integrations/adapter-factory";
 import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 
 const integrationToggleSchema = z.object({
   connectionId: z.string().uuid(),
@@ -134,58 +135,72 @@ export async function disconnectCustomerIntegrationAction(formData: FormData) {
   // Revoke Ferocity's local ability to use the account first. Provider-side
   // authorization screens remain the authoritative place to revoke the remote
   // grant itself when that provider does not expose a safe revocation API.
-  await queryPostgres(
-    `update public.tenant_provider_credentials
+  const revoked = await withPostgresTransactionResult(async (client) => {
+    await client.query(
+      `update public.tenant_provider_credentials
         set status='revoked',encrypted_secret=null,encryption_iv=null,encryption_tag=null,
             secret_preview=null,metadata_json=metadata_json||$3::jsonb,updated_by_user_id=$4,updated_at=now()
       where tenant_id=$1 and provider_key=$2 and status<>'archived'`,
-    [workspaceId, connection.provider, audit, session?.userId ?? null]
-  );
-  await queryPostgres(
-    `update public.integration_connections
+      [workspaceId, connection.provider, audit, session?.userId ?? null]
+    );
+    await client.query(
+      `update public.integration_connections
         set status='not_connected',credentials_status='not_configured',scopes_json='[]'::jsonb,
             metadata_json=(metadata_json-'liveActionsEnabled')||$3::jsonb,last_checked_at=now(),updated_at=now()
       where tenant_id=$1 and id=$2`,
-    [workspaceId, parsed.data.connectionId, audit]
-  );
-  await queryPostgres(
-    `update public.provider_accounts
+      [workspaceId, parsed.data.connectionId, audit]
+    );
+    await client.query(
+      `update public.provider_accounts
         set status='paused',credentials_status='revoked',live_actions_enabled=false,
             metadata_json=metadata_json||$3::jsonb,updated_at=now()
       where tenant_id=$1 and provider_key=$2 and ownership_mode='workspace'`,
-    [workspaceId, connection.provider, audit]
-  );
-  await queryPostgres(
-    `update public.provider_connection_lanes
+      [workspaceId, connection.provider, audit]
+    );
+    await client.query(
+      `update public.provider_connection_lanes
         set connection_status='not_connected',credentials_status='revoked',live_actions_enabled=false,
             plain_language_status=display_name||' was disconnected by the workspace. Ferocity cannot use its credentials.',
             metadata_json=metadata_json||$3::jsonb,updated_at=now()
       where tenant_id=$1 and provider_key=$2 and lane_key='customer_owned'`,
-    [workspaceId, connection.provider, audit]
-  );
-  await queryPostgres(
-    `update public.provider_routing_rules
+      [workspaceId, connection.provider, audit]
+    );
+    await client.query(
+      `update public.provider_routing_rules
         set status=case when default_provider_key=$2 then 'paused' else status end,
             fallback_provider_key=case when fallback_provider_key=$2 then null else fallback_provider_key end,
             metadata_json=metadata_json||$3::jsonb,updated_at=now()
       where tenant_id=$1 and (default_provider_key=$2 or fallback_provider_key=$2)`,
-    [workspaceId, connection.provider, audit]
-  );
-  await queryPostgres(
-    `update public.outbound_action_queue
+      [workspaceId, connection.provider, audit]
+    );
+    await client.query(
+      `update public.outbound_action_queue
         set status='blocked',last_error='The selected provider was disconnected by the workspace.',updated_at=now()
       where tenant_id=$1 and provider_key=$2 and status in ('approved','queued')`,
-    [workspaceId, connection.provider]
-  );
-  if (connection.provider === "gmail_mailbox" || connection.provider === "microsoft_mailbox") {
-    await queryPostgres(
-      `update public.mailbox_connections
+      [workspaceId, connection.provider]
+    );
+    await client.query(
+      `update public.integration_authority_grants
+          set decision='revoked',revoked_at=now(),updated_at=now(),
+              explanation='The workspace disconnected this provider. Ferocity no longer has local authority to use it.'
+        where tenant_id=$1 and provider_key=$2 and decision<>'revoked'`,
+      [workspaceId, connection.provider]
+    );
+    if (connection.provider === "gmail_mailbox" || connection.provider === "microsoft_mailbox") {
+      await client.query(
+        `update public.mailbox_connections
           set status='disconnected',read_enabled=false,send_enabled=false,sync_cursor=null,
               metadata_json=metadata_json||$3::jsonb,updated_at=now()
         where tenant_id=$1 and provider_key=$2`,
-      [workspaceId, connection.provider, audit]
-    );
+        [workspaceId, connection.provider, audit]
+      );
+    }
+  });
+  if (!revoked.ok) {
+    throw new Error("Ferocity could not safely disconnect the account. No partial revocation was retained.");
   }
+
+  await syncCustomerOnboardingForTenant(workspaceId).catch(() => null);
 
   revalidatePath("/app/integrations");
   revalidatePath("/app/credentials");

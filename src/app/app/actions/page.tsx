@@ -51,6 +51,7 @@ function statusLabel(value: string) {
   const labels: Record<string, string> = {
     needs_review: "Needs review",
     approved: "Approved",
+    provider_queued: "Waiting on provider",
     queued: "Ready",
     sent_manually: "Completed manually",
     blocked: "Blocked",

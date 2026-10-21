@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     `insert into public.employee_access_requests (
        tenant_id, name, email, phone, preferred_language, metadata_json
      ) values ($1,$2,lower($3),$4,$5,$6::jsonb)
-     on conflict (tenant_id, lower(email)) where status = 'pending' do update
+     on conflict (tenant_id, (lower(email))) where status = 'pending' do update
      set name = excluded.name, phone = excluded.phone, preferred_language = excluded.preferred_language,
          metadata_json = public.employee_access_requests.metadata_json || excluded.metadata_json,
          updated_at = now()

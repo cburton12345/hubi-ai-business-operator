@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "reviewedAt": "2026-09-12",
+  "version": 2,
+  "reviewedAt": "2026-10-04",
   "states": ["certified_live", "limited", "source_ready", "blocked", "planned"],
   "callHandlingStrategies": {
     "ai_first": "certified_live",
@@ -150,12 +150,12 @@
       "evidence": "Worker recovery tests pass; production certification is not complete."
     },
     "email.mailbox_read": {
-      "state": "source_ready",
+      "state": "certified_live",
       "control": "Gmail or Microsoft mailbox connection",
       "storedState": "encrypted tenant mailbox OAuth credentials and normalized messages",
       "executor": "Mailbox sync functions",
-      "limitation": "External OAuth scopes/consent and one real connection per provider still require certification.",
-      "evidence": "Local implementation and release gate pass."
+      "limitation": "A customer must connect and authorize a supported read-only mailbox. Sending remains a separate unreleased capability, and Gmail availability remains connection-dependent.",
+      "evidence": "The deployed Netlify background function completed a production Microsoft mailbox sync of 10 messages with encrypted OAuth refresh, normalized storage, no send authority and no retained error."
     },
     "email.mailbox_send": {
       "state": "planned",
@@ -182,12 +182,12 @@
       "evidence": "No unsupported provider is allowed to execute spend."
     },
   "expenses.document_intelligence": {
-      "state": "source_ready",
+      "state": "certified_live",
       "control": "Expense document upload, batch and email intake",
       "storedState": "shared document intelligence, extraction, allocation and review records",
       "executor": "Reusable OCR/document-intelligence workflow",
-      "limitation": "Real receipt, statement, duplicate, Money allocation and tenant-isolation certification awaits deployment.",
-      "evidence": "Local receipt-intelligence readiness and release gates pass."
+      "limitation": "Low-confidence extraction, ambiguous allocation and possible duplicates require human review; Ferocity preserves the source and does not present management reports as filed tax returns.",
+      "evidence": "Production deployment 6ac33eca7152ff76e967a274 served the authenticated QA workspace with 27 preserved documents, paginated review, private originals and no horizontal overflow after local 5 MB, near-15 MB, 25-file, duplicate, interruption and authorization certification."
     }
   }
 }

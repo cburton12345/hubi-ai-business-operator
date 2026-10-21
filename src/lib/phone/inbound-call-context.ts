@@ -146,7 +146,7 @@ export async function prepareInboundCallContext(input: {
          select 'Estimate: '||title||'; status '||status||'; total $'||to_char(total_cents/100.0,'FM999999990.00'),updated_at
            from public.service_estimates where tenant_id=$1 and customer_id=$2
          union all
-         select 'Invoice: '||title||'; status '||status||'; balance $'||to_char((total_cents-amount_paid_cents)/100.0,'FM999999990.00'),updated_at
+         select 'Invoice: '||title||'; status '||status||'; balance $'||to_char(greatest(total_cents-amount_paid_cents-write_off_cents,0)/100.0,'FM999999990.00'),updated_at
            from public.service_invoices where tenant_id=$1 and customer_id=$2
        ) recent order by updated_at desc limit 6`,
       [input.tenantId, customer.id]

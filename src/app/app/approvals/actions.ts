@@ -25,6 +25,77 @@ type ApprovalRecord = {
   risk_level: string;
 };
 
+async function recordOperatingGoalOwnerDecision(
+  approval: ApprovalRecord,
+  decision: "approved" | "rejected" | "changes_requested",
+  notes?: string,
+  actorUserId?: string | null,
+) {
+  if (approval.target_type !== "office_manager_action_request") return;
+  const requestResult = await queryPostgres<{ metadata_json: Record<string, unknown> | null }>(
+    `update public.office_manager_action_requests
+       set status=$3,
+           metadata_json=metadata_json || jsonb_build_object(
+             'ownerDecision',$4::text,
+             'ownerDecisionNote',$5::text,
+             'ownerDecisionByUserId',$6::text,
+             'ownerDecidedAt',now()
+           ),
+           updated_at=now()
+     where tenant_id=$1 and id=$2
+     returning metadata_json`,
+    [
+      approval.tenant_id,
+      approval.target_id,
+      decision === "approved" ? "approved" : decision === "rejected" ? "dismissed" : "needs_review",
+      decision,
+      notes ?? "",
+      actorUserId ?? "",
+    ],
+  );
+  const metadata = requestResult?.rows[0]?.metadata_json ?? {};
+  const goalId = typeof metadata.operatingGoalId === "string" ? metadata.operatingGoalId : null;
+  const goalStepId = typeof metadata.operatingGoalStepId === "string" ? metadata.operatingGoalStepId : null;
+  const stepKey = typeof metadata.stepKey === "string" ? metadata.stepKey : null;
+  const planVersion = typeof metadata.planVersion === "number" ? metadata.planVersion : null;
+  const requestedAction = typeof metadata.requestedAction === "string" ? metadata.requestedAction : null;
+  if (!goalId || !stepKey || planVersion === null) return;
+
+  if (goalStepId) {
+    await queryPostgres(
+      `update public.operating_goal_steps
+          set next_attempt_at=now(),updated_at=now()
+        where tenant_id=$1 and goal_id=$2 and id=$3`,
+      [approval.tenant_id, goalId, goalStepId],
+    );
+  }
+
+  if (decision === "approved" && ["request_information", "prepare_communication", "verify_outcome"].includes(requestedAction ?? "")) {
+    await queryPostgres(
+      `update public.operating_goal_dependencies
+          set status='satisfied',satisfied_at=coalesce(satisfied_at,now()),
+              evidence_json=evidence_json || jsonb_build_object(
+                'ownerDecision','approved','ownerDecisionNote',$4::text,'approvalId',$5::text
+              ),updated_at=now()
+        where tenant_id=$1 and goal_id=$2 and dependency_key=$3
+          and status not in ('satisfied','waived')`,
+      [
+        approval.tenant_id,
+        goalId,
+        `plan-step:${planVersion}:${stepKey}:owner`,
+        notes ?? "",
+        approval.id,
+      ],
+    );
+  }
+  await queryPostgres(
+    `update public.operating_goals
+        set next_evaluation_at=least(next_evaluation_at,now()),updated_at=now()
+      where tenant_id=$1 and id=$2`,
+    [approval.tenant_id, goalId],
+  );
+}
+
 async function recordGrowthApprovalDecision(tenantId: string, actionId: string, decision: "approved" | "rejected" | "changes_requested", notes?: string) {
   const context = await queryPostgres<{
     brand_id: string | null; objective_id: string | null; identity_id: string | null; community_id: string | null;
@@ -80,7 +151,7 @@ export async function decideApproval(formData: FormData) {
       `
       update public.approvals
       set status = $2, notes = coalesce(nullif($4, ''), notes), reviewed_by_user_id = $5, reviewed_at = now()
-      where tenant_id = $1 and id = $3
+       where tenant_id = $1 and id = $3 and status = 'pending'
       returning id, tenant_id, brand_id, target_type, target_id, risk_level
       `,
       [workspaceId, parsed.data.decision, parsed.data.approvalId, parsed.data.notes ?? "", session?.userId ?? null]
@@ -144,6 +215,8 @@ export async function decideApproval(formData: FormData) {
       await recordGrowthApprovalDecision(approval.tenant_id, approval.target_id, parsed.data.decision, parsed.data.notes);
     }
 
+    await recordOperatingGoalOwnerDecision(approval, parsed.data.decision, parsed.data.notes, session?.userId);
+
     await queryPostgres(
       `
       insert into public.activity_logs (
@@ -174,6 +247,7 @@ export async function decideApproval(formData: FormData) {
     revalidatePath("/app/approvals");
     revalidatePath("/app/drafts");
     revalidatePath("/app/recommendations");
+    revalidatePath("/app/ferocity");
     return;
   }
 
@@ -189,6 +263,7 @@ export async function decideApproval(formData: FormData) {
     })
     .eq("tenant_id", workspaceId)
     .eq("id", approvalId)
+    .eq("status", "pending")
     .select("id, tenant_id, brand_id, target_type, target_id, risk_level")
     .single<ApprovalRecord>();
 
@@ -242,6 +317,8 @@ export async function decideApproval(formData: FormData) {
     await recordGrowthApprovalDecision(approval.tenant_id, approval.target_id, decision, parsed.data.notes);
   }
 
+  await recordOperatingGoalOwnerDecision(approval, decision, parsed.data.notes, session?.userId);
+
   await supabase.from("activity_logs").insert({
     tenant_id: approval.tenant_id,
     brand_id: approval.brand_id,
@@ -259,4 +336,5 @@ export async function decideApproval(formData: FormData) {
   revalidatePath("/app/approvals");
   revalidatePath("/app/drafts");
   revalidatePath("/app/recommendations");
+  revalidatePath("/app/ferocity");
 }

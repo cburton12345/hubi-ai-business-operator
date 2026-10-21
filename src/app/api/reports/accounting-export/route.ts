@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresRequired as queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function csvEscape(value: string | number | Date | null | undefined) {
@@ -56,7 +56,8 @@ export async function GET(request: Request) {
       from public.service_invoices i
       join public.customers c on c.tenant_id = i.tenant_id and c.id = i.customer_id
       left join public.invoice_line_items li on li.tenant_id = i.tenant_id and li.invoice_id = i.id
-      where i.tenant_id = $1 and i.status <> 'void'
+      where i.tenant_id = $1
+        and i.status in ('sent_manually','partially_paid','paid','overdue','written_off')
       order by i.created_at, i.id, li.position, li.id
       `,
       [tenantId]
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
              b.subtotal_cents, b.tax_cents, b.total_cents, b.status, b.notes
       from public.vendor_bills b
       left join public.suppliers s on s.tenant_id = b.tenant_id and s.id = b.supplier_id
-      where b.tenant_id = $1 and b.status <> 'void'
+      where b.tenant_id = $1 and b.status in ('approved','exported','paid')
       order by coalesce(b.bill_date, b.created_at::date), b.created_at
       `,
       [tenantId]

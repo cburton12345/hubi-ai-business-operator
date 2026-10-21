@@ -174,7 +174,25 @@ try {
         'user_password_credentials',
         'tenant_provider_credentials',
         'provider_webhook_events',
-        'public_request_rate_limits'
+        'public_request_rate_limits',
+        'platform_public_content',
+        'platform_public_content_versions',
+        'platform_runtime_leases',
+        'platform_capacity_snapshots',
+        'platform_capacity_alerts',
+        'platform_admin_alerts',
+        'public_site_events',
+        'voice_dispatch_reservations',
+        'support_self_service_events',
+        'ferocity_connect_releases',
+        'h4r_ferocity_bridge_workspaces',
+        'h4r_ferocity_bridge_nonces',
+        'h4r_ferocity_bridge_events',
+        'companion_product_context_snapshots',
+        'ferocity_conversation_memories',
+        'ferocity_chat_action_receipts',
+        'provider_adapter_builds',
+        'provider_adapter_build_events'
       )
     order by g.table_name, g.grantee, g.privilege_type
     `

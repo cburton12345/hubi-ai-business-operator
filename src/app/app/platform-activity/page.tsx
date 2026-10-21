@@ -9,6 +9,15 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function percent(numerator: number, denominator: number) {
+  if (denominator <= 0) return "—";
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function money(cents: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+}
+
 export default async function PlatformActivityPage() {
   const [session, legacyAdmin] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
   if (!legacyAdmin && session?.platformRole !== "super_admin") redirect("/app");
@@ -24,8 +33,32 @@ export default async function PlatformActivityPage() {
         <Metric label="Visits · 24 hours" value={activity.metrics.views24h} />
         <Metric label="Visits · 7 days" value={activity.metrics.views7d} />
         <Metric label="Visits · 30 days" value={activity.metrics.views30d} />
+        <Metric label="Checkouts started · 30 days" value={activity.metrics.checkoutStarted30d} />
+        <Metric label="Reached Stripe · 30 days" value={activity.metrics.checkoutRedirected30d} />
         <Metric label="Paid subscribers · 30 days" value={activity.metrics.paid30d} />
+        <Metric label="Verified first value · 30 days" value={activity.metrics.activated30d} />
+        <Metric label="Customers needing recovery" value={activity.metrics.atRisk} />
+        <Metric label="Abandoned checkout · 30 days" value={activity.metrics.abandonedCheckout30d} />
+        <Metric label="Provisioning stuck" value={activity.metrics.stalledProvisioning} />
+        <Metric label="Checkout failures · 30 days" value={activity.metrics.failedCheckout30d} />
+        <Metric label="Subscription cash collected · this month" value={money(activity.metrics.collectedMonthCents)} />
+        <Metric label="Subscription refunds · this month" value={money(activity.metrics.refundedMonthCents)} />
+        <Metric label="Net subscription cash · this month" value={money(activity.metrics.netCollectedMonthCents)} />
+        <Metric label="Recorded provider costs · this month" value={money(activity.metrics.providerCostMonthCents)} />
+        <Metric label="Subscription cash less provider costs" value={money(activity.metrics.netCollectedMonthCents - activity.metrics.providerCostMonthCents)} />
+        <Metric label="Subscription payments at risk" value={money(activity.metrics.paymentRiskCents)} />
+        <Metric label="Active plan value · monthly" value={money(activity.metrics.activePlanValueCents)} />
+        <Metric label="Past-due plan value · monthly" value={money(activity.metrics.atRiskPlanValueCents)} />
         <Metric label="Open support requests" value={activity.metrics.openSupport} />
+      </section>
+      <section className="panel">
+        <h2>Ferocity service funnel · 30 days</h2>
+        <ul className="list">
+          <li className="list-row"><span>Checkout reached Stripe</span><strong>{percent(activity.metrics.checkoutRedirected30d, activity.metrics.checkoutStarted30d)}</strong></li>
+          <li className="list-row"><span>Started checkout became paid</span><strong>{percent(activity.metrics.paid30d, activity.metrics.checkoutStarted30d)}</strong></li>
+          <li className="list-row"><span>Paid workspace reached verified first value</span><strong>{percent(activity.metrics.activated30d, activity.metrics.paid30d)}</strong></li>
+        </ul>
+        <p className="muted">Cash and refunds come from verified Stripe invoice and charge events. “Cash less provider costs” is not accounting profit: it excludes payroll, infrastructure not recorded as usage, taxes, and other operating costs. Plan value remains separate from collected cash.</p>
       </section>
       <div className="grid section-actions">
         <Ranked title="Top pages · 30 days" rows={activity.pages} />
@@ -37,7 +70,7 @@ export default async function PlatformActivityPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return <section className="panel span-4 metric"><span className="muted">{label}</span><strong>{value}</strong></section>;
 }
 

@@ -4,10 +4,11 @@ import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { queryPostgres } from "@/lib/db/postgres";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { refreshCalendarChoicesAction, runCalendarSyncAction, saveCalendarSettingsAction } from "./actions";
+import { onboardingOAuthStartPath } from "@/lib/onboarding/oauth-return";
 
 type Choice = { id: string; name: string; primary: boolean; writable: boolean; timeZone: string | null };
 
-export default async function CalendarConnectionsPage({ searchParams }: { searchParams: Promise<{ synced?: string; written?: string; conflicts?: string; reset?: string }> }) {
+export default async function CalendarConnectionsPage({ searchParams }: { searchParams: Promise<{ synced?: string; written?: string; conflicts?: string; reset?: string; onboarding?: string; setup?: string }> }) {
   const tenantId = await getCurrentWorkspaceId();
   const params = await searchParams;
   const result = await queryPostgres<{
@@ -32,10 +33,13 @@ export default async function CalendarConnectionsPage({ searchParams }: { search
       const selected = choices.find((choice) => choice.id === row?.external_calendar_id) ?? choices.find((choice) => choice.primary) ?? choices[0];
       return <article className="panel span-6 form-stack" key={providerKey}>
         <div className="list-row flush-row"><div><h2><CalendarDays size={18} /> {label}</h2><p className="muted">{row?.status === "connected" ? "Account connected" : "Not connected yet"}</p></div><span className="pill">{row?.cursor_status ?? "not synced"}</span></div>
-        {row?.status !== "connected" ? <Link className="button" href={`/api/integrations/${providerKey}/oauth/start`}>Connect {label}</Link> : <>
+        {row?.status !== "connected" ? <Link className="button" href={params.onboarding === "1"
+          ? onboardingOAuthStartPath(`/api/integrations/${providerKey}/oauth/start`, { provider: providerKey, destination: "calendar" })
+          : `/api/integrations/${providerKey}/oauth/start`}>Connect {label}</Link> : <>
           <form action={refreshCalendarChoicesAction}><input name="providerKey" type="hidden" value={providerKey} /><button className="mini-button" type="submit"><RefreshCw size={14} /> Find my calendars</button></form>
           {choices.length ? <form action={saveCalendarSettingsAction} className="form-stack">
             <input name="providerKey" type="hidden" value={providerKey} />
+            <input name="onboardingMode" type="hidden" value={params.onboarding === "1" ? "true" : "false"} />
             <label>Calendar<select name="calendarId" defaultValue={selected?.id}>{choices.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}{choice.primary ? " (Primary)" : ""}</option>)}</select></label>
             <label>Sync behavior<select name="syncDirection" defaultValue={row.sync_direction ?? "inbound"}><option value="inbound">Read availability only (Recommended)</option><option value="two_way">Keep both calendars aligned</option><option value="outbound">Send Ferocity appointments only</option></select></label>
             <label>When both sides changed<select name="conflictPolicy" defaultValue={row.conflict_policy ?? "review"}><option value="review">Ask me to review (Recommended)</option><option value="ferocity_wins">Use Ferocity</option><option value="provider_wins">Use connected calendar</option></select></label>

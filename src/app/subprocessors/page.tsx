@@ -22,6 +22,7 @@ const optionalProviders = [
   ["Google", "Customer-authorized calendar, business profile, advertising, analytics, cloud, and media services"],
   ["Microsoft", "Customer-authorized calendar, email, advertising, and business services"],
   ["Meta, TikTok, Reddit, Snapchat, and other advertising platforms", "Customer-authorized campaign, audience, creative, and performance operations"],
+  ["Customer-selected external AI assistants", "Only the scoped workspace data returned through tools an owner or administrator explicitly activates"],
   ["Customer-selected CRM, field-service, accounting, website, communications, media, and automation providers", "Only the data and permissions needed for the integration the customer activates"]
 ] as const;
 
@@ -42,7 +43,7 @@ function ProviderTable({ rows }: { rows: ReadonlyArray<readonly [string, string]
 
 export default function SubprocessorsPage() {
   return (
-    <LegalPageShell eyebrow="Data protection" title="Subprocessor List" updated="August 17, 2026">
+    <LegalPageShell eyebrow="Data protection" title="Subprocessor List" updated="October 14, 2026">
       <p>
         Ferocity uses a small core provider set to operate the platform and additional providers only when a workspace enables the related feature or connection. A provider receives only the categories reasonably needed for its function and processes data under its own infrastructure, security, and contractual commitments.
       </p>
@@ -56,6 +57,9 @@ export default function SubprocessorsPage() {
       <h2>Bring-your-own providers</h2>
       <p>
         When an authorized workspace user connects a provider account, Ferocity acts on that customer&apos;s documented choice. The provider may process customer data under both Ferocity&apos;s integration instructions and the customer&apos;s direct agreement with that provider. Disconnecting the provider stops new routine exchanges after in-flight callbacks and legally required records are handled.
+      </p>
+      <p>
+        External AI assistants are not required to use Ferocity. When enabled, Ferocity exposes only the selected tool scopes through a tenant-bound credential, filters secrets and proprietary implementation details, and keeps consequential actions subject to Ferocity&apos;s permissions and approvals.
       </p>
 
       <h2>Updates and objections</h2>

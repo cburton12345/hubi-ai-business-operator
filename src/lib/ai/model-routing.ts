@@ -16,6 +16,8 @@ const advancedRunTypes = new Set([
   "adapter_factory_manifest",
   "expense_allocation_reasoning_advanced",
   "growth_funnel_strategy",
+  "market_trend_research",
+  "lease_document_analysis",
   "public_website_chat_reply",
   "video_creative_direction"
 ]);
@@ -32,6 +34,12 @@ export function managedModelForRunType(input: {
   requestType: "json" | "vision_json";
 }) {
   const fallback = process.env.AI_MODEL || "gpt-4.1-mini";
+  if (input.runType === "independent_review_expense_statement_classification") {
+    return process.env.AI_MODEL_STATEMENT_REVIEWER || process.env.AI_MODEL_BALANCED || fallback;
+  }
+  if (input.runType.startsWith("independent_review_")) {
+    return process.env.AI_MODEL_REVIEWER || process.env.AI_MODEL_ADVANCED || fallback;
+  }
   if (input.requestType === "vision_json") {
     return process.env.AI_VISION_MODEL || process.env.AI_MODEL_ECONOMY || fallback;
   }
@@ -40,4 +48,16 @@ export function managedModelForRunType(input: {
   if (tier === "economy") return process.env.AI_MODEL_ECONOMY || fallback;
   if (tier === "advanced") return process.env.AI_MODEL_ADVANCED || fallback;
   return process.env.AI_MODEL_BALANCED || fallback;
+}
+
+export function independentReviewerConfigured(input: {
+  primaryRunType: string;
+  requestType: "json" | "vision_json";
+  reviewerRunType?: string;
+}) {
+  const reviewer = input.reviewerRunType
+    ? managedModelForRunType({ runType: input.reviewerRunType, requestType: input.requestType }).trim()
+    : process.env.AI_MODEL_REVIEWER?.trim();
+  if (!reviewer) return false;
+  return reviewer !== managedModelForRunType({ runType: input.primaryRunType, requestType: input.requestType });
 }

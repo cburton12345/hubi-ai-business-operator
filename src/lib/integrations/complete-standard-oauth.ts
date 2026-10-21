@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import {
+  assessOAuthScopes,
   exchangeStandardOAuthAuthorizationCode,
   standardOAuthProviderDetails,
   verifyStandardOAuthIdentity,
@@ -13,11 +14,13 @@ import {
 } from "@/lib/integrations/standard-oauth";
 import { getOAuthProviderConfig } from "@/lib/integrations/oauth-providers";
 import { discoverAdvertisingAccounts } from "@/lib/integrations/advertising-account-discovery";
+import { recordInitialOAuthAuthority } from "@/lib/integrations/authority-grants";
+import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import { discoverConnectedProviderContext } from "@/lib/onboarding/post-connection-discovery";
+import { oauthAppRedirect } from "@/lib/onboarding/oauth-return";
 
-function appRedirect(request: Request, params: Record<string, string>) {
-  const url = new URL("/app/integrations", request.url);
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return NextResponse.redirect(url);
+function appRedirect(request: Request, params: Record<string, string>, returnTo: string | null | undefined = "/app/integrations") {
+  return oauthAppRedirect(request, params, returnTo);
 }
 
 function providerClient(provider: StandardOAuthProvider) {
@@ -50,6 +53,7 @@ async function claimOAuthJob(workspaceId: string, state: string, allowedProvider
     id: string;
     provider: StandardOAuthProvider;
     pkce_verifier: { encryptedSecret?: string; encryptionIv?: string; encryptionTag?: string } | null;
+    return_to: string | null;
   }>(
     `
     update public.integration_jobs
@@ -67,7 +71,8 @@ async function claimOAuthJob(workspaceId: string, state: string, allowedProvider
       limit 1
       for update skip locked
     )
-    returning id, payload_json->>'provider' as provider, payload_json->'pkceVerifier' as pkce_verifier
+    returning id, payload_json->>'provider' as provider, payload_json->'pkceVerifier' as pkce_verifier,
+      payload_json->>'returnTo' as return_to
     `,
     [workspaceId, state, allowedProviders]
   );
@@ -201,6 +206,7 @@ async function completeConnection(input: {
   provider: StandardOAuthProvider;
   code: string;
   codeVerifier?: string;
+  returnTo?: string | null;
 }) {
   const client = providerClient(input.provider);
   if (!client.clientId || !client.clientSecret || !client.redirectUri) {
@@ -215,9 +221,9 @@ async function completeConnection(input: {
   const identity = await verifyStandardOAuthIdentity({ provider: input.provider, accessToken: tokens.accessToken });
   const session = await getCurrentAppSession();
   const expiresAt = new Date(Date.now() + Math.max(300, tokens.expiresIn) * 1000).toISOString();
-  const effectiveScopes = tokens.scopes.length > 0
-    ? tokens.scopes
-    : getOAuthProviderConfig(input.provider)?.scopes ?? [];
+  const requestedScopes = getOAuthProviderConfig(input.provider)?.scopes ?? [];
+  const scopeAssessment = assessOAuthScopes(requestedScopes, tokens.scopes);
+  const effectiveScopes = scopeAssessment.effectiveScopes;
   const discoveryProviders = ["google_ads", "reddit", "microsoft_ads", "linkedin_ads", "pinterest_ads", "snapchat_ads", "amazon_ads"] as const;
   const discovery = discoveryProviders.includes(input.provider as (typeof discoveryProviders)[number])
     ? await discoverAdvertisingAccounts({
@@ -233,6 +239,10 @@ async function completeConnection(input: {
     connectedAt: new Date().toISOString(),
     accessTokenExpiresAt: expiresAt,
     scopes: effectiveScopes,
+    requestedScopes,
+    grantedScopes: scopeAssessment.grantedScopes,
+    missingScopes: scopeAssessment.missingScopes,
+    scopeVerificationStatus: scopeAssessment.status,
     liveActionsEnabled: false,
     ...(discovery ? {
       availableAccounts: discovery.accounts,
@@ -265,7 +275,13 @@ async function completeConnection(input: {
     });
   }
   await recordConnectedProvider({ workspaceId: input.workspaceId, provider: input.provider, scopes: effectiveScopes, metadata });
-  if (input.provider === "gmail_mailbox" || input.provider === "microsoft_mailbox") {
+  await recordInitialOAuthAuthority({
+    tenantId: input.workspaceId,
+    provider: input.provider,
+    scopes: effectiveScopes,
+    actorKey: session?.userId ?? null,
+  });
+  if (scopeAssessment.status !== "insufficient" && (input.provider === "gmail_mailbox" || input.provider === "microsoft_mailbox")) {
     const mailboxSaved = await queryPostgres(
       `insert into public.mailbox_connections (
          tenant_id, provider_key, account_external_id, account_email, display_name, status,
@@ -291,7 +307,24 @@ async function completeConnection(input: {
     reportingVerified: identity.reportingVerified,
     liveActionsEnabled: false
   });
-  return appRedirect(input.request, { provider: input.provider, setup: "connected" });
+  const onboardingDiscovery = scopeAssessment.status === "insufficient"
+    ? {
+        status: "failed" as const,
+        summary: `Reconnect ${standardOAuthProviderDetails(input.provider).label} and approve the required read access.`,
+        recordsDiscovered: 0,
+      }
+    : await discoverConnectedProviderContext({
+        tenantId: input.workspaceId,
+        provider: input.provider,
+      });
+  await syncCustomerOnboardingForTenant(input.workspaceId).catch(() => null);
+  return appRedirect(input.request, {
+    provider: input.provider,
+    setup: scopeAssessment.status === "insufficient" ? "scope_reconnect_required" : "connected",
+    onboarding: "resumed",
+    discovery: onboardingDiscovery.status,
+    discovered: String(onboardingDiscovery.recordsDiscovered),
+  }, input.returnTo ?? undefined);
 }
 
 export async function handleStandardOAuthCallback(request: Request, allowedProviders: StandardOAuthProvider[]) {
@@ -310,16 +343,16 @@ export async function handleStandardOAuthCallback(request: Request, allowedProvi
   const providerError = url.searchParams.get("error") || url.searchParams.get("error_description");
   if (providerError) {
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "authorization_denied" }, providerError);
-    return appRedirect(request, { provider: job.provider, setup: "denied" });
+    return appRedirect(request, { provider: job.provider, setup: "denied" }, job.return_to);
   }
   const code = url.searchParams.get("code");
   if (!code) {
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "incomplete_callback" }, "OAuth callback did not include an authorization code.");
-    return appRedirect(request, { provider: job.provider, setup: "failed" });
+    return appRedirect(request, { provider: job.provider, setup: "failed" }, job.return_to);
   }
   if (!hasCredentialEncryptionKey()) {
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "credential_encryption_unavailable" }, "Encrypted credential storage is not configured.");
-    return appRedirect(request, { provider: job.provider, setup: "encryption_required" });
+    return appRedirect(request, { provider: job.provider, setup: "encryption_required" }, job.return_to);
   }
   try {
     const sealed = job.pkce_verifier;
@@ -327,10 +360,10 @@ export async function handleStandardOAuthCallback(request: Request, allowedProvi
       ? decryptSecret({ encryptedSecret: sealed.encryptedSecret, encryptionIv: sealed.encryptionIv, encryptionTag: sealed.encryptionTag })
       : undefined;
     if (job.provider === "jobber" && !codeVerifier) throw new Error("The secure Jobber authorization verifier expired. Please reconnect.");
-    return await completeConnection({ request, workspaceId, jobId: job.id, provider: job.provider, code, codeVerifier: codeVerifier ?? undefined });
+    return await completeConnection({ request, workspaceId, jobId: job.id, provider: job.provider, code, codeVerifier: codeVerifier ?? undefined, returnTo: job.return_to });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Provider connection failed.";
     await finishOAuthJob(job.id, "failed", { safeMode: true, reason: "token_exchange_failed" }, message);
-    return appRedirect(request, { provider: job.provider, setup: "failed" });
+    return appRedirect(request, { provider: job.provider, setup: "failed" }, job.return_to);
   }
 }

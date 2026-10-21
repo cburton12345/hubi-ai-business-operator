@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { recordInvoiceRefund } from "@/lib/billing/invoice-payment-adjustments";
 import { queryPostgres } from "@/lib/db/postgres";
 import { EARN_AGREEMENT_VERSION, rateForClassification, type EarnClassification } from "@/lib/billing/earn";
 import { env } from "@/lib/env";
@@ -272,38 +273,17 @@ export async function recordOfflineRefundAction(formData: FormData) {
   });
   if (!parsed.success) return;
   const tenantId = await getCurrentWorkspaceId();
-  const result = await queryPostgres<{ id: string; refund_delta_cents: number }>(
-    `with prior as materialized (
-       select p.*,i.amount_paid_cents from public.service_invoice_payments p
-       join public.service_invoices i on i.id=p.invoice_id and i.tenant_id=p.tenant_id
-       where p.tenant_id=$1 and p.id=$2 and p.status in ('succeeded','manual','partially_refunded','refunded') for update of p
-     ), marker as (
-       insert into public.service_ledger_entries (
-         tenant_id,customer_id,invoice_id,payment_id,entry_type,direction,amount_cents,currency,description,provider,provider_event_id,metadata_json
-       ) select tenant_id,customer_id,invoice_id,id,'refund','debit',least($3::integer,greatest(amount_cents-refunded_amount_cents,0)),currency,$5,provider,$4,
-         jsonb_build_object('source','manual_refund_record','recordedBy',$6::text)
-       from prior where $3>0
-       on conflict (tenant_id,provider_event_id,entry_type) where provider_event_id is not null do nothing
-       returning payment_id,amount_cents
-     ), updated as (
-       update public.service_invoice_payments p set refunded_amount_cents=p.refunded_amount_cents+m.amount_cents,
-         status=case when p.refunded_amount_cents+m.amount_cents>=p.amount_cents then 'refunded' else 'partially_refunded' end,
-         metadata_json=p.metadata_json || jsonb_build_object('lastManualRefundKey',$4,'lastManualRefundReason',$5)
-       from marker m where p.id=m.payment_id returning p.id,m.amount_cents refund_delta_cents,p.invoice_id
-     ), invoice_update as (
-       update public.service_invoices i set amount_paid_cents=greatest(i.amount_paid_cents-u.refund_delta_cents,0),
-         status=case when greatest(i.amount_paid_cents-u.refund_delta_cents,0)=0 then 'sent_manually' else 'partially_paid' end,updated_at=now()
-       from updated u where i.id=u.invoice_id
-     ) select id,refund_delta_cents from updated`,
-    [tenantId, parsed.data.paymentId, parsed.data.amountCents, `manual-refund:${parsed.data.idempotencyKey}`,
-      parsed.data.reason, actorId(actor.userId)]
-  );
-  const row = result?.rows[0];
-  if (row?.refund_delta_cents) {
-    await queryPostgres(`select public.adjust_earn_for_refund($1,$2,$3,'refund')`, [
-      row.id, row.refund_delta_cents, `manual-refund:${parsed.data.idempotencyKey}`
-    ]);
-  }
+  await recordInvoiceRefund({
+    tenantId,
+    paymentId: parsed.data.paymentId,
+    amountCents: parsed.data.amountCents,
+    amountMode: "incremental",
+    idempotencyKey: `manual-refund:${parsed.data.idempotencyKey}`,
+    reason: parsed.data.reason,
+    source: "manual_refund_record",
+    requestedByUserId: actorId(actor.userId),
+    metadata: { recordedFrom: "earn_dashboard" }
+  });
   refresh();
 }
 
