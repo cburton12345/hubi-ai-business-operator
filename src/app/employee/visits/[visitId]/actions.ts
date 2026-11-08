@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { requireEmployeeVisitAccess } from "@/lib/employee/employee-access";
@@ -31,6 +32,10 @@ const statusSchema = z.object({
   visitId: z.string().uuid(),
   status: z.enum(["dispatched", "en_route", "arrived", "in_progress", "paused", "completed", "no_show", "canceled"])
 });
+
+function visitNotice(visitId: string, notice: string) {
+  redirect(`/employee/visits/${visitId}?notice=${encodeURIComponent(notice)}`);
+}
 
 function legacyJobStatus(status: z.infer<typeof statusSchema>["status"]) {
   if (["dispatched", "en_route"].includes(status)) return "scheduled";
@@ -191,6 +196,7 @@ export async function submitFieldFormAction(formData: FormData) {
   revalidatePath(`/employee/visits/${parsed.data.visitId}`);
   revalidatePath("/employee");
   revalidatePath("/app/schedule");
+  visitNotice(parsed.data.visitId, "form_saved");
 }
 
 export async function saveVisitSignatureAction(formData: FormData) {
@@ -233,6 +239,7 @@ export async function saveVisitSignatureAction(formData: FormData) {
   await evaluateVisitCompletion({ tenantId, visitId: parsed.data.visitId });
   revalidatePath(`/employee/visits/${parsed.data.visitId}`);
   revalidatePath("/app/schedule");
+  visitNotice(parsed.data.visitId, "acknowledgment_saved");
 }
 
 export async function saveVisitFieldNoteAction(formData: FormData) {
@@ -272,6 +279,7 @@ export async function saveVisitFieldNoteAction(formData: FormData) {
   );
   revalidatePath(`/employee/visits/${parsed.data.visitId}`);
   revalidatePath("/app/schedule");
+  visitNotice(parsed.data.visitId, "note_saved");
 }
 
 export async function updateEmployeeVisitStatusAction(formData: FormData) {
@@ -285,10 +293,10 @@ export async function updateEmployeeVisitStatusAction(formData: FormData) {
   const tenantId = access.tenantId;
   const conflicts = await evaluateVisitSchedule({ tenantId, visitId: parsed.data.visitId });
   const dispatching = ["dispatched", "en_route", "arrived", "in_progress"].includes(parsed.data.status);
-  if (dispatching && conflicts.some((conflict) => conflict.severity === "blocking")) return;
+  if (dispatching && conflicts.some((conflict) => conflict.severity === "blocking")) visitNotice(parsed.data.visitId, "schedule_blocked");
   if (parsed.data.status === "completed") {
     const completion = await evaluateVisitCompletion({ tenantId, visitId: parsed.data.visitId });
-    if (!completion.ready) return;
+    if (!completion.ready) visitNotice(parsed.data.visitId, "evidence_required");
   }
 
   const result = await queryPostgres<{
@@ -380,4 +388,5 @@ export async function updateEmployeeVisitStatusAction(formData: FormData) {
   revalidatePath("/app/job-tracker");
   revalidatePath("/app/service");
   if (row.service_job_id) revalidatePath(`/app/service/jobs/${row.service_job_id}`);
+  visitNotice(parsed.data.visitId, "status_saved");
 }

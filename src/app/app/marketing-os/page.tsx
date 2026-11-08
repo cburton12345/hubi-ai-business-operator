@@ -7,11 +7,16 @@ import {
   type MarketingOsBrandOption,
   type MarketingOsRow
 } from "@/lib/marketing-os/get-marketing-os-dashboard";
+import { env } from "@/lib/env";
+import { getManagedImageConfiguration } from "@/lib/providers/image-adapters";
 import {
   createAdAutopilotPackageAction,
   createAdLaunchKitAction,
   createContentStudioCampaignAction,
   createGraphicJobAction,
+  approveGraphicJobAction,
+  submitGraphicJobAction,
+  cancelGraphicJobAction,
   createMarketingDepartmentRecommendationsAction,
   createOneClickCampaignAction,
   processWebsiteImportAction,
@@ -24,6 +29,8 @@ import {
 
 export default async function MarketingOsPage() {
   const dashboard = await getMarketingOsDashboard();
+  const imageConfiguration = getManagedImageConfiguration();
+  const imageBillingCertified = env.IMAGE_BILLING_CONTRACT_CERTIFIED?.toLowerCase() === "true";
 
   return (
     <QueuePageShell
@@ -330,6 +337,12 @@ export default async function MarketingOsPage() {
               <input name="serviceLabel" placeholder="Service, optional" />
               <input name="serviceArea" placeholder="Service area, optional" />
             </div>
+            <textarea name="prompt" placeholder="Describe a truthful image advertisement. Exact logos, prices, reviews, and contact details are added only after generation." minLength={12} maxLength={6000} required />
+            <select name="size" defaultValue="1024x1024">
+              <option value="1024x1024">Square 1024x1024</option>
+              <option value="1536x1024">Landscape 1536x1024</option>
+              <option value="1024x1536">Portrait 1024x1536</option>
+            </select>
             <button className="button" type="submit">
               <ImagePlus size={16} /> Prepare graphic job
             </button>
@@ -418,7 +431,7 @@ export default async function MarketingOsPage() {
         <ListPanel title="Campaigns" empty="No content studio campaigns yet." rows={dashboard.campaigns} />
         <ListPanel title="Review-Ready Outputs" empty="No campaign outputs yet." rows={dashboard.outputs} />
         <ListPanel title="Media Library" empty="No media library records yet." rows={dashboard.mediaAssets} />
-        <ListPanel title="Graphic Jobs" empty="No graphic jobs yet." rows={dashboard.graphicJobs} />
+        <ListPanel title="Graphic Jobs" empty="No graphic jobs yet." rows={dashboard.graphicJobs} graphicControls imageModel={imageConfiguration?.model} imageQuoteCents={imageConfiguration?.customerPriceCentsPerImage} imageBillingCertified={imageBillingCertified} />
         <ListPanel title="Video Jobs" empty="No video jobs yet." rows={dashboard.videoJobs} />
       </div>
     </QueuePageShell>
@@ -491,7 +504,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ListPanel({ title, empty, rows, processWebsiteImports = false }: { title: string; empty: string; rows: MarketingOsRow[]; processWebsiteImports?: boolean }) {
+function ListPanel({ title, empty, rows, processWebsiteImports = false, graphicControls = false, imageModel, imageQuoteCents, imageBillingCertified = false }: { title: string; empty: string; rows: MarketingOsRow[]; processWebsiteImports?: boolean; graphicControls?: boolean; imageModel?: string; imageQuoteCents?: number; imageBillingCertified?: boolean }) {
   return (
     <section className="panel span-6">
       <h2>{title}</h2>
@@ -503,6 +516,34 @@ function ListPanel({ title, empty, rows, processWebsiteImports = false }: { titl
               {item.detail ? <p>{item.detail}</p> : null}
               <p className="muted">{item.meta}</p>
             </div>
+            {graphicControls && item.title === "image ad" ? (
+              <div className="button-row">
+                {item.status === "needs_review" || item.status === "failed" ? (
+                  <form action={approveGraphicJobAction}>
+                    <input type="hidden" name="graphicJobId" value={item.id} />
+                    <p className="muted">Approve exactly this prompt, {imageModel ?? "unconfigured model"}, and {imageQuoteCents === undefined ? "unconfigured quote" : `$${(imageQuoteCents / 100).toFixed(2)} proposed charge`}.</p>
+                    <button className="mini-button" type="submit" disabled={!imageModel || imageQuoteCents === undefined}>Approve exact input</button>
+                  </form>
+                ) : null}
+                {item.status === "approved" ? (
+                  <form action={submitGraphicJobAction}>
+                    <input type="hidden" name="graphicJobId" value={item.id} />
+                    <label className="checkbox-row">
+                      <input type="checkbox" name="costApproval" value="true" required />
+                      <span>Approve the configured per-image charge.</span>
+                    </label>
+                    {!imageBillingCertified ? <p className="muted">Submission is blocked until provider-cost reconciliation and customer billing are certified.</p> : null}
+                    <button className="mini-button" type="submit" disabled={!imageBillingCertified}>Submit approved image</button>
+                  </form>
+                ) : null}
+                {!["generated", "cancelled", "archived"].includes(item.status) ? (
+                  <form action={cancelGraphicJobAction}>
+                    <input type="hidden" name="graphicJobId" value={item.id} />
+                    <button className="mini-button" type="submit">Cancel</button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
             <div className="button-row">
               <span className="pill">{item.status}</span>
               {item.href ? <Link className="mini-button" href={item.href}>Open</Link> : null}

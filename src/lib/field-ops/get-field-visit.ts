@@ -172,6 +172,7 @@ export async function getFieldVisit(visitId: string) {
   return {
     tenantId,
     workerName: access.workerName,
+    language: access.preferredLanguage,
     visit: {
       id: visit.id,
       title: visit.title,

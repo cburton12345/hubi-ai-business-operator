@@ -86,6 +86,7 @@ export type VoiceConversation = {
   conversationId: string;
   status: string;
   providerCallId?: string;
+  usagePricingSnapshot?: Record<string, unknown>;
 };
 
 export interface VoiceAgent {

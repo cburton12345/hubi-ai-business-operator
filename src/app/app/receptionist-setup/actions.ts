@@ -594,7 +594,14 @@ export async function placeVoiceTestCallAction(formData: FormData) {
       $8, $4, 'outbound', $3, $5, 'ringing', null, 'unknown',
       'unknown', 'Authorized voice-provider test call started.', 'none', 0, $6, $7::jsonb
     )
-    on conflict (provider_key, provider_call_id) do nothing
+    on conflict (provider_key, provider_call_id) do update
+    set brand_id=coalesce(public.receptionist_calls.brand_id,excluded.brand_id),
+        telephony_number_id=coalesce(public.receptionist_calls.telephony_number_id,excluded.telephony_number_id),
+        caller_number=coalesce(public.receptionist_calls.caller_number,excluded.caller_number),
+        called_number=coalesce(public.receptionist_calls.called_number,excluded.called_number),
+        summary=coalesce(public.receptionist_calls.summary,excluded.summary),
+        metadata_json=public.receptionist_calls.metadata_json || excluded.metadata_json,
+        updated_at=now()
     `,
     [
       tenantId,
@@ -603,7 +610,10 @@ export async function placeVoiceTestCallAction(formData: FormData) {
       providerCallId,
       parsed.data.toNumber,
       idempotencyKey,
-      JSON.stringify({ source: "receptionist_setup_test", consentConfirmed: true }),
+      JSON.stringify({
+        source: "receptionist_setup_test",
+        consentConfirmed: true
+      }),
       parsed.data.providerKey
     ]
   );

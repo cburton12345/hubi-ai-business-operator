@@ -410,7 +410,13 @@ export async function callContactFromConversation(input: {
        tenant_id,brand_id,customer_id,lead_id,provider_key,provider_call_id,direction,
        caller_number,called_number,status,summary,idempotency_key,metadata_json
      ) values ($1,$2,$3,$4,$5,$6,'outbound',$7,$8,'ringing',$9,$10,$11::jsonb)
-     on conflict (provider_key,provider_call_id) do nothing`,
+     on conflict (provider_key,provider_call_id) do update
+     set brand_id=coalesce(public.receptionist_calls.brand_id,excluded.brand_id),
+         customer_id=coalesce(public.receptionist_calls.customer_id,excluded.customer_id),
+         lead_id=coalesce(public.receptionist_calls.lead_id,excluded.lead_id),
+         summary=coalesce(public.receptionist_calls.summary,excluded.summary),
+         metadata_json=public.receptionist_calls.metadata_json || excluded.metadata_json,
+         updated_at=now()`,
     [input.tenantId, input.brandId ?? null,
       input.contactType === "customer" ? input.contactId : null,
       input.contactType === "lead" ? input.contactId : null,

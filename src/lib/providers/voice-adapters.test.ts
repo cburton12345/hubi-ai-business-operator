@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 
-const { resolveRetellConfigurationMock } = vi.hoisted(() => ({
-  resolveRetellConfigurationMock: vi.fn()
+const { resolveRetellConfigurationMock, reserveOutboundCapacityMock } = vi.hoisted(() => ({
+  resolveRetellConfigurationMock: vi.fn(),
+  reserveOutboundCapacityMock: vi.fn()
 }));
 
 const readyRetellConfiguration = {
@@ -31,6 +32,12 @@ vi.mock("./retell-config", () => ({
   resolveRetellConfiguration: resolveRetellConfigurationMock
 }));
 
+vi.mock("@/lib/phone/outbound-capacity", () => ({
+  reserveOutboundCapacity: reserveOutboundCapacityMock,
+  activateOutboundCapacityReservation: vi.fn().mockResolvedValue(true),
+  abandonOutboundCapacityReservation: vi.fn().mockResolvedValue(undefined)
+}));
+
 import {
   findVoiceAgentProviderForWebhook,
   listVoiceAgentProviders,
@@ -43,9 +50,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resolveRetellConfigurationMock.mockReset();
   resolveRetellConfigurationMock.mockResolvedValue(readyRetellConfiguration);
+  reserveOutboundCapacityMock.mockReset();
+  reserveOutboundCapacityMock.mockResolvedValue({ allowed: true, reservationId: null });
 });
 
 resolveRetellConfigurationMock.mockResolvedValue(readyRetellConfiguration);
+reserveOutboundCapacityMock.mockResolvedValue({ allowed: true, reservationId: null });
 
 describe("Vapi voice adapter", () => {
   it("registers live and planned adapters without treating the planned adapter as webhook-ready", () => {
@@ -100,6 +110,7 @@ describe("Vapi voice adapter", () => {
     const result = await new VapiVoiceAdapter().startOutboundCall(
       {
         tenantId: "11111111-1111-4111-8111-111111111111",
+        voiceReservationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         correlationId: "context-test",
         idempotencyKey: "context-test",
         liveActionsEnabled: true
@@ -118,6 +129,7 @@ describe("Vapi voice adapter", () => {
       business_name: "North Ridge Roofing",
       call_purpose: "estimate follow-up"
     });
+    expect(body.metadata.ferocityVoiceReservationId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   });
 
   it("authenticates and normalizes a Vapi end-of-call webhook", async () => {
@@ -144,7 +156,8 @@ describe("Vapi voice adapter", () => {
             phoneNumber: { number: "+15550002222" },
             metadata: {
               ferocityTenantId: "11111111-1111-4111-8111-111111111111",
-              ferocityBrandId: "22222222-2222-4222-8222-222222222222"
+              ferocityBrandId: "22222222-2222-4222-8222-222222222222",
+              ferocityVoiceReservationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             }
           }
         }
@@ -158,6 +171,7 @@ describe("Vapi voice adapter", () => {
       expect(result.data.durationSeconds).toBe(60);
       expect(result.data.transcriptText).toBe("I need a roof estimate.");
       expect(result.data.metadata?.tenantId).toBe("11111111-1111-4111-8111-111111111111");
+      expect(result.data.metadata?.voiceReservationId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     }
   });
 
@@ -229,6 +243,7 @@ describe("Retell voice adapter", () => {
     const result = await adapter.startOutboundCall(
       {
         tenantId: "11111111-1111-4111-8111-111111111111",
+        voiceReservationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         correlationId: "owner-briefing-test",
         idempotencyKey: "owner-briefing-test",
         liveActionsEnabled: true,
@@ -253,6 +268,7 @@ describe("Retell voice adapter", () => {
       briefing_type: "urgent decision",
       briefing_context: "{\"items\":[]}"
     });
+    expect(body.metadata.ferocityVoiceReservationId).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
   });
 
   it("verifies Retell's timestamped raw-body HMAC and rejects stale signatures", () => {
@@ -284,7 +300,10 @@ describe("Retell voice adapter", () => {
         start_timestamp: 1000,
         end_timestamp: 61000,
         transcript: "I need an estimate.",
-        metadata: { ferocityTenantId: "11111111-1111-4111-8111-111111111111" },
+        metadata: {
+          ferocityTenantId: "11111111-1111-4111-8111-111111111111",
+          ferocityVoiceReservationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
         call_analysis: {
           call_summary: "Caller requested an estimate.",
           user_sentiment: "Positive",
@@ -306,6 +325,7 @@ describe("Retell voice adapter", () => {
       expect(result.data.durationSeconds).toBe(60);
       expect(result.data.metadata?.summary).toBe("Caller requested an estimate.");
       expect(result.data.metadata?.providerCostCents).toBe(47);
+      expect(result.data.metadata?.voiceReservationId).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     }
   });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatWorkerDateTime, workerPlural, type WorkerLocale } from "@/lib/employee/worker-locale";
 
 const databaseName = "ferocity-field";
 const databaseVersion = 1;
@@ -15,6 +16,15 @@ type OfflineMutation = {
   status: "queued" | "conflict" | "failed";
   reason?: string;
 };
+
+const offlineCopy = {
+  en: {
+    initial: "Offline field data has not been saved on this device yet.", syncUnavailable: "Offline changes are still on this device. Ferocity could not reach the sync service.", offline: "You are offline. Saved work remains available on this device.", syncing: "Syncing assigned work.", refreshFailed: "Ferocity could not refresh assigned work. Existing offline data was kept.", available: "Assigned work is available offline on this device.", removed: "Offline work data was removed from this device.", fieldSync: "Field Sync", connected: "Connected", offlineMode: "Offline mode", lastSaved: "Last saved", noSnapshot: "No offline snapshot yet.", waiting: "waiting", save: "Save today offline", open: "Open offline view", remove: "Remove device data", trust: "Only use offline storage on a trusted, secured device. Removing it does not delete server records."
+  },
+  es: {
+    initial: "Los datos de campo sin conexión todavía no se han guardado en este dispositivo.", syncUnavailable: "Los cambios siguen en este dispositivo. Ferocity no pudo comunicarse con el servicio de sincronización.", offline: "No tiene conexión. El trabajo guardado permanece disponible en este dispositivo.", syncing: "Sincronizando el trabajo asignado.", refreshFailed: "Ferocity no pudo actualizar el trabajo asignado. Se conservaron los datos existentes.", available: "El trabajo asignado está disponible sin conexión en este dispositivo.", removed: "Los datos de trabajo sin conexión se eliminaron de este dispositivo.", fieldSync: "Sincronización de campo", connected: "Conectado", offlineMode: "Modo sin conexión", lastSaved: "Guardado por última vez", noSnapshot: "Todavía no hay una copia sin conexión.", waiting: "en espera", save: "Guardar el trabajo de hoy", open: "Abrir vista sin conexión", remove: "Eliminar datos del dispositivo", trust: "Use el almacenamiento sin conexión solo en un dispositivo seguro y de confianza. Eliminarlo no borra los registros del servidor."
+  }
+} as const;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -73,13 +83,16 @@ async function updateMutation(mutation: OfflineMutation) {
   database.close();
 }
 
-export function OfflineFieldBridge() {
+export function OfflineFieldBridge({ language: initialLanguage }: { language?: WorkerLocale } = {}) {
   // Device-only state is loaded after hydration so the server and first
   // browser render always agree.
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [message, setMessage] = useState("Offline field data has not been saved on this device yet.");
+  const [language, setLanguage] = useState<WorkerLocale>(initialLanguage ?? "en");
+  const copy = offlineCopy[language];
+  const [messageKey, setMessageKey] = useState<keyof typeof offlineCopy.en>("initial");
+  const message = copy[messageKey];
 
   const refreshPending = useCallback(async () => {
     const mutations = await allMutations().catch(() => []);
@@ -101,7 +114,7 @@ export function OfflineFieldBridge() {
       body: JSON.stringify({ mutations: queued })
     });
     if (!response.ok) {
-      setMessage("Offline changes are still on this device. Ferocity could not reach the sync service.");
+      setMessageKey("syncUnavailable");
       return;
     }
     const body = (await response.json()) as {
@@ -125,23 +138,26 @@ export function OfflineFieldBridge() {
 
   const sync = useCallback(async () => {
     if (!navigator.onLine) {
-      setMessage("You are offline. Saved work remains available on this device.");
+      setMessageKey("offline");
       return;
     }
-    setMessage("Syncing assigned work…");
+    setMessageKey("syncing");
     await flush();
     const response = await fetch("/api/field/offline-sync", { credentials: "same-origin", cache: "no-store" });
     if (!response.ok) {
-      setMessage("Ferocity could not refresh assigned work. Existing offline data was kept.");
+      setMessageKey("refreshFailed");
       return;
     }
-    const snapshot = await response.json();
+    const snapshot = await response.json() as { language?: WorkerLocale };
+    const nextLanguage: WorkerLocale = snapshot.language === "es" ? "es" : "en";
+    setLanguage(nextLanguage);
+    localStorage.setItem("ferocity-field-language", nextLanguage);
     await storeSnapshot(snapshot);
     await fetch("/employee/offline", { credentials: "same-origin" }).catch(() => null);
     const syncedAt = new Date().toISOString();
     localStorage.setItem("ferocity-field-last-sync", syncedAt);
     setLastSync(syncedAt);
-    setMessage("Assigned work is available offline on this device.");
+    setMessageKey("available");
     await refreshPending();
   }, [flush, refreshPending]);
 
@@ -149,6 +165,7 @@ export function OfflineFieldBridge() {
     const hydrateTimer = window.setTimeout(() => {
       setOnline(navigator.onLine);
       setLastSync(localStorage.getItem("ferocity-field-last-sync"));
+      setLanguage(initialLanguage ?? (localStorage.getItem("ferocity-field-language") === "es" ? "es" : "en"));
       void refreshPending();
     }, 0);
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
@@ -164,7 +181,7 @@ export function OfflineFieldBridge() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [refreshPending, sync]);
+  }, [initialLanguage, refreshPending, sync]);
 
   async function clearOfflineData() {
     indexedDB.deleteDatabase(databaseName);
@@ -172,28 +189,29 @@ export function OfflineFieldBridge() {
     if ("caches" in window) await caches.delete("ferocity-field-shell-v1");
     setLastSync(null);
     setPending(0);
-    setMessage("Offline work data was removed from this device.");
+    localStorage.removeItem("ferocity-field-language");
+    setMessageKey("removed");
   }
 
   return (
     <section className="panel offline-field-status">
       <div className="list-row flush-row">
         <div>
-          <span className="eyebrow">Field Sync</span>
-          <h2>{online ? "Connected" : "Offline mode"}</h2>
+          <span className="eyebrow">{copy.fieldSync}</span>
+          <h2>{online ? copy.connected : copy.offlineMode}</h2>
           <p className="muted">{message}</p>
           <p className="muted">
-            {lastSync ? `Last saved ${new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(lastSync))}.` : "No offline snapshot yet."}
-            {pending ? ` ${pending} field change${pending === 1 ? "" : "s"} waiting.` : ""}
+            {lastSync ? `${copy.lastSaved} ${formatWorkerDateTime(lastSync, language)}.` : copy.noSnapshot}
+            {pending ? ` ${pending} ${workerPlural(pending, language, { en: ["field change", "field changes"], es: ["cambio de campo", "cambios de campo"] })} ${copy.waiting}.` : ""}
           </p>
         </div>
         <div className="button-row">
-          <button className="mini-button" type="button" onClick={() => void sync()} disabled={!online}>Save today offline</button>
-          <a className="mini-button secondary-button" href="/employee/offline">Open offline view</a>
-          <button className="mini-button secondary-button" type="button" onClick={() => void clearOfflineData()}>Remove device data</button>
+          <button className="mini-button" type="button" onClick={() => void sync()} disabled={!online}>{copy.save}</button>
+          <a className="mini-button secondary-button" href="/employee/offline">{copy.open}</a>
+          <button className="mini-button secondary-button" type="button" onClick={() => void clearOfflineData()}>{copy.remove}</button>
         </div>
       </div>
-      <p className="field-help">Only use offline storage on a trusted, secured device. Removing it does not delete server records.</p>
+      <p className="field-help">{copy.trust}</p>
     </section>
   );
 }

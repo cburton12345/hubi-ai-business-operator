@@ -442,19 +442,20 @@ export const plannedConnections = [
   {
     provider: "marketplacepro",
     displayName: "MarketplacePro",
-    notes: "Optional adapter from MarketplacePro launch tables into Ferocity operations. MarketplacePro keeps its public discovery schema.",
-    envVars: ["MARKETPLACEPRO_WEBHOOK_SECRET"],
+    notes: "Optional adapter from MarketplacePro launch tables into Ferocity operations. Legacy exact-account compatibility is uncertified; the connection-bound v1 owner pilot is staged and disabled.",
+    envVars: [],
     setupItems: [
       "Map posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, and support_requests",
       "Connect MarketplacePro account/vendor/listing IDs to a Ferocity workspace or brand",
       "Import activity with MarketplacePro source details",
       "Manage follow-up, estimates, jobs, reviews, and provider relationships in Ferocity",
+      "Configure one trusted server-side owner-pilot enrollment and connection-bound credential only after coordinated certification",
       "Keep outbound status sync paused until rules are reviewed"
     ],
     callbackPath: "/api/integrations/marketplacepro/events",
     riskLevel: "medium",
-    setupMode: "signed_webhook",
-    liveActionRule: "MarketplacePro can send inbound events; outbound status sync stays paused until reviewed."
+    setupMode: "coordinated_optional_module",
+    liveActionRule: "Do not claim live v1 delivery from a global secret. Keep the staged v1 receiver disabled until the sender, migration, enrollment, and non-production certification are complete; outbound sync stays paused."
   },
   {
     provider: "search_console",

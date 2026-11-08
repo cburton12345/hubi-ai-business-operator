@@ -5,6 +5,7 @@ export type ProviderResult<T> =
 export type ProviderContext = {
   tenantId: string;
   brandId?: string | null;
+  voiceReservationId?: string;
   correlationId: string;
   idempotencyKey: string;
   liveActionsEnabled: boolean;

@@ -288,10 +288,14 @@
     },
     "marketplacepro": {
       "label": "MarketplacePro",
-      "state": "certified_live",
-      "summary": "Signed MarketplacePro events and owner-event handling are live.",
-      "capabilities": ["receive_signed_events"],
-      "fallback": "Reconcile events from the audit log."
+      "state": "limited",
+      "summary": "Legacy exact-account inbound compatibility is present but not end-to-end certified; connection-bound v1 delivery is staged and disabled pending coordinated rollout.",
+      "capabilities": ["legacy_account_bound_inbound", "v1_signed_owner_pilot_staged"],
+      "capabilityEvidence": {
+        "legacy_account_bound_inbound": "Shared-token compatibility requires a mandatory exact account mapping and remains uncertified.",
+        "v1_signed_owner_pilot_staged": "Parallel HMAC endpoints, server enrollment, transaction revalidation, and replay inbox are local-only pending migration and sender certification."
+      },
+      "fallback": "Keep outbound sync paused and reconcile only through existing audited Ferocity records."
     },
     "supabase_auth": {
       "label": "Authentication and workspace data",

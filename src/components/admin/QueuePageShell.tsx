@@ -4,11 +4,13 @@ export function QueuePageShell({
   eyebrow,
   title,
   description,
+  dashboardLabel = "Dashboard",
   children
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  dashboardLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -21,7 +23,7 @@ export function QueuePageShell({
             <p className="muted">{description}</p>
           </div>
           <Link className="button secondary-button" href="/app">
-            Dashboard
+            {dashboardLabel}
           </Link>
         </div>
 

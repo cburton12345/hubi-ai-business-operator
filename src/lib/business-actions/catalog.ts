@@ -27,6 +27,7 @@ export type BusinessActionKey =
   | "requestApproval"
   | "getOutstandingInvoices"
   | "getOpenCommitments"
+  | "getMarketplaceProContractorSourcing"
   | "createCommitment"
   | "updateCommitment"
   | "startWorkflow";
@@ -188,6 +189,15 @@ export const businessActionCatalog: Record<
     mode: "read",
     risk: "read",
     externalReady: true,
+  },
+  getMarketplaceProContractorSourcing: {
+    key: "getMarketplaceProContractorSourcing",
+    title: "Get MarketplacePro contractor sourcing",
+    description: "Return recent contractor-network, coverage-gap, match, and assignment updates received from MarketplacePro.",
+    scope: "workforce:read",
+    mode: "read",
+    risk: "read",
+    externalReady: false,
   },
   createCommitment: {
     key: "createCommitment",

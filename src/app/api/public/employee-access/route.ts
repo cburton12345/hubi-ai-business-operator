@@ -3,6 +3,7 @@ import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { consumePublicRateLimit } from "@/lib/security/rate-limit";
+import { workerLocale, withWorkerLocale } from "@/lib/employee/worker-locale";
 
 const requestSchema = z.object({
   companyCode: z.string().trim().min(2).max(120).regex(/^[a-zA-Z0-9_-]+$/),
@@ -14,6 +15,7 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const fallbackLocale = workerLocale(request.nextUrl.searchParams.get("lang"));
   const limit = await consumePublicRateLimit({
     request,
     scope: "employee-access-request",
@@ -21,14 +23,14 @@ export async function POST(request: NextRequest) {
     windowSeconds: 60 * 60
   });
   if (!limit.allowed) {
-    return NextResponse.redirect(new URL("/employee/join?error=limit", request.url), 303);
+    return NextResponse.redirect(new URL(withWorkerLocale("/employee/join?error=limit", fallbackLocale), request.url), 303);
   }
 
   let formData: FormData;
   try {
     formData = await request.formData();
   } catch {
-    return NextResponse.redirect(new URL("/employee/join?error=invalid", request.url), 303);
+    return NextResponse.redirect(new URL(withWorkerLocale("/employee/join?error=invalid", fallbackLocale), request.url), 303);
   }
   const parsed = requestSchema.safeParse({
     companyCode: formData.get("companyCode"),
@@ -38,8 +40,9 @@ export async function POST(request: NextRequest) {
     preferredLanguage: formData.get("preferredLanguage") ?? "en",
     website: String(formData.get("website") ?? "")
   });
+  const locale = parsed.success ? workerLocale(parsed.data.preferredLanguage) : fallbackLocale;
   if (!parsed.success || parsed.data.website) {
-    return NextResponse.redirect(new URL("/employee/join?error=invalid", request.url), 303);
+    return NextResponse.redirect(new URL(withWorkerLocale("/employee/join?error=invalid", locale), request.url), 303);
   }
 
   const tenantResult = await queryPostgres<{ id: string; name: string }>(
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
   );
   const tenant = tenantResult?.rows[0];
   if (!tenant) {
-    return NextResponse.redirect(new URL(`/employee/join?error=company&company=${encodeURIComponent(parsed.data.companyCode)}`, request.url), 303);
+    return NextResponse.redirect(new URL(withWorkerLocale(`/employee/join?error=company&company=${encodeURIComponent(parsed.data.companyCode)}`, locale), request.url), 303);
   }
 
   const result = await queryPostgres<{ id: string }>(
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
   );
   const accessRequestId = result?.rows[0]?.id;
   if (!accessRequestId) {
-    return NextResponse.redirect(new URL("/employee/join?error=unavailable", request.url), 303);
+    return NextResponse.redirect(new URL(withWorkerLocale("/employee/join?error=unavailable", locale), request.url), 303);
   }
 
   await queryPostgres(

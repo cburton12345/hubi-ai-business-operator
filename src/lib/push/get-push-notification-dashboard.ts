@@ -2,10 +2,12 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getPushNotificationPreferences, type PushNotificationPreferences } from "@/lib/push/preferences";
 import { getPushReadiness } from "@/lib/push/web-push";
 import { getOwnerRemindersDashboard, type OwnerReminder, type ReminderAssignee } from "@/lib/reminders/owner-reminders";
-import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { getCurrentAppSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
+import { getCurrentActor } from "@/lib/auth/require-permission";
 
 export type PushNotificationDashboard = {
+  canManageEmployeeAccess: boolean;
   readiness: ReturnType<typeof getPushReadiness>;
   preferences: PushNotificationPreferences;
   metrics: {
@@ -51,6 +53,7 @@ export type PushNotificationDashboard = {
     actionUrl: string;
     createdAt: string;
     readState: string;
+    employeeAccessRequestId: string | null;
   }[];
 };
 
@@ -59,7 +62,8 @@ function n(value: unknown) {
 }
 
 export async function getPushNotificationDashboard(): Promise<PushNotificationDashboard> {
-  const tenantId = await getCurrentWorkspaceId();
+  const actor = await getCurrentActor();
+  const tenantId = actor.workspace.id;
   const session = await getCurrentAppSession();
   const readiness = getPushReadiness();
   const [preferences, reminderDashboard, metricsResult, subscriptionsResult, eventsResult, inAppResult] = await Promise.all([
@@ -129,6 +133,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
       action_url: string;
       created_at: Date;
       read_state: string;
+      employee_access_request_id: string | null;
     }>(
       `
       select notifications.*,
@@ -142,7 +147,9 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           e.severity,
           e.status,
           coalesce(nullif(e.action_href, ''), '/app/owner-command-center') as action_url,
-          e.occurred_at as created_at
+          e.occurred_at as created_at,
+          case when e.event_type = 'employee.access.requested'
+            then e.metadata_json->>'accessRequestId' else null end as employee_access_request_id
         from public.owner_command_events e
         where e.tenant_id = $1
           and e.status <> 'archived'
@@ -171,7 +178,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           end as severity,
           o.status,
           case when o.run_id is null then '/app/ai-workforce' else '/app/ai-workforce/results/' || o.run_id::text end as action_url,
-          o.created_at
+          o.created_at,
+          null::text as employee_access_request_id
         from public.ai_agent_outputs o
         where o.tenant_id = $1
           and o.status in ('prepared', 'needs_review', 'sent', 'blocked', 'failed')
@@ -187,7 +195,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           case when r.status = 'failed' then 'high' else 'info' end as severity,
           r.status,
           '/app/ai-workforce/results/' || r.id::text as action_url,
-          coalesce(r.completed_at, r.created_at) as created_at
+          coalesce(r.completed_at, r.created_at) as created_at,
+          null::text as employee_access_request_id
         from public.ai_agent_runs r
         where r.tenant_id = $1
           and r.status in ('completed', 'failed')
@@ -206,7 +215,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           a.risk_level as severity,
           a.status,
           '/app/approvals'::text as action_url,
-          a.created_at
+          a.created_at,
+          null::text as employee_access_request_id
         from public.approvals a
         where a.tenant_id = $1
           and a.status = 'pending'
@@ -221,7 +231,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           case when r.currently_using then 'high' else 'medium' end as severity,
           r.status,
           '/app/integrations#request-provider'::text as action_url,
-          r.updated_at as created_at
+          r.updated_at as created_at,
+          null::text as employee_access_request_id
         from public.provider_integration_requests r
         where r.tenant_id = $1
           and r.status not in ('available', 'declined')
@@ -236,7 +247,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           f.severity,
           f.status,
           coalesce(nullif(f.action_href, ''), '/app/provider-costs') as action_url,
-          f.last_seen_at as created_at
+          f.last_seen_at as created_at,
+          null::text as employee_access_request_id
         from public.provider_funding_alerts f
         where f.tenant_id = $1
           and f.status = 'active'
@@ -254,7 +266,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           end as severity,
           r.status,
           '/app/marketing-os'::text as action_url,
-          r.updated_at as created_at
+          r.updated_at as created_at,
+          null::text as employee_access_request_id
         from public.marketing_campaign_recommendations r
         where r.tenant_id = $1
           and r.metadata_json->>'createdByAgent' = 'weather_demand_monitor'
@@ -278,6 +291,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
 
   const metrics = metricsResult?.rows[0];
   return {
+    canManageEmployeeAccess: can(actor, "tenant:manage"),
     readiness,
     preferences,
     metrics: {
@@ -330,7 +344,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
       status: row.status,
       actionUrl: row.action_url,
       createdAt: row.created_at.toISOString(),
-      readState: row.read_state
+      readState: row.read_state,
+      employeeAccessRequestId: row.employee_access_request_id
     }))
   };
 }

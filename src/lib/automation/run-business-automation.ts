@@ -256,7 +256,7 @@ async function getAutomationTenantIds(limit: number) {
   return result?.rows.map((row) => row.id) ?? [];
 }
 
-async function generateTenantDailyBrief(tenantId: string) {
+export async function generateTenantDailyBrief(tenantId: string) {
   const gate = await getServiceGate(tenantId, "ai_monitoring_briefing");
   if (!gate.enabled) {
     await queryPostgres(

@@ -6,6 +6,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { evaluateVisitCompletion } from "@/lib/field-ops/evaluate-visit-completion";
 import { evaluateVisitSchedule } from "@/lib/scheduling/evaluate-visit";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getEmployeeAccessContext } from "@/lib/employee/employee-access";
 
 const mutationSchema = z.object({
   clientMutationId: z.string().min(8).max(180),
@@ -62,6 +63,7 @@ export async function GET() {
   const [session, admin] = await Promise.all([getCurrentAppSession(), hasAdminSession()]);
   if (!session && !admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = await getCurrentWorkspaceId();
+  const employeeAccess = session ? await getEmployeeAccessContext() : null;
 
   const snapshotResult = await queryPostgres<{
     id: string;
@@ -134,6 +136,7 @@ export async function GET() {
     version: new Date().toISOString(),
     tenantId,
     userId: session?.userId ?? "admin",
+    language: employeeAccess?.preferredLanguage ?? "en",
     visits: snapshotResult?.rows ?? []
   });
 }

@@ -3,14 +3,13 @@ import { describe, expect, it } from "vitest";
 
 const runtime = readFileSync("src/lib/employee/employee-chat.ts", "utf8");
 const action = readFileSync("src/app/employee/actions.ts", "utf8");
-const loader = readFileSync("src/lib/employee/get-employee-workday.ts", "utf8");
 const migration = readFileSync("supabase/migrations/247_employee_ferocity_chat.sql", "utf8");
 
 describe("employee Ferocity security contract", () => {
   it("does not load financial or payroll fields into the employee chat context", () => {
     const scopedQuery = runtime.slice(runtime.indexOf("export async function getEmployeeOperationalContext"), runtime.indexOf("export async function interpretEmployeeChat"));
     expect(scopedQuery).not.toMatch(/invoice|estimate|margin|hourly_rate|payroll|amount_cents/i);
-    expect(loader).not.toContain("hourly_rate_cents");
+    expect(runtime).not.toContain("getEmployeeWorkday");
   });
 
   it("rechecks assignment and visit access before worker writes", () => {

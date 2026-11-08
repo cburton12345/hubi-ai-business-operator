@@ -83,8 +83,15 @@ describe("verified Retell sales callbacks", () => {
   it("keeps the live support prompt aligned with canonical plan prices and verified-action rules", () => {
     const script = fs.readFileSync(path.join(process.cwd(), "scripts", "configure-ferocity-retell.mjs"), "utf8");
     for (const plan of publicPlans) {
-      expect(script).toContain(`${plan.name} at $${plan.priceCents / 100} per month`);
+      if (plan.key === "free") {
+        expect(script).toContain("Free at $0 forever with no card");
+      } else if (plan.salesAssisted) {
+        expect(script).toContain(`${plan.name} is a custom implementation, typically starting at $${plan.priceCents / 100} per month`);
+      } else {
+        expect(script).toContain(`${plan.name} at $${plan.priceCents / 100} per month`);
+      }
     }
+    expect(script).toContain("ferocity.live/pricing");
     expect(script).toContain("Say the request is recorded only when the tool returns ok true");
     expect(script).toContain("Never invent a missing business name or contact detail");
     expect(script).toContain("Never promise an exact callback time");

@@ -16,6 +16,7 @@ export type ProviderCapabilityTruth = {
   capabilities: string[];
   fallback: string;
   connectionAvailable?: boolean;
+  capabilityEvidence?: Record<string, string>;
 };
 
 const providers = truth.providers as Record<string, ProviderCapabilityTruth>;

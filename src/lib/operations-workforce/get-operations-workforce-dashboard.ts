@@ -5,6 +5,14 @@ function dollars(cents: number) {
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+function currencyAmount(cents: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  } catch {
+    return `${currency} ${(cents / 100).toFixed(2)}`;
+  }
+}
+
 function n(value: unknown) {
   return Number(value ?? 0);
 }
@@ -42,9 +50,9 @@ export type OperationsWorkforceDashboard = {
     recurringExpenses: number;
     recurringDue: number;
   };
-  workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string; email: string; language: string; access: string }[];
+  workers: { id: string; name: string; roleType: string; trade: string; status: string; hourlyRate: string; email: string; language: string; access: string; clockStatus: string; openTimeEntryId: string | null; todayHours: string }[];
   assignments: { id: string; serviceVisitId: string | null; title: string; worker: string; crew: string; jobsite: string; schedule: string; status: string; priority: string; tasks: number; taskList: { index: number; title: string; status: "open" | "done" }[]; aiNotes: string }[];
-  timeEntries: { id: string; worker: string; assignment: string; clockIn: string; clockOut: string; hours: string; status: string; verified: string }[];
+  timeEntries: { id: string; workerId: string | null; worker: string; assignment: string; clockIn: string; clockOut: string; clockInIso: string; clockOutIso: string; breakMinutes: number; hours: string; status: string; verified: string; onBreak: boolean }[];
   expenses: { id: string; vendor: string; amount: string; category: string; status: string; worker: string; summary: string }[];
   mileage: { id: string; worker: string; route: string; miles: string; vehicle: string; status: string }[];
   materials: { id: string; material: string; quantity: string; logType: string; cost: string; status: string }[];
@@ -54,7 +62,12 @@ export type OperationsWorkforceDashboard = {
   customerDrafts: { id: string; channel: string; recipient: string; subject: string; body: string; status: string }[];
   receiptExtractions: { id: string; vendor: string; total: string; confidence: string; status: string }[];
   recurringExpenses: { id: string; vendor: string; amount: string; cadence: string; nextDueDate: string; category: string; mode: string; status: string }[];
-  cashAdvances: { id: string; worker: string; amount: string; date: string; method: string; purpose: string; status: string }[];
+  cashAdvances: {
+    id: string; workerId: string; worker: string; amount: string; date: string; method: string; purpose: string; status: string;
+    entryKind: string; currency: string; isWorkerDebt: boolean; approvalStatus: string;
+    workerAuthorizationStatus: string; repaymentTerms: string; receiptUrl: string | null;
+    recovered: string; outstanding: string;
+  }[];
   employeeAccessRequests: { id: string; name: string; email: string; phone: string; language: string; requestedAt: string; status: string }[];
   providers: { id: string; provider: string; type: string; status: string }[];
   aiDispatcher: { title: string; detail: string; priority: "low" | "normal" | "high"; action: string }[];
@@ -66,9 +79,11 @@ function dateTime(value: Date | null) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(value);
 }
 
-function hoursBetween(start: Date, end: Date | null, breaks: number) {
+function hoursBetween(start: Date,end: Date | null,breaks: number,breakSeconds?: number,breakStartedAt?: Date | null) {
   const stop = end ?? new Date();
-  return Math.max(0, (stop.getTime() - start.getTime()) / 36e5 - breaks / 60).toFixed(2);
+  const activeBreakSeconds = breakStartedAt ? Math.max(0,(stop.getTime()-breakStartedAt.getTime())/1000) : 0;
+  const effectiveBreakSeconds = breakSeconds === undefined ? breaks*60 : breakSeconds+activeBreakSeconds;
+  return Math.max(0,(stop.getTime()-start.getTime())/36e5-effectiveBreakSeconds/3600).toFixed(2);
 }
 
 export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkforceDashboard> {
@@ -133,12 +148,38 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       `,
       [tenantId]
     ),
-    queryPostgres<{ id: string; name: string; role_type: string; trade: string | null; availability_status: string; hourly_rate_cents: number; email: string | null; preferred_language: string; user_id: string | null }>(
+    queryPostgres<{ id: string; name: string; role_type: string; trade: string | null; availability_status: string; hourly_rate_cents: number; email: string | null; preferred_language: string; user_id: string | null; open_time_entry_id: string | null; break_started_at: Date | null; today_hours: string }>(
       `
-      select id, name, role_type, trade, availability_status, hourly_rate_cents, email, preferred_language, user_id
-      from public.operations_workers
-      where tenant_id = $1 and availability_status <> 'inactive'
-      order by name
+      select worker.id,worker.name,worker.role_type,worker.trade,worker.availability_status,
+        worker.hourly_rate_cents,worker.email,worker.preferred_language,worker.user_id,
+        open_entry.id as open_time_entry_id,open_entry.break_started_at,
+        coalesce((select sum(greatest(0,extract(epoch from (
+          least(coalesce(entry.clock_out_at,now()),bounds.ends_at)-greatest(entry.clock_in_at,bounds.starts_at)))
+          - coalesce((select sum(greatest(0,extract(epoch from (
+              least(coalesce((select min(ended.occurred_at) from public.operations_time_entry_events ended
+                where ended.tenant_id=started.tenant_id and ended.time_entry_id=started.time_entry_id
+                  and ended.event_type='break_ended' and ended.occurred_at>started.occurred_at),coalesce(entry.clock_out_at,now())),bounds.ends_at)
+              - greatest(started.occurred_at,bounds.starts_at)))))
+              from public.operations_time_entry_events started
+              where started.tenant_id=entry.tenant_id and started.time_entry_id=entry.id
+                and started.event_type='break_started' and started.occurred_at<bounds.ends_at),
+            case when entry.clock_in_at>=bounds.starts_at and coalesce(entry.clock_out_at,now())<=bounds.ends_at then entry.break_seconds else 0 end))/3600.0)
+          from public.operations_time_entries entry
+          where entry.tenant_id=worker.tenant_id and entry.worker_id=worker.id
+            and entry.clock_in_at<bounds.ends_at and coalesce(entry.clock_out_at,now())>=bounds.starts_at),0)::text as today_hours
+      from public.operations_workers worker
+      cross join lateral (
+        select ((now() at time zone settings.timezone)::date::timestamp at time zone settings.timezone) as starts_at,
+               (((now() at time zone settings.timezone)::date+1)::timestamp at time zone settings.timezone) as ends_at
+        from (select coalesce((select timezone from public.workspace_settings where tenant_id=$1),'America/Los_Angeles') as timezone) settings
+      ) bounds
+      left join lateral (
+        select time.id,time.break_started_at from public.operations_time_entries time
+        where time.tenant_id=worker.tenant_id and time.worker_id=worker.id and time.status='open'
+        order by time.clock_in_at desc limit 1
+      ) open_entry on true
+      where worker.tenant_id = $1 and worker.availability_status <> 'inactive'
+      order by worker.name
       limit 20
       `,
       [tenantId]
@@ -180,10 +221,13 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       status: string;
       gps_verified: boolean;
       qr_verified: boolean;
+      worker_id: string | null;
+      break_started_at: Date | null;
+      break_seconds: number;
     }>(
       `
-      select t.id, w.name as worker, a.title as assignment, t.clock_in_at, t.clock_out_at,
-        t.break_minutes, t.status, t.gps_verified, t.qr_verified
+      select t.id,t.worker_id,w.name as worker,a.title as assignment,t.clock_in_at,t.clock_out_at,
+        t.break_minutes,t.break_seconds,t.break_started_at,t.status,t.gps_verified,t.qr_verified
       from public.operations_time_entries t
       left join public.operations_workers w on w.id = t.worker_id
       left join public.operations_assignments a on a.id = t.assignment_id
@@ -312,11 +356,20 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       [tenantId]
     ),
     queryPostgres<{
-      id: string; worker: string; amount_cents: number; advanced_at: string; payment_method: string;
-      purpose: string | null; status: string;
+      id: string; worker_id: string; worker: string; amount_cents: number; advanced_at: string; payment_method: string;
+      purpose: string | null; status: string; entry_kind: string; currency: string; is_worker_debt: boolean;
+      approval_status: string; worker_authorization_status: string; repayment_terms: string | null;
+      receipt_url: string | null; recovered_cents: string; outstanding_cents: string;
     }>(
-      `select advance.id, worker.name as worker, advance.amount_cents, advance.advanced_at::text,
-              advance.payment_method, advance.purpose, advance.status
+      `select advance.id,advance.worker_id,worker.name as worker,advance.amount_cents,advance.advanced_at::text,
+              advance.payment_method,advance.purpose,advance.status,advance.entry_kind,advance.currency,
+              advance.is_worker_debt,advance.approval_status,advance.worker_authorization_status,
+              advance.repayment_terms,advance.receipt_url,
+              (coalesce((select sum(amount_cents) from public.employee_advance_repayments repayment where repayment.tenant_id=advance.tenant_id and repayment.advance_id=advance.id and repayment.status='recorded'),0)
+               + coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations allocation where allocation.tenant_id=advance.tenant_id and allocation.advance_id=advance.id and allocation.status='confirmed'),0))::text as recovered_cents,
+              greatest(0,advance.amount_cents
+               - coalesce((select sum(amount_cents) from public.employee_advance_repayments repayment where repayment.tenant_id=advance.tenant_id and repayment.advance_id=advance.id and repayment.status='recorded'),0)
+               - coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations allocation where allocation.tenant_id=advance.tenant_id and allocation.advance_id=advance.id and allocation.status='confirmed'),0))::text as outstanding_cents
        from public.employee_cash_advances advance
        join public.operations_workers worker on worker.id = advance.worker_id and worker.tenant_id = advance.tenant_id
        where advance.tenant_id = $1 and advance.status <> 'void'
@@ -369,6 +422,9 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
       email: row.email ?? "No email",
       language: row.preferred_language === "es" ? "Spanish" : "English",
       access: row.user_id ? "Linked" : row.email ? "Invite available" : "Email needed"
+      ,clockStatus: row.open_time_entry_id ? row.break_started_at ? "On break" : "Clocked in" : "Clocked out"
+      ,openTimeEntryId: row.open_time_entry_id
+      ,todayHours: Number(row.today_hours).toFixed(2)
     })),
     assignments: (assignmentsResult?.rows ?? []).map((row) => ({
       id: row.id,
@@ -386,13 +442,18 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
     })),
     timeEntries: (timeResult?.rows ?? []).map((row) => ({
       id: row.id,
+      workerId: row.worker_id,
       worker: row.worker ?? "Unknown worker",
       assignment: row.assignment ?? "No assignment",
       clockIn: dateTime(row.clock_in_at),
       clockOut: row.clock_out_at ? dateTime(row.clock_out_at) : "Still clocked in",
-      hours: hoursBetween(row.clock_in_at, row.clock_out_at, row.break_minutes),
+      clockInIso: row.clock_in_at.toISOString(),
+      clockOutIso: row.clock_out_at?.toISOString() ?? "",
+      breakMinutes: row.break_minutes,
+      hours: hoursBetween(row.clock_in_at,row.clock_out_at,row.break_minutes,row.break_seconds,row.break_started_at),
       status: row.status,
-      verified: row.gps_verified ? "GPS" : row.qr_verified ? "QR" : "manual"
+      verified: row.gps_verified ? "GPS" : row.qr_verified ? "QR" : "manual",
+      onBreak: row.break_started_at !== null
     })),
     expenses: (expensesResult?.rows ?? []).map((row) => ({
       id: row.id,
@@ -471,12 +532,22 @@ export async function getOperationsWorkforceDashboard(): Promise<OperationsWorkf
     })),
     cashAdvances: (cashAdvanceResult?.rows ?? []).map((row) => ({
       id: row.id,
+      workerId: row.worker_id,
       worker: row.worker,
-      amount: dollars(row.amount_cents),
+      amount: currencyAmount(row.amount_cents, row.currency),
       date: row.advanced_at,
       method: row.payment_method,
       purpose: row.purpose ?? "No note",
-      status: row.status
+      status: row.status,
+      entryKind: row.entry_kind,
+      currency: row.currency,
+      isWorkerDebt: row.is_worker_debt,
+      approvalStatus: row.approval_status,
+      workerAuthorizationStatus: row.worker_authorization_status,
+      repaymentTerms: row.repayment_terms ?? "No repayment terms recorded",
+      receiptUrl: row.receipt_url,
+      recovered: currencyAmount(Number(row.recovered_cents), row.currency),
+      outstanding: currencyAmount(Number(row.outstanding_cents), row.currency)
     })),
     employeeAccessRequests: (employeeAccessRequestResult?.rows ?? []).map((row) => ({
       id: row.id,

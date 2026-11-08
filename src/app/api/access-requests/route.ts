@@ -812,7 +812,8 @@ export async function POST(request: NextRequest) {
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = request.headers.get("user-agent") ?? null;
   const priority = parsed.data.mainGoal?.includes("fast_lead_response") || parsed.data.mainGoal?.includes("seo_reviews") ? "high" : "normal";
-  const createWorkspaceRequested = parsed.data.createWorkspace === "on" || parsed.data.requestedPlan === "earn";
+  const createWorkspaceRequested = parsed.data.createWorkspace === "on"
+    || ["free", "earn"].includes(parsed.data.requestedPlan ?? "");
 
   const result = await queryPostgres<{ id: string }>(
     `
@@ -929,7 +930,7 @@ export async function POST(request: NextRequest) {
   });
 
   const selfServePaidPlan = parsed.data.requestedPlan && [
-    "ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator"
+    "ferocity_connect", "calls", "job_tracker", "starter", "growth"
   ].includes(parsed.data.requestedPlan);
   if (selfServePaidPlan) {
     const handoffToken = randomSessionToken();

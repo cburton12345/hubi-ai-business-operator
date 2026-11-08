@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { queryPostgres } from "../src/lib/db/postgres";
 import { getVoiceAgentProvider } from "../src/lib/providers/voice-adapters";
+import { ProviderBackedVoiceAgent } from "../src/lib/phone/voice-agent";
 
 function argument(name: string) {
   const index = process.argv.indexOf(`--${name}`);
@@ -35,7 +36,7 @@ async function main() {
   const adapter = getVoiceAgentProvider("retell_voice");
   if (!adapter || adapter.adapterStatus !== "live") throw new Error("The Retell adapter is not live.");
   const idempotencyKey = `managed-number-certification-call:${row.tenant_id}:${randomUUID()}`;
-  const call = await adapter.startOutboundCall(
+  const call = await new ProviderBackedVoiceAgent(adapter).startConversation(
     {
       tenantId: row.tenant_id,
       brandId: row.brand_id,
@@ -47,6 +48,7 @@ async function main() {
     { toNumber: destination, fromNumber: row.phone_number, assistantId: row.assistant_id }
   );
   if (!call.ok) throw new Error(call.safeMessage);
+  const providerCallId = call.data.providerCallId ?? call.data.conversationId;
   await queryPostgres(
     `insert into public.receptionist_calls (
        tenant_id,brand_id,telephony_number_id,provider_key,provider_call_id,direction,
@@ -54,16 +56,26 @@ async function main() {
        follow_up_status,usage_units,idempotency_key,metadata_json
      ) values ($1,$2,$3,'retell_voice',$4,'outbound',$5,$6,'ringing','unknown','unknown',
        'Authorized managed-number certification call started.','none',0,$7,$8::jsonb)
-     on conflict (provider_key,provider_call_id) do nothing`,
-    [row.tenant_id,row.brand_id,row.number_id,call.data.providerCallId,row.phone_number,destination,
-      idempotencyKey,JSON.stringify({ source: "managed_number_certification", consentConfirmed: true })]
+     on conflict (provider_key,provider_call_id) do update
+     set brand_id=coalesce(public.receptionist_calls.brand_id,excluded.brand_id),
+         telephony_number_id=coalesce(public.receptionist_calls.telephony_number_id,excluded.telephony_number_id),
+         caller_number=coalesce(public.receptionist_calls.caller_number,excluded.caller_number),
+         called_number=coalesce(public.receptionist_calls.called_number,excluded.called_number),
+         summary=coalesce(public.receptionist_calls.summary,excluded.summary),
+         metadata_json=public.receptionist_calls.metadata_json || excluded.metadata_json,
+         updated_at=now()`,
+    [row.tenant_id,row.brand_id,row.number_id,providerCallId,row.phone_number,destination,
+      idempotencyKey,JSON.stringify({
+        source: "managed_number_certification",
+        consentConfirmed: true
+      })]
   );
   await queryPostgres(
     `update public.receptionist_setup_checklists set test_status='in_progress',
        activation_status='not_started',updated_at=now() where tenant_id=$1`,
     [row.tenant_id]
   );
-  console.log(JSON.stringify({ ok: true, callPlaced: true, tenant: slug, providerCallId: call.data.providerCallId }, null, 2));
+  console.log(JSON.stringify({ ok: true, callPlaced: true, tenant: slug, providerCallId }, null, 2));
 }
 
 main().catch((error) => {

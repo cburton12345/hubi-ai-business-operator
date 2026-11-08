@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { getPublicPlan, managedVoicePricingLabel, publicEarnPlan, publicManagedSmsPricing, publicManagedVoicePricing, publicPlanPrice } from "./public-plans";
+import { getPublicPlan, isStripeSelfServePlanKey, managedVoicePricingLabel, publicEarnPlan, publicManagedSmsPricing, publicManagedVoicePricing, publicPlanPrice } from "./public-plans";
 
 describe("public Ferocity plans", () => {
+  it("offers a real no-card Free plan with deliberately bounded capabilities", () => {
+    const free = getPublicPlan("free");
+
+    expect(free?.priceCents).toBe(0);
+    expect(free?.price).toBe("$0 forever");
+    expect(free?.bullets.join(" ")).toMatch(/25 new leads each month/i);
+    expect(free?.moreFeatures).toContain("No credit card required");
+    expect(free?.moreFeatures.join(" ")).toMatch(/No managed voice or hosted SMS allowance/i);
+    expect(isStripeSelfServePlanKey("free")).toBe(false);
+  });
+
   it("sells the core AI engine as part of Starter", () => {
     const starter = getPublicPlan("starter");
 
@@ -35,17 +46,22 @@ describe("public Ferocity plans", () => {
     expect(publicEarnPlan.costs).toMatch(/written pilot exception/i);
   });
 
-  it("keeps the commercial reset prices and annual savings centralized", () => {
+  it("keeps self-serve prices, annual savings, and sales-assisted pricing centralized", () => {
     const expected = {
       starter: [14900, 149000],
-      growth: [34900, 349000],
-      operator: [69900, 699000]
+      growth: [34900, 349000]
     } as const;
     for (const [key, prices] of Object.entries(expected)) {
       const plan = getPublicPlan(key)!;
       expect(publicPlanPrice(plan, "month").cents).toBe(prices[0]);
       expect(publicPlanPrice(plan, "year").cents).toBe(prices[1]);
     }
+
+    const operator = getPublicPlan("operator")!;
+    expect(operator.salesAssisted).toBe(true);
+    expect(operator.price).toMatch(/Custom.+from \$699\/mo/i);
+    expect(publicPlanPrice(operator, "year").cents).toBe(69900);
+    expect(operator.annualPriceCents).toBe(699000);
   });
 
   it("keeps newer intelligence capabilities represented without weakening the core plans", () => {

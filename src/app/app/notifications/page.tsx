@@ -7,6 +7,7 @@ import {
   updateOwnerReminderStatusAction,
   updatePushNotificationPreferences
 } from "@/app/app/notifications/actions";
+import { decideEmployeeAccessRequestAction } from "@/app/app/operations-workforce/actions";
 import { PushNotificationSetup } from "@/components/PushNotificationSetup";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getPushNotificationDashboard } from "@/lib/push/get-push-notification-dashboard";
@@ -147,6 +148,23 @@ export default async function NotificationsPage({
               </div>
               <div className="inline-actions">
                 <span className={`pill ${notification.readState === "unread" ? "high" : ""}`}>{notification.readState}</span>
+                {notification.source === "owner_event"
+                && notification.status === "needs_owner"
+                && dashboard.canManageEmployeeAccess
+                && notification.employeeAccessRequestId ? (
+                  <>
+                    <form action={decideEmployeeAccessRequestAction}>
+                      <input name="requestId" type="hidden" value={notification.employeeAccessRequestId} />
+                      <input name="decision" type="hidden" value="approved" />
+                      <button className="mini-button" type="submit">Approve access</button>
+                    </form>
+                    <form action={decideEmployeeAccessRequestAction}>
+                      <input name="requestId" type="hidden" value={notification.employeeAccessRequestId} />
+                      <input name="decision" type="hidden" value="declined" />
+                      <button className="mini-button secondary-button" type="submit">Decline</button>
+                    </form>
+                  </>
+                ) : null}
                 <Link className="mini-button" href={notification.actionUrl}>Open</Link>
                 {notification.readState === "unread" ? (
                   <form action={updateInAppNotificationStateAction}>

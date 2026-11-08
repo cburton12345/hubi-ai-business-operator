@@ -146,6 +146,7 @@ const inputSchemas: Record<BusinessActionKey, z.ZodTypeAny> = {
   requestApproval: approvalInput,
   getOutstandingInvoices: listInput,
   getOpenCommitments: listInput,
+  getMarketplaceProContractorSourcing: listInput,
   createCommitment: commitmentInput,
   updateCommitment: commitmentUpdateInput,
   startWorkflow: workflowInput,
@@ -525,6 +526,23 @@ async function executeAction(
       );
       if (!result) throw new Error("Tasks are temporarily unavailable.");
       const items = result?.rows ?? [];
+      return { items, nextCursor: items.length === (parsed.limit ?? 25) ? String((items.at(-1) as { id: string }).id) : null };
+    }
+    case "getMarketplaceProContractorSourcing": {
+      const result = await queryPostgres(
+        `select e.id,e.event_type as "eventType",e.marketplace_object_id as "marketplaceObjectId",
+           e.sync_status as status,e.status_message as "statusMessage",e.payload_json as payload,
+           e.created_at as "createdAt"
+         from public.marketplacepro_sync_events e
+         join public.marketplacepro_connections c on c.id=e.connection_id and c.tenant_id=e.tenant_id
+         where e.tenant_id=$1 and e.direction='inbound'
+           and coalesce(e.payload_json->>'marketplaceTable','') = any($2::text[])
+           and ($3::uuid is null or e.id<$3::uuid)
+         order by e.created_at desc,e.id desc limit $4`,
+        [tenantId, ["labor_requests", "worker_matches", "labor_assignments", "contractor_recruiting_leads", "coverage_requirements"], parsed.cursor ?? null, parsed.limit ?? 25],
+      );
+      if (!result) throw new Error("MarketplacePro contractor sourcing is temporarily unavailable.");
+      const items = result.rows ?? [];
       return { items, nextCursor: items.length === (parsed.limit ?? 25) ? String((items.at(-1) as { id: string }).id) : null };
     }
     case "createCommitment": {

@@ -1,13 +1,19 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import type { ReactNode } from "react";
 import { BriefcaseBusiness, Clock, DollarSign, MapPin, ReceiptText, Route, Search, Users } from "lucide-react";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
+import { EmployeeBalanceEntryForm,WorkerLedgerMutationForm } from "@/components/employee/EmployeeBalanceEntryForm";
+import { CrewTimeBoardForm,TimeCorrectionForm } from "@/components/operations-workforce/CrewTimeBoardForm";
 import { getOperationsWorkforceDashboard } from "@/lib/operations-workforce/get-operations-workforce-dashboard";
+import { can } from "@/lib/auth/permissions";
+import { getCurrentActor } from "@/lib/auth/require-permission";
+import { getTimeSupervisorScope,timeScopeAllowsWorker } from "@/lib/employee/time-supervisor";
 import {
   approveCustomerUpdateDraftAction,
-  clockOutTimeEntryAction,
+  clockOutTimeEntryForOfficeAction,
   createAssignmentAction,
-  createClockInAction,
+  createClockInForOfficeAction,
   createCustomerUpdateDraftAction,
   createExpenseAction,
   createRecurringExpenseAction,
@@ -16,18 +22,52 @@ import {
   createMaterialLogAction,
   createMileageAction,
   createPayrollExportAction,
-  createEmployeeCashAdvanceAction,
   decideEmployeeAccessRequestAction,
   markPayrollExportReadyAction,
   markPayrollExportedAction,
   sendCustomerUpdateDraftAction,
   sendEmployeeInviteAction,
+  reviewWorkerBalanceEntryAction,
   createWorkerAction,
   updateRecurringExpenseStatusAction
 } from "./actions";
 
 export default async function OperationsWorkforcePage() {
-  const dashboard = await getOperationsWorkforceDashboard();
+  const [dashboard, actor, timeScope] = await Promise.all([getOperationsWorkforceDashboard(), getCurrentActor(),getTimeSupervisorScope()]);
+  const canManageEmployeeAccess = can(actor, "tenant:manage");
+  const canManageWorkerBalances = can(actor, "tenant:manage");
+  const canRecordCrewFacts = timeScope.mode !== "none";
+  const canManageTimeWorkspace = can(actor,"lead:manage");
+  const crewWorkers = dashboard.workers.filter((worker) => timeScopeAllowsWorker(timeScope,worker.id));
+  const visibleTimeEntries = dashboard.timeEntries.filter((entry) => timeScope.mode === "crew_leader"
+    ? Boolean(entry.workerId && timeScopeAllowsWorker(timeScope,entry.workerId))
+    : !entry.workerId || timeScopeAllowsWorker(timeScope,entry.workerId));
+  const visibleCashAdvances = dashboard.cashAdvances.filter((entry) => timeScopeAllowsWorker(timeScope,entry.workerId));
+
+  if (timeScope.mode === "crew_leader") {
+    return <QueuePageShell eyebrow="Crew" title="My crew" description="Clock your assigned crew in or out, record breaks, correct reviewed time, and record advance facts for owner review.">
+      <CrewTimeBoardForm
+        workers={crewWorkers.map((worker) => ({ id: worker.id,name: worker.name,clockStatus: worker.clockStatus,todayHours: worker.todayHours }))}
+        assignments={[]}
+      />
+      <section className="grid section-actions">
+        <EmployeeBalanceEntryForm submitLabel="Submit balance entry for review" pendingLabel="Saving..." offlineMessage="Connection lost. The result may be unknown; reconnect and check the ledger before retrying.">
+          <input name="moneyLocale" type="hidden" value="en" />
+          <h2><DollarSign size={18} /> Record money advanced</h2>
+          <p className="muted">This records a pending fact only. An owner or workspace admin separately reviews debt and any pay allocation.</p>
+          <WorkerSelect workers={crewWorkers} />
+          <input name="amount" inputMode="decimal" placeholder="Amount" required />
+          <select name="paymentMethod" defaultValue="cash"><option value="cash">Cash</option><option value="check">Check</option><option value="bank_transfer">Bank transfer</option><option value="payroll">Payroll advance</option><option value="other">Other</option></select>
+          <select name="entryKind" defaultValue="cash_advance"><option value="cash_advance">Personal cash advance</option><option value="personal_purchase">Personal item purchased for worker</option><option value="gift">Gift - not worker debt</option><option value="business_expense">Employer expense - not worker debt</option><option value="reimbursement">Worker reimbursement - not worker debt</option><option value="loss_damage">Loss or damage record - review only</option></select>
+          <input name="currency" defaultValue="USD" maxLength={3} aria-label="Currency" />
+          <textarea name="purpose" rows={3} placeholder="Reason and what was provided" required />
+          <textarea name="repaymentTerms" rows={2} placeholder="Proposed terms; not a payroll deduction authorization" />
+        </EmployeeBalanceEntryForm>
+        <section className="panel span-7"><h2>Crew advances</h2><ul className="list">{visibleCashAdvances.map((advance) => <li className="list-row" key={advance.id}><div><h3>{advance.worker} / {advance.amount}</h3><p>{advance.purpose}</p><p className="muted">{advance.approvalStatus} / Outstanding {advance.outstanding}</p></div></li>)}{visibleCashAdvances.length === 0 ? <li className="list-row"><span className="muted">No crew balance entries yet.</span></li> : null}</ul></section>
+        <section className="panel span-12"><h2>Crew time entries</h2><ul className="list">{visibleTimeEntries.map((entry) => <li className="list-row" key={entry.id}><div><h3>{entry.worker} / {entry.hours} hours</h3><p className="muted">{entry.clockIn} / {entry.clockOut} / {entry.status}</p>{entry.status !== "open" && entry.workerId ? <TimeCorrectionForm entry={{ id: entry.id,clockInIso: entry.clockInIso,clockOutIso: entry.clockOutIso,breakMinutes: entry.breakMinutes }} /> : null}</div></li>)}{visibleTimeEntries.length === 0 ? <li className="list-row"><span className="muted">No crew time entries yet.</span></li> : null}</ul></section>
+      </section>
+    </QueuePageShell>;
+  }
 
   return (
     <QueuePageShell
@@ -100,7 +140,7 @@ export default async function OperationsWorkforcePage() {
                 <div>
                   <h3>{request.name}</h3>
                   <p className="muted">{request.email} / {request.phone} / {request.language} / {request.requestedAt}</p>
-                  <div className="inline-actions">
+                  {canManageEmployeeAccess ? <div className="inline-actions">
                     <form action={decideEmployeeAccessRequestAction}>
                       <input name="requestId" type="hidden" value={request.id} />
                       <input name="decision" type="hidden" value="approved" />
@@ -112,7 +152,7 @@ export default async function OperationsWorkforcePage() {
                       <input name="ownerNote" placeholder="Optional private review note" />
                       <button className="mini-button secondary-button" type="submit">Decline</button>
                     </form>
-                  </div>
+                  </div> : <p className="muted">An owner or workspace admin must review this request.</p>}
                 </div>
                 <span className="pill">{request.status}</span>
               </li>
@@ -265,15 +305,16 @@ export default async function OperationsWorkforcePage() {
       </section>
 
       <section id="time-clock" className="grid section-actions">
-        <form action={createClockInAction} className="panel form-stack span-4">
+        {timeScope.mode !== "none" ? <CrewTimeBoardForm workers={crewWorkers.map((worker) => ({ id: worker.id,name: worker.name,clockStatus: worker.clockStatus,todayHours: worker.todayHours }))} assignments={dashboard.assignments.map((assignment) => ({ id: assignment.id,title: assignment.title }))} /> : null}
+        {canManageTimeWorkspace ? <form action={createClockInForOfficeAction} className="panel form-stack span-4">
           <h2><Clock size={18} /> Worker App: Clock In</h2>
-          <WorkerSelect workers={dashboard.workers} />
+          <WorkerSelect workers={crewWorkers} />
           <AssignmentSelect assignments={dashboard.assignments} />
           <input name="clockInLocation" placeholder="Clock-in location" />
           <textarea name="notes" rows={2} placeholder="Starting notes" />
           <label className="checkbox-row"><input name="gpsVerified" type="checkbox" /><span>GPS verified</span></label>
           <button className="mini-button" type="submit">Clock in</button>
-        </form>
+        </form> : null}
 
         <form id="field-work" action={createExpenseAction} className="panel form-stack span-4">
           <h2><ReceiptText size={18} /> Field Cost</h2>
@@ -498,10 +539,11 @@ export default async function OperationsWorkforcePage() {
       </section>
 
       <section id="payroll" className="grid section-actions">
-        <form action={createEmployeeCashAdvanceAction} className="panel form-stack span-5">
+        {canRecordCrewFacts ? <EmployeeBalanceEntryForm submitLabel="Submit balance entry for review" pendingLabel="Saving..." offlineMessage="Connection lost. The result may be unknown; reconnect and check the ledger before retrying.">
+          <input name="moneyLocale" type="hidden" value="en" />
           <h2><DollarSign size={18} /> Record money advanced</h2>
-          <p className="muted">Record cash or other money given to an employee. The employee can acknowledge or dispute it. Ferocity never deducts it from wages automatically.</p>
-          <WorkerSelect workers={dashboard.workers} />
+          <p className="muted">Record cash or an item given to a worker. This creates a pending fact only; an authorized owner/admin separately reviews debt and any pay allocation.</p>
+          <WorkerSelect workers={crewWorkers} />
           <AssignmentSelect assignments={dashboard.assignments} />
           <div className="two-col">
             <input name="amount" inputMode="decimal" placeholder="Amount" required />
@@ -514,24 +556,74 @@ export default async function OperationsWorkforcePage() {
             <option value="payroll">Payroll advance</option>
             <option value="other">Other</option>
           </select>
-          <textarea name="purpose" rows={3} placeholder="Purpose or note" />
-          <button className="mini-button" type="submit">Record advance</button>
-        </form>
+          <select name="entryKind" defaultValue="cash_advance">
+            <option value="cash_advance">Personal cash advance</option>
+            <option value="personal_purchase">Personal item purchased for worker</option>
+            <option value="gift">Gift - not worker debt</option>
+            <option value="business_expense">Employer business expense - not worker debt</option>
+            <option value="reimbursement">Worker reimbursement - not worker debt</option>
+            <option value="loss_damage">Loss or damage record - review only, not worker debt</option>
+          </select>
+          <input name="currency" defaultValue="USD" maxLength={3} aria-label="Currency" />
+          <textarea name="purpose" rows={3} placeholder="Reason and what was provided" required />
+          <textarea name="repaymentTerms" rows={3} placeholder="Proposed repayment terms. These are not a payroll deduction authorization." />
+          <label>Receipt or agreement<input name="receiptPhoto" type="file" accept="image/*,application/pdf" capture="environment" /></label>
+          <input name="receiptUrl" type="url" placeholder="Optional receipt or evidence link" />
+        </EmployeeBalanceEntryForm> : <section className="panel span-5"><h2><DollarSign size={18} /> Worker balances</h2><p className="muted">An assigned manager or crew leader must record the fact. Only an owner or workspace admin may approve debt, allocate pay, or reverse it.</p></section>}
 
         <section className="panel span-7">
           <h2>Money advances</h2>
           <p className="muted">A separate, reviewable ledger keeps advances visible without silently changing payroll.</p>
           <ul className="list">
-            {dashboard.cashAdvances.map((advance) => (
+            {visibleCashAdvances.map((advance) => (
               <li className="list-row" key={advance.id}>
                 <div>
                   <h3>{advance.worker} / {advance.amount}</h3>
-                  <p className="muted">{advance.date} / {advance.method.replaceAll("_", " ")} / {advance.purpose}</p>
+                  <p className="muted">{advance.entryKind.replaceAll("_", " ")} / {advance.date} / {advance.method.replaceAll("_", " ")}</p>
+                  <p>{advance.purpose}</p>
+                  <p className="muted">Recovered or allocated: {advance.recovered} / Outstanding: {advance.outstanding}</p>
+                  <p className="muted">Manager review: {advance.approvalStatus} / Worker authorization: {advance.workerAuthorizationStatus}</p>
+                  <p className="muted">{advance.isWorkerDebt ? advance.repaymentTerms : "Non-debt record; excluded from pay deductions."}</p>
+                  {safeEvidenceHref(advance.receiptUrl) ? <a href={safeEvidenceHref(advance.receiptUrl) ?? undefined}>View evidence</a> : advance.receiptUrl ? <span className="muted">Evidence attached</span> : null}
+                  {canManageWorkerBalances && advance.approvalStatus === "pending" ? <div className="form-stack">
+                    <form action={reviewWorkerBalanceEntryAction} className="inline-form">
+                      <input name="advanceId" type="hidden" value={advance.id} /><input name="decision" type="hidden" value="approved" />
+                      <input name="note" placeholder="Review note" required /><button className="mini-button" type="submit">Approve record</button>
+                    </form>
+                    <form action={reviewWorkerBalanceEntryAction} className="inline-form">
+                      <input name="advanceId" type="hidden" value={advance.id} /><input name="decision" type="hidden" value="rejected" />
+                      <input name="note" placeholder="Reason for rejection" required /><button className="mini-button secondary-button" type="submit">Reject</button>
+                    </form>
+                  </div> : null}
+                  {canManageWorkerBalances && advance.approvalStatus === "approved" && advance.isWorkerDebt ? <>
+                    <WorkerLedgerMutationForm kind="repayment">
+                      <input name="requestId" type="hidden" value={randomUUID()} />
+                      <input name="advanceId" type="hidden" value={advance.id} />
+                      <input name="moneyLocale" type="hidden" value="en" />
+                      <div className="two-col"><input name="amount" inputMode="decimal" placeholder="Repayment amount" required /><input name="repaidAt" type="date" required /></div>
+                      <select name="method" defaultValue="cash"><option value="cash">Cash</option><option value="check">Check</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select>
+                      <input name="note" placeholder="Repayment evidence note" />
+                    </WorkerLedgerMutationForm>
+                    <WorkerLedgerMutationForm kind="allocation" disabled={advance.workerAuthorizationStatus !== "authorized" || advance.currency !== "USD"}>
+                      <input name="requestId" type="hidden" value={randomUUID()} />
+                      <input name="advanceId" type="hidden" value={advance.id} />
+                      <input name="moneyLocale" type="hidden" value="en" />
+                      <div className="two-col"><input name="amount" inputMode="decimal" placeholder="Proposed pay allocation" required /><input name="payPeriodStart" type="date" required /></div>
+                      <input name="payPeriodEnd" type="date" required />
+                      <textarea name="workerAuthorizationEvidence" placeholder="Worker's separate written authorization and agreed amount/terms/date" required />
+                      <textarea name="legalPolicyReview" placeholder="State/federal policy review evidence for this deduction" required />
+                      {advance.currency !== "USD" ? <p className="muted">Pay allocation is disabled because payroll previews are USD-only. Keep this balance in its recorded currency.</p> : null}
+                    </WorkerLedgerMutationForm>
+                  </> : null}
+                  {canManageWorkerBalances ? <form action={reviewWorkerBalanceEntryAction} className="inline-form">
+                    <input name="advanceId" type="hidden" value={advance.id} /><input name="decision" type="hidden" value="reversed" />
+                    <input name="note" placeholder="Correction/reversal reason" required /><button className="mini-button secondary-button" type="submit">Reverse record</button>
+                  </form> : null}
                 </div>
                 <span className={`pill ${advance.status === "disputed" ? "high" : ""}`}>{advance.status}</span>
               </li>
             ))}
-            {dashboard.cashAdvances.length === 0 ? <li className="list-row"><span className="muted">No advances recorded.</span></li> : null}
+            {visibleCashAdvances.length === 0 ? <li className="list-row"><span className="muted">No advances recorded.</span></li> : null}
           </ul>
         </section>
 
@@ -576,7 +668,7 @@ export default async function OperationsWorkforcePage() {
                 <div>
                   <h3>{worker.name}</h3>
                   <p className="muted">{worker.roleType} / {worker.trade} / {worker.hourlyRate} / {worker.email} / {worker.language}</p>
-                  {worker.access === "Invite available" ? (
+                  {worker.access === "Invite available" && canManageEmployeeAccess ? (
                     <form action={sendEmployeeInviteAction}>
                       <input name="workerId" type="hidden" value={worker.id} />
                       <button className="mini-button" type="submit">Send secure employee invite</button>
@@ -598,13 +690,13 @@ export default async function OperationsWorkforcePage() {
         <section className="panel span-6">
           <h2><Clock size={18} /> Time Entries</h2>
           <ul className="list">
-            {dashboard.timeEntries.map((entry) => (
+            {visibleTimeEntries.map((entry) => (
               <li className="list-row" key={entry.id}>
                 <div>
                   <h3>{entry.worker} / {entry.hours} hours</h3>
                   <p className="muted">{entry.assignment} / {entry.clockIn} / {entry.clockOut} / {entry.verified}</p>
-                  {entry.status === "open" ? (
-                    <form action={clockOutTimeEntryAction} className="inline-form">
+                  {entry.status === "open" && canManageTimeWorkspace ? (
+                    <form action={clockOutTimeEntryForOfficeAction} className="inline-form">
                       <input name="timeEntryId" type="hidden" value={entry.id} />
                       <input name="clockOutLocation" placeholder="End location" />
                       <input name="breakMinutes" inputMode="numeric" placeholder="Break min" />
@@ -612,11 +704,12 @@ export default async function OperationsWorkforcePage() {
                       <button className="mini-button" type="submit">Clock out</button>
                     </form>
                   ) : null}
+                  {entry.status !== "open" && entry.workerId && timeScopeAllowsWorker(timeScope,entry.workerId) ? <TimeCorrectionForm entry={{ id: entry.id,clockInIso: entry.clockInIso,clockOutIso: entry.clockOutIso,breakMinutes: entry.breakMinutes }} /> : null}
                 </div>
                 <span className="pill">{entry.status}</span>
               </li>
             ))}
-            {dashboard.timeEntries.length === 0 ? <li className="list-row"><span className="muted">No records yet.</span></li> : null}
+            {visibleTimeEntries.length === 0 ? <li className="list-row"><span className="muted">No records yet.</span></li> : null}
           </ul>
         </section>
         <ListPanel title="Expenses" icon={<ReceiptText size={18} />} rows={dashboard.expenses.map((expense) => ({
@@ -718,6 +811,16 @@ function Metric({ label, value }: { label: string; value: number | string }) {
       <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
     </section>
   );
+}
+
+function safeEvidenceHref(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function WorkerSelect({ workers }: { workers: { id: string; name: string; trade: string }[] }) {

@@ -19,6 +19,7 @@ export function voiceWebhookBodyFromEvent(event: InboundCallEvent): Record<strin
     ...structuredData,
     tenantId: metadata.tenantId,
     brandId: metadata.brandId,
+    voiceReservationId: metadata.voiceReservationId,
     customerId: metadata.customerId,
     leadId: metadata.leadId,
     provider: event.providerKey,

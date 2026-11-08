@@ -21,6 +21,26 @@ describe("employee field access safety", () => {
     expect(actions).toContain("canAccessEmployeeAssignment");
   });
 
+  it("rejects archived assignments for new employee clock-ins without coupling clock-out to assignment state", () => {
+    const access = source("src/lib/employee/employee-access.ts");
+    const actions = source("src/app/app/operations-workforce/actions.ts");
+    expect(access.match(/status <> 'archived'/g)?.length).toBeGreaterThanOrEqual(2);
+    const clockIn = actions.slice(actions.indexOf("export async function createClockInAction"), actions.indexOf("export async function clockOutTimeEntryAction"));
+    const clockOut = actions.slice(actions.indexOf("export async function clockOutTimeEntryAction"), actions.indexOf("export async function createExpenseAction"));
+    expect(clockIn).toContain("resolveWorkerActionTarget");
+    expect(clockOut).toContain("closeTimeClockEntry");
+    expect(clockOut).not.toContain("canAccessEmployeeAssignment");
+  });
+
+  it("returns explicit employee clock failure states and renders them accessibly", () => {
+    const actions = source("src/app/app/operations-workforce/actions.ts");
+    const form = source("src/components/employee/EmployeeTimeClockForm.tsx");
+    expect(actions).toContain("Your shift remains open");
+    expect(actions).toContain("Clock-in was not saved");
+    expect(form).toContain("useActionState");
+    expect(form).toContain('aria-live="polite"');
+  });
+
   it("requires private storage for employee proof and uses an authorized download route", () => {
     const actions = source("src/app/app/operations-workforce/actions.ts");
     const route = source("src/app/api/field/media/[mediaId]/route.ts");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateManagedVoiceCharge } from "./managed-voice";
+import { calculateManagedVoiceCharge, requiresManagedVoiceAllowancePolicy } from "./managed-voice";
 
 describe("managed voice pricing", () => {
   it("does not charge minutes within the included allowance", () => {
@@ -27,5 +27,33 @@ describe("managed voice pricing", () => {
       includedMinutes: 100,
       unitPriceCents: 59
     })).toEqual({ billableMinutes: 4, customerChargeCents: 236 });
+  });
+});
+
+describe("managed voice allowance safety", () => {
+  it("requires an active allowance policy for paid Ferocity-managed operation", () => {
+    expect(requiresManagedVoiceAllowancePolicy({
+      ownershipMode: "ferocity_managed",
+      accountType: "customer",
+      sponsored: false
+    })).toBe(true);
+  });
+
+  it("preserves nonbillable and customer-owned voice paths", () => {
+    expect(requiresManagedVoiceAllowancePolicy({
+      ownershipMode: "workspace",
+      accountType: "customer",
+      sponsored: false
+    })).toBe(false);
+    expect(requiresManagedVoiceAllowancePolicy({
+      ownershipMode: "ferocity_managed",
+      accountType: "internal",
+      sponsored: false
+    })).toBe(false);
+    expect(requiresManagedVoiceAllowancePolicy({
+      ownershipMode: "ferocity_managed",
+      accountType: "customer",
+      sponsored: true
+    })).toBe(false);
   });
 });

@@ -21,6 +21,7 @@ describe("provider-neutral business action catalog", () => {
         "getOutstandingInvoices",
         "getOpenCommitments",
         "createCommitment",
+        "getMarketplaceProContractorSourcing",
       ]),
     );
   });

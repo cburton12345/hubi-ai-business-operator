@@ -17,6 +17,7 @@ describe("voiceWebhookBodyFromEvent", () => {
       metadata: {
         tenantId: "11111111-1111-4111-8111-111111111111",
         brandId: "22222222-2222-4222-8222-222222222222",
+        voiceReservationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         customerId: "33333333-3333-4333-8333-333333333333",
         eventType: "call_analyzed",
         summary: "Qualified and booked.",
@@ -37,5 +38,6 @@ describe("voiceWebhookBodyFromEvent", () => {
     expect(body.appointmentStart).toBe("2026-08-14T16:00:00.000Z");
     expect(body.appointmentConfirmed).toBe(true);
     expect(body.customerId).toBe("33333333-3333-4333-8333-333333333333");
+    expect(body.voiceReservationId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   });
 });

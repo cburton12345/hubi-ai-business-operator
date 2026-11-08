@@ -14,7 +14,8 @@ const acceptInviteSchema = z.object({
   token: z.string().min(20),
   name: z.string().min(1).max(160),
   password: z.string().min(8).max(200),
-  confirmPassword: z.string().min(8).max(200)
+  confirmPassword: z.string().min(8).max(200),
+  lang: z.enum(["en", "es"]).optional()
 }).refine((value) => value.password === value.confirmPassword, { message: "Passwords must match.", path: ["confirmPassword"] });
 
 function appUrl(path: string) {
@@ -27,9 +28,10 @@ export async function acceptInviteAction(formData: FormData) {
     token: formData.get("token"),
     name: formData.get("name"),
     password: formData.get("password"),
-    confirmPassword: formData.get("confirmPassword")
+    confirmPassword: formData.get("confirmPassword"),
+    lang: formData.get("lang")
   });
-  if (!parsed.success) redirect("/login?error=invite");
+  if (!parsed.success) redirect(`/login?error=invite${formData.get("lang") === "es" ? "&lang=es" : ""}`);
 
   const inviteResult = await queryPostgres<{
     id: string;
@@ -50,7 +52,7 @@ export async function acceptInviteAction(formData: FormData) {
     [hashSessionToken(parsed.data.token)]
   );
   const invite = inviteResult?.rows[0];
-  if (!invite) redirect("/login?error=invite");
+  if (!invite) redirect(`/login?error=invite${parsed.data.lang === "es" ? "&lang=es" : ""}`);
 
   const supabaseIdentity = await ensureSupabaseAuthUser({
     email: invite.email,
@@ -155,13 +157,32 @@ export async function acceptInviteAction(formData: FormData) {
     );
     return { userId };
   });
-  if (!accepted.ok) redirect("/login?error=invite");
+  if (!accepted.ok) redirect(`/login?error=invite${parsed.data.lang === "es" ? "&lang=es" : ""}`);
   const userId = accepted.value.userId;
 
+  const employeeInvite = invite.invite_purpose === "employee";
+  const spanish = employeeInvite && parsed.data.lang === "es";
+  const destination = employeeInvite ? "/employee" : "/app/ferocity?onboarding=1";
   await sendTransactionalEmail({
     to: invite.email,
-    subject: "Your Ferocity account is ready",
-    text: `Hi ${parsed.data.name.trim()},
+    subject: spanish ? "Su cuenta de empleado de Ferocity está lista" : "Your Ferocity account is ready",
+    text: spanish ? `Hola ${parsed.data.name.trim()},
+
+Su cuenta de empleado de Ferocity está lista.
+
+Abra su jornada de trabajo aquí:
+${appUrl("/employee")}
+
+Si Ferocity le pide iniciar sesión de nuevo, use este enlace directo:
+${appUrl(`/login?mode=field&next=/employee&lang=es&email=${encodeURIComponent(invite.email)}`)}` : employeeInvite ? `Hi ${parsed.data.name.trim()},
+
+Your Ferocity employee account is ready.
+
+Open your workday here:
+${appUrl("/employee")}
+
+If Ferocity asks you to sign in again, use this direct field-team sign-in:
+${appUrl(`/login?mode=field&next=/employee&email=${encodeURIComponent(invite.email)}`)}` : `Hi ${parsed.data.name.trim()},
 
 Your Ferocity account is ready.
 
@@ -191,5 +212,5 @@ Ferocity will open with a short guided conversation. Tell it what kind of busine
     priority: "high"
   });
 
-  redirect(invite.invite_purpose === "employee" ? "/employee" : "/app/ferocity?onboarding=1");
+  redirect(destination);
 }

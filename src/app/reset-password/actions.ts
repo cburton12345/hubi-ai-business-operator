@@ -5,13 +5,16 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { env, hasSupabaseBrowserConfig } from "@/lib/env";
 import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres,withPostgresTransactionResult } from "@/lib/db/postgres";
+import { issueLocalPasswordReset } from "@/lib/auth/password-reset-token";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { logAppError } from "@/lib/observability/log-error";
 import { consumeLoginRateLimit } from "@/lib/security/rate-limit";
 
 const resetSchema = z.object({
-  email: z.string().email()
+  email: z.string().email(),
+  lang: z.enum(["en", "es"]).optional(),
+  mode: z.enum(["field", "business"]).optional()
 });
 
 async function getOrigin() {
@@ -33,13 +36,16 @@ export async function requestPasswordReset(
   formData: FormData
 ): Promise<ResetPasswordState> {
   const parsed = resetSchema.safeParse({
-    email: formData.get("email")
+    email: formData.get("email"),
+    lang: formData.get("lang"),
+    mode: formData.get("mode")
   });
+  const spanish = formData.get("lang") === "es" && formData.get("mode") === "field";
 
   if (!parsed.success) {
     return {
       status: "error",
-      message: "Enter a valid email address."
+      message: spanish ? "Ingrese un correo electrónico válido." : "Enter a valid email address."
     };
   }
 
@@ -58,7 +64,7 @@ export async function requestPasswordReset(
   });
   const genericResponse: ResetPasswordState = {
     status: "sent",
-    message: "If that email has access, a reset link is on the way."
+    message: spanish ? "Si ese correo tiene acceso, el enlace de restablecimiento está en camino." : "If that email has access, a reset link is on the way."
   };
   if (!resetLimit.allowed) return genericResponse;
 
@@ -92,30 +98,24 @@ export async function requestPasswordReset(
 
   if (localAccount) {
     const token = randomSessionToken();
-    await queryPostgres(
-      `
-      insert into public.workspace_invites
-        (tenant_id, email, role, status, invited_by_user_id, invite_token_hash, expires_at, updated_at)
-      values ($1, $2, $3, 'pending', $4, $5, now() + interval '1 hour', now())
-      on conflict (tenant_id, email) do update
-      set role = excluded.role,
-          status = 'pending',
-          invited_by_user_id = excluded.invited_by_user_id,
-          invite_token_hash = excluded.invite_token_hash,
-          expires_at = excluded.expires_at,
-          accepted_user_id = null,
-          accepted_at = null,
-          revoked_at = null,
-          updated_at = now()
-      `,
-      [localAccount.tenant_id, localAccount.email, localAccount.role, localAccount.user_id, hashSessionToken(token)]
-    );
+    const issued = await withPostgresTransactionResult((client) => issueLocalPasswordReset(client,{
+      tenantId: localAccount.tenant_id,userId: localAccount.user_id,
+      tokenHash: hashSessionToken(token),language: spanish ? "es" : "en"
+    }));
+    if (!issued.ok) {
+      await logAppError({ source: "reset-password",message: "Local password reset token persistence failed.",severity: "error" });
+      return genericResponse;
+    }
 
-    const resetUrl = new URL(`/invite/${token}`, await getOrigin()).toString();
+    const resetUrl = new URL(`/reset-password/${token}${spanish ? "?lang=es" : ""}`, await getOrigin()).toString();
     await sendTransactionalEmail({
       to: localAccount.email,
-      subject: "Reset your Ferocity password",
-      text: `Use this secure link to choose a new Ferocity password:
+      subject: spanish ? "Restablezca su contraseña de Ferocity" : "Reset your Ferocity password",
+      text: spanish ? `Use este enlace seguro para elegir una nueva contraseña de Ferocity:
+
+${resetUrl}
+
+Este enlace vence en una hora. Si no solicitó el cambio, puede ignorar este mensaje.` : `Use this secure link to choose a new Ferocity password:
 
 ${resetUrl}
 
@@ -139,7 +139,7 @@ This link expires in one hour. If you did not request it, you can ignore this me
     });
     return {
       status: "not_ready",
-      message: "Password recovery is temporarily unavailable. Please contact your Ferocity administrator."
+      message: spanish ? "La recuperación de contraseña no está disponible temporalmente. Comuníquese con su administrador de Ferocity." : "Password recovery is temporarily unavailable. Please contact your Ferocity administrator."
     };
   }
 
@@ -151,7 +151,7 @@ This link expires in one hour. If you did not request it, you can ignore this me
   });
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${await getOrigin()}/reset-password/update`
+    redirectTo: `${await getOrigin()}/reset-password/update${spanish ? "?mode=field&lang=es" : ""}`
   });
 
   if (error) {

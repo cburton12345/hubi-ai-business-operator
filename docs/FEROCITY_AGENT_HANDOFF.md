@@ -176,9 +176,18 @@ Local setup:
 ```powershell
 npm ci
 Copy-Item .env.example .env.local # then populate securely; never commit
-npm run db:validate:migrations
 npm run dev
 ```
+
+`db:validate:migrations` is a mutating, disposable-database-only compatibility check. It does not read `DATABASE_URL`, `.env.local`, or `.env`; default `predeploy:local` therefore refuses at this gate before creating a database client. Inject the dedicated URL through approved secret tooling, then acknowledge the nonsecret identity derived from that URL:
+
+```powershell
+$env:MIGRATION_VALIDATION_DATABASE_URL = $approvedDisposableDatabaseUrl
+$env:MIGRATION_VALIDATION_DISPOSABLE_ACK = "disposable:<host>:<effective-port>/<encoded-database>#route=<sha256>"
+npm run db:validate:migrations
+```
+
+The validator reports the exact required nonsecret acknowledgement when it refuses a missing or mismatched value, before constructing a database client. Its SHA-256 routing fingerprint binds the URL authority's host, effective port (explicit or 5432), database, and username without printing the username, password, or full URL. The URL must explicitly contain host, database, username, and password; query-string routing overrides are rejected, and only `sslmode=require` is accepted. The same parsed routing fields are passed explicitly to PostgreSQL so inherited `PGHOST`, `PGPORT`, `PGDATABASE`, and `PGUSER` values cannot redirect the check. The acknowledgement is operator confirmation, not technical proof that the target is disposable. The command executes pending SQL inside a bounded rollback transaction; rollback is attempted but cannot guarantee the absence of every side effect. Never point it at production. Confirm that the disposable target's `public.schema_migrations` history is readable and represents the intended baseline before running it. Supply the same two variables when running the complete `predeploy:local` gate.
 
 Common focused checks:
 
@@ -202,7 +211,7 @@ That gate runs public/provider/capability/UI/integration checks, migration valid
 
 Database:
 
-- Validate pending migrations before applying: `npm run db:validate:migrations`.
+- Validate pending migrations against an explicitly identified disposable database before applying: `npm run db:validate:migrations`. This command requires the dedicated URL plus matching `MIGRATION_VALIDATION_DISPOSABLE_ACK`, requires migration-level write authority, and is not a read-only production check.
 - Apply only after reviewing the exact pending set and the target environment: `npm run db:migrate`.
 - Verify RLS: `npm run db:verify-rls`.
 - Local migrations and the verified production ledger currently reach `234_receipt_structured_file_storage.sql`; inspect the live ledger before applying anything newer.
@@ -1143,3 +1152,24 @@ This is part of the release, not optional cleanup. A frontend deployment is stil
 - Retell configuration is reachable and complete for inbound routing, fallback, webhook, transfer tool, and tenant transfer number. Outbound remains disabled by policy. The prior controlled real-handset callback evidence is older than 30 days, so fresh live callback certification remains a specific provider-evidence task rather than being called complete.
 - No production document was reprocessed, no credential was rotated, no call was placed, no message was sent, no spend occurred, and no frontend was deployed.
 - The post-correction exact-tree `npm run predeploy:local` gate passes with 310 test files / 1,269 tests, seven Marketplace worker tests, TypeScript, full ESLint, an optimized 125-page build, 44-provider truth, 22 high-risk capability contracts, 314-route UI guard, 48 architecture assertions, zero pending migrations through 267, and document-runtime verification across 144 server traces.
+
+## 79. MarketplacePro contractor-network bridge and Ask Ferocity read surface (November 7, 2026; application not deployed)
+
+- The existing frozen `2026-10-22.v1` MarketplacePro owner-pilot receiver remains authoritative. Its event vocabulary now admits only five additional contractor-network object types and six bounded status event types; the signing, exact-body, connection resolution, credential-vault, idempotency inbox, and transactional application rules are unchanged.
+- Migration `282_marketplacepro_contractor_network_events.sql` expands the existing sync-event check constraint for those contractor-network statuses. It does not create a second connection model or expose browser write access. It was transaction-rehearsed and applied to production on November 7; the applied file SHA-256 is `519ab81f0365036824912a1d3ff1c16ce51ac8e19a6404c2cc47594bf8bb3d93`.
+- The provider-neutral business-action catalog now includes the read-only `getMarketplaceProContractorSourcing` action. Authenticated Ask Ferocity commands such as `Show MarketplacePro contractor sourcing status` read tenant-bound, already-received MarketplacePro events through the audited action gateway. This surface does not request, accept, assign, dispatch, contact, or pay a contractor.
+- MarketplacePro now queues match and callback status events and delivers them every five minutes through signed envelopes with bounded retries and terminal receipt verification. The bridge payload excludes contractor contact details and credential documents. MPP remains authoritative for sourcing/qualification/matching; Ferocity remains authoritative for accepted work, dispatch, scheduling, billing, and job financials.
+- The production owner-pilot connection is provisioned for the internal MarketplacePro brand with one encrypted signing credential and one enabled enrollment. Re-running the guarded provisioner reports the existing connection, credential, and enrollment without rotation.
+- A signed harmless `notification_logged` event completed through the published Ferocity route and produced exactly one processed inbox row, sync event, and non-attention owner-command event. A contractor `coverage_requirements` event was correctly rejected before persistence because the published application predates the expanded payload vocabulary; this is the remaining application-release gap.
+- Focused Ferocity tests pass 31 assertions. The complete November 7 `predeploy:local` gate also passes on the exact candidate: public/provider/capability/UI/architecture guards, explicit Data API grants, rollback-only migration 282 validation against a dedicated disposable migrations-1-through-281 baseline, 337 Vitest files / 1,447 tests, seven Marketplace Worker tests, TypeScript, full ESLint, the optimized 128-page production build, and document-runtime artifact verification across 144 server traces. The final build ID is `yxAS4hOs4iXN1zAZBqcaX`. MarketplacePro release safety passes 76/76, its data-grant validator passes, and its Vite production build passes.
+- The stopped disposable baseline is retained locally as Docker container `ferocity-pgvalidate-20261107`; its local-only password is DPAPI-protected outside the repository. It contains no production/customer data and must never be mistaken for a backup.
+- The application remains undeployed, and frontend deployment remains forbidden without the owner's exact `do front end deploy` phrase. Credential rotation must follow the documented overlap sequence after the compatible application artifact is published; rotating current values before release could break the live application.
+
+## 80. Public Free plan and sales-assisted Operator boundary (November 7, 2026; release candidate certified)
+
+- The owner selected a hybrid public model: Free at $0 forever with no card; transparent Starter and Growth pricing; Operator as a custom implementation typically starting at $699/month; and Ferocity Earn retained.
+- The existing database-backed Free entitlements are now exposed through the public plan catalog. Free uses the established safe-mode workspace invitation flow and cannot enter Stripe Checkout or Stripe webhook provisioning.
+- New public Operator selections are routed to implementation review. Existing authenticated plan changes and grandfathered Operator Stripe configuration remain intact.
+- Public pricing, guided start, subscribe routing, checkout validation, Stripe webhook validation, and platform catalog copy use the same plan source of truth. Provider usage and third-party costs remain separate, and existing subscriptions are not repriced.
+- The exact combined tree passes the complete `predeploy:local` gate: 337 Vitest files / 1,449 tests, seven Marketplace Worker tests, TypeScript, full ESLint, the optimized 128-page production build, public/provider/capability/UI/architecture guards, explicit Data API grants, rollback-only migration 282 validation against the dedicated disposable baseline, and document-runtime artifact verification across 144 server traces.
+- Local production-artifact browser acceptance verified the rendered Free, Starter, Growth, and Operator cards; Free and Operator route to their intended guided-start states; and a 390×844 mobile viewport has no horizontal overflow with all plan controls visible. Netlify preview and production smoke remain required before calling the release deployed.

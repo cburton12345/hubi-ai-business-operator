@@ -9,6 +9,7 @@ export type InviteTokenProfile = {
   workspaceName: string;
   expiresAt: string;
   invitePurpose: "workspace" | "employee";
+  preferredLanguage: "en" | "es";
 };
 
 export async function getInviteByToken(token: string): Promise<InviteTokenProfile | null> {
@@ -20,11 +21,15 @@ export async function getInviteByToken(token: string): Promise<InviteTokenProfil
     workspace_name: string;
     expires_at: Date | null;
     invite_purpose: "workspace" | "employee";
+    preferred_language: "en" | "es" | null;
   }>(
     `
-    select i.id, i.email, i.role, i.status, t.name as workspace_name, i.expires_at, i.invite_purpose
+    select i.id, i.email, i.role, i.status, t.name as workspace_name, i.expires_at, i.invite_purpose,
+           worker.preferred_language
     from public.workspace_invites i
     join public.tenants t on t.id = i.tenant_id
+    left join public.operations_workers worker
+      on worker.tenant_id = i.tenant_id and worker.id = i.worker_id
     where i.invite_token_hash = $1
       and i.status = 'pending'
       and (i.expires_at is null or i.expires_at > now())
@@ -42,6 +47,7 @@ export async function getInviteByToken(token: string): Promise<InviteTokenProfil
     status: invite.status,
     workspaceName: invite.workspace_name,
     expiresAt: invite.expires_at ? invite.expires_at.toISOString() : "",
-    invitePurpose: invite.invite_purpose
+    invitePurpose: invite.invite_purpose,
+    preferredLanguage: invite.preferred_language === "es" ? "es" : "en"
   };
 }

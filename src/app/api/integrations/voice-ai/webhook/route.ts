@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
   const provider = safeString(body?.provider) ?? "voice_ai";
   const providerEventId = safeString(body?.providerEventId ?? body?.eventId) ?? `${provider}:${eventType}:${Date.now()}`;
   const providerCallId = safeString(body?.providerCallId ?? body?.callId ?? body?.externalSessionId) ?? providerEventId;
+  const voiceReservationId = safeUuid(body?.voiceReservationId);
   const status = cleanStatus(body?.status);
   const direction = cleanDirection(body?.direction);
   const durationSeconds = Math.round(safeNumber(body?.durationSeconds ?? body?.duration_seconds));
@@ -216,10 +217,12 @@ export async function POST(request: NextRequest) {
       tenant_id, provider_key, provider_event_id, event_type, resource_type, resource_id,
       signature_status, processing_status, idempotency_key, payload_redacted_json, metadata_json
     )
-    values ($1, $2, $3, $4, 'receptionist_call', $5, 'verified', 'processed', $6, $7::jsonb, $8::jsonb)
+    values ($1, $2, $3, $4, 'receptionist_call', $5, 'verified', 'processing', $6, $7::jsonb, $8::jsonb)
     on conflict (idempotency_key) do update
-    set processing_status = 'processed',
-        processed_at = now(),
+    set processing_status = case
+          when public.provider_webhook_events.processing_status = 'processed' then 'processed'
+          else 'retrying'
+        end,
         metadata_json = public.provider_webhook_events.metadata_json || excluded.metadata_json
     `,
     [
@@ -241,6 +244,48 @@ export async function POST(request: NextRequest) {
       JSON.stringify({ source: "voice_ai_webhook" })
     ]
   );
+
+  if (voiceReservationId) {
+    let correlated = await queryPostgres<{ id: string }>(
+      `update public.receptionist_calls
+       set provider_call_id=$4,
+           metadata_json=metadata_json || $5::jsonb,
+           updated_at=now()
+       where tenant_id=$1 and id=$2 and provider_key=$3
+         and direction='outbound' and provider_call_id like 'ferocity-pending:%'
+       returning id`,
+      [
+        tenantId,
+        voiceReservationId,
+        provider,
+        providerCallId,
+        JSON.stringify({ admissionState: "provider_bound_by_verified_webhook" })
+      ]
+    );
+    if (!correlated?.rows[0]) {
+      correlated = await queryPostgres<{ id: string }>(
+        `select id from public.receptionist_calls
+         where tenant_id=$1 and id=$2 and provider_key=$3 and provider_call_id=$4
+         limit 1`,
+        [tenantId, voiceReservationId, provider, providerCallId]
+      );
+    }
+    if (!correlated?.rows[0]) {
+      await queryPostgres(
+        `update public.provider_webhook_events
+         set processing_status=case when processing_status='processed' then 'processed' else 'retrying' end,
+             error_category='voice_reservation_correlation_failed',
+             safe_error_message='Verified provider call could not be matched to its Ferocity reservation.',
+             updated_at=now()
+         where idempotency_key=$1`,
+        [idempotencyKey]
+      );
+      return NextResponse.json(
+        { ok: false, retryable: true, error: "Voice call correlation is temporarily unavailable." },
+        { status: 503 }
+      );
+    }
+  }
 
   const call = await queryPostgres<{ id: string; metadata_json: Record<string, unknown> }>(
     `
@@ -278,6 +323,7 @@ export async function POST(request: NextRequest) {
           else excluded.follow_up_status
         end,
         usage_units = greatest(public.receptionist_calls.usage_units, excluded.usage_units),
+        metadata_json = public.receptionist_calls.metadata_json || excluded.metadata_json,
         updated_at = now()
     returning id, metadata_json
     `,
@@ -303,7 +349,11 @@ export async function POST(request: NextRequest) {
       safeArray(body?.actionItems).length > 0 ? "needed" : "none",
       durationSeconds > 0 ? Math.ceil(durationSeconds / 60) : 0,
       `${tenantId}:${provider}:call:${providerCallId}`,
-      JSON.stringify({ source: "voice_ai_webhook", eventType, providerEventId })
+      JSON.stringify({
+        source: "voice_ai_webhook",
+        eventType,
+        providerEventId
+      })
     ]
   );
 
@@ -453,7 +503,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (["completed", "transferred", "missed", "failed"].includes(status) && durationSeconds > 0) {
-      await recordVoiceUsage({
+      const usageResult = await recordVoiceUsage({
         tenantId,
         providerKey: provider,
         providerCallId,
@@ -461,6 +511,21 @@ export async function POST(request: NextRequest) {
         durationSeconds,
         providerCostCents
       });
+      if (usageResult.retryable) {
+        await queryPostgres(
+          `update public.provider_webhook_events
+           set processing_status=case when processing_status='processed' then 'processed' else 'retrying' end,
+               error_category='voice_usage_persistence_failed',
+               safe_error_message='Voice usage evidence could not be persisted and will be retried.',
+               updated_at=now()
+           where idempotency_key=$1`,
+          [idempotencyKey]
+        );
+        return NextResponse.json(
+          { ok: false, retryable: true, error: "Voice usage persistence is temporarily unavailable." },
+          { status: 503 }
+        );
+      }
     }
 
     callDecision = await safelyEvaluateAndStoreCallManagementDecision({
@@ -590,6 +655,21 @@ export async function POST(request: NextRequest) {
 
   if (status === "missed" || status === "failed" || ["followup_needed", "unresolved", "failed"].includes(cleanOutcome(body?.outcome) ?? "")) {
     await syncCustomerLifecycleForTenant(tenantId);
+  }
+
+  const finalizedEvent = await queryPostgres<{ id: string }>(
+    `update public.provider_webhook_events
+     set processing_status='processed',processed_at=now(),
+         error_category=null,safe_error_message=null,updated_at=now()
+     where idempotency_key=$1
+     returning id`,
+    [idempotencyKey]
+  );
+  if (!finalizedEvent?.rows[0]) {
+    return NextResponse.json(
+      { ok: false, retryable: true, error: "Voice webhook completion could not be confirmed." },
+      { status: 503 }
+    );
   }
 
   return NextResponse.json({

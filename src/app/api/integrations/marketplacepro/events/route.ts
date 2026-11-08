@@ -1,29 +1,8 @@
-import { NextResponse } from "next/server";
-import {
-  marketplaceProAuthState,
-  marketplaceProEventSchema,
-  recordMarketplaceProEvent
-} from "@/lib/integrations/marketplacepro";
+import { NextResponse, type NextRequest } from "next/server";
+import { receiveMarketplaceProLegacyDelivery } from "@/lib/integrations/marketplacepro-legacy-runtime";
 
-export async function POST(request: Request) {
-  const auth = marketplaceProAuthState(request);
-  if (!auth.ok) {
-    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  const parsed = marketplaceProEventSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ ok: false, error: "Invalid MarketplacePro event payload.", issues: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const result = await recordMarketplaceProEvent(parsed.data);
+export async function POST(request: NextRequest) {
+  const result = await receiveMarketplaceProLegacyDelivery(request, "event");
   return NextResponse.json(result, { status: result.status });
 }
 
@@ -31,7 +10,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     provider: "marketplacepro",
-    status: "event_adapter_ready",
-    message: "POST signed MarketplacePro launch-table events here. Supported tables: posts, offers, labor_pool, saved_providers, worker_contact_requests, follows, notifications, support_requests."
+    status: "legacy_compatibility_uncertified",
+    message: "Legacy shared-token compatibility requires a mandatory, exact, unambiguous MarketplacePro account mapping. Use the parallel v1 path for the staged owner pilot."
   });
 }

@@ -8,6 +8,7 @@ describe("authenticated Ferocity business-action routing", () => {
     ["Which unsold estimates need follow-up?", "getUnsoldEstimates", "/app/estimates"],
     ["Who owes us on overdue invoices?", "getOutstandingInvoices", "/app/cash-collection"],
     ["What did we promise that is still open?", "getOpenCommitments", "/app/commitments"],
+    ["Show MarketplacePro contractor sourcing status", "getMarketplaceProContractorSourcing", "/app/labor"],
   ])("routes %s to the audited action layer", (command, action, href) => {
     expect(readBusinessActionForCommand(command)).toEqual({ action, href });
   });
@@ -21,5 +22,8 @@ describe("authenticated Ferocity business-action routing", () => {
       items: [{ customerName: "Northwind", status: "past_due", balanceCents: 125050 }],
     })).toEqual(["Invoice: Northwind — past due — $1250.50 outstanding"]);
     expect(summarizeBusinessActionItems("getOpenLeads", { items: [] })).toEqual([]);
+    expect(summarizeBusinessActionItems("getMarketplaceProContractorSourcing", {
+      items: [{ eventType: "contractor_matches_found", status: "processed" }],
+    })).toEqual(["MarketplacePro: contractor_matches_found — processed"]);
   });
 });

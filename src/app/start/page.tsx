@@ -62,7 +62,7 @@ export default async function StartPage({
   const chatSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.chatSession ?? "")
     ? params.chatSession
     : null;
-  const plan = ["earn", "ferocity_connect", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
+  const plan = ["free", "earn", "ferocity_connect", "job_tracker", "starter", "growth", "operator", "pro_agency", "managed_operator"].includes(params.plan ?? "") ? params.plan : "not_sure";
   const billingMessage =
     params.billing === "stripe_not_ready"
       ? "Your setup request will save the selected plan. Ferocity will confirm checkout before any billing starts."
@@ -81,7 +81,7 @@ export default async function StartPage({
           <p className="eyebrow">Guided setup</p>
           <h1>Start with the outcome—not a wall of configuration.</h1>
           <p className="muted">
-            Not sure which plan fits? Give Ferocity one outcome and we will shape the starting path. If you already know the fixed plan you want, choose it on Pricing and continue directly to secure checkout.
+            Not sure which plan fits? Give Ferocity one outcome and we will shape the starting path. Free starts without a card, fixed paid plans continue to secure checkout, and custom plans receive an implementation review.
           </p>
           <div className="button-row">
             <Link className="button" href="#start-request">
@@ -121,7 +121,7 @@ export default async function StartPage({
             <div>
               <p className="eyebrow">Tell us where to start</p>
               <h2>Give Ferocity the minimum. Finish the important choices with guidance.</h2>
-              <p className="muted">Only your email and consent are required. Earn can create a safe-mode workspace; other guided requests are reviewed before activation or billing.</p>
+              <p className="muted">Only your email and consent are required. Free and Earn can create a safe-mode workspace; other guided requests are reviewed before activation or billing.</p>
             </div>
 
             {params.error ? (
@@ -229,6 +229,7 @@ export default async function StartPage({
               Plan you think fits
               <select name="requestedPlan" defaultValue={plan}>
                 <option value="not_sure">Not sure yet</option>
+                <option value="free">Free — $0 forever</option>
                 <option value="earn">Ferocity Earn — $0/month base</option>
                 <option value="ferocity_connect">Ferocity Connect — $29/month</option>
                 <option value="job_tracker">Job Tracker</option>

@@ -385,6 +385,7 @@ export class VapiVoiceAdapter implements VoiceAgentProvider {
       metadata: {
         ferocityTenantId: context.tenantId,
         ferocityBrandId: context.brandId ?? null,
+        ferocityVoiceReservationId: context.voiceReservationId ?? null,
         ferocityCorrelationId: context.correlationId,
         ferocityIdempotencyKey: context.idempotencyKey
       }
@@ -480,6 +481,7 @@ export class VapiVoiceAdapter implements VoiceAgentProvider {
         metadata: {
           tenantId,
           brandId: text(metadata.ferocityBrandId),
+          voiceReservationId: text(metadata.ferocityVoiceReservationId),
           eventType: messageType,
           direction: text(call.type)?.toLowerCase().includes("outbound") ? "outbound" : "inbound",
           endedReason,
@@ -752,13 +754,13 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
         retryable: false
       };
     }
-    const capacity = authorizedTest ? null : await reserveOutboundCapacity({
+    const capacity = await reserveOutboundCapacity({
       tenantId: context.tenantId,
       providerKey: this.providerKey,
       correlationId: context.correlationId,
       priority: "routine"
     });
-    if (!authorizedTest && !capacity) {
+    if (!capacity) {
       return {
         ok: false,
         errorCategory: "voice_capacity_check_unavailable",
@@ -785,6 +787,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
       metadata: {
         ferocityTenantId: context.tenantId,
         ferocityBrandId: context.brandId ?? null,
+        ferocityVoiceReservationId: context.voiceReservationId ?? null,
         ferocityCorrelationId: context.correlationId,
         ferocityIdempotencyKey: context.idempotencyKey
       }
@@ -888,6 +891,7 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
         metadata: {
           tenantId,
           brandId: text(metadata.ferocityBrandId),
+          voiceReservationId: text(metadata.ferocityVoiceReservationId),
           customerId: text(metadata.ferocityCustomerId),
           leadId: text(metadata.ferocityLeadId),
           eventType: event,

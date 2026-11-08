@@ -6,6 +6,14 @@ const actions = readFileSync(
   join(process.cwd(), "src/app/app/operations-workforce/actions.ts"),
   "utf8"
 );
+const employeeWorkday = readFileSync(
+  join(process.cwd(), "src/lib/employee/get-employee-workday.ts"),
+  "utf8"
+);
+const workforceDashboard = readFileSync(
+  join(process.cwd(), "src/lib/operations-workforce/get-operations-workforce-dashboard.ts"),
+  "utf8"
+);
 
 function actionBody(name: string) {
   const start = actions.indexOf(`export async function ${name}`);
@@ -56,5 +64,22 @@ describe("operations workforce mutation authorization", () => {
     const body = actionBody(name);
     expect(body).toContain("tenantOwnsReference");
     expect(body).toContain(table);
+  });
+
+  it("scopes supervisor-recorded advances and their assignments to the supervisor crew", () => {
+    const body = actionBody("createEmployeeCashAdvanceAction");
+    expect(body).toContain("getTimeSupervisorScope");
+    expect(body).toContain("timeScopeAllowsWorker");
+    expect(body).toContain('scope.mode === "crew_leader"');
+    expect(body).toContain("crew.crew_leader_worker_id=$6");
+    expect(body).toContain("assignment.status<>'archived'");
+  });
+
+  it("uses the configured workspace timezone for overnight today-hour boundaries", () => {
+    for (const source of [employeeWorkday,workforceDashboard]) {
+      expect(source).toContain("timezone from public.workspace_settings");
+      expect(source).toContain("at time zone settings.timezone");
+      expect(source).toContain("clock_in_at<bounds.ends_at");
+    }
   });
 });

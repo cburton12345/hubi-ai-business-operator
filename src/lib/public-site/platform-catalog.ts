@@ -30,6 +30,7 @@ export type PublicPlatform = {
 };
 
 const callsPlan = publicPlans.find((plan) => plan.key === "calls")!;
+const freePlan = publicPlans.find((plan) => plan.key === "free")!;
 const starterPlan = publicPlans.find((plan) => plan.key === "starter")!;
 const growthPlan = publicPlans.find((plan) => plan.key === "growth")!;
 const operatorPlan = publicPlans.find((plan) => plan.key === "operator")!;
@@ -41,7 +42,7 @@ export const publicPlatforms: PublicPlatform[] = [
     eyebrow: "Run the connected business",
     summary: "One operating and control layer across customers, work, people, money, communications, and growth.",
     bestFor: "Businesses that want more than one isolated tool and need the company to keep moving across departments.",
-    pricing: `${starterPlan.name} ${starterPlan.price}; ${growthPlan.name} ${growthPlan.price}; ${operatorPlan.name} ${operatorPlan.price}.`,
+    pricing: `${freePlan.name} ${freePlan.price}; ${starterPlan.name} ${starterPlan.price}; ${growthPlan.name} ${growthPlan.price}; ${operatorPlan.name} ${operatorPlan.price}.`,
     costNotes: "Stated managed-provider allowances are included by plan. Advertising spend, payment processing, premium rendered media, usage beyond stated allowances, carrier charges, and other third-party costs remain separate.",
     setup: "Choose a starting level, create the workspace, describe the first business outcome, and connect only the accounts needed for that outcome.",
     capabilities: [
@@ -52,7 +53,7 @@ export const publicPlatforms: PublicPlatform[] = [
     ],
     detailsHref: "/features",
     plansHref: "/pricing#plans",
-    startHref: "/start?source=platforms&plan=starter#start-request"
+    startHref: "/start?source=platforms&plan=free#start-request"
   },
   {
     key: "earn",

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { env } from "@/lib/env";
 import { getCurrentAppSession } from "@/lib/auth/session";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { isSelfServePlanKey } from "@/lib/billing/public-plans";
+import { isStripeSelfServePlanKey } from "@/lib/billing/public-plans";
 import { queryPostgres } from "@/lib/db/postgres";
 import { safeRedirect } from "@/lib/http/safe-redirect";
 import { logAppError } from "@/lib/observability/log-error";
@@ -122,7 +122,11 @@ export async function POST(request: NextRequest) {
     ,checkoutHandoff: String(formData.get("checkoutHandoff") ?? "") || undefined
   });
 
-  if (!parsed.success || !isSelfServePlanKey(parsed.data.plan)) {
+  if (parsed.success && parsed.data.plan === "free") {
+    return redirectTo(request, "/start?source=checkout_free&plan=free#start-request");
+  }
+
+  if (!parsed.success || !isStripeSelfServePlanKey(parsed.data.plan)) {
     return redirectTo(request, "/pricing?billing=invalid_plan");
   }
 
@@ -134,6 +138,10 @@ export async function POST(request: NextRequest) {
   const appSession = await getCurrentAppSession();
   const workspace = appSession ? await getCurrentWorkspace() : null;
   const publicSignup = !workspace;
+
+  if (publicSignup && parsed.data.plan === "operator") {
+    return startFallback(request, "operator", "manual_plan");
+  }
 
   if (workspace) {
     await requirePermission("billing:manage");

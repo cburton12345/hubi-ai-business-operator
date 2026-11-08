@@ -1,4 +1,4 @@
-export type SelfServePlanKey = "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator";
+export type SelfServePlanKey = "free" | "ferocity_connect" | "calls" | "job_tracker" | "starter" | "growth" | "operator";
 
 export const publicConnectPlan = {
   key: "ferocity_connect" as const,
@@ -21,6 +21,7 @@ export type PublicPlan = {
   bullets: string[];
   moreFeatures: string[];
   featured?: boolean;
+  salesAssisted?: boolean;
 };
 
 export const publicEarnPlan = {
@@ -62,6 +63,33 @@ export function managedSmsPricingLabel(planKey: keyof typeof publicManagedSmsPri
 }
 
 export const publicPlans: PublicPlan[] = [
+  {
+    key: "free",
+    name: "Free",
+    price: "$0 forever",
+    priceCents: 0,
+    fit: "Put the business foundation in one place before paying for automation.",
+    bestFor: "Owners who want to organize real business information, capture a limited number of leads, and experience Ferocity's guidance without a card or subscription commitment.",
+    bullets: [
+      "One business workspace and owner account",
+      "Shared Business Brain foundation",
+      "Basic customer, lead, job, and task organization",
+      "One active lead form and up to 25 new leads each month",
+      "Limited Ask Ferocity guidance and safe drafts",
+      "Manual follow-up and exports with Ferocity branding"
+    ],
+    moreFeatures: [
+      "No credit card required",
+      "One business profile and primary service area",
+      "Basic source tracking",
+      "Manual tasks and approval-first workflows",
+      "Limited proof capture and content drafts",
+      "Core setup guidance",
+      "No managed voice or hosted SMS allowance",
+      "No automatic publishing, ad spend, provider writes, or customer messaging",
+      "Upgrade without migrating business records"
+    ]
+  },
   {
     key: "calls",
     name: "Ferocity Calls",
@@ -192,7 +220,7 @@ export const publicPlans: PublicPlan[] = [
   {
     key: "operator",
     name: "Operator",
-    price: "$699/mo",
+    price: "Custom · typically from $699/mo",
     priceCents: 69900,
     annualPrice: "$6,990/year",
     annualPriceCents: 699000,
@@ -234,7 +262,8 @@ export const publicPlans: PublicPlan[] = [
       "Multi-platform managed-ad controls when chosen",
       "Managed video production path when chosen",
       "One Ferocity Connect Android device included"
-    ]
+    ],
+    salesAssisted: true
   },
   {
     key: "job_tracker",
@@ -271,6 +300,9 @@ export const jobTrackerPlan = publicPlans.find((plan) => plan.key === "job_track
 export type BillingInterval = "month" | "year";
 
 export function publicPlanPrice(plan: PublicPlan, interval: BillingInterval = "month") {
+  if (plan.salesAssisted) {
+    return { label: plan.price, cents: plan.priceCents };
+  }
   if (interval === "year" && plan.annualPrice && plan.annualPriceCents) {
     return { label: plan.annualPrice, cents: plan.annualPriceCents };
   }
@@ -279,6 +311,10 @@ export function publicPlanPrice(plan: PublicPlan, interval: BillingInterval = "m
 
 export function isSelfServePlanKey(value: string): value is SelfServePlanKey {
   return value === publicConnectPlan.key || publicPlans.some((plan) => plan.key === value);
+}
+
+export function isStripeSelfServePlanKey(value: string): value is Exclude<SelfServePlanKey, "free"> {
+  return isSelfServePlanKey(value) && value !== "free";
 }
 
 export function getPublicPlan(value: string) {

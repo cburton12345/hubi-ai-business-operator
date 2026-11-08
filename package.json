@@ -26,6 +26,8 @@
     "release:inventory-control:postflight": "node scripts/inventory-location-control-certification.mjs --phase=post",
     "release:inventory-costs:preflight": "node scripts/inventory-cost-control-certification.mjs --phase=pre",
     "release:inventory-costs:postflight": "node scripts/inventory-cost-control-certification.mjs --phase=post",
+    "release:workers:preflight": "node scripts/worker-release-production-preflight.mjs",
+    "release:workers:targeted-plan": "node scripts/apply-targeted-worker-migrations.mjs --plan --target=production",
     "db:verify-rls": "node scripts/verify-rls.mjs",
     "db:rotate-credential-vault": "node scripts/rotate-credential-vault-key.mjs",
     "db:seed:qa": "node scripts/seed-qa-workspace.mjs",

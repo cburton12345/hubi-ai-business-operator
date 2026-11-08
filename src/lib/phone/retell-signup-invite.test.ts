@@ -80,14 +80,14 @@ describe("secure Retell signup invitations", () => {
     expect(unauthenticated.submit).not.toHaveBeenCalled();
   });
 
-  it("keeps phone signup and public Earn signup wired to secure invitations", () => {
+  it("keeps phone signup and public Free or Earn signup wired to secure invitations", () => {
     const retellConfig = fs.readFileSync(path.join(process.cwd(), "scripts", "configure-ferocity-retell-owner.mjs"), "utf8");
     const accessRoute = fs.readFileSync(path.join(process.cwd(), "src", "app", "api", "access-requests", "route.ts"), "utf8");
 
     expect(retellConfig).toContain("create_ferocity_signup");
     expect(retellConfig).toContain("Never ask the person to say or choose a password");
     expect(retellConfig).toContain("consent_to_create_account");
-    expect(accessRoute).toContain('parsed.data.requestedPlan === "earn"');
+    expect(accessRoute).toContain('["free", "earn"].includes(parsed.data.requestedPlan ?? "")');
     expect(accessRoute).toContain('insert into public.workspace_invites');
     expect(accessRoute).toContain("explicitAgreementAcceptanceRequiredAfterSecureLogin");
   });

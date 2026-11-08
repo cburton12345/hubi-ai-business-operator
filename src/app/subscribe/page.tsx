@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
@@ -7,7 +8,7 @@ import { getPublicPlan, publicEarnPlan, publicPlans, publicPlanPrice, type Billi
 import { queryPostgres } from "@/lib/db/postgres";
 import { hashSessionToken } from "@/lib/auth/password";
 
-const planDisplayOrder = ["starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
+const planDisplayOrder = ["free", "starter", "growth", "operator", "job_tracker", "calls", "ferocity_connect"];
 const orderedPublicPlans = [...publicPlans].sort(
   (left, right) => planDisplayOrder.indexOf(left.key) - planDisplayOrder.indexOf(right.key)
 );
@@ -25,6 +26,12 @@ export default async function SubscribePage({
 }) {
   const params = await searchParams;
   const plan = getPublicPlan(params.plan ?? "");
+  if (plan?.key === "free") {
+    redirect("/start?source=subscribe_free&plan=free#start-request");
+  }
+  if (plan?.salesAssisted) {
+    redirect("/start?source=subscribe_operator&plan=operator&billing=manual_plan#start-request");
+  }
   const interval: BillingInterval = params.billing === "annual" && plan?.annualPrice ? "year" : "month";
   const displayedPrice = plan ? publicPlanPrice(plan, interval) : null;
   const isCallsPlan = plan?.key === "calls";
@@ -37,6 +44,7 @@ export default async function SubscribePage({
     : null;
   const savedRequest = handoff?.rows[0] ?? null;
   const planGuidance = {
+    free: "Organize the business foundation and safely try Ferocity without a card.",
     ferocity_connect: "Turn an Android business phone into a Ferocity-controlled texting line.",
     calls: "Never let another valuable call reach a dead end.",
     job_tracker: "Know what every job costs, owes, and earns.",
@@ -56,7 +64,7 @@ export default async function SubscribePage({
           <p className="muted">
             {plan
               ? `${plan.fit} Enter the account details below, then continue to secure checkout.`
-              : "Every plan starts with connected business memory and practical guidance. Higher levels coordinate more people, departments, providers, and operating loops."}
+                  : "Start free without a card, choose a fixed paid plan, or scope an Operator implementation for the whole company."}
           </p>
           <div className="trust-strip" aria-label="Ferocity activation assurances">
             <span><ShieldCheck size={15} /> Secure Stripe checkout</span>

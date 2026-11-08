@@ -1,4 +1,5 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import type { QueryResultRow } from "pg";
+import { queryPostgres, withPostgresTransaction } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
 import { evaluateBillingAccess } from "@/lib/billing/billing-access-policy";
 import { isProviderUsageSponsored } from "@/lib/billing/earn-provider-sponsorship";
@@ -13,6 +14,7 @@ type VoiceAccessRow = {
   plan_key: string | null;
   subscription_status: string | null;
   subscription_metadata: Record<string, unknown> | null;
+  allowance_policy_id: string | null;
   included_quantity: string | number | null;
   hard_limit_quantity: string | number | null;
   overage_unit_price_cents: string | number | null;
@@ -44,6 +46,18 @@ export type VoiceAccessDecision = {
   maxDurationSeconds: number;
   ownershipMode: "ferocity_managed" | "workspace" | "unknown";
   restrictedMode?: "take_message_only";
+  pricingSnapshot?: VoicePricingSnapshot;
+};
+
+export type VoicePricingSnapshot = {
+  policyId: string;
+  planKey: string | null;
+  includedMinutes: number;
+  unitPriceCents: number;
+  pricingDisclosed: boolean;
+  autoBillDisclosedOverage: boolean;
+  sponsoredByFerocity: boolean;
+  capturedAt: string;
 };
 
 export type VoiceUsageCharge = {
@@ -58,6 +72,54 @@ function numeric(value: unknown) {
 
 function managedOwnership(value: string | null | undefined) {
   return value === "ferocity_managed";
+}
+
+export function requiresManagedVoiceAllowancePolicy(input: {
+  ownershipMode: string | null | undefined;
+  accountType: string | null | undefined;
+  sponsored: boolean;
+}) {
+  return managedOwnership(input.ownershipMode)
+    && input.accountType !== "internal"
+    && !input.sponsored;
+}
+
+function pricingSnapshotFromRow(row: Pick<VoiceAccessRow,
+  "allowance_policy_id" | "plan_key" | "included_quantity" | "overage_unit_price_cents" | "policy_metadata"
+>, sponsored: boolean): VoicePricingSnapshot | undefined {
+  if (!row.allowance_policy_id) return undefined;
+  return {
+    policyId: row.allowance_policy_id,
+    planKey: row.plan_key,
+    includedMinutes: numeric(row.included_quantity),
+    unitPriceCents: numeric(row.overage_unit_price_cents),
+    pricingDisclosed: row.policy_metadata?.disclosedOverage === true,
+    autoBillDisclosedOverage: row.policy_metadata?.autoBillDisclosedOverage === true,
+    sponsoredByFerocity: sponsored,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+export function validVoicePricingSnapshot(value: unknown): VoicePricingSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, unknown>;
+  if (
+    typeof snapshot.policyId !== "string"
+    || snapshot.policyId.length === 0
+    || !(typeof snapshot.planKey === "string" || snapshot.planKey === null)
+    || typeof snapshot.includedMinutes !== "number"
+    || !Number.isFinite(snapshot.includedMinutes)
+    || snapshot.includedMinutes < 0
+    || typeof snapshot.unitPriceCents !== "number"
+    || !Number.isFinite(snapshot.unitPriceCents)
+    || snapshot.unitPriceCents < 0
+    || typeof snapshot.pricingDisclosed !== "boolean"
+    || typeof snapshot.autoBillDisclosedOverage !== "boolean"
+    || typeof snapshot.sponsoredByFerocity !== "boolean"
+    || typeof snapshot.capturedAt !== "string"
+    || !Number.isFinite(Date.parse(snapshot.capturedAt))
+  ) return null;
+  return snapshot as VoicePricingSnapshot;
 }
 
 export function calculateManagedVoiceCharge(input: {
@@ -188,6 +250,7 @@ async function loadVoiceAccessRow(tenantId: string, providerKey: string) {
       tp.account_type,
       tp.plan_key,
       tp.subscription_status,
+      p.id as allowance_policy_id,
       p.included_quantity,
       p.hard_limit_quantity,
       p.overage_unit_price_cents,
@@ -257,16 +320,6 @@ export async function evaluateVoiceAccess(input: {
     };
   }
 
-  if (testCall) {
-    return {
-      allowed: true,
-      reason: "Authorized test call.",
-      errorCategory: "",
-      maxDurationSeconds: Math.min(600, row.max_call_duration_seconds ?? 600),
-      ownershipMode
-    };
-  }
-
   if (row.tenant_status !== "active" && row.tenant_status !== "trial") {
     return { allowed: false, reason: "Workspace is not active.", errorCategory: "tenant_inactive", maxDurationSeconds: 0, ownershipMode };
   }
@@ -291,12 +344,29 @@ export async function evaluateVoiceAccess(input: {
     return { allowed: false, reason: "Managed voice is paused until billing is current.", errorCategory: "billing_not_current", maxDurationSeconds: 0, ownershipMode };
   }
 
+  const sponsored = isProviderUsageSponsored(row.sponsorship_status);
+  if (
+    requiresManagedVoiceAllowancePolicy({
+      ownershipMode: row.ownership_mode,
+      accountType: row.account_type,
+      sponsored
+    })
+    && !row.allowance_policy_id
+  ) {
+    return {
+      allowed: false,
+      reason: "Managed voice pricing is not configured for this workspace.",
+      errorCategory: "managed_voice_allowance_missing",
+      maxDurationSeconds: 0,
+      ownershipMode
+    };
+  }
+
   const usedMinutes = numeric(row.monthly_minutes);
   const hardLimit = row.hard_limit_quantity === null ? null : numeric(row.hard_limit_quantity);
   if (hardLimit !== null && usedMinutes >= hardLimit) {
     return { allowed: false, reason: "Monthly AI receptionist limit reached.", errorCategory: "hard_usage_limit", maxDurationSeconds: 0, ownershipMode };
   }
-  const sponsored = isProviderUsageSponsored(row.sponsorship_status);
   if (
     ownershipMode === "ferocity_managed"
     && sponsored
@@ -340,12 +410,14 @@ export async function evaluateVoiceAccess(input: {
 
   const configuredDuration = Math.max(60, row.max_call_duration_seconds ?? 1800);
   const remainingSeconds = hardLimit === null ? configuredDuration : Math.floor(Math.max(0, hardLimit - usedMinutes) * 60);
+  const admittedDuration = Math.max(60, Math.min(configuredDuration, remainingSeconds || configuredDuration));
   return {
     allowed: true,
-    reason: "Voice service is available.",
+    reason: testCall ? "Authorized test call passed managed-voice admission checks." : "Voice service is available.",
     errorCategory: "",
-    maxDurationSeconds: Math.max(60, Math.min(configuredDuration, remainingSeconds || configuredDuration)),
-    ownershipMode
+    maxDurationSeconds: testCall ? Math.min(600, admittedDuration) : admittedDuration,
+    ownershipMode,
+    pricingSnapshot: pricingSnapshotFromRow(row, sponsored)
   };
 }
 
@@ -354,20 +426,33 @@ export async function getVoiceMaxDurationSeconds(tenantId: string, providerKey: 
   return decision.allowed ? decision.maxDurationSeconds : 600;
 }
 
-export async function recordVoiceUsage(input: {
+type VoiceUsageInput = {
   tenantId: string;
   providerKey: string;
   providerCallId: string;
   callId: string;
   durationSeconds: number;
   providerCostCents: number;
-}) {
-  const minutes = Math.ceil(Math.max(0, input.durationSeconds) / 60);
-  if (minutes <= 0) return { recorded: false, customerChargeCents: 0 };
+};
 
-  const existing = await queryPostgres<{ id: string; quantity: string | number; customer_charge_cents: string | number }>(
+type VoiceUsageQuery = <T extends QueryResultRow>(
+  text: string,
+  values?: unknown[]
+) => Promise<{ rows: T[] } | null>;
+
+async function recordVoiceUsageInTransaction(input: VoiceUsageInput, query: VoiceUsageQuery) {
+  const minutes = Math.ceil(Math.max(0, input.durationSeconds) / 60);
+  if (minutes <= 0) return { recorded: false, customerChargeCents: 0, retryable: false };
+
+  const existing = await query<{
+    id: string;
+    quantity: string | number;
+    customer_charge_cents: string | number;
+    status: string;
+    metadata_json: Record<string, unknown> | null;
+  }>(
     `
-    select id, quantity, customer_charge_cents
+    select id, quantity, customer_charge_cents, status, metadata_json
     from public.usage_meter_events
     where tenant_id = $1 and idempotency_key = $2
     limit 1
@@ -375,10 +460,11 @@ export async function recordVoiceUsage(input: {
     [input.tenantId, `${input.tenantId}:${input.providerKey}:call:${input.providerCallId}:minute`]
   );
   if (existing?.rows[0]) {
-    const pricing = await queryPostgres<{
-      ownership_mode: string; plan_key: string | null; sponsorship_status: string | null; included_quantity: string | number | null;
+    const pricing = await query<{
+      ownership_mode: string; plan_key: string | null; sponsorship_status: string | null; allowance_policy_id: string | null;
+      included_quantity: string | number | null;
       overage_unit_price_cents: string | number | null; metadata_json: Record<string, unknown> | null;
-      other_minutes: string | number;
+      other_minutes: string | number; admission_pricing_snapshot: unknown;
     }>(
       `with tenant_plan as (
          select coalesce(s.plan_key,t.plan_key,'free') as plan_key from public.tenants t
@@ -389,34 +475,66 @@ export async function recordVoiceUsage(input: {
            and (p.tenant_id=$1 or (p.tenant_id is null and p.plan_key=tp.plan_key))
          order by (p.tenant_id is not null) desc limit 1
        )
-       select a.ownership_mode,tp.plan_key,
+       select a.ownership_mode,tp.plan_key,p.id as allowance_policy_id,
          (select status from public.earn_provider_sponsorships es where es.tenant_id=$1 and es.status='active'
            and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now()) limit 1) sponsorship_status,
          p.included_quantity,p.overage_unit_price_cents,p.metadata_json,
+         (select c.admission_pricing_snapshot_json from public.receptionist_calls c
+          where c.tenant_id=$1 and c.id=$4 limit 1) admission_pricing_snapshot,
          (select coalesce(sum(u.quantity),0) from public.usage_meter_events u
           where u.tenant_id=$1 and u.feature_key='ai_receptionist'
             and u.billing_period_start=date_trunc('month',now())::date
             and u.status not in ('void','failed') and u.id<>$3) as other_minutes
        from public.provider_accounts a cross join tenant_plan tp left join policy p on true
        where a.tenant_id=$1 and a.provider_key=$2 limit 1`,
-      [input.tenantId, input.providerKey, existing.rows[0].id]
+      [input.tenantId, input.providerKey, existing.rows[0].id, input.callId]
     );
     const price = pricing?.rows[0];
-    const managed = managedOwnership(price?.ownership_mode);
+    const managed = managedOwnership(price?.ownership_mode) || existing.rows[0].metadata_json?.managedVoice === true;
     const sponsored = isProviderUsageSponsored(price?.sponsorship_status);
-    const revisedCharge = managed && price && !sponsored
-      ? calculateManagedVoiceCharge({
-          priorMinutes: numeric(price.other_minutes), callMinutes: minutes,
-          includedMinutes: numeric(price.included_quantity), unitPriceCents: numeric(price.overage_unit_price_cents)
-        }).customerChargeCents
-      : 0;
+    const currentSnapshot = price?.allowance_policy_id ? {
+      policyId: price.allowance_policy_id,
+      planKey: price.plan_key,
+      includedMinutes: numeric(price.included_quantity),
+      unitPriceCents: numeric(price.overage_unit_price_cents),
+      pricingDisclosed: price.metadata_json?.disclosedOverage === true,
+      autoBillDisclosedOverage: price.metadata_json?.autoBillDisclosedOverage === true,
+      sponsoredByFerocity: sponsored,
+      capturedAt: new Date().toISOString()
+    } satisfies VoicePricingSnapshot : null;
+    const admissionSnapshot = validVoicePricingSnapshot(price?.admission_pricing_snapshot);
+    const recordedSnapshot = validVoicePricingSnapshot(existing.rows[0].metadata_json?.usagePricingSnapshot);
+    const effectivePricing = recordedSnapshot ?? admissionSnapshot ?? currentSnapshot;
+    const recordedSponsored = typeof existing.rows[0].metadata_json?.sponsoredByFerocity === "boolean"
+      ? existing.rows[0].metadata_json.sponsoredByFerocity
+      : undefined;
+    const effectiveSponsored = recordedSnapshot?.sponsoredByFerocity
+      ?? recordedSponsored
+      ?? admissionSnapshot?.sponsoredByFerocity
+      ?? currentSnapshot?.sponsoredByFerocity
+      ?? sponsored;
+    const existingFinalized = existing.rows[0].metadata_json?.customerChargeFinalized === true;
+    const pricingUnavailable = managed && !effectiveSponsored && !effectivePricing;
+    const pricingPending = pricingUnavailable && !existingFinalized;
+    const effectiveMinutes = Math.max(minutes, numeric(existing.rows[0].quantity));
     const previousCharge = numeric(existing.rows[0].customer_charge_cents);
-    const chargeDelta = revisedCharge - previousCharge;
+    const revisedCharge = managed && !effectiveSponsored && effectivePricing
+      ? calculateManagedVoiceCharge({
+          priorMinutes: numeric(price?.other_minutes), callMinutes: effectiveMinutes,
+          includedMinutes: effectivePricing.includedMinutes,
+          unitPriceCents: effectivePricing.unitPriceCents
+        }).customerChargeCents
+      : pricingUnavailable ? previousCharge : 0;
     const autoApproved = managed && revisedCharge > 0
-      && price?.metadata_json?.disclosedOverage === true
-      && price?.metadata_json?.autoBillDisclosedOverage === true;
-    const meterStatus = revisedCharge <= 0 ? "included" : autoApproved ? "approved" : "pending_review";
-    await queryPostgres(
+      && effectivePricing?.pricingDisclosed === true
+      && effectivePricing.autoBillDisclosedOverage === true;
+    const customerChargeFinalized = existingFinalized || !pricingPending;
+    const meterStatus = pricingUnavailable && existingFinalized
+      ? existing.rows[0].status
+      : pricingPending
+      ? "pending_review"
+      : revisedCharge <= 0 ? "included" : autoApproved ? "approved" : "pending_review";
+    await query(
       `
       update public.usage_meter_events
       set provider_cost_cents = greatest(provider_cost_cents, $3),
@@ -430,44 +548,71 @@ export async function recordVoiceUsage(input: {
         input.tenantId,
         existing.rows[0].id,
         input.providerCostCents,
-        minutes,
+        effectiveMinutes,
         revisedCharge,
         meterStatus,
-        JSON.stringify({ providerCostFinalized: input.providerCostCents > 0, usageReconciledAt: new Date().toISOString(), sponsoredByFerocity: sponsored })
+        JSON.stringify({
+          providerCostFinalized:
+            existing.rows[0].metadata_json?.providerCostFinalized === true || input.providerCostCents > 0,
+          usageReconciledAt: new Date().toISOString(),
+          sponsoredByFerocity: effectiveSponsored,
+          usagePricingSnapshot: effectivePricing,
+          pricingReconciliationStatus: pricingPending ? "pending_pricing_policy" : "reconciled",
+          customerChargeFinalized
+        })
       ]
     );
-    await queryPostgres(
+    await query(
       `
       update public.receptionist_calls
       set estimated_provider_cost_cents = greatest(estimated_provider_cost_cents, $3),
           billable_customer_amount_cents = $4,
           usage_units = greatest(usage_units,$5),
+          metadata_json = metadata_json || $6::jsonb,
           updated_at = now()
       where tenant_id = $1 and id = $2
       `,
-      [input.tenantId, input.callId, input.providerCostCents, revisedCharge, minutes]
+      [
+        input.tenantId,
+        input.callId,
+        input.providerCostCents,
+        Math.max(previousCharge, revisedCharge),
+        effectiveMinutes,
+        JSON.stringify({
+          pricingReconciliationStatus: pricingPending ? "pending_pricing_policy" : "reconciled",
+          customerChargeFinalized
+        })
+      ]
     );
-    if (managed && price && chargeDelta !== 0) {
+    if (managed && price && customerChargeFinalized) {
       const monthKey = new Date().toISOString().slice(0, 7);
-      await queryPostgres(
+      await query(
         `update public.billing_usage_charges
-         set amount_cents=greatest(0,amount_cents+$3),updated_at=now()
+         set amount_cents=(
+               select ceil(coalesce(sum(u.customer_charge_cents),0))::integer
+               from public.usage_meter_events u
+               where u.tenant_id=$1 and u.feature_key='ai_receptionist'
+                 and u.billing_period_start=date_trunc('month',now())::date
+                 and u.status not in ('void','failed')
+             ),updated_at=now()
          where tenant_id=$1 and charge_key=$2 and source_table='usage_meter_events' and source_id=$2`,
-        [input.tenantId, `managed_voice:${monthKey}`, chargeDelta]
+        [input.tenantId, `managed_voice:${monthKey}`]
       );
     }
-    return { recorded: false, customerChargeCents: revisedCharge };
+    return { recorded: false, customerChargeCents: revisedCharge, retryable: false };
   }
 
-  const contextResult = await queryPostgres<{
+  const contextResult = await query<{
     ownership_mode: string;
     plan_key: string | null;
     sponsorship_status: string | null;
+    allowance_policy_id: string | null;
     included_quantity: string | number | null;
     hard_limit_quantity: string | number | null;
     overage_unit_price_cents: string | number | null;
     metadata_json: Record<string, unknown> | null;
     prior_minutes: string | number;
+    admission_pricing_snapshot: unknown;
   }>(
     `
     with tenant_plan as (
@@ -489,12 +634,15 @@ export async function recordVoiceUsage(input: {
     select
       a.ownership_mode,
       tp.plan_key,
+      p.id as allowance_policy_id,
       (select status from public.earn_provider_sponsorships es where es.tenant_id=$1 and es.status='active'
         and es.starts_at<=now() and (es.ends_at is null or es.ends_at>now()) limit 1) sponsorship_status,
       p.included_quantity,
       p.hard_limit_quantity,
       p.overage_unit_price_cents,
       p.metadata_json,
+      (select c.admission_pricing_snapshot_json from public.receptionist_calls c
+       where c.tenant_id=$1 and c.id=$3 limit 1) admission_pricing_snapshot,
       (
         select coalesce(sum(u.quantity), 0)
         from public.usage_meter_events u
@@ -509,30 +657,51 @@ export async function recordVoiceUsage(input: {
     where a.tenant_id = $1 and a.provider_key = $2
     limit 1
     `,
-    [input.tenantId, input.providerKey]
+    [input.tenantId, input.providerKey, input.callId]
   );
   const context = contextResult?.rows[0];
-  if (!context) return { recorded: false, customerChargeCents: 0 };
-
-  const managed = managedOwnership(context.ownership_mode);
-  const sponsored = isProviderUsageSponsored(context.sponsorship_status);
-  const charge = managed && !sponsored
+  const managed = managedOwnership(context?.ownership_mode);
+  const sponsored = isProviderUsageSponsored(context?.sponsorship_status);
+  const currentSnapshot = context?.allowance_policy_id ? {
+    policyId: context.allowance_policy_id,
+    planKey: context.plan_key,
+    includedMinutes: numeric(context.included_quantity),
+    unitPriceCents: numeric(context.overage_unit_price_cents),
+    pricingDisclosed: context.metadata_json?.disclosedOverage === true,
+    autoBillDisclosedOverage: context.metadata_json?.autoBillDisclosedOverage === true,
+    sponsoredByFerocity: sponsored,
+    capturedAt: new Date().toISOString()
+  } satisfies VoicePricingSnapshot : null;
+  const admissionSnapshot = validVoicePricingSnapshot(context?.admission_pricing_snapshot);
+  const effectivePricing = admissionSnapshot ?? currentSnapshot;
+  const effectiveSponsored = admissionSnapshot?.sponsoredByFerocity ?? sponsored;
+  const pricingPending = !context || (managed && !effectiveSponsored && !effectivePricing);
+  const charge = managed && !effectiveSponsored && effectivePricing
     ? calculateManagedVoiceCharge({
-        priorMinutes: numeric(context.prior_minutes),
+        priorMinutes: numeric(context?.prior_minutes),
         callMinutes: minutes,
-        includedMinutes: numeric(context.included_quantity),
-        unitPriceCents: numeric(context.overage_unit_price_cents)
+        includedMinutes: effectivePricing.includedMinutes,
+        unitPriceCents: effectivePricing.unitPriceCents
       })
     : { billableMinutes: 0, customerChargeCents: 0 };
   const autoApproved =
     managed
     && charge.customerChargeCents > 0
-    && context.metadata_json?.disclosedOverage === true
-    && context.metadata_json?.autoBillDisclosedOverage === true;
-  const meterStatus = charge.customerChargeCents <= 0 ? "included" : autoApproved ? "approved" : "pending_review";
+    && effectivePricing?.pricingDisclosed === true
+    && effectivePricing.autoBillDisclosedOverage === true;
+  const meterStatus = pricingPending
+    ? "pending_review"
+    : charge.customerChargeCents <= 0 ? "included" : autoApproved ? "approved" : "pending_review";
   const idempotencyKey = `${input.tenantId}:${input.providerKey}:call:${input.providerCallId}:minute`;
 
-  const meter = await queryPostgres<{ id: string }>(
+  const meter = await query<{
+    id: string;
+    quantity: string | number;
+    provider_cost_cents: string | number;
+    customer_charge_cents: string | number;
+    status: string;
+    metadata_json: Record<string, unknown> | null;
+  }>(
     `
     insert into public.usage_meter_events (
       tenant_id, plan_key, subscription_tenant_id, feature_key, provider_key,
@@ -544,12 +713,56 @@ export async function recordVoiceUsage(input: {
       $1, $2, $1, 'ai_receptionist', $3, $4, $4, 'receptionist_calls', $5,
       'minute', $6, $7, $8, $9, 'provider_webhook', $10, $11::jsonb
     )
-    on conflict (tenant_id, idempotency_key) do nothing
-    returning id
+    on conflict (tenant_id, idempotency_key) do update
+    set quantity=greatest(public.usage_meter_events.quantity,excluded.quantity),
+        provider_cost_cents=greatest(public.usage_meter_events.provider_cost_cents,excluded.provider_cost_cents),
+        customer_charge_cents=case
+          when coalesce((public.usage_meter_events.metadata_json->>'customerChargeFinalized')::boolean,false)
+            and not coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false)
+            then public.usage_meter_events.customer_charge_cents
+          else greatest(public.usage_meter_events.customer_charge_cents,excluded.customer_charge_cents)
+        end,
+        status=case
+          when coalesce((public.usage_meter_events.metadata_json->>'customerChargeFinalized')::boolean,false)
+            and not coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false)
+            then public.usage_meter_events.status
+          when coalesce((public.usage_meter_events.metadata_json->>'customerChargeFinalized')::boolean,false)
+            and coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false)
+            then case
+              when greatest(public.usage_meter_events.customer_charge_cents,excluded.customer_charge_cents) <= 0
+                then 'included'
+              when public.usage_meter_events.status='approved' or excluded.status='approved'
+                then 'approved'
+              else 'pending_review'
+            end
+          when coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false)
+            then excluded.status
+          else 'pending_review'
+        end,
+        metadata_json=public.usage_meter_events.metadata_json || excluded.metadata_json || jsonb_build_object(
+          'providerCostFinalized',
+          coalesce((public.usage_meter_events.metadata_json->>'providerCostFinalized')::boolean,false)
+            or coalesce((excluded.metadata_json->>'providerCostFinalized')::boolean,false),
+          'customerChargeFinalized',
+          coalesce((public.usage_meter_events.metadata_json->>'customerChargeFinalized')::boolean,false)
+            or coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false),
+          'pricingReconciliationStatus',case
+            when coalesce((public.usage_meter_events.metadata_json->>'customerChargeFinalized')::boolean,false)
+              or coalesce((excluded.metadata_json->>'customerChargeFinalized')::boolean,false)
+              then 'reconciled'
+            else 'pending_pricing_policy'
+          end,
+          'usagePricingSnapshot',case
+            when jsonb_typeof(public.usage_meter_events.metadata_json->'usagePricingSnapshot')='object'
+              then public.usage_meter_events.metadata_json->'usagePricingSnapshot'
+            else excluded.metadata_json->'usagePricingSnapshot'
+          end
+        )
+    returning id,quantity,provider_cost_cents,customer_charge_cents,status,metadata_json
     `,
     [
       input.tenantId,
-      context.plan_key,
+      context?.plan_key ?? null,
       input.providerKey,
       input.providerCallId,
       input.callId,
@@ -559,47 +772,75 @@ export async function recordVoiceUsage(input: {
       meterStatus,
       idempotencyKey,
       JSON.stringify({
-        ownershipMode: context.ownership_mode,
+        ownershipMode: context?.ownership_mode ?? "unknown",
         managedVoice: managed,
         billableMinutes: charge.billableMinutes,
-        overageUnitPriceCents: numeric(context.overage_unit_price_cents),
+        overageUnitPriceCents: effectivePricing?.unitPriceCents ?? null,
         autoApproved,
-        sponsoredByFerocity: sponsored
+        providerCostFinalized: input.providerCostCents > 0,
+        sponsoredByFerocity: effectiveSponsored,
+        usagePricingSnapshot: effectivePricing,
+        pricingReconciliationStatus: pricingPending ? "pending_pricing_policy" : "reconciled",
+        customerChargeFinalized: !pricingPending
       })
     ]
   );
-  const meterId = meter?.rows[0]?.id;
-  if (!meterId) return { recorded: false, customerChargeCents: 0 };
+  const meterRow = meter?.rows[0];
+  const meterId = meterRow?.id;
+  if (!meterId) throw new Error("Voice usage meter write returned no durable row.");
+  const persistedMinutes = numeric(meterRow.quantity);
+  const persistedProviderCost = numeric(meterRow.provider_cost_cents);
+  const persistedCustomerCharge = numeric(meterRow.customer_charge_cents);
+  const persistedChargeFinalized = meterRow.metadata_json?.customerChargeFinalized === true;
 
-  await queryPostgres(
+  await query(
     `
     update public.receptionist_calls
-    set estimated_provider_cost_cents = $3,
-        billable_customer_amount_cents = $4,
-        usage_units = $5,
+    set estimated_provider_cost_cents = greatest(estimated_provider_cost_cents,$3),
+        billable_customer_amount_cents = greatest(billable_customer_amount_cents,$4),
+        usage_units = greatest(usage_units,$5),
+        metadata_json = metadata_json || $6::jsonb,
         updated_at = now()
     where tenant_id = $1 and id = $2
     `,
-    [input.tenantId, input.callId, input.providerCostCents, charge.customerChargeCents, minutes]
+    [
+      input.tenantId,
+      input.callId,
+      persistedProviderCost,
+      persistedCustomerCharge,
+      persistedMinutes,
+      JSON.stringify({
+        pricingReconciliationStatus: persistedChargeFinalized ? "reconciled" : "pending_pricing_policy",
+        customerChargeFinalized: persistedChargeFinalized
+      })
+    ]
   );
 
-  if (managed && charge.customerChargeCents > 0) {
+  if (managed && persistedChargeFinalized && persistedCustomerCharge > 0) {
     const monthKey = new Date().toISOString().slice(0, 7);
-    await queryPostgres(
+    await query(
       `
+      with monthly_total as (
+        select ceil(coalesce(sum(u.customer_charge_cents),0))::integer as amount_cents
+        from public.usage_meter_events u
+        where u.tenant_id=$1 and u.feature_key='ai_receptionist'
+          and u.billing_period_start=date_trunc('month',now())::date
+          and u.status not in ('void','failed')
+      )
       insert into public.billing_usage_charges (
         tenant_id, plan_key, charge_key, fee_family, description, source_table,
         source_id, amount_cents, status, period_start, period_end, metadata_json
       )
-      values (
-        $1, $2, $3, 'usage_rebilling', $4, 'usage_meter_events', $3, $5, $6,
+      select
+        $1, $2, $3, 'usage_rebilling', $4, 'usage_meter_events', $3, monthly_total.amount_cents, $5,
         date_trunc('month', now()), date_trunc('month', now()) + interval '1 month',
-        $7::jsonb
-      )
+        $6::jsonb
+      from monthly_total
+      where monthly_total.amount_cents > 0
       on conflict (tenant_id, charge_key, source_table, source_id)
         where source_table is not null and source_id is not null
       do update set
-        amount_cents = public.billing_usage_charges.amount_cents + excluded.amount_cents,
+        amount_cents = excluded.amount_cents,
         status = case
           when public.billing_usage_charges.status in ('pending_review', 'approved', 'failed')
             then excluded.status
@@ -610,14 +851,13 @@ export async function recordVoiceUsage(input: {
       `,
       [
         input.tenantId,
-        context.plan_key,
+        context?.plan_key ?? effectivePricing?.planKey ?? null,
         `managed_voice:${monthKey}`,
         `Managed AI receptionist overage — ${monthKey}`,
-        charge.customerChargeCents,
-        autoApproved ? "approved" : "pending_review",
+        meterRow.status === "approved" ? "approved" : "pending_review",
         JSON.stringify({
-          pricingDisclosed: context.metadata_json?.disclosedOverage === true,
-          unitPriceCents: numeric(context.overage_unit_price_cents),
+          pricingDisclosed: effectivePricing?.pricingDisclosed === true,
+          unitPriceCents: effectivePricing?.unitPriceCents ?? null,
           aggregatedMonthly: true
         })
       ]
@@ -625,9 +865,9 @@ export async function recordVoiceUsage(input: {
   }
 
   const actualCostPerMinute = input.providerCostCents / minutes;
-  const costCeiling = numeric(context.metadata_json?.providerCostCeilingCentsPerMinute) || 35;
-  if (managed && actualCostPerMinute > costCeiling) {
-    await queryPostgres(
+  const costCeiling = numeric(context?.metadata_json?.providerCostCeilingCentsPerMinute) || 35;
+  if (context && managed && actualCostPerMinute > costCeiling) {
+    await query(
       `
       update public.provider_accounts
       set status = 'paused',
@@ -647,7 +887,7 @@ export async function recordVoiceUsage(input: {
         })
       ]
     );
-    await queryPostgres(
+    await query(
       `
       insert into public.operator_timeline_events (
         tenant_id, event_family, event_type, title, body, metadata_json
@@ -660,7 +900,20 @@ export async function recordVoiceUsage(input: {
     );
   }
 
-  return { recorded: true, customerChargeCents: charge.customerChargeCents };
+  return { recorded: true, customerChargeCents: persistedCustomerCharge, retryable: false };
+}
+
+export async function recordVoiceUsage(input: VoiceUsageInput) {
+  const result = await withPostgresTransaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `managed-voice-usage:${input.tenantId}`
+    ]);
+    const query: VoiceUsageQuery = async <T extends QueryResultRow>(text: string, values: unknown[] = []) => {
+      return client.query<T>(text, values);
+    };
+    return recordVoiceUsageInTransaction(input, query);
+  });
+  return result ?? { recorded: false, customerChargeCents: 0, retryable: true };
 }
 
 export function automaticUsageBillingEnabled() {

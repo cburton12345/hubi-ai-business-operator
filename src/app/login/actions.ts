@@ -14,8 +14,15 @@ import { safePostLoginDestination } from "@/lib/auth/post-login-destination";
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  next: z.string().optional()
+  next: z.string().optional(),
+  lang: z.enum(["en", "es"]).optional()
 });
+
+function loginErrorUrl(error: string, next: string | undefined, lang: "en" | "es" | undefined) {
+  const params = new URLSearchParams({ error, next: next ?? "/app" });
+  if (lang === "es") params.set("lang", "es");
+  return `/login?${params.toString()}`;
+}
 
 export async function loginAdmin(formData: FormData) {
   const token = String(formData.get("token") ?? "");
@@ -58,11 +65,12 @@ export async function loginUser(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
-    next: formData.get("next")?.toString()
+    next: formData.get("next")?.toString(),
+    lang: formData.get("lang")?.toString()
   });
 
   if (!parsed.success) {
-    redirect(`/login?error=credentials`);
+    redirect(loginErrorUrl("credentials", formData.get("next")?.toString(), formData.get("lang") === "es" ? "es" : "en"));
   }
   const requestHeaders = await headers();
   const loginLimit = await consumeLoginRateLimit({
@@ -77,7 +85,7 @@ export async function loginUser(formData: FormData) {
     windowSeconds: 15 * 60
   });
   if (!loginLimit.allowed) {
-    redirect(`/login?error=credentials&next=${encodeURIComponent(parsed.data.next ?? "/app")}`);
+    redirect(loginErrorUrl("credentials", parsed.data.next, parsed.data.lang));
   }
 
   const supabaseIdentity = await signInWithSupabasePassword(parsed.data.email, parsed.data.password);
@@ -126,7 +134,7 @@ export async function loginUser(formData: FormData) {
   );
 
   if (!user || (!supabaseIdentity && !localPasswordValid)) {
-    redirect(`/login?error=credentials&next=${encodeURIComponent(parsed.data.next ?? "/app")}`);
+    redirect(loginErrorUrl("credentials", parsed.data.next, parsed.data.lang));
   }
 
   if (localPasswordValid && (user.password_iterations ?? 0) < 210000) {

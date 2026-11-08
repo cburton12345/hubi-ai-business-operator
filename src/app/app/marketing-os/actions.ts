@@ -9,6 +9,7 @@ import { normalizeFunnelStrategy, type FunnelStrategyPlan } from "@/lib/ai/funne
 import { directVideoMarketingAsset } from "@/lib/ai/video-service";
 import { queryPostgres } from "@/lib/db/postgres";
 import { processWebsiteImport } from "@/lib/marketing-os/website-import-processor";
+import { approveManagedImageAd, cancelManagedImageAd, generateManagedImageAd } from "@/lib/marketing-os/managed-image-generation";
 import { evaluateOrganicContentQuality, includedOrganicPublishingMoments } from "@/lib/marketing/organic-publishing-policy";
 import { getWorkspacePlanKey } from "@/lib/controls/service-gates";
 import { activateFunnelOperations } from "@/lib/revenue-growth/activate-funnel-operations";
@@ -132,7 +133,14 @@ const graphicJobSchema = z.object({
   brandId: z.string().uuid().optional(),
   jobType: z.enum(["review_graphic", "before_after", "image_ad"]),
   serviceLabel: z.string().trim().max(160).optional(),
-  serviceArea: z.string().trim().max(160).optional()
+  serviceArea: z.string().trim().max(160).optional(),
+  prompt: z.string().trim().min(12).max(6000),
+  size: z.enum(["1024x1024", "1536x1024", "1024x1536"])
+});
+
+const graphicActionSchema = z.object({
+  graphicJobId: z.string().uuid(),
+  costApproval: z.literal("true").optional()
 });
 
 const videoJobSchema = z.object({
@@ -150,7 +158,10 @@ const videoJobSchema = z.object({
 });
 
 async function firstBrandId(workspaceId: string, preferredBrandId?: string) {
-  if (preferredBrandId) return preferredBrandId;
+  if (preferredBrandId) {
+    const preferred = await queryPostgres<{ id: string }>(`select id from public.brands where tenant_id=$1 and id=$2 and status<>'archived' limit 1`, [workspaceId, preferredBrandId]);
+    return preferred?.rows[0]?.id ?? null;
+  }
   const result = await queryPostgres<{ id: string }>(
     `
     select id
@@ -1679,7 +1690,9 @@ export async function createGraphicJobAction(formData: FormData) {
     brandId: formData.get("brandId")?.toString() || undefined,
     jobType: formData.get("jobType"),
     serviceLabel: formData.get("serviceLabel")?.toString() || undefined,
-    serviceArea: formData.get("serviceArea")?.toString() || undefined
+    serviceArea: formData.get("serviceArea")?.toString() || undefined,
+    prompt: formData.get("prompt"),
+    size: formData.get("size") || "1024x1024"
   });
   if (!parsed.success) return;
 
@@ -1694,7 +1707,7 @@ export async function createGraphicJobAction(formData: FormData) {
   await queryPostgres(
     `
     insert into public.marketing_graphic_jobs (tenant_id, brand_id, job_type, target_formats, service_label, service_area, status, prompt_json, metadata_json)
-    values ($1, $2, $3, $4, $5, $6, 'draft', $7::jsonb, $8::jsonb)
+    values ($1, $2, $3, $4, $5, $6, 'needs_review', $7::jsonb, $8::jsonb)
     `,
     [
       workspaceId,
@@ -1703,11 +1716,39 @@ export async function createGraphicJobAction(formData: FormData) {
       targetFormats,
       parsed.data.serviceLabel || null,
       parsed.data.serviceArea || null,
-      JSON.stringify({ useBusinessProfile: true, useApprovedBranding: true }),
-      JSON.stringify({ noProviderSubmitted: true, approvalRequired: true })
+      JSON.stringify({ prompt: parsed.data.prompt, size: parsed.data.size, sourceAssets: [], useBusinessProfile: true, useApprovedBranding: true }),
+      JSON.stringify({ noProviderSubmitted: true, approvalRequired: true, generationMode: "text_to_image" })
     ]
   );
 
+  revalidateMarketingOs();
+}
+
+export async function approveGraphicJobAction(formData: FormData) {
+  const actor = await requirePermission("approval:review_high");
+  const parsed = graphicActionSchema.safeParse({ graphicJobId: formData.get("graphicJobId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await approveManagedImageAd({ tenantId: workspaceId, jobId: parsed.data.graphicJobId, actorKey: actor.userId });
+  revalidateMarketingOs();
+}
+
+export async function submitGraphicJobAction(formData: FormData) {
+  await requirePermission("approval:review_high");
+  const parsed = graphicActionSchema.safeParse({ graphicJobId: formData.get("graphicJobId"), costApproval: formData.get("costApproval") });
+  if (!parsed.success || parsed.data.costApproval !== "true") return;
+  const [workspaceId, session] = await Promise.all([getCurrentWorkspaceId(), getCurrentAppSession()]);
+  await generateManagedImageAd({ tenantId: workspaceId, jobId: parsed.data.graphicJobId, userId: session?.userId ?? null });
+  revalidateMarketingOs();
+  revalidatePath("/app/ai-usage");
+}
+
+export async function cancelGraphicJobAction(formData: FormData) {
+  await requirePermission("approval:review_high");
+  const parsed = graphicActionSchema.safeParse({ graphicJobId: formData.get("graphicJobId") });
+  if (!parsed.success) return;
+  const workspaceId = await getCurrentWorkspaceId();
+  await cancelManagedImageAd(workspaceId, parsed.data.graphicJobId);
   revalidateMarketingOs();
 }
 

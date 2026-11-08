@@ -260,9 +260,12 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       status: string;
       service_label: string | null;
       target_formats: string[];
+      prompt_json: { prompt?: string; size?: string } | null;
+      approval_snapshot_json: { model?: string; proposedCustomerChargeCents?: number } | null;
+      output_media_asset_id: string | null;
     }>(
       `
-      select id, job_type, status, service_label, target_formats
+      select id, job_type, status, service_label, target_formats, prompt_json, approval_snapshot_json, output_media_asset_id
       from public.marketing_graphic_jobs
       where tenant_id = $1
       order by created_at desc
@@ -515,7 +518,7 @@ export async function getMarketingOsDashboard(): Promise<MarketingOsDashboard> {
       row(asset.id, asset.title, asset.campaign_label, asset.status, `${asset.asset_type} / ${asset.service_label ?? "general"} / ${asset.approved_for_ai_reuse ? "AI reuse approved" : "not approved for AI reuse"}`)
     ),
     graphicJobs: (graphicResult?.rows ?? []).map((job) =>
-      row(job.id, job.job_type.replaceAll("_", " "), job.service_label, job.status, job.target_formats.join(", ") || "formats not selected")
+      row(job.id, job.job_type.replaceAll("_", " "), job.job_type === "image_ad" ? job.prompt_json?.prompt ?? "Prompt missing" : job.service_label, job.status, `${job.prompt_json?.size ?? "size not selected"} / ${job.approval_snapshot_json?.model ?? "model not approved"} / ${job.approval_snapshot_json?.proposedCustomerChargeCents === undefined ? "quote not approved" : `$${(job.approval_snapshot_json.proposedCustomerChargeCents / 100).toFixed(2)} proposed charge`}`, job.output_media_asset_id ? `/api/marketing-assets/${job.output_media_asset_id}` : undefined)
     ),
     videoJobs: (videoResult?.rows ?? []).map((job) =>
       row(

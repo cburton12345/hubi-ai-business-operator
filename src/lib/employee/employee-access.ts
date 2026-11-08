@@ -7,6 +7,7 @@ export type EmployeeAccessContext = {
   userId: string | null;
   workerId: string | null;
   workerName: string | null;
+  preferredLanguage: "en" | "es";
   canManageAll: boolean;
 };
 
@@ -20,6 +21,7 @@ export async function getEmployeeAccessContext(): Promise<EmployeeAccessContext>
       userId: null,
       workerId: null,
       workerName: null,
+      preferredLanguage: "en",
       canManageAll
     };
   }
@@ -28,9 +30,10 @@ export async function getEmployeeAccessContext(): Promise<EmployeeAccessContext>
     id: string;
     name: string;
     user_id: string | null;
+    preferred_language: "en" | "es";
   }>(
     `
-    select id, name, user_id
+    select id, name, user_id, preferred_language
     from public.operations_workers
     where tenant_id = $1
       and availability_status <> 'inactive'
@@ -68,6 +71,7 @@ export async function getEmployeeAccessContext(): Promise<EmployeeAccessContext>
     userId,
     workerId: worker?.id ?? null,
     workerName: worker?.name ?? null,
+    preferredLanguage: worker?.preferred_language === "es" ? "es" : "en",
     canManageAll
   };
 }
@@ -75,7 +79,7 @@ export async function getEmployeeAccessContext(): Promise<EmployeeAccessContext>
 export async function canAccessEmployeeAssignment(context: EmployeeAccessContext, assignmentId: string) {
   if (context.canManageAll) {
     const result = await queryPostgres<{ allowed: boolean }>(
-      `select exists(select 1 from public.operations_assignments where tenant_id = $1 and id = $2) as allowed`,
+      `select exists(select 1 from public.operations_assignments where tenant_id = $1 and id = $2 and status <> 'archived') as allowed`,
       [context.tenantId, assignmentId]
     );
     return result?.rows[0]?.allowed === true;
@@ -89,6 +93,7 @@ export async function canAccessEmployeeAssignment(context: EmployeeAccessContext
       from public.operations_assignments a
       where a.tenant_id = $1
         and a.id = $2
+        and a.status <> 'archived'
         and (
           a.worker_id = $3
           or exists (

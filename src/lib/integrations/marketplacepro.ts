@@ -1,36 +1,51 @@
 import { z } from "zod";
 import { queryPostgres } from "@/lib/db/postgres";
-import { env } from "@/lib/env";
-import { hasRotatingSecret, timingSafeSecretMatch } from "@/lib/security/rotating-secret";
-import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
-import { safeLogAppError } from "@/lib/observability/log-error";
+import type { MarketplaceProDeliveryConnection } from "@/lib/integrations/marketplacepro-delivery";
+import type { MarketplaceProQuery } from "@/lib/integrations/marketplacepro-delivery-store";
+
+function boundedJson(value: unknown, depth = 0): boolean {
+  if (depth > 5) return false;
+  if (value === null || typeof value === "boolean" || typeof value === "number") return true;
+  if (typeof value === "string") return value.length <= 4_000;
+  if (Array.isArray(value)) return value.length <= 50 && value.every((item) => boundedJson(item, depth + 1));
+  if (typeof value !== "object") return false;
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.length <= 50 && entries.every(([key, item]) => key.length <= 80 && boundedJson(item, depth + 1));
+}
+
+const boundedMetadataSchema = z.record(z.string().max(80), z.unknown()).superRefine((value, context) => {
+  if (!boundedJson(value) || JSON.stringify(value).length > 32_000) {
+    context.addIssue({ code: "custom", message: "Metadata exceeds MarketplacePro payload limits." });
+  }
+});
 
 export const marketplaceProLeadSchema = z.object({
-  marketplaceLeadId: z.string().min(1),
-  marketplaceAccountId: z.string().optional(),
-  vendorId: z.string().optional(),
-  listingId: z.string().optional(),
-  category: z.string().optional(),
-  service: z.string().optional(),
+  marketplaceLeadId: z.string().trim().min(1).max(200),
+  marketplaceAccountId: z.string().trim().min(1).max(200).optional(),
+  vendorId: z.string().trim().max(200).optional(),
+  listingId: z.string().trim().max(200).optional(),
+  category: z.string().trim().max(120).optional(),
+  service: z.string().trim().max(160).optional(),
   customer: z.object({
-    name: z.string().optional(),
-    email: z.string().email().optional(),
-    phone: z.string().optional()
-  }).default({}),
-  message: z.string().optional(),
+    name: z.string().trim().max(200).optional(),
+    email: z.string().trim().email().max(320).optional(),
+    phone: z.string().trim().max(40).optional()
+  }).strict().default({}),
+  message: z.string().trim().max(4_000).optional(),
   urgency: z.enum(["low", "normal", "high"]).optional(),
-  status: z.string().optional(),
+  status: z.string().trim().max(120).optional(),
   consentToContact: z.boolean().default(false),
-  submittedAt: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({})
-});
+  submittedAt: z.string().datetime({ offset: true }).optional(),
+  metadata: boundedMetadataSchema.default({})
+}).strict();
 
 export const marketplaceProStatusSchema = z.object({
-  marketplaceLeadId: z.string().min(1),
+  marketplaceLeadId: z.string().trim().min(1).max(200),
+  marketplaceAccountId: z.string().trim().min(1).max(200).optional(),
   status: z.enum(["new_lead", "contacted", "estimate_sent", "booked", "won", "lost", "review_requested", "completed_job"]),
-  note: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({})
-});
+  note: z.string().trim().max(2_000).optional(),
+  metadata: boundedMetadataSchema.default({})
+}).strict();
 
 export const marketplaceProEventSchema = z.object({
   marketplaceTable: z.enum([
@@ -43,72 +58,37 @@ export const marketplaceProEventSchema = z.object({
     "notifications",
     "support_requests",
     "payments",
-    "traffic_events"
+    "traffic_events",
+    "labor_requests",
+    "worker_matches",
+    "labor_assignments",
+    "contractor_recruiting_leads",
+    "coverage_requirements"
   ]),
-  marketplaceObjectId: z.string().min(1),
-  marketplaceAccountId: z.string().optional(),
-  vendorId: z.string().optional(),
-  listingId: z.string().optional(),
-  eventType: z.string().optional(),
-  title: z.string().optional(),
-  body: z.string().optional(),
-  actorLabel: z.string().optional(),
-  category: z.string().optional(),
-  service: z.string().optional(),
-  status: z.string().optional(),
-  payload: z.record(z.string(), z.unknown()).default({})
-});
+  marketplaceObjectId: z.string().trim().min(1).max(200),
+  marketplaceAccountId: z.string().trim().min(1).max(200).optional(),
+  vendorId: z.string().trim().max(200).optional(),
+  listingId: z.string().trim().max(200).optional(),
+  eventType: z.string().trim().max(120).optional(),
+  title: z.string().trim().max(220).optional(),
+  body: z.string().trim().max(4_000).optional(),
+  actorLabel: z.string().trim().max(220).optional(),
+  category: z.string().trim().max(120).optional(),
+  service: z.string().trim().max(160).optional(),
+  status: z.string().trim().max(120).optional(),
+  payload: boundedMetadataSchema.default({})
+}).strict();
 
 type MarketplaceProLeadInput = z.infer<typeof marketplaceProLeadSchema>;
 type MarketplaceProStatusInput = z.infer<typeof marketplaceProStatusSchema>;
 type MarketplaceProEventInput = z.infer<typeof marketplaceProEventSchema>;
 
-type ConnectionRow = {
-  id: string;
-  tenant_id: string;
-  brand_id: string | null;
-  connection_status: string;
+export type MarketplaceProExecutionContext = {
+  connection: MarketplaceProDeliveryConnection;
+  query: MarketplaceProQuery;
+  deliveryId?: string;
+  occurredAt?: string;
 };
-
-function hasValidSignature(request: Request) {
-  // TODO: Replace shared-token comparison with MarketplacePro's final HMAC signature contract.
-  const signature = request.headers.get("x-marketplacepro-signature")?.trim();
-  const token = request.headers.get("x-marketplacepro-token")?.trim();
-  return timingSafeSecretMatch(signature, env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS) ||
-    timingSafeSecretMatch(token, env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS);
-}
-
-export function marketplaceProAuthState(request: Request) {
-  if (!hasRotatingSecret(env.MARKETPLACEPRO_WEBHOOK_SECRET, env.MARKETPLACEPRO_WEBHOOK_SECRET_PREVIOUS)) {
-    return { ok: false, status: 501, error: "MarketplacePro webhook secret is not configured." };
-  }
-
-  if (!hasValidSignature(request)) {
-    return { ok: false, status: 401, error: "MarketplacePro signature is missing or invalid." };
-  }
-
-  return { ok: true as const };
-}
-
-async function resolveConnection(input: { marketplaceAccountId?: string; vendorId?: string; listingId?: string }) {
-  const result = await queryPostgres<ConnectionRow>(
-    `
-    select id, tenant_id, brand_id, connection_status
-    from public.marketplacepro_connections
-    where connection_status in ('connected', 'needs_attention')
-      and ($1::text is null or marketplace_account_id = $1)
-      and ($2::text is null or marketplace_vendor_id = $2)
-      and ($3::text is null or marketplace_listing_id = $3 or marketplace_listing_id is null)
-    order by
-      case when marketplace_listing_id = $3 then 1 else 2 end,
-      updated_at desc
-    limit 1
-    `,
-    [input.marketplaceAccountId ?? null, input.vendorId ?? null, input.listingId ?? null]
-  );
-
-  return result?.rows[0] ?? null;
-}
 
 async function logMarketplaceEvent(input: {
   tenantId: string;
@@ -120,8 +100,8 @@ async function logMarketplaceEvent(input: {
   status: string;
   message?: string | null;
   payload: Record<string, unknown>;
-}) {
-  await queryPostgres(
+}, query: MarketplaceProQuery = queryPostgres) {
+  await query(
     `
     insert into public.marketplacepro_sync_events (
       tenant_id, brand_id, connection_id, lead_id, event_type, direction,
@@ -167,7 +147,13 @@ function eventTypeForTable(table: MarketplaceProEventInput["marketplaceTable"], 
     "payment_failed",
     "checkout_session_completed",
     "checkout_session_failed",
-    "traffic_event_logged"
+    "traffic_event_logged",
+    "opportunity_received",
+    "contractor_matches_found",
+    "coverage_gap_detected",
+    "contractor_confirmed",
+    "assignment_status_changed",
+    "recruiting_status_changed"
   ]);
   if (explicit && allowed.has(explicit)) return explicit;
   if (table === "posts") return "post_created";
@@ -179,6 +165,11 @@ function eventTypeForTable(table: MarketplaceProEventInput["marketplaceTable"], 
   if (table === "notifications") return "notification_logged";
   if (table === "payments") return "payment_completed";
   if (table === "traffic_events") return "traffic_event_logged";
+  if (table === "labor_requests") return "opportunity_received";
+  if (table === "worker_matches") return "contractor_matches_found";
+  if (table === "labor_assignments") return "assignment_status_changed";
+  if (table === "contractor_recruiting_leads") return "recruiting_status_changed";
+  if (table === "coverage_requirements") return "coverage_gap_detected";
   return "support_request_created";
 }
 
@@ -187,6 +178,7 @@ function operationalFamilyForTable(table: MarketplaceProEventInput["marketplaceT
   if (table === "payments") return "revenue";
   if (table === "traffic_events" || table === "notifications" || table === "follows") return "marketing";
   if (table === "support_requests") return "system";
+  if (["labor_requests", "worker_matches", "labor_assignments", "contractor_recruiting_leads", "coverage_requirements"].includes(table)) return "workforce";
   return "lead";
 }
 
@@ -201,39 +193,32 @@ function titleForEvent(input: MarketplaceProEventInput) {
   if (input.marketplaceTable === "notifications") return "MarketplacePro notification logged";
   if (input.marketplaceTable === "payments") return "MarketplacePro payment activity";
   if (input.marketplaceTable === "traffic_events") return "MarketplacePro traffic activity";
+  if (input.marketplaceTable === "labor_requests") return "MarketplacePro contractor opportunity update";
+  if (input.marketplaceTable === "worker_matches") return "MarketplacePro contractor match update";
+  if (input.marketplaceTable === "labor_assignments") return "MarketplacePro contractor assignment update";
+  if (input.marketplaceTable === "contractor_recruiting_leads") return "MarketplacePro recruiting update";
+  if (input.marketplaceTable === "coverage_requirements") return "MarketplacePro coverage gap update";
   return "MarketplacePro support request";
 }
 
-export async function recordMarketplaceProEvent(input: MarketplaceProEventInput) {
+export async function recordMarketplaceProEvent(input: MarketplaceProEventInput, context: MarketplaceProExecutionContext) {
   // Adapter endpoint for MarketplacePro launch tables. Do not require MarketplacePro to rename core tables.
-  const connection = await resolveConnection({
-    marketplaceAccountId: input.marketplaceAccountId,
-    vendorId: input.vendorId,
-    listingId: input.listingId
-  });
-
-  if (!connection?.brand_id) {
-    return {
-      ok: true,
-      status: 202,
-      recorded: false,
-      reason: "No connected MarketplacePro mapping was found for this event."
-    };
-  }
+  const { connection, query, deliveryId, occurredAt } = context;
+  if (!connection.brandId) throw new Error("MarketplacePro connection is missing a brand mapping.");
 
   const eventType = eventTypeForTable(input.marketplaceTable, input.eventType);
-  const timelineResult = await queryPostgres<{ id: string }>(
+  const timelineResult = await query<{ id: string }>(
     `
     insert into public.operator_timeline_events (
       tenant_id, brand_id, event_family, event_type, title, body,
-      primary_entity_type, primary_entity_id, source_table, metadata_json
+      primary_entity_type, primary_entity_id, source_table, metadata_json, occurred_at
     )
-    values ($1, $2, $3, $4, $5, $6, null, null, 'marketplacepro_object_links', $7::jsonb)
+    values ($1, $2, $3, $4, $5, $6, null, null, 'marketplacepro_object_links', $7::jsonb, coalesce($8::timestamptz, now()))
     returning id
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       operationalFamilyForTable(input.marketplaceTable),
       eventType,
       titleForEvent(input),
@@ -245,12 +230,13 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
         service: input.service,
         status: input.status,
         payload: input.payload
-      })
+      }),
+      occurredAt ?? null,
     ]
   );
   const timelineId = timelineResult?.rows[0]?.id ?? null;
 
-  await queryPostgres(
+  await query(
     `
     insert into public.marketplacepro_object_links (
       tenant_id, brand_id, connection_id, marketplace_table, marketplace_object_id,
@@ -265,8 +251,8 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
         updated_at = now()
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       connection.id,
       input.marketplaceTable,
       input.marketplaceObjectId,
@@ -276,7 +262,7 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
   );
 
   if (input.marketplaceTable === "offers" || input.marketplaceTable === "worker_contact_requests" || input.marketplaceTable === "support_requests") {
-    await queryPostgres(
+    await query(
       `
       insert into public.follow_up_workflows (
         tenant_id, brand_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
@@ -284,8 +270,8 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
       values ($1, $2, $3, 'manual', 'open', now(), $4, $5::jsonb)
       `,
       [
-        connection.tenant_id,
-        connection.brand_id,
+        connection.tenantId,
+        connection.brandId,
         input.marketplaceTable === "support_requests" ? "nurture" : "new_lead_response",
         "Review this MarketplacePro activity and decide the next useful response in Ferocity.",
         JSON.stringify({ source: "MarketplacePro", marketplaceTable: input.marketplaceTable, marketplaceObjectId: input.marketplaceObjectId })
@@ -294,85 +280,76 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput)
   }
 
   await logMarketplaceEvent({
-    tenantId: connection.tenant_id,
-    brandId: connection.brand_id,
+    tenantId: connection.tenantId,
+    brandId: connection.brandId,
     connectionId: connection.id,
     eventType,
     objectId: input.marketplaceObjectId,
     status: "logged",
     message: input.body ?? null,
     payload: input
-  });
+  }, query);
 
-  await queryPostgres("update public.marketplacepro_connections set last_sync_at = now(), updated_at = now() where id = $1", [connection.id]);
-
-  try {
-    const actionable = ["offers", "worker_contact_requests", "support_requests", "payments"].includes(input.marketplaceTable);
-    await captureIntegrationGoalObservation({
-      tenantId: connection.tenant_id,
-      platformKey: "marketplacepro",
-      platformName: "MarketplacePro",
-      externalEventId: input.marketplaceObjectId,
-      eventType,
-      title: titleForEvent(input),
-      summary: input.body ?? input.actorLabel ?? `MarketplacePro reported ${input.marketplaceTable} activity.`,
-      severity: input.marketplaceTable === "support_requests" ? "high" : actionable ? "medium" : "info",
-      status: "open",
-      recommendedAction: actionable ? "Advance this MarketplacePro activity to the next verified business outcome." : null,
-      metadata: {
-        connectionId: connection.id,
-        workspaceId: input.marketplaceAccountId ?? input.vendorId ?? null,
-        marketplaceObjectId: input.marketplaceObjectId,
-        marketplaceTable: input.marketplaceTable,
-        sourceStatus: input.status ?? null,
-      },
-    });
-  } catch (error) {
-    await safeLogAppError({
-      tenantId: connection.tenant_id,
-      source: "integrations.marketplacepro.goal-observation",
-      message: error instanceof Error ? error.message : "MarketplacePro goal observation failed.",
-      severity: "warning",
-      retryable: true,
-      metadata: { connectionId: connection.id, marketplaceObjectId: input.marketplaceObjectId },
-    });
+  if (deliveryId && occurredAt) {
+    const actionable = ["offers", "worker_contact_requests", "support_requests", "payments", "labor_requests", "worker_matches", "labor_assignments", "coverage_requirements"].includes(input.marketplaceTable);
+    await query(
+      `
+      insert into public.owner_command_events (
+        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
+        severity, status, owner_attention, recommended_action, metadata_json, occurred_at
+      )
+      values ($1, 'marketplacepro', 'MarketplacePro', $2, $3, $4, $5, $6, 'open', $7, $8, $9::jsonb, $10::timestamptz)
+      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do update
+      set metadata_json = public.owner_command_events.metadata_json || excluded.metadata_json,
+          updated_at = now()
+      `,
+      [
+        connection.tenantId,
+        `${connection.id}:${deliveryId}`,
+        eventType,
+        titleForEvent(input),
+        input.body ?? input.actorLabel ?? `MarketplacePro reported ${input.marketplaceTable} activity.`,
+        input.marketplaceTable === "support_requests" ? "high" : actionable ? "medium" : "info",
+        actionable,
+        actionable ? "Review this MarketplacePro activity and choose the next authorized business action." : null,
+        JSON.stringify({
+          connectionId: connection.id,
+          sourceWorkspaceId: connection.sourceAccountId,
+          marketplaceObjectId: input.marketplaceObjectId,
+          marketplaceTable: input.marketplaceTable,
+          deliveryId,
+          durableGoalObservation: "pending_existing_automation",
+        }),
+        occurredAt,
+      ],
+    );
   }
+
+  await query("update public.marketplacepro_connections set last_sync_at = now(), updated_at = now() where id = $1", [connection.id]);
 
   return { ok: true, status: 202, recorded: true, timelineId };
 }
 
-export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
+export async function importMarketplaceProLead(input: MarketplaceProLeadInput, context: MarketplaceProExecutionContext) {
   // MarketplacePro remains the discovery layer. This import only creates Ferocity operational records.
-  const connection = await resolveConnection({
-    marketplaceAccountId: input.marketplaceAccountId,
-    vendorId: input.vendorId,
-    listingId: input.listingId
-  });
+  const { connection, query, occurredAt } = context;
+  if (!connection.brandId) throw new Error("MarketplacePro connection is missing a brand mapping.");
 
-  if (!connection?.brand_id) {
-    return {
-      ok: true,
-      status: 202,
-      imported: false,
-      reason: "No connected MarketplacePro vendor mapping was found."
-    };
-  }
-
-  const existing = await queryPostgres<{ lead_id: string }>(
+  const existing = await query<{ lead_id: string }>(
     `
     select lead_id
     from public.marketplacepro_lead_links
     where tenant_id = $1 and marketplace_lead_id = $2
     limit 1
     `,
-    [connection.tenant_id, input.marketplaceLeadId]
+    [connection.tenantId, input.marketplaceLeadId]
   );
   const existingLeadId = existing?.rows[0]?.lead_id;
 
   if (existingLeadId) {
     await logMarketplaceEvent({
-      tenantId: connection.tenant_id,
-      brandId: connection.brand_id,
+      tenantId: connection.tenantId,
+      brandId: connection.brandId,
       connectionId: connection.id,
       leadId: existingLeadId,
       eventType: "lead_import",
@@ -380,13 +357,13 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
       status: "ignored",
       message: "MarketplacePro lead already exists in Ferocity.",
       payload: input
-    });
+    }, query);
     return { ok: true, status: 200, imported: false, leadId: existingLeadId };
   }
 
   const priority = input.urgency === "high" ? "high" : "normal";
   const sourceDetail = [input.category, input.service, input.listingId].filter(Boolean).join(" / ") || null;
-  const leadResult = await queryPostgres<{ id: string }>(
+  const leadResult = await query<{ id: string }>(
     `
     insert into public.leads (
       tenant_id, brand_id, source, source_detail, name, email, phone, message,
@@ -396,8 +373,8 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
     returning id
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       sourceDetail,
       input.customer.name ?? null,
       input.customer.email ?? null,
@@ -409,7 +386,7 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
       JSON.stringify({
         marketplacePro: {
           marketplaceLeadId: input.marketplaceLeadId,
-          marketplaceAccountId: input.marketplaceAccountId,
+          marketplaceAccountId: connection.sourceAccountId,
           vendorId: input.vendorId,
           listingId: input.listingId,
           category: input.category,
@@ -425,27 +402,27 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
 
   if (!leadId) {
     await logMarketplaceEvent({
-      tenantId: connection.tenant_id,
-      brandId: connection.brand_id,
+      tenantId: connection.tenantId,
+      brandId: connection.brandId,
       connectionId: connection.id,
       eventType: "sync_error",
       objectId: input.marketplaceLeadId,
       status: "failed",
       message: "Unable to create Ferocity lead.",
       payload: input
-    });
+    }, query);
     return { ok: false, status: 500, error: "Unable to import MarketplacePro lead." };
   }
 
-  await queryPostgres(
+  await query(
     `
     insert into public.local_service_lead_details (tenant_id, brand_id, lead_id, service_interest, location, urgency)
     values ($1, $2, $3, $4, $5, $6)
     on conflict (lead_id) do nothing
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       leadId,
       input.service ?? input.category ?? null,
       typeof input.metadata.location === "string" ? input.metadata.location : null,
@@ -453,7 +430,7 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
     ]
   );
 
-  await queryPostgres(
+  await query(
     `
     insert into public.marketplacepro_lead_links (
       tenant_id, brand_id, connection_id, lead_id, marketplace_lead_id, marketplace_account_id,
@@ -462,12 +439,12 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       connection.id,
       leadId,
       input.marketplaceLeadId,
-      input.marketplaceAccountId ?? null,
+      connection.sourceAccountId,
       input.vendorId ?? null,
       input.listingId ?? null,
       input.category ?? null,
@@ -477,20 +454,20 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
     ]
   );
 
-  await queryPostgres(
+  await query(
     `
     insert into public.lead_events (tenant_id, brand_id, lead_id, type, body, metadata_json)
     values ($1, $2, $3, 'form_submission', 'Lead imported from MarketplacePro.', $4::jsonb)
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       leadId,
       JSON.stringify({ source: "MarketplacePro", marketplaceLeadId: input.marketplaceLeadId, category: input.category, service: input.service })
     ]
   );
 
-  await queryPostgres(
+  await query(
     `
     insert into public.follow_up_workflows (
       tenant_id, brand_id, lead_id, workflow_type, channel, status, due_at, ai_suggested_message, metadata_json
@@ -500,34 +477,35 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
       $4::jsonb)
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       leadId,
       JSON.stringify({ source: "MarketplacePro", urgency: input.urgency ?? "normal" })
     ]
   );
 
-  await queryPostgres(
+  await query(
     `
     insert into public.operator_timeline_events (
       tenant_id, brand_id, event_family, event_type, title, body,
-      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json, occurred_at
     )
     values ($1, $2, 'lead', 'marketplacepro_lead_imported', 'MarketplacePro lead imported',
-      $3, 'lead', $4, 'marketplacepro_lead_links', $4, $5::jsonb)
+      $3, 'lead', $4, 'marketplacepro_lead_links', $4, $5::jsonb, coalesce($6::timestamptz, now()))
     `,
     [
-      connection.tenant_id,
-      connection.brand_id,
+      connection.tenantId,
+      connection.brandId,
       input.message ?? "New lead from MarketplacePro.",
       leadId,
-      JSON.stringify({ marketplaceLeadId: input.marketplaceLeadId, listingId: input.listingId, category: input.category, service: input.service })
+      JSON.stringify({ marketplaceLeadId: input.marketplaceLeadId, listingId: input.listingId, category: input.category, service: input.service }),
+      occurredAt ?? input.submittedAt ?? null,
     ]
   );
 
   await logMarketplaceEvent({
-    tenantId: connection.tenant_id,
-    brandId: connection.brand_id,
+    tenantId: connection.tenantId,
+    brandId: connection.brandId,
     connectionId: connection.id,
     leadId,
     eventType: "lead_import",
@@ -535,16 +513,17 @@ export async function importMarketplaceProLead(input: MarketplaceProLeadInput) {
     status: "processed",
     message: "MarketplacePro lead imported into Ferocity.",
     payload: input
-  });
+  }, query);
 
-  await queryPostgres("update public.marketplacepro_connections set last_sync_at = now(), updated_at = now() where id = $1", [connection.id]);
+  await query("update public.marketplacepro_connections set last_sync_at = now(), updated_at = now() where id = $1", [connection.id]);
 
   return { ok: true, status: 201, imported: true, leadId };
 }
 
-export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatusInput) {
+export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatusInput, context: MarketplaceProExecutionContext) {
   // Inbound status sync is safe; outbound updates back to MarketplacePro should stay disabled until rules are approved.
-  const linkResult = await queryPostgres<{
+  const { connection, query, occurredAt } = context;
+  const linkResult = await query<{
     tenant_id: string;
     brand_id: string | null;
     connection_id: string | null;
@@ -553,11 +532,12 @@ export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatus
     `
     select tenant_id, brand_id, connection_id, lead_id
     from public.marketplacepro_lead_links
-    where marketplace_lead_id = $1
-    order by updated_at desc
+    where tenant_id = $1
+      and connection_id = $2
+      and marketplace_lead_id = $3
     limit 1
     `,
-    [input.marketplaceLeadId]
+    [connection.tenantId, connection.id, input.marketplaceLeadId]
   );
   const link = linkResult?.rows[0];
 
@@ -566,7 +546,7 @@ export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatus
   }
 
   const ferocityStatus = leadStatusFromMarketplace(input.status);
-  await queryPostgres(
+  await query(
     `
     update public.leads
     set status = $3,
@@ -578,11 +558,11 @@ export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatus
       link.tenant_id,
       link.lead_id,
       ferocityStatus,
-      JSON.stringify({ marketplaceProLastStatus: input.status, marketplaceProStatusUpdatedAt: new Date().toISOString() })
+      JSON.stringify({ marketplaceProLastStatus: input.status, marketplaceProStatusUpdatedAt: occurredAt ?? new Date().toISOString() })
     ]
   );
 
-  await queryPostgres(
+  await query(
     `
     update public.marketplacepro_lead_links
     set marketplace_status = $3,
@@ -593,16 +573,16 @@ export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatus
     [link.tenant_id, link.lead_id, input.status, JSON.stringify({ lastStatusPayload: input })]
   );
 
-  await queryPostgres(
+  await query(
     `
     insert into public.operator_timeline_events (
       tenant_id, brand_id, event_family, event_type, title, body,
-      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json
+      primary_entity_type, primary_entity_id, source_table, source_id, metadata_json, occurred_at
     )
     values ($1, $2, 'lead', 'marketplacepro_status_update', 'MarketplacePro status updated',
-      $3, 'lead', $4, 'marketplacepro_lead_links', $4, $5::jsonb)
+      $3, 'lead', $4, 'marketplacepro_lead_links', $4, $5::jsonb, coalesce($6::timestamptz, now()))
     `,
-    [link.tenant_id, link.brand_id, input.note ?? `MarketplacePro marked this lead ${input.status}.`, link.lead_id, JSON.stringify(input)]
+    [link.tenant_id, link.brand_id, input.note ?? `MarketplacePro marked this lead ${input.status}.`, link.lead_id, JSON.stringify(input), occurredAt ?? null]
   );
 
   await logMarketplaceEvent({
@@ -615,7 +595,7 @@ export async function updateMarketplaceProLeadStatus(input: MarketplaceProStatus
     status: "processed",
     message: input.note ?? null,
     payload: input
-  });
+  }, query);
 
   return { ok: true, status: 200, updated: true, leadId: link.lead_id };
 }

@@ -41,3 +41,11 @@ Ferocity is the AI business operating system: shared business context, cross-fun
 ## Route policy
 
 No route was deleted or broadly redirected during this reset. Consolidation is progressive-disclosure work, not destructive removal. Existing deep links remain valid until analytics and support history establish that a redirect is safe.
+
+## November 7, 2026 public entry-model update
+
+- Free is a real $0-forever plan with no card: one owner workspace, one active form, up to 25 new leads per month, bounded guidance and drafts, and no managed voice, hosted SMS, provider writes, external messaging, publishing, or advertising spend.
+- Starter remains $149/month or $1,490/year. Growth remains $349/month or $3,490/year.
+- Operator is sales-assisted custom pricing, typically starting at $699/month. Existing Operator Stripe prices remain configured for grandfathered subscriptions and authenticated account changes; new public Operator requests receive implementation review instead of direct checkout.
+- Ferocity Earn remains available under its existing collected-revenue rules. Provider usage, payment processing, advertising, and other third-party costs remain separate.
+- Existing subscriptions are not repriced. Free and Earn create safe-mode workspaces through the secure invitation flow; paid self-serve plans retain the short-lived checkout handoff.

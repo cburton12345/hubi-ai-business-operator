@@ -6,8 +6,12 @@ function dateTime(value: Date | null, language: "en" | "es" = "en") {
   return new Intl.DateTimeFormat(language === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(value);
 }
 
-function money(cents: number, language: "en" | "es") {
-  return new Intl.NumberFormat(language === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+function money(cents: number, language: "en" | "es", currency = "USD") {
+  try {
+    return new Intl.NumberFormat(language === "es" ? "es-US" : "en-US", { style: "currency", currency }).format(cents / 100);
+  } catch {
+    return `${currency} ${(cents / 100).toFixed(2)}`;
+  }
 }
 
 export async function getEmployeeWorkday() {
@@ -21,11 +25,12 @@ export async function getEmployeeWorkday() {
       openTimeEntry: null,
       timeEntries: [],
       cashAdvances: [],
+      payBalance: { grossEstimate: "$0.00", confirmedAllocations: "$0.00", netPayableEstimate: "$0.00", outstandingAuthorizedBalance: "$0.00",todayHours: "0.00" },
       language: "en" as const
     };
   }
 
-  const [metricsResult, workerResult, assignmentsResult, timeResult, recentTimeResult, advancesResult] = await Promise.all([
+  const [metricsResult, workerResult, assignmentsResult, timeResult, recentTimeResult, advancesResult, payBalanceResult] = await Promise.all([
     queryPostgres<{
       working_now: string;
       scheduled_today: string;
@@ -85,9 +90,10 @@ export async function getEmployeeWorkday() {
       trade: string | null;
       availability_status: string;
       preferred_language: "en" | "es";
+      hourly_rate_cents: number;
     }>(
       `
-      select id, name, role_type, trade, availability_status, preferred_language
+      select id, name, role_type, trade, availability_status, preferred_language, hourly_rate_cents
       from public.operations_workers
       where tenant_id = $1 and id = $2 and availability_status <> 'inactive'
       limit 1
@@ -133,9 +139,9 @@ export async function getEmployeeWorkday() {
       `,
       [access.tenantId, access.workerId]
     ),
-    queryPostgres<{ id: string; assignment_id: string | null; clock_in_at: Date }>(
+    queryPostgres<{ id: string; assignment_id: string | null; clock_in_at: Date; break_started_at: Date | null; break_seconds: number }>(
       `
-      select id, assignment_id, clock_in_at
+      select id,assignment_id,clock_in_at,break_started_at,break_seconds
       from public.operations_time_entries
       where tenant_id = $1 and worker_id = $2 and status = 'open'
       order by clock_in_at desc
@@ -146,10 +152,10 @@ export async function getEmployeeWorkday() {
     queryPostgres<{
       id: string; assignment: string | null; clock_in_at: Date; clock_out_at: Date | null;
       clock_in_location: string | null; clock_out_location: string | null; break_minutes: number;
-      notes: string | null; status: string;
+      break_seconds: number;break_started_at: Date | null;notes: string | null; status: string;
     }>(
       `select time.id, assignment.title as assignment, time.clock_in_at, time.clock_out_at,
-              time.clock_in_location, time.clock_out_location, time.break_minutes, time.notes, time.status
+              time.clock_in_location,time.clock_out_location,time.break_minutes,time.break_seconds,time.break_started_at,time.notes,time.status
        from public.operations_time_entries time
        left join public.operations_assignments assignment
          on assignment.id = time.assignment_id and assignment.tenant_id = time.tenant_id
@@ -160,12 +166,72 @@ export async function getEmployeeWorkday() {
     queryPostgres<{
       id: string; amount_cents: number; advanced_at: string; payment_method: string;
       purpose: string | null; status: string; employee_response_note: string | null;
+      entry_kind: string; currency: string; is_worker_debt: boolean; approval_status: string;
+      worker_authorization_status: string; repayment_terms: string | null; receipt_url: string | null;
+      recovered_cents: string; outstanding_cents: string;
     }>(
-      `select id, amount_cents, advanced_at::text, payment_method, purpose, status, employee_response_note
-       from public.employee_cash_advances
-       where tenant_id = $1 and worker_id = $2 and status <> 'void'
-       order by advanced_at desc, created_at desc limit 20`,
+      `select advance.id,advance.amount_cents,advance.advanced_at::text,advance.payment_method,
+              advance.purpose,advance.status,advance.employee_response_note,advance.entry_kind,
+              advance.currency,advance.is_worker_debt,advance.approval_status,
+              advance.worker_authorization_status,advance.repayment_terms,advance.receipt_url,
+              (coalesce((select sum(amount_cents) from public.employee_advance_repayments repayment
+                         where repayment.tenant_id=advance.tenant_id and repayment.advance_id=advance.id and repayment.status='recorded'),0)
+               + coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations allocation
+                           where allocation.tenant_id=advance.tenant_id and allocation.advance_id=advance.id and allocation.status='confirmed'),0))::text as recovered_cents,
+              greatest(0,advance.amount_cents
+               - coalesce((select sum(amount_cents) from public.employee_advance_repayments repayment
+                           where repayment.tenant_id=advance.tenant_id and repayment.advance_id=advance.id and repayment.status='recorded'),0)
+               - coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations allocation
+                           where allocation.tenant_id=advance.tenant_id and allocation.advance_id=advance.id and allocation.status='confirmed'),0))::text as outstanding_cents
+       from public.employee_cash_advances advance
+       where advance.tenant_id=$1 and advance.worker_id=$2 and advance.status <> 'void'
+       order by advance.advanced_at desc,advance.created_at desc limit 20`,
       [access.tenantId, access.workerId]
+    ),
+    queryPostgres<{ gross_cents: string; allocated_cents: string; outstanding_cents: string; today_minutes: string }>(
+      `with settings as (
+         select coalesce((select timezone from public.workspace_settings where tenant_id=$1),'America/Los_Angeles') as timezone
+       ), bounds as (
+         select ((now() at time zone timezone)::date::timestamp at time zone timezone) as starts_at,
+                (((now() at time zone timezone)::date+1)::timestamp at time zone timezone) as ends_at,
+                date_trunc('week',now() at time zone timezone)::date as week_starts
+         from settings
+       ), period as (
+         select week_starts as starts,(week_starts+6) as ends from bounds
+       ), worked as (
+         select coalesce(sum(greatest(0,extract(epoch from (clock_out_at-clock_in_at))/60-break_minutes)),0) as minutes
+         from public.operations_time_entries,period,settings
+         where tenant_id=$1 and worker_id=$2 and status in ('needs_review','approved','exported')
+           and (clock_in_at at time zone settings.timezone)::date between period.starts and period.ends
+       )
+       select round((worked.minutes/60.0) * worker.hourly_rate_cents)::text as gross_cents,
+              coalesce((select sum(greatest(0,extract(epoch from (
+                  least(coalesce(entry.clock_out_at,now()),bounds.ends_at)-greatest(entry.clock_in_at,bounds.starts_at)))/60
+                - coalesce((select sum(greatest(0,extract(epoch from (
+                    least(coalesce((select min(ended.occurred_at) from public.operations_time_entry_events ended
+                      where ended.tenant_id=started.tenant_id and ended.time_entry_id=started.time_entry_id
+                        and ended.event_type='break_ended' and ended.occurred_at>started.occurred_at),coalesce(entry.clock_out_at,now())),bounds.ends_at)
+                    - greatest(started.occurred_at,bounds.starts_at)))/60))
+                    from public.operations_time_entry_events started
+                    where started.tenant_id=entry.tenant_id and started.time_entry_id=entry.id
+                      and started.event_type='break_started' and started.occurred_at<bounds.ends_at),
+                  case when entry.clock_in_at>=bounds.starts_at and coalesce(entry.clock_out_at,now())<=bounds.ends_at then entry.break_seconds/60.0 else 0 end)))
+                from public.operations_time_entries entry,bounds where entry.tenant_id=$1 and entry.worker_id=$2
+                  and entry.clock_in_at<bounds.ends_at and coalesce(entry.clock_out_at,now())>=bounds.starts_at),0)::text as today_minutes,
+              coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations,period
+                        where tenant_id=$1 and worker_id=$2 and status='confirmed' and currency='USD'
+                          and pay_period_start=period.starts and pay_period_end=period.ends),0)::text as allocated_cents,
+              coalesce((select sum(greatest(0,advance.amount_cents
+                - coalesce((select sum(amount_cents) from public.employee_advance_repayments r where r.tenant_id=advance.tenant_id and r.advance_id=advance.id and r.status='recorded'),0)
+                - coalesce((select sum(amount_cents) from public.employee_advance_pay_allocations a where a.tenant_id=advance.tenant_id and a.advance_id=advance.id and a.status='confirmed'),0)))
+                from public.employee_cash_advances advance
+                where advance.tenant_id=$1 and advance.worker_id=$2 and advance.is_worker_debt=true
+                  and advance.approval_status='approved' and advance.worker_authorization_status='authorized'
+                  and advance.currency='USD'
+                  and advance.status <> 'void'),0)::text as outstanding_cents
+       from worked
+       join public.operations_workers worker on worker.tenant_id=$1 and worker.id=$2`,
+      [access.tenantId,access.workerId]
     )
   ]);
 
@@ -219,12 +285,16 @@ export async function getEmployeeWorkday() {
       ? {
           id: timeResult.rows[0].id,
           assignmentId: timeResult.rows[0].assignment_id,
-          clockIn: dateTime(timeResult.rows[0].clock_in_at, language)
+          clockIn: dateTime(timeResult.rows[0].clock_in_at, language),
+          onBreak: timeResult.rows[0].break_started_at !== null,
+          breakStartedAt: dateTime(timeResult.rows[0].break_started_at,language),
+          breakSeconds: timeResult.rows[0].break_seconds
         }
       : null,
     timeEntries: (recentTimeResult?.rows ?? []).map((row) => {
       const end = row.clock_out_at ?? new Date();
-      const hours = Math.max(0, (end.getTime() - row.clock_in_at.getTime()) / 36e5 - row.break_minutes / 60).toFixed(2);
+      const activeBreakSeconds = row.break_started_at ? Math.max(0,(end.getTime()-row.break_started_at.getTime())/1000) : 0;
+      const hours = Math.max(0,(end.getTime()-row.clock_in_at.getTime())/36e5-(row.break_seconds+activeBreakSeconds)/3600).toFixed(2);
       return {
         id: row.id,
         assignment: row.assignment ?? (language === "es" ? "Sin trabajo seleccionado" : "No job selected"),
@@ -239,13 +309,34 @@ export async function getEmployeeWorkday() {
     }),
     cashAdvances: (advancesResult?.rows ?? []).map((row) => ({
       id: row.id,
-      amount: money(row.amount_cents, language),
+      amount: money(row.amount_cents, language, row.currency),
       advancedAt: row.advanced_at,
       paymentMethod: row.payment_method,
       purpose: row.purpose ?? (language === "es" ? "Sin nota" : "No note"),
       status: row.status,
-      responseNote: row.employee_response_note ?? ""
+      responseNote: row.employee_response_note ?? "",
+      entryKind: row.entry_kind,
+      currency: row.currency,
+      isWorkerDebt: row.is_worker_debt,
+      approvalStatus: row.approval_status,
+      workerAuthorizationStatus: row.worker_authorization_status,
+      repaymentTerms: row.repayment_terms ?? "",
+      receiptUrl: row.receipt_url,
+      recovered: money(Number(row.recovered_cents), language, row.currency),
+      outstanding: money(Number(row.outstanding_cents), language, row.currency)
     })),
+    payBalance: (() => {
+      const row = payBalanceResult?.rows[0];
+      const gross = Number(row?.gross_cents ?? 0);
+      const allocated = Number(row?.allocated_cents ?? 0);
+      return {
+        grossEstimate: money(gross, language),
+        confirmedAllocations: money(allocated, language),
+        netPayableEstimate: money(Math.max(0, gross - allocated), language),
+        outstandingAuthorizedBalance: money(Number(row?.outstanding_cents ?? 0), language)
+        ,todayHours: (Number(row?.today_minutes ?? 0)/60).toFixed(2)
+      };
+    })(),
     language
   };
 }

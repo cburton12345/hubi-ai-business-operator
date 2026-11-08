@@ -2,12 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { hashSessionToken, randomSessionToken } from "@/lib/auth/password";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentAppSession } from "@/lib/auth/session";
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgres, queryPostgresRequired, withPostgresTransactionResult } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { canAccessEmployeeAssignment, getEmployeeAccessContext } from "@/lib/employee/employee-access";
+import { decideEmployeeAccessRequest } from "@/lib/employee/employee-access-decision";
+import { attemptEmployeeInviteDelivery, type EmployeeInviteDeliveryResult } from "@/lib/employee/employee-invite-delivery";
+import { deliverEmployeeInviteWithRecovery } from "@/lib/employee/employee-invite-delivery-workflow";
+import { applyCrewTimeIntent,changeTimeClockBreak,closeTimeClockEntry,correctTimeClockEntry,createTimeClockEntry } from "@/lib/employee/time-clock";
+import { getTimeSupervisorScope, timeScopeAllowsWorker } from "@/lib/employee/time-supervisor";
+import {
+  confirmWorkerPayAllocation,
+  isWorkerDebtKind,
+  parseWorkerMoneyToCents,
+  recordWorkerBalanceRepayment
+} from "@/lib/employee/worker-balance-ledger";
 import { env } from "@/lib/env";
 import { sendMessage } from "@/lib/messaging/messaging-engine";
 import { uploadFieldMediaFile } from "@/lib/operations-workforce/field-media-upload";
@@ -17,6 +27,10 @@ import { isUploadFile, uploadReceiptPhoto } from "@/lib/operations-workforce/rec
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function workerMessage(language: "en" | "es",en: string,es: string) {
+  return language === "es" ? es : en;
 }
 
 function cents(value: string | undefined) {
@@ -54,13 +68,49 @@ const cashAdvanceSchema = z.object({
   amount: z.string().min(1),
   advancedAt: z.string().optional(),
   paymentMethod: z.enum(["cash", "check", "bank_transfer", "payroll", "other"]),
-  purpose: z.string().max(600).optional()
+  purpose: z.string().min(2).max(600),
+  entryKind: z.enum(["cash_advance","personal_purchase","gift","business_expense","reimbursement","loss_damage"]),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/),
+  repaymentTerms: z.string().max(1000).optional(),
+  receiptUrl: z.string().url().optional(),
+  moneyLocale: z.enum(["en","es"])
 });
 
 const cashAdvanceResponseSchema = z.object({
   advanceId: z.string().uuid(),
-  response: z.enum(["acknowledged", "disputed"]),
+  response: z.enum(["acknowledged", "authorized", "disputed"]),
   note: z.string().max(600).optional()
+}).superRefine((value, context) => {
+  if (value.response === "authorized" && !value.note?.trim()) {
+    context.addIssue({ code: "custom", path: ["note"], message: "Written authorization terms are required." });
+  }
+});
+
+const workerBalanceReviewSchema = z.object({
+  advanceId: z.string().uuid(),
+  decision: z.enum(["approved","rejected","reversed"]),
+  note: z.string().min(2).max(1000)
+});
+
+const workerBalanceRepaymentSchema = z.object({
+  requestId: z.string().uuid(),
+  advanceId: z.string().uuid(),
+  amount: z.string().min(1),
+  repaidAt: z.string().min(8),
+  method: z.enum(["cash","check","bank_transfer","other"]),
+  note: z.string().max(600).optional(),
+  moneyLocale: z.enum(["en","es"])
+});
+
+const workerBalanceAllocationSchema = z.object({
+  requestId: z.string().uuid(),
+  advanceId: z.string().uuid(),
+  amount: z.string().min(1),
+  payPeriodStart: z.string().min(8),
+  payPeriodEnd: z.string().min(8),
+  workerAuthorizationEvidence: z.string().min(2).max(1000),
+  legalPolicyReview: z.string().min(2).max(1000),
+  moneyLocale: z.enum(["en","es"])
 });
 
 const employeeLanguageSchema = z.object({
@@ -100,9 +150,42 @@ const clockSchema = z.object({
 const clockOutSchema = z.object({
   timeEntryId: z.string().uuid(),
   clockOutLocation: z.string().max(220).optional(),
-  breakMinutes: z.string().optional(),
+  breakMinutes: z.string().regex(/^\d{1,4}$/).optional(),
   notes: z.string().max(1000).optional()
 });
+
+const breakSchema = z.object({
+  timeEntryId: z.string().uuid(),
+  mode: z.enum(["start","end"])
+});
+
+const bulkTimeSchema = z.object({
+  workerIds: z.array(z.string().uuid()).min(1).max(50),
+  intent: z.enum(["clock_in","start_break","end_break","clock_out"]),
+  assignmentId: z.string().uuid().optional(),
+  note: z.string().max(600).optional()
+});
+
+const timeCorrectionSchema = z.object({
+  timeEntryId: z.string().uuid(),
+  clockInAt: z.string().min(10),
+  clockOutAt: z.string().min(10),
+  breakMinutes: z.coerce.number().int().min(0).max(1440),
+  clockInOffsetMinutes: z.coerce.number().int().min(-840).max(840),
+  clockOutOffsetMinutes: z.coerce.number().int().min(-840).max(840),
+  reason: z.string().min(3).max(1000)
+});
+
+export type TimeClockActionState = {
+  ok: boolean;
+  message: string;
+};
+
+export type BulkTimeActionState = TimeClockActionState & {
+  applied: number;
+  skipped: number;
+  failures: string[];
+};
 
 const expenseSchema = z.object({
   workerId: z.string().uuid().optional(),
@@ -207,6 +290,12 @@ function timestamp(value?: string) {
   return value ? new Date(value).toISOString() : null;
 }
 
+function localDateTimeToIso(value: string,timezoneOffsetMinutes: number) {
+  const assumedUtc = Date.parse(`${value}:00Z`);
+  if (!Number.isFinite(assumedUtc)) return null;
+  return new Date(assumedUtc+timezoneOffsetMinutes*60_000).toISOString();
+}
+
 function numeric(value?: string) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -225,29 +314,25 @@ async function createEmployeeInvite(input: {
   invitedByUserId: string | null;
   language: "en" | "es";
 }) {
-  const token = randomSessionToken();
+  return deliverEmployeeInviteWithRecovery(input, (token) => sendEmployeeInviteMessage(input, token));
+}
+
+async function sendEmployeeInviteMessage(input: {
+  tenantId: string;
+  workerId: string;
+  workerName: string;
+  email: string;
+  invitedByUserId: string | null;
+  language: "en" | "es";
+}, token: string) {
   const workspaceResult = await queryPostgres<{ name: string }>(
     "select name from public.tenants where id = $1 limit 1",
     [input.tenantId]
   );
   const workspaceName = workspaceResult?.rows[0]?.name ?? "your company";
-  await queryPostgres(
-    `
-    insert into public.workspace_invites (
-      tenant_id, email, role, status, invited_by_user_id, invite_token_hash, expires_at,
-      worker_id, invite_purpose, updated_at
-    )
-    values ($1, lower($2), 'viewer', 'pending', $3, $4, now() + interval '14 days', $5, 'employee', now())
-    on conflict (tenant_id, email) do update
-    set role = 'viewer', status = 'pending', invited_by_user_id = excluded.invited_by_user_id,
-        invite_token_hash = excluded.invite_token_hash, expires_at = excluded.expires_at,
-        worker_id = excluded.worker_id, invite_purpose = 'employee', revoked_at = null, updated_at = now()
-    `,
-    [input.tenantId, input.email, input.invitedByUserId, hashSessionToken(token), input.workerId]
-  );
 
   const spanish = input.language === "es";
-  await sendTransactionalEmail({
+  return attemptEmployeeInviteDelivery(() => sendTransactionalEmail({
     to: input.email,
     subject: spanish ? `Tu acceso de empleado a ${workspaceName}` : `Your employee access to ${workspaceName}`,
     text: spanish
@@ -256,7 +341,41 @@ async function createEmployeeInvite(input: {
     tenantId: input.tenantId,
     eventKey: "employee_invite",
     metadata: { workerId: input.workerId, language: input.language, invitedByUserId: input.invitedByUserId }
-  });
+  }));
+}
+
+async function finalizeDeclineDelivery(input: {
+  tenantId: string;
+  externalEventId: string;
+  delivered: boolean;
+}) {
+  const result = await queryPostgresRequired(
+    `update public.owner_command_events
+     set event_type=$3,title=$4,summary=$5,severity=$6,status=$7,owner_attention=$8,ai_handled=$9,
+         ai_summary=$10,recommended_action=$11,
+         metadata_json=metadata_json || $12::jsonb,updated_at=now()
+     where tenant_id=$1 and platform_key='ferocity-workforce' and external_event_id=$2
+     returning id`,
+    input.delivered
+      ? [
+          input.tenantId,input.externalEventId,"employee.decline_notice_delivered",
+          "Employee decline notice delivered",
+          "Ferocity confirmed delivery of the employee access-request decision.","info","resolved",false,true,
+          "The decline notice was delivered; no workspace access was granted.","No further action is required.",
+          JSON.stringify({ declineDelivery: "delivered" })
+        ]
+      : [
+          input.tenantId,input.externalEventId,"employee.decline_delivery_failed",
+          "Employee decline notice was not delivered",
+          "The request remains declined and no access was granted, but Ferocity could not confirm email delivery.",
+          "high","needs_owner",true,false,
+          "The decline remains authoritative; only its notification failed.",
+          "Contact the person directly about the declined request. Do not send an employee invite.",
+          JSON.stringify({ declineDelivery: "failed" })
+        ],
+    "employee-decline-delivery-finalization"
+  );
+  if (result.rowCount !== 1) throw new Error("Decline delivery recovery state was not found.");
 }
 
 async function resolveWorkerActionTarget(
@@ -269,7 +388,7 @@ async function resolveWorkerActionTarget(
     const context = await getEmployeeAccessContext();
     if (!context.workerId) return null;
     if (assignmentId && !(await canAccessEmployeeAssignment(context, assignmentId))) return null;
-    return { tenantId: context.tenantId, workerId: context.workerId, employeeMode: true };
+    return { tenantId: context.tenantId, workerId: context.workerId, employeeMode: true, actorUserId: context.userId,preferredLanguage: context.preferredLanguage };
   }
 
   const actor = await requirePermission("lead:manage");
@@ -288,7 +407,13 @@ async function resolveWorkerActionTarget(
     );
     if (assignment?.rows[0]?.allowed !== true) return null;
   }
-  return { tenantId, workerId: requestedWorkerId ?? null, employeeMode: false };
+  return {
+    tenantId,
+    workerId: requestedWorkerId ?? null,
+    employeeMode: false,
+    actorUserId: actor.userId === "admin-token" ? null : actor.userId,
+    preferredLanguage: "en" as const
+  };
 }
 
 export async function createWorkerAction(formData: FormData) {
@@ -353,30 +478,12 @@ export async function createWorkerAction(formData: FormData) {
       invitedByUserId: session?.userId ?? null,
       language: parsed.data.preferredLanguage
     });
-    await queryPostgres(
-      `insert into public.owner_command_events (
-        tenant_id, platform_key, platform_name, external_event_id, event_type, title, summary,
-        severity, status, owner_attention, ai_handled, ai_summary, recommended_action,
-        action_href, risk_type, confidence_score, metadata_json
-      ) values ($1, 'ferocity-workforce', 'Ferocity Workforce', $2, 'employee.invited', $3, $4,
-        'info', 'watching', false, true, $5, $6, '/app/operations-workforce', 'approval', 98, $7::jsonb)
-      on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing`,
-      [
-        tenantId,
-        `employee-invite-${workerId}`,
-        `${parsed.data.name} was invited`,
-        `Ferocity sent a secure, employee-bound invitation to ${parsed.data.email}.`,
-        "The invitation is email-bound, single-use, and expires after 14 days.",
-        "No action is needed unless the employee has trouble signing in.",
-        JSON.stringify({ workerId, email: parsed.data.email, language: parsed.data.preferredLanguage })
-      ]
-    );
   }
   revalidatePath("/app/operations-workforce");
 }
 
 export async function sendEmployeeInviteAction(formData: FormData) {
-  const actor = await requirePermission("lead:manage");
+  const actor = await requirePermission("tenant:manage");
   const parsed = z.object({ workerId: z.string().uuid() }).safeParse({ workerId: text(formData, "workerId") });
   if (!parsed.success) return;
   const workerResult = await queryPostgres<{
@@ -399,10 +506,11 @@ export async function sendEmployeeInviteAction(formData: FormData) {
     language: worker.preferred_language === "es" ? "es" : "en"
   });
   revalidatePath("/app/operations-workforce");
+  revalidatePath("/app/notifications");
 }
 
 export async function decideEmployeeAccessRequestAction(formData: FormData) {
-  const actor = await requirePermission("lead:manage");
+  const actor = await requirePermission("tenant:manage");
   const parsed = employeeAccessDecisionSchema.safeParse({
     requestId: text(formData, "requestId"),
     decision: text(formData, "decision"),
@@ -410,26 +518,24 @@ export async function decideEmployeeAccessRequestAction(formData: FormData) {
   });
   if (!parsed.success) return;
   const tenantId = actor.workspace.id;
-  const requestResult = await queryPostgres<{
-    id: string; name: string; email: string; phone: string | null; preferred_language: "en" | "es";
-  }>(
-    `select id, name, email, phone, preferred_language
-     from public.employee_access_requests
-     where tenant_id = $1 and id = $2 and status = 'pending' limit 1`,
-    [tenantId, parsed.data.requestId]
-  );
-  const accessRequest = requestResult?.rows[0];
-  if (!accessRequest) return;
   const reviewerUserId = actor.userId === "admin-token" ? null : actor.userId;
+  const result = await withPostgresTransactionResult((client) => decideEmployeeAccessRequest(client, {
+    tenantId,
+    requestId: parsed.data.requestId,
+    decision: parsed.data.decision,
+    ownerNote: parsed.data.ownerNote ?? null,
+    reviewerUserId
+  }));
+  if (!result.ok) return;
+  if (result.value.outcome === "not_pending") {
+    revalidatePath("/app/operations-workforce");
+    revalidatePath("/app/notifications");
+    return;
+  }
 
-  if (parsed.data.decision === "declined") {
-    await queryPostgres(
-      `update public.employee_access_requests
-       set status = 'declined', owner_note = $3, reviewed_by_user_id = $4, reviewed_at = now(), updated_at = now()
-       where tenant_id = $1 and id = $2 and status = 'pending'`,
-      [tenantId, accessRequest.id, parsed.data.ownerNote ?? null, reviewerUserId]
-    );
-    await sendTransactionalEmail({
+  const accessRequest = result.value.request;
+  if (result.value.outcome === "declined") {
+    const delivery: EmployeeInviteDeliveryResult = await attemptEmployeeInviteDelivery(() => sendTransactionalEmail({
       to: accessRequest.email,
       subject: "Ferocity employee access request update",
       text: accessRequest.preferred_language === "es"
@@ -438,65 +544,22 @@ export async function decideEmployeeAccessRequestAction(formData: FormData) {
       tenantId,
       eventKey: "employee_access_declined",
       metadata: { accessRequestId: accessRequest.id }
-    });
-  } else {
-    const workerResult = await queryPostgres<{ id: string; user_id: string | null }>(
-      `with existing as (
-         select id, user_id from public.operations_workers
-         where tenant_id = $1 and lower(email) = lower($2) and availability_status <> 'inactive'
-         order by updated_at desc limit 1
-       ), inserted as (
-         insert into public.operations_workers (
-           tenant_id, name, role_type, phone, email, payroll_type, preferred_language, metadata_json
-         )
-         select $1,$3,'employee',$4,lower($2),'hourly',$5,$6::jsonb
-         where not exists (select 1 from existing)
-         returning id, user_id
-       )
-       select id, user_id from existing union all select id, user_id from inserted limit 1`,
-      [
-        tenantId,
-        accessRequest.email,
-        accessRequest.name,
-        accessRequest.phone,
-        accessRequest.preferred_language,
-        JSON.stringify({ source: "employee_self_service", accessRequestId: accessRequest.id })
-      ]
-    );
-    const worker = workerResult?.rows[0];
-    if (!worker) return;
-    if (!worker.user_id) {
-      await createEmployeeInvite({
-        tenantId,
-        workerId: worker.id,
-        workerName: accessRequest.name,
-        email: accessRequest.email,
-        invitedByUserId: reviewerUserId,
-        language: accessRequest.preferred_language === "es" ? "es" : "en"
-      });
-    }
-    await queryPostgres(
-      `update public.employee_access_requests
-       set status = 'approved', owner_note = $3, reviewed_by_user_id = $4, reviewed_at = now(),
-           metadata_json = metadata_json || $5::jsonb, updated_at = now()
-       where tenant_id = $1 and id = $2 and status = 'pending'`,
-      [tenantId, accessRequest.id, parsed.data.ownerNote ?? null, reviewerUserId, JSON.stringify({ workerId: worker.id, alreadyLinked: Boolean(worker.user_id) })]
-    );
-  }
-
-  await queryPostgres(
-    `update public.owner_command_events
-     set status = 'resolved', owner_attention = false, ai_handled = true,
-         ai_summary = $3, metadata_json = metadata_json || $4::jsonb, updated_at = now()
-     where tenant_id = $1 and platform_key = 'ferocity-workforce'
-       and external_event_id = $2`,
-    [
+    }));
+    await finalizeDeclineDelivery({
       tenantId,
-      `employee-access-request-${accessRequest.id}`,
-      parsed.data.decision === "approved" ? "An authorized user approved the request and Ferocity prepared secure employee access." : "An authorized user declined the request; no access was granted.",
-      JSON.stringify({ decision: parsed.data.decision, reviewedByUserId: reviewerUserId })
-    ]
-  );
+      externalEventId: `employee-access-decline-delivery-${accessRequest.id}`,
+      delivered: delivery.ok
+    }).catch(() => undefined);
+  } else if (result.value.inviteRequired) {
+    await createEmployeeInvite({
+      tenantId,
+      workerId: result.value.workerId,
+      workerName: accessRequest.name,
+      email: accessRequest.email,
+      invitedByUserId: reviewerUserId,
+      language: accessRequest.preferred_language === "es" ? "es" : "en"
+    });
+  }
   revalidatePath("/app/operations-workforce");
   revalidatePath("/app/notifications");
 }
@@ -601,7 +664,7 @@ export async function updateAssignmentTaskStatusAction(formData: FormData) {
   revalidatePath("/app/operations-workforce");
 }
 
-export async function createClockInAction(formData: FormData) {
+export async function createClockInAction(formData: FormData): Promise<TimeClockActionState> {
   const parsed = clockSchema.safeParse({
     workerId: text(formData, "workerId"),
     assignmentId: text(formData, "assignmentId"),
@@ -609,76 +672,194 @@ export async function createClockInAction(formData: FormData) {
     notes: text(formData, "notes"),
     gpsVerified: formData.get("gpsVerified") === "on"
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false, message: "Check the clock-in details and try again." };
   const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
-  if (!target?.workerId) return;
-  const tenantId = target.tenantId;
-  await queryPostgres(
-    `
-    insert into public.operations_time_entries (
-      tenant_id, worker_id, assignment_id, clock_in_location, gps_verified, notes, metadata_json
-    )
-    values ($1,$2,$3,$4,$5,$6,$7::jsonb)
-    `,
-    [
-      tenantId,
-      target.workerId,
-      parsed.data.assignmentId ?? null,
-      parsed.data.clockInLocation ?? null,
-      parsed.data.gpsVerified,
-      parsed.data.notes ?? null,
-      JSON.stringify({
-        clockMode: parsed.data.gpsVerified ? "gps_verified" : "manual",
-        source: target.employeeMode ? "employee_app" : "operations_workforce"
-      })
-    ]
-  );
+  if (!target?.workerId) return { ok: false, message: "That employee or job is not available for clock-in." };
+  const workerId = target.workerId;
+  const result = await withPostgresTransactionResult((client) => createTimeClockEntry(client, {
+    tenantId: target.tenantId,
+    workerId,
+    assignmentId: parsed.data.assignmentId ?? null,
+    clockInLocation: parsed.data.clockInLocation ?? null,
+    gpsVerified: parsed.data.gpsVerified,
+    notes: parsed.data.notes ?? null,
+    source: target.employeeMode ? "employee_app" : "operations_workforce",
+    actorUserId: target.actorUserId,
+    actorWorkerId: target.employeeMode ? target.workerId : null
+  }));
+  if (!result.ok) return { ok: false, message: workerMessage(target.preferredLanguage,"Clock-in was not saved. Your time is still unchanged; please try again.","No se guardó la entrada. Su tiempo no cambió; inténtelo de nuevo.") };
   revalidatePath("/app/operations-workforce");
+  if (target.employeeMode) revalidatePath("/employee");
+  return result.value.created
+    ? { ok: true, message: workerMessage(target.preferredLanguage,"Clock-in saved.","Entrada guardada.") }
+    : { ok: true, message: workerMessage(target.preferredLanguage,"You were already clocked in. No duplicate shift was created.","Ya tenía la entrada marcada. No se creó un turno duplicado.") };
 }
 
-export async function clockOutTimeEntryAction(formData: FormData) {
+export async function createClockInForOfficeAction(formData: FormData): Promise<void> {
+  await createClockInAction(formData);
+}
+
+export async function clockOutTimeEntryAction(formData: FormData): Promise<TimeClockActionState> {
   const parsed = clockOutSchema.safeParse({
     timeEntryId: text(formData, "timeEntryId"),
     clockOutLocation: text(formData, "clockOutLocation"),
     breakMinutes: text(formData, "breakMinutes"),
     notes: text(formData, "notes")
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false, message: "Check the clock-out details and use whole break minutes." };
   const employeeMode = formData.get("employeeMode") === "1";
   const context = employeeMode ? await getEmployeeAccessContext() : null;
-  if (employeeMode && !context?.workerId) return;
+  if (employeeMode && !context?.workerId) return { ok: false, message: "Your employee profile is not linked." };
+  const officeActor = employeeMode ? null : await requirePermission("lead:manage");
   const tenantId = employeeMode
     ? context!.tenantId
-    : (await requirePermission("lead:manage")).workspace.id;
-  await queryPostgres(
-    `
-    update public.operations_time_entries
-    set
-      clock_out_at = now(),
-      clock_out_location = $3,
-      break_minutes = $4,
-      status = 'needs_review',
-      notes = concat_ws(E'\n', nullif(notes, ''), nullif($5, '')),
-      metadata_json = metadata_json || $6::jsonb,
-      updated_at = now()
-    where id = $1 and tenant_id = $2 and status = 'open'
-      and ($7::uuid is null or worker_id = $7)
-    `,
-    [
-      parsed.data.timeEntryId,
-      tenantId,
-      parsed.data.clockOutLocation ?? null,
-      Math.max(0, Math.round(numeric(parsed.data.breakMinutes))),
-      parsed.data.notes ?? null,
-      JSON.stringify({
-        clockOutMode: "manual",
-        payrollReviewRequired: true,
-        source: employeeMode ? "employee_app" : "operations_workforce"
-      }),
-      context?.workerId ?? null
-    ]
-  );
+    : officeActor!.workspace.id;
+  const breakMinutes = Number(parsed.data.breakMinutes ?? "0");
+  const result = await withPostgresTransactionResult((client) => closeTimeClockEntry(client, {
+    tenantId,
+    timeEntryId: parsed.data.timeEntryId,
+    workerId: context?.workerId ?? null,
+    clockOutLocation: parsed.data.clockOutLocation ?? null,
+    breakMinutes,
+    notes: parsed.data.notes ?? null,
+    source: employeeMode ? "employee_app" : "operations_workforce",
+    actorUserId: context?.userId ?? (officeActor?.userId === "admin-token" ? null : officeActor?.userId),
+    actorWorkerId: context?.workerId ?? null
+  }));
+  const resultLanguage = context?.preferredLanguage ?? "en";
+  if (!result.ok) return { ok: false, message: workerMessage(resultLanguage,"Clock-out was not saved. Your shift remains open; please try again.","No se guardó la salida. Su turno sigue abierto; inténtelo de nuevo.") };
+  if (!result.value.closed) {
+    const message = result.value.reason === "break_exceeds_shift"
+      ? workerMessage(resultLanguage,"Break minutes cannot exceed the time since clock-in. Your shift remains open.","Los minutos de descanso no pueden exceder el tiempo desde la entrada. Su turno sigue abierto.")
+      : workerMessage(resultLanguage,"This shift is no longer open for your employee profile. Refresh before trying again.","Este turno ya no está abierto para su perfil. Actualice antes de intentarlo de nuevo.");
+    return { ok: false, message };
+  }
   revalidatePath("/app/operations-workforce");
+  if (employeeMode) revalidatePath("/employee");
+  return { ok: true, message: workerMessage(resultLanguage,"Clock-out saved and sent for review.","Salida guardada y enviada para revisión.") };
+}
+
+export async function clockOutTimeEntryForOfficeAction(formData: FormData): Promise<void> {
+  await clockOutTimeEntryAction(formData);
+}
+
+export async function changeEmployeeBreakAction(formData: FormData): Promise<TimeClockActionState> {
+  const parsed = breakSchema.safeParse({ timeEntryId: text(formData,"timeEntryId"),mode: text(formData,"mode") });
+  if (!parsed.success) return { ok: false,message: "That break action is not valid." };
+  const context = await getEmployeeAccessContext();
+  const language = context.preferredLanguage;
+  if (!context.workerId) return { ok: false,message: workerMessage(language,"Your worker profile is not linked.","Su perfil de trabajador no está vinculado.") };
+  const result = await withPostgresTransactionResult((client) => changeTimeClockBreak(client, {
+    tenantId: context.tenantId,timeEntryId: parsed.data.timeEntryId,workerId: context.workerId,
+    mode: parsed.data.mode,actorUserId: context.userId,actorWorkerId: context.workerId,source: "employee_app"
+  }));
+  if (!result.ok) return { ok: false,message: workerMessage(language,"The break was not saved. Your time remains unchanged; try again.","No se guardó el descanso. Su tiempo no cambió; inténtelo de nuevo.") };
+  if (!result.value.changed) {
+    const messages = {
+      not_open: "This shift is no longer open. Refresh before trying again.",
+      wrong_worker: "This shift belongs to another worker.",
+      already_on_break: "Your break is already running.",
+      not_on_break: "You are already working; no break was running."
+    };
+    const translated = language === "es" ? {
+      not_open: "Este turno ya no está abierto. Actualice antes de intentarlo de nuevo.",
+      wrong_worker: "Este turno pertenece a otro trabajador.",
+      already_on_break: "Su descanso ya está en curso.",
+      not_on_break: "Ya está trabajando; no había un descanso en curso."
+    } : messages;
+    return { ok: result.value.reason === "already_on_break" || result.value.reason === "not_on_break",message: translated[result.value.reason] };
+  }
+  revalidatePath("/employee");
+  revalidatePath("/app/employee");
+  revalidatePath("/app/operations-workforce");
+  return { ok: true,message: parsed.data.mode === "start"
+    ? workerMessage(language,"Break started.","Descanso iniciado.")
+    : workerMessage(language,"Break ended. You are back on the clock.","Descanso terminado. Ha vuelto al tiempo de trabajo.") };
+}
+
+export async function bulkCrewTimeAction(_previous: BulkTimeActionState, formData: FormData): Promise<BulkTimeActionState> {
+  const parsed = bulkTimeSchema.safeParse({
+    workerIds: formData.getAll("workerIds").filter((value): value is string => typeof value === "string"),
+    intent: text(formData,"intent"),assignmentId: text(formData,"assignmentId"),note: text(formData,"note")
+  });
+  if (!parsed.success) return { ok: false,message: "Select at least one worker and try again.",applied: 0,skipped: 0,failures: [] };
+  const scope = await getTimeSupervisorScope();
+  if (scope.mode === "none") return { ok: false,message: "You are not assigned to manage crew time.",applied: 0,skipped: 0,failures: [] };
+  const requestedIds = [...new Set(parsed.data.workerIds)];
+  if (parsed.data.assignmentId) {
+    const assignment = await queryPostgresRequired<{ allowed: boolean }>(
+      `select exists(
+         select 1 from public.operations_assignments assignment
+         where assignment.tenant_id=$1 and assignment.id=$2 and assignment.status<>'archived'
+           and ($3::boolean=false
+             or assignment.worker_id=any($4::uuid[])
+             or exists (select 1 from public.operations_crews crew
+                        where crew.tenant_id=assignment.tenant_id and crew.id=assignment.crew_id
+                          and crew.crew_leader_worker_id=$5 and crew.status='active'))
+       ) as allowed`,
+      [scope.tenantId,parsed.data.assignmentId,scope.mode === "crew_leader",scope.allowedWorkerIds ?? [],scope.actorWorkerId]
+    );
+    if (assignment.rows[0]?.allowed !== true) return { ok: false,message: "That assignment is outside your workspace or crew.",applied: 0,skipped: 0,failures: [] };
+  }
+  const eligible = await queryPostgresRequired<{ id: string;name: string }>(
+    `select id,name from public.operations_workers where tenant_id=$1 and id=any($2::uuid[]) and availability_status<>'inactive'`,
+    [scope.tenantId,requestedIds]
+  );
+  const workers = eligible.rows.filter((worker) => timeScopeAllowsWorker(scope,worker.id));
+  const failures: string[] = [];
+  let applied = 0;
+  let skipped = 0;
+  for (const worker of workers) {
+    const result = await withPostgresTransactionResult((client) => applyCrewTimeIntent(client, {
+      tenantId: scope.tenantId,workerId: worker.id,intent: parsed.data.intent,
+      assignmentId: parsed.data.assignmentId ?? null,note: parsed.data.note ?? null,
+      actorUserId: scope.actorUserId,actorWorkerId: scope.actorWorkerId
+    }));
+    if (!result.ok) failures.push(worker.name);
+    else if (result.value.outcome === "skipped") skipped += 1;
+    else if (result.value.outcome === "failed") failures.push(worker.name);
+    else applied += 1;
+  }
+  const unauthorizedCount = requestedIds.length-workers.length;
+  if (unauthorizedCount > 0) failures.push(`${unauthorizedCount} unavailable or outside your crew`);
+  revalidatePath("/app/operations-workforce");
+  const ok = failures.length === 0;
+  return {
+    ok,message: `${applied} updated, ${skipped} already in that state${failures.length ? `, ${failures.length} failed` : ""}.`,
+    applied,skipped,failures
+  };
+}
+
+export async function correctCrewTimeEntryAction(formData: FormData): Promise<TimeClockActionState> {
+  const parsed = timeCorrectionSchema.safeParse({
+    timeEntryId: text(formData,"timeEntryId"),clockInAt: text(formData,"clockInAt"),
+    clockOutAt: text(formData,"clockOutAt"),breakMinutes: text(formData,"breakMinutes") ?? "0",
+    clockInOffsetMinutes: text(formData,"clockInOffsetMinutes") ?? "0",
+    clockOutOffsetMinutes: text(formData,"clockOutOffsetMinutes") ?? "0",reason: text(formData,"reason")
+  });
+  if (!parsed.success) return { ok: false,message: "Check the corrected times, break minutes, and reason." };
+  const scope = await getTimeSupervisorScope();
+  if (scope.mode === "none") return { ok: false,message: "You are not assigned to correct crew time." };
+  const owner = await queryPostgresRequired<{ worker_id: string }>(
+    `select worker_id from public.operations_time_entries where tenant_id=$1 and id=$2 limit 1`,
+    [scope.tenantId,parsed.data.timeEntryId]
+  );
+  const workerId = owner.rows[0]?.worker_id;
+  if (!workerId || !timeScopeAllowsWorker(scope,workerId)) return { ok: false,message: "That time entry is outside your crew." };
+  if (!scope.actorUserId) return { ok: false,message: "A signed-in manager identity is required for a correction." };
+  const actorUserId = scope.actorUserId;
+  const clockInAt = localDateTimeToIso(parsed.data.clockInAt,parsed.data.clockInOffsetMinutes);
+  const clockOutAt = localDateTimeToIso(parsed.data.clockOutAt,parsed.data.clockOutOffsetMinutes);
+  if (!clockInAt || !clockOutAt) return { ok: false,message: "Those local date/time values are invalid." };
+  const result = await withPostgresTransactionResult((client) => correctTimeClockEntry(client, {
+    tenantId: scope.tenantId,timeEntryId: parsed.data.timeEntryId,clockInAt,
+    clockOutAt,breakMinutes: parsed.data.breakMinutes,reason: parsed.data.reason,
+    actorUserId,actorWorkerId: scope.actorWorkerId
+  }));
+  if (!result.ok) return { ok: false,message: "The correction was not saved; the original time remains unchanged." };
+  if (!result.value.corrected) return { ok: false,message: "That entry cannot be corrected with those values." };
+  revalidatePath("/app/operations-workforce");
+  return { ok: true,message: "Time correction saved for review. The original values remain in the audit history." };
 }
 
 export async function createExpenseAction(formData: FormData) {
@@ -1122,47 +1303,101 @@ export async function createPayrollExportAction(formData: FormData) {
   revalidatePath("/app/operations-workforce");
 }
 
-export async function createEmployeeCashAdvanceAction(formData: FormData) {
-  const actor = await requirePermission("lead:manage");
+export async function createEmployeeCashAdvanceAction(formData: FormData): Promise<TimeClockActionState> {
   const parsed = cashAdvanceSchema.safeParse({
     workerId: text(formData, "workerId"),
     assignmentId: text(formData, "assignmentId"),
     amount: text(formData, "amount"),
     advancedAt: text(formData, "advancedAt"),
     paymentMethod: text(formData, "paymentMethod") ?? "cash",
-    purpose: text(formData, "purpose")
+    purpose: text(formData, "purpose"),
+    entryKind: text(formData, "entryKind") ?? "cash_advance",
+    currency: text(formData, "currency") ?? "USD",
+    repaymentTerms: text(formData, "repaymentTerms"),
+    receiptUrl: text(formData, "receiptUrl"),
+    moneyLocale: text(formData, "moneyLocale") ?? "en"
   });
-  if (!parsed.success || cents(parsed.data.amount) <= 0) return;
-  const tenantId = actor.workspace.id;
-  const target = await resolveWorkerActionTarget(formData, parsed.data.workerId, parsed.data.assignmentId);
-  if (!target?.workerId || target.employeeMode) return;
-  const result = await queryPostgres<{ id: string; worker_name: string; user_id: string | null }>(
-    `
-    with inserted as (
-      insert into public.employee_cash_advances (
-        tenant_id, worker_id, assignment_id, amount_cents, advanced_at, payment_method,
-        purpose, created_by_user_id, metadata_json
-      )
-      values ($1,$2,$3,$4,coalesce($5::date,current_date),$6,$7,$8,$9::jsonb)
-      returning id, worker_id
-    )
-    select inserted.id, worker.name as worker_name, worker.user_id
-    from inserted
-    join public.operations_workers worker on worker.id = inserted.worker_id and worker.tenant_id = $1
-    `,
-    [
-      tenantId,
-      target.workerId,
-      parsed.data.assignmentId ?? null,
-      cents(parsed.data.amount),
-      parsed.data.advancedAt ?? null,
-      parsed.data.paymentMethod,
-      parsed.data.purpose ?? null,
-      actor.userId === "admin-token" ? null : actor.userId,
-      JSON.stringify({ automaticPayrollDeduction: false, employeeReviewRequired: true })
-    ]
-  );
-  const advance = result?.rows[0];
+  const amountCents = parsed.success ? parseWorkerMoneyToCents(parsed.data.amount, parsed.data.moneyLocale) : null;
+  if (!parsed.success || amountCents === null) return { ok: false,message: "Check the amount, category, currency, and reason." };
+  const employeeSubmission = formData.get("employeeMode") === "1";
+  const target = employeeSubmission
+    ? await resolveWorkerActionTarget(formData,parsed.data.workerId,parsed.data.assignmentId)
+    : await (async () => {
+        const scope = await getTimeSupervisorScope();
+        if (scope.mode === "none" || !timeScopeAllowsWorker(scope,parsed.data.workerId)) return null;
+        if (!(await tenantOwnsReference(scope.tenantId,"operations_workers",parsed.data.workerId))) return null;
+        if (parsed.data.assignmentId) {
+          const assignment = await queryPostgresRequired<{ allowed: boolean }>(
+            `select exists (
+               select 1 from public.operations_assignments assignment
+               where assignment.tenant_id=$1 and assignment.id=$2 and assignment.status<>'archived'
+                 and ($3::boolean=false
+                   or assignment.worker_id=$4
+                   or assignment.worker_id=any($5::uuid[])
+                   or exists (
+                     select 1 from public.operations_crews crew
+                     where crew.tenant_id=assignment.tenant_id and crew.id=assignment.crew_id
+                       and crew.crew_leader_worker_id=$6 and crew.status='active'
+                   ))
+             ) as allowed`,
+            [scope.tenantId,parsed.data.assignmentId,scope.mode === "crew_leader",parsed.data.workerId,scope.allowedWorkerIds ?? [],scope.actorWorkerId]
+          );
+          if (assignment.rows[0]?.allowed !== true) return null;
+        }
+        return { tenantId: scope.tenantId,workerId: parsed.data.workerId,employeeMode: false,
+          actorUserId: scope.actorUserId,preferredLanguage: "en" as const };
+      })();
+  if (!target?.workerId) return { ok: false,message: "That worker or assignment is not available to you." };
+  const tenantId = target.tenantId;
+  const receiptPhoto = isUploadFile(formData.get("receiptPhoto")) ? formData.get("receiptPhoto") as File : null;
+  const uploaded = await uploadReceiptPhoto(tenantId, receiptPhoto);
+  const receiptUrl = uploaded.storageUri ?? parsed.data.receiptUrl ?? null;
+  const workerDebt = isWorkerDebtKind(parsed.data.entryKind);
+  const transaction = await withPostgresTransactionResult(async (client) => {
+    const result = await client.query<{ id: string; worker_name: string; user_id: string | null }>(
+      `with inserted as (
+         insert into public.employee_cash_advances (
+           tenant_id,worker_id,assignment_id,amount_cents,advanced_at,payment_method,purpose,
+           entry_kind,currency,is_worker_debt,approval_status,worker_authorization_status,
+           repayment_terms,receipt_url,created_by_user_id,metadata_json
+         ) values ($1,$2,$3,$4,coalesce($5::date,current_date),$6,$7,$8,$9,$10,'pending','pending',$11,$12,$13,$14::jsonb)
+         returning id,worker_id
+       )
+       select inserted.id,worker.name as worker_name,worker.user_id
+       from inserted join public.operations_workers worker on worker.id=inserted.worker_id and worker.tenant_id=$1`,
+      [
+        tenantId,target.workerId,parsed.data.assignmentId ?? null,amountCents,
+        parsed.data.advancedAt ?? null,parsed.data.paymentMethod,parsed.data.purpose,
+        parsed.data.entryKind,parsed.data.currency,workerDebt,parsed.data.repaymentTerms ?? null,receiptUrl,
+        target.actorUserId,
+        JSON.stringify({ source: target.employeeMode ? "employee_app" : "operations_workforce", automaticPayrollDeduction: false })
+      ]
+    );
+    const advance = result.rows[0];
+    if (!advance) throw new Error("Worker balance entry was not saved.");
+    const audit = await client.query(
+      `insert into public.employee_advance_events
+         (tenant_id,advance_id,worker_id,event_type,actor_user_id,actor_worker_id,note,new_state_json)
+       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+      [
+        tenantId,advance.id,target.workerId,target.employeeMode ? "submitted" : "created",
+        target.actorUserId,target.employeeMode ? target.workerId : null,parsed.data.purpose,
+        JSON.stringify({ entryKind: parsed.data.entryKind, amountCents, currency: parsed.data.currency, isWorkerDebt: workerDebt, approvalStatus: "pending" })
+      ]
+    );
+    if (audit.rowCount !== 1) throw new Error("Worker balance audit evidence was not saved.");
+    return advance;
+  });
+  const advance = transaction.ok ? transaction.value : null;
+  if (!advance) return { ok: false,message: "The balance entry was not saved. No worker balance changed; try again." };
+  if (advance && receiptUrl) {
+    await queryPostgres(
+      `insert into public.operations_field_media
+         (tenant_id,assignment_id,worker_id,media_type,title,file_url,ai_summary,customer_visible,consent_status,status,metadata_json)
+       values ($1,$2,$3,'receipt',$4,$5,$6,false,'internal_only','needs_review',$7::jsonb)`,
+      [tenantId,parsed.data.assignmentId ?? null,target.workerId,uploaded.fileName ?? "Worker balance receipt",receiptUrl,parsed.data.purpose,JSON.stringify({ advanceId: advance.id, entryKind: parsed.data.entryKind })]
+    );
+  }
   if (advance) {
     await queryPostgres(
       `insert into public.owner_command_events (
@@ -1175,18 +1410,21 @@ export async function createEmployeeCashAdvanceAction(formData: FormData) {
       [
         tenantId,
         `employee-advance-${advance.id}`,
-        `Money advanced to ${advance.worker_name}`,
-        `${advance.worker_name} can review and acknowledge the ${parsed.data.paymentMethod.replaceAll("_", " ")} advance in the employee app.`,
-        "Ferocity recorded the advance but will not deduct it from wages automatically.",
-        "Review the record during payroll and resolve any employee dispute before recovery.",
-        cents(parsed.data.amount),
-        JSON.stringify({ advanceId: advance.id, workerId: target.workerId, recipientUserId: advance.user_id })
+        `Worker balance entry for ${advance.worker_name}`,
+        `${advance.worker_name} can review the ${parsed.data.entryKind.replaceAll("_", " ")} entry in the worker app.`,
+        workerDebt ? "The proposed debt is pending manager review and separate worker authorization." : "This entry is classified as non-debt and will not reduce worker pay.",
+        "Review classification and evidence. Any payroll allocation requires a separate confirmed action.",
+        amountCents,
+        JSON.stringify({ advanceId: advance.id, workerId: target.workerId, recipientUserId: advance.user_id, entryKind: parsed.data.entryKind, isWorkerDebt: workerDebt })
       ]
     );
   }
   revalidatePath("/app/operations-workforce");
   revalidatePath("/employee");
   revalidatePath("/app/notifications");
+  return { ok: true,message: target.employeeMode
+    ? workerMessage(target.preferredLanguage,"Submitted for manager review. No payroll deduction was made.","Enviado para revisión del gerente. No se hizo ningún descuento de nómina.")
+    : "Balance fact recorded for review. No payroll deduction was made." };
 }
 
 export async function respondToEmployeeCashAdvanceAction(formData: FormData) {
@@ -1198,14 +1436,39 @@ export async function respondToEmployeeCashAdvanceAction(formData: FormData) {
   if (!parsed.success) return;
   const context = await getEmployeeAccessContext();
   if (!context.workerId) return;
-  const result = await queryPostgres<{ id: string; amount_cents: number }>(
-    `update public.employee_cash_advances
-     set status = $4, employee_response_note = $5, employee_responded_at = now(), updated_at = now()
-     where id = $1 and tenant_id = $2 and worker_id = $3 and status in ('recorded','acknowledged','disputed')
-     returning id, amount_cents`,
-    [parsed.data.advanceId, context.tenantId, context.workerId, parsed.data.response, parsed.data.note ?? null]
-  );
-  const advance = result?.rows[0];
+  const transaction = await withPostgresTransactionResult(async (client) => {
+    const locked = await client.query<{ id: string; amount_cents: number; is_worker_debt: boolean; status: string; approval_status: string; worker_authorization_status: string }>(
+      `select id,amount_cents,is_worker_debt,status,approval_status,worker_authorization_status
+       from public.employee_cash_advances where id=$1 and tenant_id=$2 and worker_id=$3 for update`,
+      [parsed.data.advanceId,context.tenantId,context.workerId]
+    );
+    const current = locked.rows[0];
+    if (!current || current.status === "void") return null;
+    if (parsed.data.response === "authorized" && (!current.is_worker_debt || current.approval_status === "rejected")) return null;
+    const nextStatus = parsed.data.response === "disputed" ? "disputed" : "acknowledged";
+    const authorizationStatus = parsed.data.response === "authorized" ? "authorized" : parsed.data.response === "disputed" ? "disputed" : current.worker_authorization_status;
+    const updated = await client.query<{ id: string; amount_cents: number }>(
+      `update public.employee_cash_advances
+       set status=$4,worker_authorization_status=$5,employee_response_note=$6,employee_responded_at=now(),updated_at=now()
+       where id=$1 and tenant_id=$2 and worker_id=$3 returning id,amount_cents`,
+      [parsed.data.advanceId,context.tenantId,context.workerId,nextStatus,authorizationStatus,parsed.data.note ?? null]
+    );
+    const audit = await client.query(
+      `insert into public.employee_advance_events
+         (tenant_id,advance_id,worker_id,event_type,actor_user_id,actor_worker_id,note,previous_state_json,new_state_json)
+       values ($1,$2,$3,$4,$5,$3,$6,$7::jsonb,$8::jsonb)`,
+      [
+        context.tenantId,current.id,context.workerId,
+        parsed.data.response === "disputed" ? "worker_disputed" : parsed.data.response === "authorized" ? "worker_authorized" : "corrected",
+        context.userId,parsed.data.note ?? null,
+        JSON.stringify({ status: current.status, workerAuthorizationStatus: current.worker_authorization_status }),
+        JSON.stringify({ status: nextStatus, workerAuthorizationStatus: authorizationStatus })
+      ]
+    );
+    if (audit.rowCount !== 1) throw new Error("Worker response audit evidence was not saved.");
+    return updated.rows[0] ?? null;
+  });
+  const advance = transaction.ok ? transaction.value : null;
   if (advance) {
     await queryPostgres(
       `insert into public.owner_command_events (
@@ -1237,6 +1500,132 @@ export async function respondToEmployeeCashAdvanceAction(formData: FormData) {
   revalidatePath("/employee");
   revalidatePath("/app/operations-workforce");
   revalidatePath("/app/notifications");
+}
+
+export async function reviewWorkerBalanceEntryAction(formData: FormData) {
+  const actor = await requirePermission("tenant:manage");
+  if (actor.userId === "admin-token") return;
+  const parsed = workerBalanceReviewSchema.safeParse({
+    advanceId: text(formData, "advanceId"),
+    decision: text(formData, "decision"),
+    note: text(formData, "note")
+  });
+  if (!parsed.success) return;
+  const tenantId = actor.workspace.id;
+  const actorUserId = actor.userId === "admin-token" ? null : actor.userId;
+  const result = await withPostgresTransactionResult(async (client) => {
+    const locked = await client.query<{ id: string; worker_id: string; approval_status: string; status: string }>(
+      `select id,worker_id,approval_status,status from public.employee_cash_advances
+       where tenant_id=$1 and id=$2 for update`,
+      [tenantId,parsed.data.advanceId]
+    );
+    const entry = locked.rows[0];
+    if (!entry || entry.status === "void") return false;
+    const update = parsed.data.decision === "reversed"
+      ? await client.query(
+          `update public.employee_cash_advances
+           set status='void',reversed_by_user_id=$3,reversed_at=now(),reversal_reason=$4,updated_at=now()
+           where tenant_id=$1 and id=$2`,
+          [tenantId,entry.id,actorUserId,parsed.data.note]
+        )
+      : await client.query(
+          `update public.employee_cash_advances
+           set approval_status=$3,
+               approved_by_user_id=case when $3='approved' then $4 else approved_by_user_id end,
+               approved_at=case when $3='approved' then now() else approved_at end,
+               rejected_by_user_id=case when $3='rejected' then $4 else rejected_by_user_id end,
+               rejected_at=case when $3='rejected' then now() else rejected_at end,
+               updated_at=now()
+           where tenant_id=$1 and id=$2 and approval_status='pending'`,
+          [tenantId,entry.id,parsed.data.decision,actorUserId]
+        );
+    if (update.rowCount !== 1) return false;
+    if (parsed.data.decision === "reversed") {
+      await client.query(
+        `update public.employee_advance_repayments
+         set status='reversed',reversed_by_user_id=$3,reversed_at=now(),reversal_reason=$4
+         where tenant_id=$1 and advance_id=$2 and status='recorded'`,
+        [tenantId,entry.id,actorUserId,parsed.data.note]
+      );
+      await client.query(
+        `update public.employee_advance_pay_allocations
+         set status='reversed',reversed_by_user_id=$3,reversed_at=now(),reversal_reason=$4
+         where tenant_id=$1 and advance_id=$2 and status in ('proposed','confirmed')`,
+        [tenantId,entry.id,actorUserId,parsed.data.note]
+      );
+    }
+    const audit = await client.query(
+      `insert into public.employee_advance_events
+         (tenant_id,advance_id,worker_id,event_type,actor_user_id,note,previous_state_json,new_state_json)
+       values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,
+      [
+        tenantId,entry.id,entry.worker_id,parsed.data.decision === "reversed" ? "reversed" : parsed.data.decision,
+        actorUserId,parsed.data.note,
+        JSON.stringify({ approvalStatus: entry.approval_status, status: entry.status }),
+        JSON.stringify(parsed.data.decision === "reversed" ? { status: "void" } : { approvalStatus: parsed.data.decision })
+      ]
+    );
+    if (audit.rowCount !== 1) throw new Error("Worker balance review evidence was not saved.");
+    return true;
+  });
+  if (!result.ok || !result.value) return;
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/employee");
+}
+
+export async function recordWorkerBalanceRepaymentAction(formData: FormData): Promise<TimeClockActionState> {
+  const actor = await requirePermission("tenant:manage");
+  if (actor.userId === "admin-token") return { ok: false,message: "A named authorized user is required for repayment evidence." };
+  const parsed = workerBalanceRepaymentSchema.safeParse({
+    requestId: text(formData,"requestId"),advanceId: text(formData, "advanceId"), amount: text(formData, "amount"),
+    repaidAt: text(formData, "repaidAt"), method: text(formData, "method"), note: text(formData, "note"),
+    moneyLocale: text(formData, "moneyLocale") ?? "en"
+  });
+  const amountCents = parsed.success ? parseWorkerMoneyToCents(parsed.data.amount, parsed.data.moneyLocale) : null;
+  if (!parsed.success || amountCents === null) return { ok: false,message: "Check the repayment amount, date, method, and request." };
+  const transaction = await withPostgresTransactionResult((client) => recordWorkerBalanceRepayment(client, {
+    tenantId: actor.workspace.id,advanceId: parsed.data.advanceId,amountCents,
+    repaidAt: parsed.data.repaidAt,method: parsed.data.method,note: parsed.data.note ?? null,
+    idempotencyKey: parsed.data.requestId,actorUserId: actor.userId
+  }));
+  if (!transaction.ok) return { ok: false,message: "The repayment was not saved. Check the ledger before retrying." };
+  const outcome = transaction.value.outcome;
+  if (outcome === "idempotency_conflict") return { ok: false,message: "That request ID was already used for different repayment details. Refresh and submit again." };
+  if (outcome === "not_found" || outcome === "not_recoverable") return { ok: false,message: "That advance is no longer available for repayment." };
+  if (outcome === "exceeds_outstanding") return { ok: false,message: "The amount exceeds the current outstanding balance." };
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/employee");
+  return { ok: true,message: outcome === "already_recorded" ? "This repayment was already recorded." : "Repayment recorded with audit evidence." };
+}
+
+export async function confirmWorkerPayAllocationAction(formData: FormData): Promise<TimeClockActionState> {
+  const actor = await requirePermission("tenant:manage");
+  if (actor.userId === "admin-token") return { ok: false,message: "A named authorized user is required for a pay allocation decision." };
+  const parsed = workerBalanceAllocationSchema.safeParse({
+    requestId: text(formData,"requestId"),advanceId: text(formData, "advanceId"), amount: text(formData, "amount"),
+    payPeriodStart: text(formData, "payPeriodStart"), payPeriodEnd: text(formData, "payPeriodEnd"),
+    workerAuthorizationEvidence: text(formData, "workerAuthorizationEvidence"),
+    legalPolicyReview: text(formData, "legalPolicyReview"),
+    moneyLocale: text(formData, "moneyLocale") ?? "en"
+  });
+  const amountCents = parsed.success ? parseWorkerMoneyToCents(parsed.data.amount, parsed.data.moneyLocale) : null;
+  if (!parsed.success || amountCents === null) return { ok: false,message: "Check the allocation amount, pay period, and evidence." };
+  const transaction = await withPostgresTransactionResult((client) => confirmWorkerPayAllocation(client, {
+    tenantId: actor.workspace.id,advanceId: parsed.data.advanceId,amountCents,
+    payPeriodStart: parsed.data.payPeriodStart,payPeriodEnd: parsed.data.payPeriodEnd,
+    workerAuthorizationEvidence: parsed.data.workerAuthorizationEvidence,
+    legalPolicyReview: parsed.data.legalPolicyReview,idempotencyKey: parsed.data.requestId,actorUserId: actor.userId
+  }));
+  if (!transaction.ok) return { ok: false,message: "The allocation was not saved. Check the ledger before retrying." };
+  const outcome = transaction.value.outcome;
+  if (outcome === "idempotency_conflict") return { ok: false,message: "That request ID was already used for different allocation details. Refresh and submit again." };
+  if (outcome === "not_found" || outcome === "not_authorized") return { ok: false,message: "That advance is not authorized for allocation." };
+  if (outcome === "currency_not_supported") return { ok: false,message: "Pay allocation previews currently support USD balances only." };
+  if (outcome === "missing_evidence") return { ok: false,message: "Worker authorization and legal-policy review evidence are both required." };
+  if (outcome === "exceeds_outstanding") return { ok: false,message: "The amount exceeds the current outstanding balance." };
+  revalidatePath("/app/operations-workforce");
+  revalidatePath("/employee");
+  return { ok: true,message: outcome === "already_confirmed" ? "This allocation was already confirmed." : "Allocation preview confirmed with audit evidence." };
 }
 
 export async function updateEmployeeLanguageAction(formData: FormData) {

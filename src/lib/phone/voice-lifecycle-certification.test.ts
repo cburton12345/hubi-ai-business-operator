@@ -38,4 +38,20 @@ describe("voice agent publish, test, and activation lifecycle", () => {
     expect(webhook).toContain("orchestrateCompletedCall({");
     expect(webhook).toContain("safelyEnqueueExternalCallLogHandoffs({");
   });
+
+  it("keeps failed usage persistence retryable before marking the webhook processed", () => {
+    expect(webhook).toContain("const usageResult = await recordVoiceUsage({");
+    expect(webhook).toContain("if (usageResult.retryable)");
+    expect(webhook).toContain("error_category='voice_usage_persistence_failed'");
+    expect(webhook).toContain("{ status: 503 }");
+    expect(webhook.indexOf("const usageResult = await recordVoiceUsage({"))
+      .toBeLessThan(webhook.indexOf("set processing_status='processed',processed_at=now()"));
+  });
+
+  it("correlates a verified provider reservation before the provider-call upsert", () => {
+    expect(webhook).toContain("provider_call_id like 'ferocity-pending:%'");
+    expect(webhook).toContain("admissionState: \"provider_bound_by_verified_webhook\"");
+    expect(webhook.indexOf("provider_call_id like 'ferocity-pending:%'"))
+      .toBeLessThan(webhook.indexOf("insert into public.receptionist_calls ("));
+  });
 });

@@ -30,7 +30,7 @@ describe("customer request approval and account recovery", () => {
   it("keeps normal sign-in and forgot-password recovery visible", () => {
     const loginPage = source("src/app/login/page.tsx");
     const resetPage = source("src/app/reset-password/page.tsx");
-    expect(loginPage).toContain('href="/reset-password"');
+    expect(loginPage).toContain('withWorkerLocale("/reset-password?mode=field", locale)');
     expect(loginPage).toContain("Forgot password?");
     expect(resetPage).toContain("send a secure reset link");
   });

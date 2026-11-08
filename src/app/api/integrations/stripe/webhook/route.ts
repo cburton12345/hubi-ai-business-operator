@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { isSelfServePlanKey } from "@/lib/billing/public-plans";
+import { isStripeSelfServePlanKey } from "@/lib/billing/public-plans";
 import { provisionPaidWorkspace } from "@/lib/billing/provision-paid-workspace";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
@@ -144,7 +144,7 @@ async function handleCheckoutCompleted(event: StripeEvent, object: Record<string
     if (paymentStatus !== "paid" && paymentStatus !== "no_payment_required") return;
     const accessRequestId = textValue(meta, "access_request_id");
     const companyName = textValue(meta, "company_name");
-    if (!email || !accessRequestId || !companyName || !subscriptionId || !isSelfServePlanKey(planKey)) {
+    if (!email || !accessRequestId || !companyName || !subscriptionId || !isStripeSelfServePlanKey(planKey)) {
       await logAppError({
         source: "api.integrations.stripe.webhook",
         message: "Paid public signup completed without complete provisioning metadata.",

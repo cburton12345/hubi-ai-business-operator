@@ -19,6 +19,7 @@ describe("permissions", () => {
     const actor = { ...baseActor, tenantRole: "operator" as const };
 
     expect(can(actor, "lead:manage")).toBe(true);
+    expect(can(actor, "tenant:manage")).toBe(false);
     expect(canReviewRisk(actor, "low")).toBe(true);
     expect(canReviewRisk(actor, "medium")).toBe(false);
     expect(canReviewRisk(actor, "high")).toBe(false);

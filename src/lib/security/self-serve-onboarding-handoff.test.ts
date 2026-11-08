@@ -7,10 +7,23 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), "utf8")
 describe("self-serve onboarding handoff", () => {
   it("routes fixed paid plans to checkout with a short-lived hashed handoff", () => {
     const route = source("src/app/api/access-requests/route.ts");
-    expect(route).toContain('"ferocity_connect", "calls", "job_tracker", "starter", "growth", "operator"');
+    expect(route).toContain('"ferocity_connect", "calls", "job_tracker", "starter", "growth"');
+    expect(route).not.toContain('"growth", "operator"\n  ].includes(parsed.data.requestedPlan)');
     expect(route).toContain("checkoutHandoffTokenHash: hashSessionToken(handoffToken)");
     expect(route).toContain("Date.now() + 30 * 60 * 1000");
     expect(route).toContain('return redirectTo(request, `/subscribe?${checkout.toString()}`)');
+  });
+
+  it("creates safe-mode workspaces for Free and Earn while routing Operator to review", () => {
+    const route = source("src/app/api/access-requests/route.ts");
+    const checkout = source("src/app/api/billing/checkout/route.ts");
+    const subscribe = source("src/app/subscribe/page.tsx");
+
+    expect(route).toContain('["free", "earn"].includes(parsed.data.requestedPlan ?? "")');
+    expect(checkout).toContain('parsed.data.plan === "free"');
+    expect(checkout).toContain('publicSignup && parsed.data.plan === "operator"');
+    expect(subscribe).toContain('plan?.salesAssisted');
+    expect(subscribe).toContain('plan=operator&billing=manual_plan');
   });
 
   it("validates the request, token hash, expiry, and selected plan before prefilling checkout", () => {
