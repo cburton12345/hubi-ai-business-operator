@@ -32,7 +32,7 @@ import { processAdapterFactoryQueueForTenant } from "@/lib/integrations/adapter-
 import { processExternalCallLogQueueForTenant } from "@/lib/integrations/call-log/processor";
 import { evaluateProviderFundingAlerts } from "@/lib/usage/provider-funding";
 import { evaluatePlatformCapacity } from "@/lib/observability/platform-capacity";
-import { raisePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
+import { raisePlatformAdminAlert, resolvePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 import { sendPlatformAdminDailyBrief } from "@/lib/observability/platform-admin-daily-brief";
 import { safeLogAppError } from "@/lib/observability/log-error";
 import {
@@ -696,6 +696,7 @@ async function runBusinessAutomationLoopUnlocked(
           ...(await processStatementClassificationReviewsForTenant(tenantId, 25)),
         });
         dailyBriefs.push(await generateTenantDailyBrief(tenantId));
+        await resolvePlatformAdminAlert(`business-automation:${tenantId}`);
       } catch (error) {
         const message =
           error instanceof Error

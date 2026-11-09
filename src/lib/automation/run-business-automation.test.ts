@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 const { queryPostgres, getServiceGate } = vi.hoisted(() => ({
   queryPostgres: vi.fn(),
@@ -53,5 +55,13 @@ describe("scheduled daily owner brief", () => {
       skipReason: "tenant_discovery_unavailable",
     });
     expect(queryPostgres).toHaveBeenCalledTimes(3);
+  });
+
+  it("resolves a prior tenant automation alert after a successful workspace cycle", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/automation/run-business-automation.ts"),
+      "utf8",
+    );
+    expect(source).toContain('await resolvePlatformAdminAlert(`business-automation:${tenantId}`)');
   });
 });
