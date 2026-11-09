@@ -15,15 +15,16 @@ export default async function runBusinessAutomationBackground(request: Request) 
   }
 
   const result = await runBusinessAutomationLoop({
-    tenantLimit: boundedInt(Netlify.env.get("AUTOMATION_TENANT_BATCH_SIZE"), 50, 250),
-    agentLimit: boundedInt(Netlify.env.get("AUTOMATION_AGENT_BATCH_SIZE"), 50, 250),
-    tenantConcurrency: boundedInt(Netlify.env.get("AUTOMATION_TENANT_CONCURRENCY"), 2, 4),
+    tenantLimit: boundedInt(Netlify.env.get("AUTOMATION_TENANT_BATCH_SIZE"), 4, 4),
+    agentLimit: boundedInt(Netlify.env.get("AUTOMATION_AGENT_BATCH_SIZE"), 25, 25),
+    tenantConcurrency: boundedInt(Netlify.env.get("AUTOMATION_TENANT_CONCURRENCY"), 1, 1),
     goalPlanningLimit: boundedInt(Netlify.env.get("AUTOMATION_GOAL_PLAN_BATCH_SIZE"), 8, 25),
-    goalPlanningConcurrency: boundedInt(Netlify.env.get("AUTOMATION_GOAL_PLANNING_CONCURRENCY"), 2, 3),
+    goalPlanningConcurrency: boundedInt(Netlify.env.get("AUTOMATION_GOAL_PLANNING_CONCURRENCY"), 1, 1),
     goalStepLimit: boundedInt(Netlify.env.get("AUTOMATION_GOAL_STEP_BATCH_SIZE"), 50, 100)
   });
   console.log("Business automation background run completed", {
     skipped: result.skipped,
+    skipReason: result.skipped ? result.skipReason : null,
     tenantsChecked: "tenantsChecked" in result ? result.tenantsChecked : 0,
     tenantFailures: "tenantFailures" in result ? result.tenantFailures.length : 0,
     elapsedMs: result.elapsedMs

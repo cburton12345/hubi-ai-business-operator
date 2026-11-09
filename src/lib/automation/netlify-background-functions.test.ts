@@ -20,6 +20,16 @@ describe("Netlify background function bundles", () => {
     expect(source).toContain("AUTOMATION_GOAL_STEP_BATCH_SIZE");
     expect(source).toContain("goalPlanningLimit:");
     expect(source).toContain("goalStepLimit:");
+    expect(source).toContain("skipReason: result.skipped ? result.skipReason : null");
+    expect(source).toContain('AUTOMATION_TENANT_BATCH_SIZE"), 4, 4');
+    expect(source).toContain('AUTOMATION_AGENT_BATCH_SIZE"), 25, 25');
+    expect(source).toContain('AUTOMATION_TENANT_CONCURRENCY"), 1, 1');
+    expect(source).toContain('AUTOMATION_GOAL_PLANNING_CONCURRENCY"), 1, 1');
+  });
+
+  it("spaces the database-heavy business automation schedule beyond its observed runtime", async () => {
+    const scheduledFunction = await import("../../../netlify/functions/run-business-automation");
+    expect(scheduledFunction.config).toEqual({ schedule: "*/20 * * * *" });
   });
 
   it("loads the calendar-sync dependency graph outside the Next.js react-server condition", async () => {

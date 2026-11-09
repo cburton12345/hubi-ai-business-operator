@@ -8,7 +8,7 @@ const { queryPostgres, getServiceGate } = vi.hoisted(() => ({
 vi.mock("@/lib/db/postgres", () => ({ queryPostgres }));
 vi.mock("@/lib/controls/service-gates", () => ({ getServiceGate }));
 
-import { generateTenantDailyBrief } from "@/lib/automation/run-business-automation";
+import { generateTenantDailyBrief, runBusinessAutomationLoop } from "@/lib/automation/run-business-automation";
 
 describe("scheduled daily owner brief", () => {
   beforeEach(() => {
@@ -34,5 +34,24 @@ describe("scheduled daily owner brief", () => {
     expect(sqlCalls.filter((sql) => sql.includes("from public.leads"))).toHaveLength(2);
     expect(sqlCalls.filter((sql) => sql.includes("insert into public.owner_daily_briefings"))).toHaveLength(2);
     expect(sqlCalls.filter((sql) => sql.includes("insert into public.owner_command_events"))).toHaveLength(2);
+  });
+
+  it("fails closed before global work when tenant discovery is unavailable", async () => {
+    queryPostgres.mockImplementation(async (sql: string, values: unknown[] = []) => {
+      const statement = String(sql);
+      if (statement.includes("insert into public.platform_runtime_leases")) {
+        return { rows: [{ holder_id: values[0] }] };
+      }
+      if (statement.includes("from public.tenants t")) return null;
+      if (statement.includes("delete from public.platform_runtime_leases")) return { rows: [] };
+      throw new Error(`Unexpected query after tenant discovery failure: ${statement.slice(0, 80)}`);
+    });
+
+    await expect(runBusinessAutomationLoop()).resolves.toMatchObject({
+      ok: true,
+      skipped: true,
+      skipReason: "tenant_discovery_unavailable",
+    });
+    expect(queryPostgres).toHaveBeenCalledTimes(3);
   });
 });

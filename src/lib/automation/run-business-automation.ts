@@ -168,7 +168,7 @@ export type BusinessAutomationRunResult =
   | {
       ok: true;
       skipped: true;
-      skipReason: "already_running" | "lease_unavailable";
+      skipReason: "already_running" | "lease_unavailable" | "tenant_discovery_unavailable" | "no_eligible_tenants";
       elapsedMs: number;
     };
 
@@ -253,7 +253,7 @@ async function getAutomationTenantIds(limit: number) {
     `,
     [limit],
   );
-  return result?.rows.map((row) => row.id) ?? [];
+  return result ? result.rows.map((row) => row.id) : null;
 }
 
 export async function generateTenantDailyBrief(tenantId: string) {
@@ -550,11 +550,27 @@ async function runBusinessAutomationLoopUnlocked(
     goalPlanningConcurrency?: number;
     goalStepLimit?: number;
   } = {},
-): Promise<BusinessAutomationCompletedResult> {
+): Promise<BusinessAutomationRunResult> {
   const startedAt = Date.now();
   const tenantIds = input.tenantId
     ? [input.tenantId]
     : await getAutomationTenantIds(input.tenantLimit ?? 100);
+  if (tenantIds === null) {
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: "tenant_discovery_unavailable",
+      elapsedMs: Date.now() - startedAt,
+    };
+  }
+  if (tenantIds.length === 0) {
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: "no_eligible_tenants",
+      elapsedMs: Date.now() - startedAt,
+    };
+  }
   const actionQueueScans: ActionQueueScanResult[] = [];
   const revenueLoops: BusinessAutomationCompletedResult["revenueLoops"] = [];
   const constructionHealth: BusinessAutomationCompletedResult["constructionHealth"] =

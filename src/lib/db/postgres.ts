@@ -70,6 +70,40 @@ export async function queryPostgres<T extends pg.QueryResultRow>(text: string, v
   }
 }
 
+export type PostgresReadRetryOptions = {
+  attempts?: number;
+  baseDelayMs?: number;
+};
+
+/**
+ * Bounded retry path for idempotent reads that must tolerate a transient
+ * serverless-pooler checkout or authentication failure. Never use this helper
+ * for inserts, updates, deletes, provider actions, or other non-idempotent work.
+ */
+export async function queryPostgresReadWithRetry<T extends pg.QueryResultRow>(
+  text: string,
+  values: unknown[] = [],
+  options: PostgresReadRetryOptions = {},
+) {
+  const configuredAttempts = Number(options.attempts ?? 2);
+  const attempts = Number.isFinite(configuredAttempts)
+    ? Math.max(1, Math.min(Math.floor(configuredAttempts), 3))
+    : 2;
+  const configuredDelay = Number(options.baseDelayMs ?? 250);
+  const baseDelayMs = Number.isFinite(configuredDelay)
+    ? Math.max(0, Math.min(Math.floor(configuredDelay), 2_000))
+    : 250;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await queryPostgres<T>(text, values);
+    if (result) return result;
+    if (attempt < attempts && baseDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
+    }
+  }
+  return null;
+}
+
 export class RequiredPostgresQueryError extends Error {
   readonly code = "DATABASE_QUERY_UNAVAILABLE";
 

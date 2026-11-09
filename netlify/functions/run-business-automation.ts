@@ -26,5 +26,5 @@ export default async function runBusinessAutomation() {
 }
 
 export const config: Config = {
-  schedule: "*/5 * * * *"
+  schedule: "*/20 * * * *"
 };

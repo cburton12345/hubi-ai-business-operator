@@ -37,4 +37,30 @@ describe("queryPostgresRequired", () => {
         message: "Required database query failed (owner-dashboard).",
       });
   });
+
+  it("retries idempotent reads after a transient unavailable result", async () => {
+    query
+      .mockRejectedValueOnce(new Error("temporary pool checkout timeout"))
+      .mockResolvedValueOnce({ rows: [{ total: "7" }] });
+    const { queryPostgresReadWithRetry } = await import("./postgres");
+
+    await expect(queryPostgresReadWithRetry<{ total: string }>(
+      "select 7",
+      [],
+      { attempts: 2, baseDelayMs: 0 },
+    )).resolves.toEqual({ rows: [{ total: "7" }] });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps read retries bounded when the database remains unavailable", async () => {
+    query.mockResolvedValue(null);
+    const { queryPostgresReadWithRetry } = await import("./postgres");
+
+    await expect(queryPostgresReadWithRetry(
+      "select 1",
+      [],
+      { attempts: 3, baseDelayMs: 0 },
+    )).resolves.toBeNull();
+    expect(query).toHaveBeenCalledTimes(3);
+  });
 });

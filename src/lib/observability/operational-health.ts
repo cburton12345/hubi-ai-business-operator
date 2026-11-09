@@ -1,4 +1,4 @@
-import { queryPostgres } from "@/lib/db/postgres";
+import { queryPostgresReadWithRetry } from "@/lib/db/postgres";
 import { raisePlatformAdminAlert, resolvePlatformAdminAlert } from "@/lib/observability/platform-admin-alerts";
 
 export type OperationalHealthStatus = "healthy" | "degraded" | "critical" | "unknown";
@@ -174,7 +174,7 @@ export function evaluateOperationalHealth(
 }
 
 export async function getOperationalHealthSnapshot(tenantId: string): Promise<OperationalHealthSnapshot> {
-  const result = await queryPostgres<OperationalHealthRow>(
+  const result = await queryPostgresReadWithRetry<OperationalHealthRow>(
     `select
       (select count(*) from public.ai_agent_workflows where tenant_id=$1 and status='active')::text as "activeWorkflows",
       (select count(*) from public.ai_agent_workflows where tenant_id=$1 and status='active' and cadence_key<>'manual' and next_run_at is null)::text as "workflowsMissingNextRun",
@@ -195,6 +195,7 @@ export async function getOperationalHealthSnapshot(tenantId: string): Promise<Op
       (select count(*) from public.capability_execution_audits where tenant_id=$1 and retry_count>=3 and state not in ('completed','confirmed','failed','blocked'))::text as "retryExhaustedExecutions",
       (select count(*) from public.capability_execution_audits where tenant_id=$1 and fallback_count>0 and updated_at>=now()-interval '1 hour')::text as "fallbackExecutions1h"`,
     [tenantId],
+    { attempts: 2, baseDelayMs: 500 },
   );
   return evaluateOperationalHealth(result?.rows[0] ? numericRow(result.rows[0]) : null);
 }
