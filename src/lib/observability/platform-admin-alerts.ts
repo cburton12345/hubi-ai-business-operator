@@ -33,6 +33,7 @@ export async function raisePlatformAdminAlert(input: {
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
      on conflict (fingerprint) do update set
        tenant_id=coalesce(excluded.tenant_id, public.platform_admin_alerts.tenant_id),
+       alert_family=excluded.alert_family, alert_type=excluded.alert_type,
        severity=excluded.severity, status='active', title=excluded.title, body=excluded.body,
        action_url=coalesce(excluded.action_url, public.platform_admin_alerts.action_url),
        occurrence_count=public.platform_admin_alerts.occurrence_count+1, last_seen_at=now(), resolved_at=null,
