@@ -1,25 +1,24 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const leadAdvanceSource = readFileSync(
+function normalizedSource(url: URL) {
+  return readFileSync(url, "utf8").replace(/\r\n/g, "\n");
+}
+
+const leadAdvanceSource = normalizedSource(
   new URL("../leads/advance-incoming-leads.ts", import.meta.url),
-  "utf8",
 );
-const recoverySource = readFileSync(
+const recoverySource = normalizedSource(
   new URL("../customer-lifecycle/prepare-context-aware-followups.ts", import.meta.url),
-  "utf8",
 );
-const revenueLoopSource = readFileSync(
+const revenueLoopSource = normalizedSource(
   new URL("./revenue-loop-automation.ts", import.meta.url),
-  "utf8",
 );
-const inboundSource = readFileSync(
+const inboundSource = normalizedSource(
   new URL("../messaging/record-inbound-response.ts", import.meta.url),
-  "utf8",
 );
-const revenueDashboardSource = readFileSync(
+const revenueDashboardSource = normalizedSource(
   new URL("./get-revenue-growth-dashboard.ts", import.meta.url),
-  "utf8",
 );
 
 describe("revenue contact safety contract", () => {

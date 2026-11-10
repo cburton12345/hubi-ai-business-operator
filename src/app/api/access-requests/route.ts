@@ -11,6 +11,11 @@ import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 import { EARN_AGREEMENT_VERSION, ensureEarnFeatureEntitlements } from "@/lib/billing/earn";
 import { importPublicChatHandoff } from "@/lib/public-site/import-public-chat-handoff";
 import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import {
+  consumeGlobalRateLimit,
+  consumeIdentifierRateLimit,
+  consumePublicRateLimit
+} from "@/lib/security/rate-limit";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -60,6 +65,24 @@ function redirectTo(request: NextRequest, path: string) {
 
 function appUrl(request: NextRequest, path: string) {
   return new URL(path, request.nextUrl.origin).toString();
+}
+
+function accessRequestPayloadFingerprint(input: {
+  companyName?: string;
+  businessType?: string;
+  websiteUrl?: string;
+  phone?: string;
+  message?: string;
+}) {
+  const fingerprint = [input.companyName, input.businessType, input.websiteUrl, input.phone, input.message]
+    .map((value) => value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "")
+    .join("|")
+    .slice(0, 2_000);
+  return fingerprint.replaceAll("|", "") ? fingerprint : "minimal-access-request";
+}
+
+function skippedEmail(error: string) {
+  return { ok: false as const, skipped: true, error };
 }
 
 function inferBusinessModel(businessType: string | undefined | null) {
@@ -337,27 +360,58 @@ Ferocity will keep customer messages, publishing, ad changes, and billing off un
 
 If you selected automatic workspace creation and did not get an invite link, the request was saved for review.`;
 
-  const confirmation = await sendTransactionalEmail({
-    to: input.email,
-    subject,
-    text,
-    tenantId: input.tenantId,
-    eventKey: "access_request_confirmation",
-    metadata: {
-      accessRequestId: input.requestId,
-      workspaceStatus: input.workspaceStatus,
-      workspaceSlug: input.workspaceSlug
-    }
+  const recipientBudget = await consumeIdentifierRateLimit({
+    scope: "access_request_confirmation_recipient_day",
+    identifier: input.email,
+    limit: 1,
+    windowSeconds: 24 * 60 * 60
   });
+  const confirmationBudget = recipientBudget.allowed
+    ? await consumeGlobalRateLimit({
+        scope: "access_request_confirmation_global_day",
+        limit: 20,
+        windowSeconds: 24 * 60 * 60
+      })
+    : null;
+  const confirmation = recipientBudget.allowed && confirmationBudget?.allowed
+    ? await sendTransactionalEmail({
+        to: input.email,
+        subject,
+        text,
+        tenantId: input.tenantId,
+        eventKey: "access_request_confirmation",
+        metadata: {
+          accessRequestId: input.requestId,
+          workspaceStatus: input.workspaceStatus,
+          workspaceSlug: input.workspaceSlug
+        }
+      })
+    : skippedEmail(recipientBudget.allowed
+      ? "Public setup confirmation daily budget reached."
+      : "A setup confirmation was already attempted for this address today.");
   await recordAccessEmailStatus({
     requestId: input.requestId,
     key: "requester",
     result: confirmation
   });
 
-  const admin = await sendFerocityNotificationEmail({
-    subject: `New Ferocity setup request: ${input.companyName || input.email}`,
-    text: `New Ferocity setup request
+  const adminDuplicateBudget = await consumeIdentifierRateLimit({
+    scope: "access_request_admin_notice_duplicate",
+    identifier: `${input.email}|${input.companyName ?? ""}`,
+    limit: 1,
+    windowSeconds: 6 * 60 * 60
+  });
+  const adminBudget = adminDuplicateBudget.allowed
+    ? await consumeGlobalRateLimit({
+        scope: "access_request_admin_notice_global_day",
+        limit: 12,
+        windowSeconds: 24 * 60 * 60
+      })
+    : null;
+  const admin = adminDuplicateBudget.allowed && adminBudget?.allowed
+    ? await sendFerocityNotificationEmail({
+        subject: `New Ferocity setup request: ${input.companyName || input.email}`,
+        text: `New Ferocity setup request
 
 Email: ${input.email}
 Name: ${input.name || "not provided"}
@@ -373,15 +427,18 @@ Invite created: ${inviteUrl ? "yes" : "no"}
 
 Message:
 ${input.message || "none"}`,
-    tenantId: input.tenantId,
-    eventKey: "access_request_admin_notice",
-    metadata: {
-      accessRequestId: input.requestId,
-      requesterEmail: input.email,
-      workspaceStatus: input.workspaceStatus,
-      workspaceSlug: input.workspaceSlug
-    }
-  });
+        tenantId: input.tenantId,
+        eventKey: "access_request_admin_notice",
+        metadata: {
+          accessRequestId: input.requestId,
+          requesterEmail: input.email,
+          workspaceStatus: input.workspaceStatus,
+          workspaceSlug: input.workspaceSlug
+        }
+      })
+    : skippedEmail(adminDuplicateBudget.allowed
+      ? "Public setup admin-notification daily budget reached."
+      : "A duplicate setup admin notification was suppressed.");
   await recordAccessEmailStatus({
     requestId: input.requestId,
     key: "admin",
@@ -779,6 +836,11 @@ async function createStarterWorkspace(input: {
 }
 
 export async function POST(request: NextRequest) {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > 64_000) {
+    return redirectTo(request, "/start?error=rate_limit");
+  }
+
   const formData = await request.formData();
   const parsed = accessRequestSchema.safeParse({
     name: String(formData.get("name") ?? ""),
@@ -807,6 +869,50 @@ export async function POST(request: NextRequest) {
 
   if (!parsed.success) {
     return redirectTo(request, "/start?error=1");
+  }
+
+  const clientBudget = await consumePublicRateLimit({
+    request,
+    scope: "access_request_client_hour",
+    limit: 4,
+    windowSeconds: 60 * 60
+  });
+  if (!clientBudget.allowed) {
+    return redirectTo(request, "/start?error=rate_limit");
+  }
+
+  const [emailBudget, payloadBudget] = await Promise.all([
+    consumeIdentifierRateLimit({
+      scope: "access_request_email_day",
+      identifier: parsed.data.email,
+      limit: 2,
+      windowSeconds: 24 * 60 * 60
+    }),
+    consumeIdentifierRateLimit({
+      scope: "access_request_payload_day",
+      identifier: accessRequestPayloadFingerprint(parsed.data),
+      limit: 4,
+      windowSeconds: 24 * 60 * 60
+    })
+  ]);
+  if (!emailBudget.allowed || !payloadBudget.allowed) {
+    return redirectTo(request, "/start?error=rate_limit");
+  }
+
+  const [hourlyBudget, dailyBudget] = await Promise.all([
+    consumeGlobalRateLimit({
+      scope: "access_request_global_hour",
+      limit: 10,
+      windowSeconds: 60 * 60
+    }),
+    consumeGlobalRateLimit({
+      scope: "access_request_global_day",
+      limit: 20,
+      windowSeconds: 24 * 60 * 60
+    })
+  ]);
+  if (!hourlyBudget.allowed || !dailyBudget.allowed) {
+    return redirectTo(request, "/start?error=rate_limit");
   }
 
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;

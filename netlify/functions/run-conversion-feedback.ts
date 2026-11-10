@@ -9,4 +9,4 @@ export default async function runConversionFeedbackSchedule() {
   return new Response("Conversion feedback started.", { status: 202 });
 }
 
-export const config: Config = { schedule: "*/10 * * * *" };
+export const config: Config = { schedule: "13 * * * *" };

@@ -43,7 +43,7 @@ describe("durable email document intake", () => {
     expect(jobs).toContain('url.hostname.endsWith(".resend.app")');
     expect(jobs).toContain("attempts<$2");
     expect(jobs).toContain("locked_at<now()-interval '12 minutes'");
-    expect(recovery).toContain('schedule: "*/5 * * * *"');
+    expect(recovery).toContain('schedule: "3,18,33,48 * * * *"');
   });
 
   it("processes each queued attachment in an independent background invocation", () => {

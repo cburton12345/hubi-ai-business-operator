@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8").replace(/\r\n/g, "\n");
 
 describe("Ask Ferocity read-only integrity", () => {
   it("forces explicit read-only instructions ahead of inferred model intent", () => {

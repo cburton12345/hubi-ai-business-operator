@@ -67,6 +67,34 @@ export async function consumePublicRateLimit(input: {
   });
 }
 
+export async function consumeIdentifierRateLimit(input: {
+  scope: string;
+  identifier: string;
+  limit: number;
+  windowSeconds: number;
+}) {
+  const normalizedIdentifier = input.identifier.trim().toLowerCase().slice(0, 2_000);
+  if (!normalizedIdentifier) {
+    return { allowed: false, count: input.limit + 1, limit: input.limit };
+  }
+
+  return consumeRateLimit({
+    ...input,
+    fingerprint: securityFingerprint(normalizedIdentifier)
+  });
+}
+
+export async function consumeGlobalRateLimit(input: {
+  scope: string;
+  limit: number;
+  windowSeconds: number;
+}) {
+  return consumeRateLimit({
+    ...input,
+    fingerprint: securityFingerprint(`global:${input.scope}`)
+  });
+}
+
 export async function consumeLoginRateLimit(input: {
   scope: string;
   identifier: string;
