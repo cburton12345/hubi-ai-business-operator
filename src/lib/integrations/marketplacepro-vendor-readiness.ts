@@ -45,6 +45,7 @@ export type MarketplaceProVendorPhoneReadiness = {
   numbers: PhoneRow[];
   providers: ProviderRow[];
   voiceRoute: RouteRow | null;
+  phoneIntakeBridgeReady: boolean;
   inboundReady: boolean;
   outboundReady: boolean;
   vendorRelationsReady: boolean;
@@ -95,6 +96,14 @@ export async function getMarketplaceProVendorPhoneReadiness(
   const provider = providers.find((row) => row.provider_key === (voiceRoute?.primary_provider_key ?? phoneConnection?.voice_agent_provider_key));
   const providerReady = Boolean(provider && provider.status === "connected" && provider.credentials_status === "configured" && provider.live_actions_enabled && provider.has_assistant_id);
   const routeReady = Boolean(voiceRoute && voiceRoute.status === "active" && voiceRoute.live_actions_enabled);
+  let phoneIntakeBaseUrlReady = false;
+  try {
+    const origin = new URL(process.env.MARKETPLACEPRO_PHONE_INTAKE_BASE_URL ?? "");
+    phoneIntakeBaseUrlReady = origin.protocol === "https:" && !origin.username && !origin.password;
+  } catch {
+    phoneIntakeBaseUrlReady = false;
+  }
+  const phoneIntakeBridgeReady = phoneIntakeBaseUrlReady && (process.env.MARKETPLACEPRO_PHONE_INTAKE_SECRET?.length ?? 0) >= 32;
   const blockers: string[] = [];
   if (!brandId) blockers.push("The Diamond Homes operating brand is not configured in this workspace.");
   if (!phoneConnection) blockers.push("No Ferocity phone connection is assigned to this workspace.");
@@ -103,15 +112,17 @@ export async function getMarketplaceProVendorPhoneReadiness(
   if (!activeOutbound) blockers.push("No active outbound-enabled number is certified.");
   if (!providerReady) blockers.push("The selected voice provider is not fully connected for live actions.");
   if (!routeReady) blockers.push("The voice-orchestrator route is not active.");
+  if (!phoneIntakeBridgeReady) blockers.push("The dedicated MarketplacePro phone-intake bridge is not configured in this release.");
   return {
     brandId,
     phoneConnection,
     numbers,
     providers,
     voiceRoute,
+    phoneIntakeBridgeReady,
     inboundReady: activeInbound && providerReady && routeReady,
     outboundReady: activeOutbound && providerReady && routeReady,
-    vendorRelationsReady: activeInbound && activeOutbound && providerReady && routeReady && blockers.length === 0,
+    vendorRelationsReady: activeInbound && activeOutbound && providerReady && routeReady && phoneIntakeBridgeReady && blockers.length === 0,
     blockers,
   };
 }

@@ -255,7 +255,13 @@ export async function submitMarketplaceProPhoneIntake(
   options: { config?: MarketplaceProNetworkConfig; fetcher?: FetchLike } = {},
 ) {
   const parsed = marketplaceProPhoneIntakeSchema.parse(input);
-  const response = await sendMarketplacePro("/.netlify/functions/ferocity-phone-intake", parsed, options);
+  const response = await sendMarketplacePro("/.netlify/functions/ferocity-phone-intake", parsed, {
+    ...options,
+    config: options.config ?? {
+      baseUrl: process.env.MARKETPLACEPRO_PHONE_INTAKE_BASE_URL,
+      secret: process.env.MARKETPLACEPRO_PHONE_INTAKE_SECRET,
+    },
+  });
   return marketplaceProPhoneIntakeResponseSchema.parse(response);
 }
 

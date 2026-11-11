@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { afterEach } from "vitest";
+
 vi.mock("server-only", () => ({}));
 
 import {
@@ -17,6 +19,10 @@ const config = {
 };
 
 describe("MarketplacePro outbound contractor network", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("uses a fixed intake endpoint and keeps the secret out of the body", async () => {
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       expect(String(_url)).toBe("https://marketplacepro.live/.netlify/functions/maintenance-opportunity-intake");
@@ -156,6 +162,38 @@ describe("MarketplacePro outbound contractor network", () => {
       urgency: "normal",
       consentToContact: true,
     }, { config, fetcher })).resolves.toMatchObject({ status: "routed", bindingWorkOrderAccepted: false });
+  });
+
+  it("uses dedicated phone-intake environment configuration instead of the broader network credential", async () => {
+    vi.stubEnv("MARKETPLACEPRO_PHONE_INTAKE_BASE_URL", "https://marketplacepro.live");
+    vi.stubEnv("MARKETPLACEPRO_PHONE_INTAKE_SECRET", "phone-intake-secret-at-least-32-characters");
+    vi.stubEnv("MARKETPLACEPRO_NETWORK_SECRET", "broader-network-secret-must-not-be-used");
+    const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(String(_url)).toBe("https://marketplacepro.live/.netlify/functions/ferocity-phone-intake");
+      expect(init?.headers).toMatchObject({
+        "x-ferocity-connect-token": "phone-intake-secret-at-least-32-characters",
+      });
+      return Response.json({
+        ok: true,
+        intakeId: "46bfab36-77b5-4bcb-a0f0-810b2ef28e5b",
+        intakeType: "follow_up",
+        status: "needs_review",
+        duplicate: false,
+        bindingWorkOrderAccepted: false,
+      });
+    }) as typeof fetch;
+
+    await submitMarketplaceProPhoneIntake({
+      idempotencyKey: "retell:call-env:follow_up",
+      externalCallId: "call-env",
+      intakeType: "follow_up",
+      callerName: "Caller",
+      trades: [],
+      summary: "Requests a return call.",
+      urgency: "normal",
+      consentToContact: true,
+    }, { fetcher });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("requires complete opportunity and vendor phone intake before calling MarketplacePro", async () => {

@@ -17,9 +17,10 @@ export default async function MarketplaceProOperationsPage() {
       description="MarketplacePro owns vendor, contractor, coverage, and matching records. Ferocity owns approved communications, phone routing, jobs, invoices, payments, and exception handling."
     >
       <section className="grid section-actions">
-        <div className="panel span-4 metric"><span className="muted">Inbound phone</span><strong>{readiness.inboundReady ? "Ready" : "Blocked"}</strong></div>
-        <div className="panel span-4 metric"><span className="muted">Outbound phone</span><strong>{readiness.outboundReady ? "Ready" : "Blocked"}</strong></div>
-        <div className="panel span-4 metric"><span className="muted">Vendor relations</span><strong>{readiness.vendorRelationsReady ? "Ready" : "Needs setup"}</strong></div>
+        <div className="panel span-3 metric"><span className="muted">Inbound phone</span><strong>{readiness.inboundReady ? "Ready" : "Blocked"}</strong></div>
+        <div className="panel span-3 metric"><span className="muted">Outbound phone</span><strong>{readiness.outboundReady ? "Ready" : "Blocked"}</strong></div>
+        <div className="panel span-3 metric"><span className="muted">MPP intake bridge</span><strong>{readiness.phoneIntakeBridgeReady ? "Ready" : "Blocked"}</strong></div>
+        <div className="panel span-3 metric"><span className="muted">Vendor relations</span><strong>{readiness.vendorRelationsReady ? "Ready" : "Needs setup"}</strong></div>
       </section>
       <section className="panel section-actions">
         <div className="list-row flush-row"><div><h2>Diamond Homes phone ownership and routing</h2><p className="muted">Only the Diamond Homes brand-specific number, assistant, and voice route count here. Ferocity&apos;s existing support line does not satisfy this readiness check.</p></div><Link className="button secondary-button" href="/app/receptionist-setup">Open phone setup</Link></div>

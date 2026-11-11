@@ -21,8 +21,10 @@ describe("MarketplacePro vendor phone readiness", () => {
     expect(result.inboundReady).toBe(false);
     expect(result.outboundReady).toBe(false);
     expect(result.vendorRelationsReady).toBe(false);
+    expect(result.phoneIntakeBridgeReady).toBe(false);
     expect(result.brandId).toBe("diamond-brand");
     expect(result.blockers).toContain("The voice-orchestrator route is not active.");
+    expect(result.blockers).toContain("The dedicated MarketplacePro phone-intake bridge is not configured in this release.");
   });
 
   it("does not treat an unrelated tenant-level number as Diamond Homes readiness", async () => {

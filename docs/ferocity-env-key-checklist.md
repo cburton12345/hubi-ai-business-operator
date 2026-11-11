@@ -156,6 +156,9 @@ Redirect:
 - `MARKETPLACEPRO_WEBHOOK_SECRET`
 - `MARKETPLACEPRO_NETWORK_BASE_URL` — MarketplacePro's credential-free HTTPS origin. Outbound contractor requests remain disabled when absent.
 - `MARKETPLACEPRO_NETWORK_SECRET` — dedicated Ferocity-to-MarketplacePro server credential; do not reuse the inbound webhook secret.
+- `MARKETPLACEPRO_PHONE_INTAKE_BASE_URL` — credential-free MarketplacePro HTTPS origin used only by Diamond Homes phone intake.
+- `MARKETPLACEPRO_PHONE_INTAKE_SECRET` — least-privilege phone-intake credential matching MarketplacePro; do not reuse the broader network or inbound webhook secrets.
+  On the current Free Netlify teams this remains a deploy-specific secret, sourced from DPAPI vault ID `mpp-ferocity/netlify/phone-intake-secret`; do not create it as a readable all-scope site variable.
 
 ## Homes4Rent bridge
 
