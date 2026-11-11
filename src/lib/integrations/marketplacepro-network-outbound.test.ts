@@ -4,6 +4,8 @@ vi.mock("server-only", () => ({}));
 
 import {
   marketplaceProOperationalCallbackSchema,
+  claimMarketplaceProVendorOutreach,
+  reportMarketplaceProVendorOutreachResult,
   requestMarketplaceProContractors,
   sendMarketplaceProOperationalCallback,
 } from "./marketplacepro-network-outbound";
@@ -86,5 +88,35 @@ describe("MarketplacePro outbound contractor network", () => {
       explicitAcceptance: true,
     }, { config, fetcher });
     expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("claims only bounded approved outreach and reports provider outcomes", async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("facility-vendor-outreach-claim")) {
+        return Response.json({ ok: true, outreach: [{
+          id: "cae1293b-0c19-41d6-af3f-8c3396e65878",
+          prospect_id: "06b54364-7ed4-4c34-8f57-b8ce9d694fd0",
+          application_id: null,
+          channel: "email",
+          recipient: "vendor@example.com",
+          subject: "Vendor application",
+          message_body: "Approved vendor application inquiry.",
+          purpose: "initial_application",
+          status: "queued",
+          idempotency_key: "vendor:06b54364:initial:1",
+          attempt_count: 1,
+        }] });
+      }
+      expect(String(url).endsWith("/.netlify/functions/facility-vendor-outreach-result")).toBe(true);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    const claimed = await claimMarketplaceProVendorOutreach(10, { config, fetcher });
+    expect(claimed).toHaveLength(1);
+    await reportMarketplaceProVendorOutreachResult({
+      outreachId: claimed[0].id,
+      status: "sent",
+      providerMessageId: "provider-message-1",
+    }, { config, fetcher });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

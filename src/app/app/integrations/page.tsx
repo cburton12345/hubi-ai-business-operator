@@ -205,6 +205,9 @@ export default async function IntegrationsPage({
             <Link className="button secondary-button" href="/app/integrations/ferocity-connect">
               <ArrowRight size={16} /> Android SMS gateway
             </Link>
+            <Link className="button secondary-button" href="/app/integrations/marketplacepro">
+              <ArrowRight size={16} /> MarketplacePro operations
+            </Link>
             {actor.tenantRole === "owner" || actor.tenantRole === "admin" ? (
               <Link className="button secondary-button" href="/app/integrations/external-ai">
                 <KeyRound size={16} /> Optional: connect your AI

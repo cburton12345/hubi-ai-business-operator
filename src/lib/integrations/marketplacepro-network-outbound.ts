@@ -62,6 +62,37 @@ export const marketplaceProOperationalCallbackSchema = z.object({
   }
 });
 
+const marketplaceProVendorOutreachSchema = z.object({
+  id: uuid,
+  prospect_id: uuid,
+  application_id: uuid.nullable().optional(),
+  contact_id: uuid.nullable().optional(),
+  channel_id: uuid.nullable().optional(),
+  channel: z.enum(["email", "sms", "call", "portal"]),
+  recipient: boundedText(500),
+  subject: z.string().max(500).nullable().optional(),
+  message_body: boundedText(5_000),
+  purpose: z.enum(["initial_application", "document_request", "follow_up", "reply", "status_check", "opportunity"]),
+  status: z.literal("queued"),
+  idempotency_key: boundedText(200),
+  scheduled_for: z.string().datetime({ offset: true }).nullable().optional(),
+  attempt_count: z.number().int().min(1).max(20),
+}).passthrough();
+
+const marketplaceProVendorClaimResponseSchema = z.object({
+  ok: z.literal(true),
+  outreach: z.array(marketplaceProVendorOutreachSchema).max(25),
+}).passthrough();
+
+export const marketplaceProVendorOutreachResultSchema = z.object({
+  outreachId: uuid,
+  status: z.enum(["sent", "delivered", "replied", "failed"]),
+  providerMessageId: boundedText(300).optional(),
+  error: z.string().trim().max(1_000).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.status === "failed" && !value.error) context.addIssue({ code: "custom", path: ["error"], message: "Failed delivery requires a safe error summary." });
+});
+
 export type MarketplaceProContractorRequest = z.infer<typeof marketplaceProContractorRequestSchema>;
 export type MarketplaceProOperationalCallback = z.infer<typeof marketplaceProOperationalCallbackSchema>;
 
@@ -172,4 +203,21 @@ export async function sendMarketplaceProOperationalCallback(
 ) {
   const payload = marketplaceProOperationalCallbackSchema.parse(input);
   return sendMarketplacePro("/.netlify/functions/labor-connect-callback", payload, options);
+}
+
+export async function claimMarketplaceProVendorOutreach(
+  limit = 10,
+  options: { config?: MarketplaceProNetworkConfig; fetcher?: FetchLike } = {},
+) {
+  const payload = { limit: z.number().int().min(1).max(25).parse(limit) };
+  const response = await sendMarketplacePro("/.netlify/functions/facility-vendor-outreach-claim", payload, options);
+  return marketplaceProVendorClaimResponseSchema.parse(response).outreach;
+}
+
+export async function reportMarketplaceProVendorOutreachResult(
+  input: z.infer<typeof marketplaceProVendorOutreachResultSchema>,
+  options: { config?: MarketplaceProNetworkConfig; fetcher?: FetchLike } = {},
+) {
+  const payload = marketplaceProVendorOutreachResultSchema.parse(input);
+  return sendMarketplacePro("/.netlify/functions/facility-vendor-outreach-result", payload, options);
 }
