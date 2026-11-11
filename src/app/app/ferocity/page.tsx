@@ -10,6 +10,7 @@ import { getFerocityChatOverview } from "@/lib/ferocity/get-chat-overview";
 import { pairFerocityChatMessages } from "@/lib/ferocity/pair-chat-messages";
 import { getCustomerOnboardingState } from "@/lib/onboarding/customer-onboarding";
 import { getOwnerChatCapabilities } from "@/lib/ferocity/owner-chat-access";
+import { getOwnerTwinSuggestions } from "@/lib/ferocity/owner-operating-twin";
 
 type SourceEvent = {
   platformName: string;
@@ -208,6 +209,15 @@ export default async function FerocityChatPage({
     href: "/app/attention-command",
     command: "Lead the next business cycle. Inspect every connected area, choose the single highest-value bottleneck or opportunity, handle every safe authorized step, prepare approvals where required, and bring me only the result and decisions that truly need me."
   };
+  const ownerTwinSuggestions = await getOwnerTwinSuggestions({
+    tenantId: workspaceId,
+    userId: session?.userId ?? null,
+    canAccessAllOwnerThreads: access.canConfigureOnboarding,
+    fallback: {
+      command: leaderRecommendation.command,
+      title: leaderRecommendation.title,
+    },
+  });
 
   return (
     <FerocityOwnerChat
@@ -241,6 +251,7 @@ export default async function FerocityChatPage({
       customerMode={customerRuntime.mode}
       workspaceTimeZone={settings.timezone}
       leaderRecommendation={leaderRecommendation}
+      ownerTwinSuggestions={ownerTwinSuggestions}
       operatingGoalTotal={Number(goalsResult?.rows[0]?.active_goal_count ?? 0)}
       operatingGoals={(goalsResult?.rows ?? []).map((goal) => ({
         id: goal.id,

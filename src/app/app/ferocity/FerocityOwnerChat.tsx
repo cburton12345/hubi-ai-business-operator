@@ -51,6 +51,7 @@ import { uploadAndProcessExpenseDocuments } from "@/lib/document-intelligence/di
 import type { StatementYearCoverage } from "@/lib/document-intelligence/statement-year-coverage";
 import type { FerocityArtifactLink, FerocityCustomerMode } from "@/lib/ferocity/conversation-runtime";
 import { presentFerocityMessage } from "@/lib/ui/ferocity-message";
+import type { OwnerTwinSuggestion } from "@/lib/ferocity/owner-operating-twin";
 
 type ChatTurn = {
   id: string;
@@ -238,6 +239,7 @@ export function FerocityOwnerChat({
   customerMode,
   workspaceTimeZone,
   leaderRecommendation,
+  ownerTwinSuggestions,
   operatingGoalTotal,
   operatingGoals,
 }: {
@@ -259,6 +261,7 @@ export function FerocityOwnerChat({
   customerMode: FerocityCustomerMode;
   workspaceTimeZone: string;
   leaderRecommendation: LeaderRecommendation;
+  ownerTwinSuggestions: OwnerTwinSuggestion[];
   operatingGoalTotal: number;
   operatingGoals: OperatingGoalItem[];
 }) {
@@ -712,6 +715,31 @@ export function FerocityOwnerChat({
                 : leaderRecommendation.detail}
             </p>
             {!onboardingMode ? <div className="button-row"><button className="mini-button" type="button" onClick={() => submitSuggestedCommand(leaderRecommendation.command)}>Lead this now</button><Link className="mini-button secondary-button" href={leaderRecommendation.href}>See why</Link></div> : null}
+            {!onboardingMode && ownerTwinSuggestions.length ? (
+              <details className="ferocity-context-disclosure">
+                <summary>
+                  <span>
+                    <strong>Likely next — in your operating style</strong>
+                    <small>Adaptive suggestions; authority rules still apply</small>
+                  </span>
+                </summary>
+                <div className="form-stack">
+                  {ownerTwinSuggestions.map((suggestion) => (
+                    <button
+                      className="mini-button secondary-button"
+                      key={suggestion.command}
+                      onClick={() => submitSuggestedCommand(suggestion.command)}
+                      title={`${Math.round(suggestion.confidence * 100)}% confidence · ${suggestion.reason}`}
+                      type="button"
+                    >
+                      {suggestion.label}
+                      {suggestion.executionMode === "draft_only" ? " · review first" : ""}
+                    </button>
+                  ))}
+                  <p className="muted">One tap submits the command in your wording. Ferocity can prepare or carry out only what your existing authority rules allow.</p>
+                </div>
+              </details>
+            ) : null}
           </div>
         </article>
 
