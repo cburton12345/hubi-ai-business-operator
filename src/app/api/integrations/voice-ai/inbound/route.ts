@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryPostgres } from "@/lib/db/postgres";
-import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/providers/retell-config";
+import { resolveRetellConfiguration, resolveRetellInboundRoute } from "@/lib/providers/retell-config";
 import { verifyRetellSignature } from "@/lib/providers/voice-adapters";
 import { evaluateVoiceAccess } from "@/lib/usage/managed-voice";
 import { prepareInboundCallContext } from "@/lib/phone/inbound-call-context";
@@ -38,8 +37,10 @@ export async function POST(request: NextRequest) {
     return rejectCall("unsupported_event");
   }
 
-  const tenantId = await resolveRetellWebhookTenant(null, payload.call_inbound.to_number);
-  if (!tenantId) return rejectCall("number_not_configured");
+  const inboundRoute = await resolveRetellInboundRoute(payload.call_inbound.to_number);
+  if (!inboundRoute) return rejectCall("number_not_configured");
+  if (!inboundRoute.inboundEnabled) return rejectCall("number_not_active");
+  const tenantId = inboundRoute.tenantId;
   const configuration = await resolveRetellConfiguration(tenantId, false);
   if (
     !configuration
@@ -47,20 +48,6 @@ export async function POST(request: NextRequest) {
   ) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-
-  const accountResult = await queryPostgres<{ assistant_id: string | null; brand_id: string | null }>(
-    `
-    select
-      nullif(metadata_json->>'assistantId', '') as assistant_id,
-      nullif(metadata_json->>'brandId', '') as brand_id
-    from public.provider_accounts
-    where tenant_id = $1 and provider_key = 'retell_voice'
-    limit 1
-    `,
-    [tenantId]
-  );
-  const account = accountResult?.rows[0];
-  if (!account?.assistant_id) return rejectCall("assistant_not_ready");
 
   const access = await evaluateVoiceAccess({
     tenantId,
@@ -72,12 +59,12 @@ export async function POST(request: NextRequest) {
   const callContext = await prepareInboundCallContext({
     tenantId,
     callerNumber: payload.call_inbound.from_number,
-    brandId: account.brand_id
+    brandId: inboundRoute.brandId
   });
 
   return NextResponse.json({
     call_inbound: {
-      override_agent_id: account.assistant_id,
+      override_agent_id: inboundRoute.assistantId,
       // Retell's inbound-webhook contract calls this field
       // `dynamic_variables` (outbound call creation uses
       // `retell_llm_dynamic_variables`).
@@ -95,7 +82,7 @@ export async function POST(request: NextRequest) {
       },
       metadata: {
         ferocityTenantId: tenantId,
-        ferocityBrandId: callContext?.brandId ?? account.brand_id,
+        ferocityBrandId: callContext?.brandId ?? inboundRoute.brandId,
         ferocityCustomerId: callContext?.customerId ?? null,
         ferocityLeadId: callContext?.leadId ?? null,
         ferocityOwnershipMode: access.ownershipMode,

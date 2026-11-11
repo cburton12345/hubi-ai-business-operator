@@ -25,7 +25,7 @@ vi.mock("@/lib/env", () => ({
   }
 }));
 
-import { resolveRetellConfiguration, resolveRetellWebhookTenant, selectRetellPhoneNumber } from "./retell-config";
+import { resolveRetellConfiguration, resolveRetellInboundRoute, resolveRetellWebhookTenant, selectRetellPhoneNumber } from "./retell-config";
 
 describe("resolveRetellConfiguration", () => {
   beforeEach(() => {
@@ -156,5 +156,35 @@ describe("resolveRetellConfiguration", () => {
       .resolves.toBe("tenant-1");
     expect(queryPostgresMock.mock.calls[0]?.[0]).toContain("outboundAssistantId");
     expect(queryPostgresMock.mock.calls[0]?.[0]).toContain("ownerVoiceAssistantId");
+    expect(queryPostgresMock.mock.calls[0]?.[0]).toContain("telephony_numbers");
+  });
+
+  it("resolves a brand-specific inbound assistant from the exact called number", async () => {
+    queryPostgresMock.mockResolvedValueOnce({ rows: [{
+      tenant_id: "tenant-1",
+      brand_id: "brand-diamond",
+      assistant_id: "agent-diamond",
+      inbound_enabled: true
+    }] });
+
+    await expect(resolveRetellInboundRoute("+15555554498")).resolves.toEqual({
+      tenantId: "tenant-1",
+      brandId: "brand-diamond",
+      assistantId: "agent-diamond",
+      inboundEnabled: true
+    });
+  });
+
+  it("retains the exact route while reporting a disabled line as disabled", async () => {
+    queryPostgresMock.mockResolvedValueOnce({ rows: [{
+      tenant_id: "tenant-1",
+      brand_id: "brand-diamond",
+      assistant_id: "agent-diamond",
+      inbound_enabled: false
+    }] });
+
+    await expect(resolveRetellInboundRoute("+15555554498")).resolves.toMatchObject({
+      inboundEnabled: false
+    });
   });
 });
