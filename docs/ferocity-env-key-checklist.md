@@ -154,6 +154,8 @@ Redirect:
 ## MarketplacePro
 
 - `MARKETPLACEPRO_WEBHOOK_SECRET`
+- `MARKETPLACEPRO_NETWORK_BASE_URL` — MarketplacePro's credential-free HTTPS origin. Outbound contractor requests remain disabled when absent.
+- `MARKETPLACEPRO_NETWORK_SECRET` — dedicated Ferocity-to-MarketplacePro server credential; do not reuse the inbound webhook secret.
 
 ## Homes4Rent bridge
 
