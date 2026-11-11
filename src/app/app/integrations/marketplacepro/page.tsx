@@ -22,7 +22,7 @@ export default async function MarketplaceProOperationsPage() {
         <div className="panel span-4 metric"><span className="muted">Vendor relations</span><strong>{readiness.vendorRelationsReady ? "Ready" : "Needs setup"}</strong></div>
       </section>
       <section className="panel section-actions">
-        <div className="list-row flush-row"><div><h2>Phone ownership and routing</h2><p className="muted">A number is not reassigned merely because it exists. Provider ownership, current workspace purpose, inbound/outbound certification, and routing must all agree.</p></div><Link className="button secondary-button" href="/app/receptionist-setup">Open phone setup</Link></div>
+        <div className="list-row flush-row"><div><h2>Diamond Homes phone ownership and routing</h2><p className="muted">Only the Diamond Homes brand-specific number, assistant, and voice route count here. Ferocity&apos;s existing support line does not satisfy this readiness check.</p></div><Link className="button secondary-button" href="/app/receptionist-setup">Open phone setup</Link></div>
         <ul className="list">
           {readiness.numbers.map((number) => (
             <li className="list-row" key={number.id}><div><strong>{number.phone_number}</strong><p className="muted">{label(number.provider_key)} / {label(number.number_mode)} / compliance {label(number.compliance_status)}</p></div><div className="inline-actions"><span className="pill">{label(number.status)}</span><span className={`pill ${number.inbound_enabled ? "" : "medium"}`}>inbound {number.inbound_enabled ? "on" : "off"}</span><span className={`pill ${number.outbound_enabled ? "" : "medium"}`}>outbound {number.outbound_enabled ? "on" : "off"}</span></div></li>

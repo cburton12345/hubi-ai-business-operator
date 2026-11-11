@@ -8,6 +8,7 @@ import {
   reportMarketplaceProVendorOutreachResult,
   requestMarketplaceProContractors,
   sendMarketplaceProOperationalCallback,
+  submitMarketplaceProPhoneIntake,
 } from "./marketplacepro-network-outbound";
 
 const config = {
@@ -118,5 +119,67 @@ describe("MarketplacePro outbound contractor network", () => {
       providerMessageId: "provider-message-1",
     }, { config, fetcher });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends idempotent Diamond phone intake to a fixed endpoint without implying acceptance", async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe("https://marketplacepro.live/.netlify/functions/ferocity-phone-intake");
+      expect(init?.headers).toMatchObject({ "x-ferocity-connect-token": config.secret });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        idempotencyKey: "retell:call-123:contractor",
+        externalCallId: "call-123",
+        intakeType: "contractor",
+        consentToContact: true,
+      });
+      expect(String(init?.body)).not.toContain(config.secret);
+      return Response.json({
+        ok: true,
+        intakeId: "46bfab36-77b5-4bcb-a0f0-810b2ef28e5b",
+        intakeType: "contractor",
+        status: "routed",
+        duplicate: false,
+        contractorRecruitingLeadId: "a0ce296b-bb5f-4e19-9c2b-c02b31d5cdde",
+        laborRequestId: null,
+        facilityProspectId: null,
+        bindingWorkOrderAccepted: false,
+      });
+    }) as typeof fetch;
+
+    await expect(submitMarketplaceProPhoneIntake({
+      idempotencyKey: "retell:call-123:contractor",
+      externalCallId: "call-123",
+      intakeType: "contractor",
+      callerName: "Contractor",
+      phone: "+17155550123",
+      trades: ["plumbing"],
+      summary: "Interested in Wisconsin maintenance work.",
+      urgency: "normal",
+      consentToContact: true,
+    }, { config, fetcher })).resolves.toMatchObject({ status: "routed", bindingWorkOrderAccepted: false });
+  });
+
+  it("requires complete opportunity and vendor phone intake before calling MarketplacePro", async () => {
+    const fetcher = vi.fn() as typeof fetch;
+    await expect(submitMarketplaceProPhoneIntake({
+      idempotencyKey: "retell:call-456:opportunity",
+      externalCallId: "call-456",
+      intakeType: "opportunity",
+      callerName: "Site manager",
+      trades: [],
+      summary: "Needs service.",
+      urgency: "high",
+      consentToContact: false,
+    }, { config, fetcher })).rejects.toThrow("Opportunity intake requires");
+    await expect(submitMarketplaceProPhoneIntake({
+      idempotencyKey: "retell:call-789:vendor",
+      externalCallId: "call-789",
+      intakeType: "vendor",
+      callerName: "Vendor contact",
+      trades: [],
+      summary: "Calling about vendor enrollment.",
+      urgency: "normal",
+      consentToContact: false,
+    }, { config, fetcher })).rejects.toThrow("Vendor intake requires");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

@@ -62,6 +62,50 @@ export const marketplaceProOperationalCallbackSchema = z.object({
   }
 });
 
+export const marketplaceProPhoneIntakeSchema = z.object({
+  idempotencyKey: boundedText(200),
+  externalCallId: boundedText(200),
+  intakeType: z.enum(["contractor", "opportunity", "vendor", "follow_up"]),
+  callerName: boundedText(160).optional(),
+  businessName: boundedText(200).optional(),
+  phone: boundedText(40).optional(),
+  email: z.string().trim().email().max(320).optional(),
+  city: boundedText(120).optional(),
+  state: z.string().trim().length(2).transform((value) => value.toUpperCase()).optional(),
+  zip: z.string().trim().max(10).optional(),
+  trades: z.array(boundedText(120)).max(50).default([]),
+  summary: boundedText(5_000),
+  urgency: z.enum(["normal", "high", "urgent"]).default("normal"),
+  consentToContact: z.boolean().default(false),
+  followUpAt: z.string().datetime({ offset: true }).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.intakeType === "opportunity" && (!value.city || !value.state || value.trades.length === 0)) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeType"],
+      message: "Opportunity intake requires city, state, and at least one trade.",
+    });
+  }
+  if (value.intakeType === "vendor" && !value.businessName) {
+    context.addIssue({ code: "custom", path: ["businessName"], message: "Vendor intake requires a business name." });
+  }
+  if (!value.callerName && !value.businessName && !value.phone && !value.email) {
+    context.addIssue({ code: "custom", path: ["callerName"], message: "At least one caller identity field is required." });
+  }
+});
+
+const marketplaceProPhoneIntakeResponseSchema = z.object({
+  ok: z.literal(true),
+  intakeId: uuid,
+  intakeType: z.enum(["contractor", "opportunity", "vendor", "follow_up"]),
+  status: z.enum(["received", "routed", "needs_review", "failed"]),
+  duplicate: z.boolean(),
+  contractorRecruitingLeadId: uuid.nullable().optional(),
+  laborRequestId: uuid.nullable().optional(),
+  facilityProspectId: uuid.nullable().optional(),
+  bindingWorkOrderAccepted: z.literal(false),
+}).passthrough();
+
 const marketplaceProVendorOutreachSchema = z.object({
   id: uuid,
   prospect_id: uuid,
@@ -95,6 +139,7 @@ export const marketplaceProVendorOutreachResultSchema = z.object({
 
 export type MarketplaceProContractorRequest = z.infer<typeof marketplaceProContractorRequestSchema>;
 export type MarketplaceProOperationalCallback = z.infer<typeof marketplaceProOperationalCallbackSchema>;
+export type MarketplaceProPhoneIntake = z.infer<typeof marketplaceProPhoneIntakeSchema>;
 
 type MarketplaceProNetworkConfig = { baseUrl?: string; secret?: string };
 type FetchLike = typeof fetch;
@@ -203,6 +248,15 @@ export async function sendMarketplaceProOperationalCallback(
 ) {
   const payload = marketplaceProOperationalCallbackSchema.parse(input);
   return sendMarketplacePro("/.netlify/functions/labor-connect-callback", payload, options);
+}
+
+export async function submitMarketplaceProPhoneIntake(
+  input: MarketplaceProPhoneIntake,
+  options: { config?: MarketplaceProNetworkConfig; fetcher?: FetchLike } = {},
+) {
+  const parsed = marketplaceProPhoneIntakeSchema.parse(input);
+  const response = await sendMarketplacePro("/.netlify/functions/ferocity-phone-intake", parsed, options);
+  return marketplaceProPhoneIntakeResponseSchema.parse(response);
 }
 
 export async function claimMarketplaceProVendorOutreach(

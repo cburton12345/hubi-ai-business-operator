@@ -11,6 +11,7 @@ type PhoneRow = {
   inbound_enabled: boolean;
   outbound_enabled: boolean;
   compliance_status: string;
+  has_assistant_id: boolean;
 };
 
 type ConnectionRow = {
@@ -39,6 +40,7 @@ type RouteRow = {
 };
 
 export type MarketplaceProVendorPhoneReadiness = {
+  brandId: string | null;
   phoneConnection: ConnectionRow | null;
   numbers: PhoneRow[];
   providers: ProviderRow[];
@@ -53,6 +55,11 @@ export async function getMarketplaceProVendorPhoneReadiness(
   tenantId: string,
   query: MarketplaceProQuery = queryPostgres,
 ): Promise<MarketplaceProVendorPhoneReadiness> {
+  const brandResult = await query<{ id: string }>(
+    `select id from public.brands where tenant_id=$1 and slug='diamond-homes' and status='active' limit 1`,
+    [tenantId],
+  );
+  const brandId = brandResult?.rows[0]?.id ?? null;
   const [connectionResult, numberResult, providerResult, routeResult] = await Promise.all([
     query<ConnectionRow>(
       `select id,status,intended_use,phone_provider_key,voice_agent_provider_key,business_number,ferocity_number
@@ -60,9 +67,10 @@ export async function getMarketplaceProVendorPhoneReadiness(
       [tenantId],
     ),
     query<PhoneRow>(
-      `select id,phone_number,provider_key,number_mode,status,inbound_enabled,outbound_enabled,compliance_status
-       from public.telephony_numbers where tenant_id=$1 and status <> 'released' order by created_at desc`,
-      [tenantId],
+      `select id,phone_number,provider_key,number_mode,status,inbound_enabled,outbound_enabled,compliance_status,
+              (metadata_json ? 'assistantId') as has_assistant_id
+       from public.telephony_numbers where tenant_id=$1 and brand_id=$2 and status <> 'released' order by created_at desc`,
+      [tenantId, brandId],
     ),
     query<ProviderRow>(
       `select provider_key,status,credentials_status,live_actions_enabled,
@@ -74,20 +82,21 @@ export async function getMarketplaceProVendorPhoneReadiness(
     ),
     query<RouteRow>(
       `select primary_provider_key,fallback_provider_key,status,live_actions_enabled
-       from public.voice_provider_routes where tenant_id=$1 and route_family='voice_orchestrator' limit 1`,
-      [tenantId],
+       from public.voice_provider_routes where tenant_id=$1 and brand_id=$2 and route_family='voice_orchestrator' limit 1`,
+      [tenantId, brandId],
     ),
   ]);
   const phoneConnection = connectionResult?.rows[0] ?? null;
   const numbers = numberResult?.rows ?? [];
   const providers = providerResult?.rows ?? [];
   const voiceRoute = routeResult?.rows[0] ?? null;
-  const activeInbound = numbers.some((number) => number.status === "active" && number.inbound_enabled);
-  const activeOutbound = numbers.some((number) => number.status === "active" && number.outbound_enabled);
+  const activeInbound = numbers.some((number) => number.status === "active" && number.inbound_enabled && number.has_assistant_id);
+  const activeOutbound = numbers.some((number) => number.status === "active" && number.outbound_enabled && number.has_assistant_id);
   const provider = providers.find((row) => row.provider_key === (voiceRoute?.primary_provider_key ?? phoneConnection?.voice_agent_provider_key));
   const providerReady = Boolean(provider && provider.status === "connected" && provider.credentials_status === "configured" && provider.live_actions_enabled && provider.has_assistant_id);
   const routeReady = Boolean(voiceRoute && voiceRoute.status === "active" && voiceRoute.live_actions_enabled);
   const blockers: string[] = [];
+  if (!brandId) blockers.push("The Diamond Homes operating brand is not configured in this workspace.");
   if (!phoneConnection) blockers.push("No Ferocity phone connection is assigned to this workspace.");
   else if (!["ready", "active"].includes(phoneConnection.status)) blockers.push(`Phone connection is ${phoneConnection.status.replaceAll("_", " ")}.`);
   if (!activeInbound) blockers.push("No active inbound-enabled number is certified.");
@@ -95,6 +104,7 @@ export async function getMarketplaceProVendorPhoneReadiness(
   if (!providerReady) blockers.push("The selected voice provider is not fully connected for live actions.");
   if (!routeReady) blockers.push("The voice-orchestrator route is not active.");
   return {
+    brandId,
     phoneConnection,
     numbers,
     providers,
