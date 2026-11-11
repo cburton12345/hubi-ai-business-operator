@@ -64,10 +64,17 @@ describe("security hardening invariants", () => {
       "src/app/api/public/employee-access/route.ts",
       "src/app/api/public/site-activity/route.ts",
       "src/app/api/public/support/route.ts",
-      "src/app/api/website-grader/route.ts"
+      "src/app/api/website-grader/route.ts",
+      "src/app/api/access-requests/route.ts"
     ]) {
       expect(source(route)).toContain("consumePublicRateLimit");
     }
+    const accessRequestSource = source("src/app/api/access-requests/route.ts");
+    expect(accessRequestSource).toContain("consumePublicValueRateLimit");
+    expect(accessRequestSource).toContain("consumeGlobalRateLimit");
+    expect(accessRequestSource.indexOf("consumeGlobalRateLimit")).toBeLessThan(
+      accessRequestSource.indexOf("sendAccessRequestEmailsSafely({")
+    );
   });
 
   it("keeps employee self-service access owner-gated and employee-bound", () => {

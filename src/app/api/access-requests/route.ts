@@ -11,6 +11,11 @@ import { recordSalesOpportunity } from "@/lib/sales/record-opportunity";
 import { EARN_AGREEMENT_VERSION, ensureEarnFeatureEntitlements } from "@/lib/billing/earn";
 import { importPublicChatHandoff } from "@/lib/public-site/import-public-chat-handoff";
 import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
+import {
+  consumeGlobalRateLimit,
+  consumePublicRateLimit,
+  consumePublicValueRateLimit
+} from "@/lib/security/rate-limit";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -779,6 +784,22 @@ async function createStarterWorkspace(input: {
 }
 
 export async function POST(request: NextRequest) {
+  const clientHourlyLimit = await consumePublicRateLimit({
+    request,
+    scope: "access-request-client-hour",
+    limit: 2,
+    windowSeconds: 60 * 60
+  });
+  if (!clientHourlyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
+  const clientDailyLimit = await consumePublicRateLimit({
+    request,
+    scope: "access-request-client-day",
+    limit: 4,
+    windowSeconds: 24 * 60 * 60
+  });
+  if (!clientDailyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
   const formData = await request.formData();
   const parsed = accessRequestSchema.safeParse({
     name: String(formData.get("name") ?? ""),
@@ -808,6 +829,42 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return redirectTo(request, "/start?error=1");
   }
+
+  const emailLimit = await consumePublicValueRateLimit({
+    scope: "access-request-email-day",
+    value: parsed.data.email,
+    limit: 1,
+    windowSeconds: 24 * 60 * 60
+  });
+  if (!emailLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
+  const repeatedContentLimit = await consumePublicValueRateLimit({
+    scope: "access-request-content-day",
+    value: JSON.stringify({
+      companyName: parsed.data.companyName?.trim().toLowerCase() ?? "",
+      businessType: parsed.data.businessType?.trim().toLowerCase() ?? "",
+      requestedPlan: parsed.data.requestedPlan?.trim().toLowerCase() ?? "",
+      mainGoal: parsed.data.mainGoal?.trim().toLowerCase() ?? "",
+      message: parsed.data.message?.trim().toLowerCase() ?? ""
+    }),
+    limit: 2,
+    windowSeconds: 24 * 60 * 60
+  });
+  if (!repeatedContentLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
+  const globalHourlyLimit = await consumeGlobalRateLimit({
+    scope: "access-request-global-hour",
+    limit: 5,
+    windowSeconds: 60 * 60
+  });
+  if (!globalHourlyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
+  const globalDailyLimit = await consumeGlobalRateLimit({
+    scope: "access-request-global-day",
+    limit: 20,
+    windowSeconds: 24 * 60 * 60
+  });
+  if (!globalDailyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
 
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = request.headers.get("user-agent") ?? null;
