@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $workerRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent (Split-Path -Parent $workerRoot)
-$destination = Join-Path $repoRoot "public\downloads\ferocity-marketplace-worker-0.3.0.zip"
+$destination = Join-Path $repoRoot "public\downloads\ferocity-marketplace-worker-0.4.0.zip"
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("ferocity-marketplace-worker-" + [guid]::NewGuid().ToString("N"))
 $packageRoot = Join-Path $stage "ferocity-marketplace-worker"
 

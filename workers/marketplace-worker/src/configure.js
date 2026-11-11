@@ -24,8 +24,11 @@ async function main() {
   const code = (await rl.question("One-time pairing code from Ferocity: ")).replace(/[^a-z0-9]/gi, "").toUpperCase();
   const deviceName = (await rl.question(`Device name [${existing.deviceName || "Office Marketplace worker"}]: `)).trim()
     || existing.deviceName || "Office Marketplace worker";
+  const expectedProfileId = (await rl.question(`Expected numeric Facebook profile ID [${existing.identity?.expectedProfileId || "required"}]: `)).trim()
+    || existing.identity?.expectedProfileId || "";
   rl.close();
   if (code.length !== 12) throw new Error("The pairing code must contain 12 letters or numbers.");
+  if (!/^\d{5,30}$/.test(expectedProfileId)) throw new Error("A numeric Facebook profile ID is required to lock this worker to the intended account.");
 
   const deviceId = existing.deviceId && existing.deviceId.length >= 16 ? existing.deviceId : crypto.randomUUID();
   const paired = await pairWorker({ apiBase, code, deviceId, deviceName, runtime: "windows_worker" });
@@ -35,6 +38,9 @@ async function main() {
     deviceId,
     deviceName,
     runtime: "windows_worker",
+    automationEnabled: true,
+    killSwitchFile: "PAUSE",
+    identity: { expectedProfileId },
     browser: {
       profileDir: ".facebook-profile",
       inboxUrl: "https://www.facebook.com/messages/requests",
@@ -55,7 +61,13 @@ async function main() {
       maxRestartDelaySeconds: 300
     },
     sendEnabled: false,
-    communityDiscoveryEnabled: false
+    communityDiscoveryEnabled: false,
+    actionPolicy: {
+      maxGroupJoinsPerDay: 5,
+      minimumWriteDelaySeconds: 45,
+      maximumWriteDelaySeconds: 180,
+      duplicatePostWindowDays: 90
+    }
   };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
   console.log(`Paired ${deviceName} to Ferocity.`);

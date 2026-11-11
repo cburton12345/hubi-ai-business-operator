@@ -22,4 +22,6 @@ export default async function runDocumentEmailRecovery() {
   });
 }
 
-export const config: Config = { schedule: "*/5 * * * *" };
+// Recovery is a backstop; normal inbound processing dispatches immediately.
+// Offset it from mailbox synchronization to avoid synchronized database bursts.
+export const config: Config = { schedule: "3,18,33,48 * * * *" };

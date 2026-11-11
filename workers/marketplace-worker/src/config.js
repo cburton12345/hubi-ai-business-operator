@@ -20,6 +20,14 @@ export function loadWorkerConfig(configPath) {
   if (!["windows_worker", "hosted_worker"].includes(runtime)) throw new Error("runtime must be windows_worker or hosted_worker");
   if (!raw.deviceId || String(raw.deviceId).length < 16) throw new Error("A paired deviceId is required.");
 
+  const sendEnabled = raw.sendEnabled === true;
+  const expectedProfileId = String(raw.identity?.expectedProfileId || "").trim();
+  if (expectedProfileId && !/^\d{5,30}$/.test(expectedProfileId)) throw new Error("identity.expectedProfileId must be a numeric Facebook profile ID.");
+  if (sendEnabled && !expectedProfileId) throw new Error("identity.expectedProfileId is required before sendEnabled can be true.");
+  const minimumWriteDelayMs = finiteNumber(raw.actionPolicy?.minimumWriteDelaySeconds, 45, 0, 3600) * 1000;
+  const maximumWriteDelayMs = finiteNumber(raw.actionPolicy?.maximumWriteDelaySeconds, 180, 0, 7200) * 1000;
+  if (maximumWriteDelayMs < minimumWriteDelayMs) throw new Error("actionPolicy.maximumWriteDelaySeconds must be greater than or equal to minimumWriteDelaySeconds.");
+
   return {
     configPath,
     root: configRoot,
@@ -27,8 +35,19 @@ export function loadWorkerConfig(configPath) {
     deviceId: String(raw.deviceId),
     deviceName: String(raw.deviceName || "Ferocity Marketplace worker").slice(0, 120),
     runtime,
-    sendEnabled: raw.sendEnabled === true,
+    automationEnabled: raw.automationEnabled !== false,
+    sendEnabled,
     communityDiscoveryEnabled: raw.communityDiscoveryEnabled === true,
+    killSwitchFile: path.resolve(configRoot, raw.killSwitchFile || "PAUSE"),
+    identity: {
+      expectedProfileId: expectedProfileId || null
+    },
+    actionPolicy: {
+      maxGroupJoinsPerDay: finiteNumber(raw.actionPolicy?.maxGroupJoinsPerDay, 5, 0, 25),
+      minimumWriteDelayMs,
+      maximumWriteDelayMs,
+      duplicatePostWindowMs: finiteNumber(raw.actionPolicy?.duplicatePostWindowDays, 90, 1, 365) * 24 * 60 * 60 * 1000
+    },
     browser: {
       profileDir: path.resolve(configRoot, raw.browser?.profileDir || ".facebook-profile"),
       inboxUrl: raw.browser?.inboxUrl || "https://www.facebook.com/messages/requests",

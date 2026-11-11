@@ -3,6 +3,11 @@
   "deviceId": "replace-after-pairing",
   "deviceName": "Office Marketplace worker",
   "runtime": "windows_worker",
+  "automationEnabled": true,
+  "killSwitchFile": "PAUSE",
+  "identity": {
+    "expectedProfileId": "123456789012345"
+  },
   "browser": {
     "profileDir": ".facebook-profile",
     "inboxUrl": "https://www.facebook.com/messages/requests",
@@ -23,5 +28,11 @@
     "maxRestartDelaySeconds": 300
   },
   "sendEnabled": false,
-  "communityDiscoveryEnabled": false
+  "communityDiscoveryEnabled": false,
+  "actionPolicy": {
+    "maxGroupJoinsPerDay": 5,
+    "minimumWriteDelaySeconds": 45,
+    "maximumWriteDelaySeconds": 180,
+    "duplicatePostWindowDays": 90
+  }
 }

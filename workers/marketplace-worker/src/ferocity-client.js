@@ -1,5 +1,5 @@
 export class FerocityConnectorClient {
-  constructor({ apiBase, token, deviceId, version = "marketplace-worker-0.3.0", runtime = "windows_worker" }) {
+  constructor({ apiBase, token, deviceId, version = "marketplace-worker-0.4.0", runtime = "windows_worker" }) {
     this.apiBase = apiBase.replace(/\/$/, "");
     this.token = token;
     this.deviceId = deviceId;
@@ -72,7 +72,7 @@ export async function pairWorker({ apiBase, code, deviceId, deviceName, runtime 
       code,
       deviceId,
       deviceName,
-      connectorVersion: "marketplace-worker-0.3.0",
+      connectorVersion: "marketplace-worker-0.4.0",
       transportType: runtime
     })
   });

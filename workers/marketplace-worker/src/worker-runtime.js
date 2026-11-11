@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { assertMarketplaceWorkerContract } from "./worker-contract.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -14,13 +15,18 @@ function normalizeConfirmation(action, result) {
 }
 
 export class MarketplaceWorkerRuntime {
-  constructor({ client, adapter, journal, logger, config, clock = () => Date.now() }) {
+  constructor({ client, adapter, journal, actionPolicy, logger, config, clock = () => Date.now(), delay = sleep }) {
+    if (!actionPolicy || typeof actionPolicy.assess !== "function" || typeof actionPolicy.recordSuccess !== "function") {
+      throw new Error("A durable Facebook action policy is required.");
+    }
     this.client = client;
     this.adapter = assertMarketplaceWorkerContract(adapter);
     this.journal = journal;
+    this.actionPolicy = actionPolicy;
     this.logger = logger;
     this.config = config;
     this.clock = clock;
+    this.delay = delay;
     this.nextSweepAt = 0;
     this.nextCommunitySweepAt = 0;
     this.lastActivityAt = 0;
@@ -29,6 +35,16 @@ export class MarketplaceWorkerRuntime {
     this.attentionSince = null;
     this.backoffUntil = 0;
     this.failureDelay = config.scheduling.restartDelayMs;
+  }
+
+  isPaused() {
+    if (this.config.automationEnabled === false) return true;
+    if (!this.config.killSwitchFile) return false;
+    try {
+      return fs.existsSync(this.config.killSwitchFile);
+    } catch {
+      return true;
+    }
   }
 
   async recoverJournal() {
@@ -89,14 +105,28 @@ export class MarketplaceWorkerRuntime {
     if (!action) return false;
     this.journal.begin(action);
     let result;
-    try {
-      result = await this.adapter.executeAction(action);
-    } catch (error) {
-      result = { outcome: "failed", failureCode: "worker_execution_error", failureMessage: error.message };
+    const policy = this.actionPolicy.assess(action);
+    if (!policy.allowed) {
+      result = { outcome: "blocked", failureCode: policy.failureCode, failureMessage: policy.failureMessage };
+    } else {
+      if (policy.waitMs > 0) {
+        this.logger.info("Applying Facebook write pacing before the approved action.", { actionId: action.id, waitMs: policy.waitMs });
+        await this.delay(policy.waitMs);
+      }
+      if (this.isPaused()) {
+        result = { outcome: "blocked", failureCode: "local_kill_switch", failureMessage: "The local Facebook worker kill switch was activated before execution." };
+      } else {
+        try {
+          result = await this.adapter.executeAction(action);
+        } catch (error) {
+          result = { outcome: "failed", failureCode: "worker_execution_error", failureMessage: error.message };
+        }
+      }
     }
     const confirmation = normalizeConfirmation(action, result);
     this.journal.complete(action, confirmation);
     await this.client.confirmAction(confirmation);
+    if (confirmation.outcome === "succeeded") this.actionPolicy.recordSuccess(action);
     this.journal.remove(action.id);
     this.lastActivityAt = this.clock();
     this.logger.info("Action processed.", { actionId: action.id, outcome: confirmation.outcome });
@@ -106,6 +136,16 @@ export class MarketplaceWorkerRuntime {
   async tick() {
     await this.recoverJournal();
     const now = this.clock();
+    if (this.isPaused()) {
+      await this.stopBrowser("local_kill_switch");
+      await this.reportHealth({
+        state: "warning",
+        browserState: "closed",
+        url: this.config.browser.inboxUrl,
+        reason: "The local Facebook worker kill switch is active."
+      }, "idle", true);
+      return;
+    }
     const pending = this.config.sendEnabled ? await this.client.pendingAction() : { hasPendingAction: false };
     const sweepDue = now >= this.nextSweepAt;
     const communitySweepDue = this.config.communityDiscoveryEnabled && now >= this.nextCommunitySweepAt;

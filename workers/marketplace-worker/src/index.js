@@ -1,4 +1,5 @@
 import { ActionJournal } from "./action-journal.js";
+import { ActionPolicyStore } from "./action-policy.js";
 import { loadWorkerConfig, resolveConfigPath } from "./config.js";
 import { loadConnectorToken } from "./credential-store.js";
 import { FacebookPlaywrightAdapter } from "./facebook-playwright-adapter.js";
@@ -14,6 +15,8 @@ if (process.argv.includes("--dry-run")) {
     runtime: config.runtime,
     deviceIdConfigured: config.deviceId !== "replace-after-pairing",
     profileDir: config.browser.profileDir,
+    expectedProfileIdConfigured: Boolean(config.identity.expectedProfileId),
+    automationEnabled: config.automationEnabled,
     sendEnabled: config.sendEnabled,
     controlPollSeconds: config.scheduling.controlPollMs / 1000,
     inboundSweepSeconds: config.scheduling.inboundSweepMs / 1000,
@@ -30,9 +33,10 @@ const client = new FerocityConnectorClient({
   deviceId: config.deviceId,
   runtime: config.runtime
 });
-const adapter = new FacebookPlaywrightAdapter(config.browser);
+const adapter = new FacebookPlaywrightAdapter({ ...config.browser, ...config.identity });
 const journal = new ActionJournal(config.root);
-const runtime = new MarketplaceWorkerRuntime({ client, adapter, journal, logger, config });
+const actionPolicy = new ActionPolicyStore(config.root, config.actionPolicy);
+const runtime = new MarketplaceWorkerRuntime({ client, adapter, journal, actionPolicy, logger, config });
 const controller = new AbortController();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

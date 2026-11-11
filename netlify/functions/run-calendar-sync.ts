@@ -15,4 +15,4 @@ export default async function runCalendarSyncSchedule() {
   return new Response("Calendar sync started.", { status: 202 });
 }
 
-export const config: Config = { schedule: "*/10 * * * *" };
+export const config: Config = { schedule: "8,38 * * * *" };

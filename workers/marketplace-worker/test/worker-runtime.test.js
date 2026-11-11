@@ -32,14 +32,28 @@ function fixture({ pending = false, observations = [], communities = [], communi
     remove() { journalEntries.splice(0); }
   };
   const logger = { info() {}, warn() {}, error() {} };
+  const actionPolicy = { assess: () => ({ allowed: true, waitMs: 0 }), recordSuccess() {} };
   const config = {
+    automationEnabled: true,
+    killSwitchFile: null,
     sendEnabled: true,
     communityDiscoveryEnabled,
+    browser: { inboxUrl: "https://www.facebook.com/messages/requests" },
     scheduling: { controlPollMs: 20_000, inboundSweepMs: 300_000, communitySweepMs: 21_600_000, idleTimeoutMs: 60_000, healthReportMs: 300_000, manualAttentionTimeoutMs: 1_800_000, restartDelayMs: 10_000, maxRestartDelayMs: 300_000 }
   };
-  const runtime = new MarketplaceWorkerRuntime({ client, adapter, journal, logger, config, clock: () => now });
+  const runtime = new MarketplaceWorkerRuntime({ client, adapter, journal, actionPolicy, logger, config, clock: () => now });
   return { runtime, calls, journalEntries, advance: (ms) => { now += ms; }, setPending: (value) => { pending = value; } };
 }
+
+test("refuses to start without a durable action policy", () => {
+  assert.throws(() => new MarketplaceWorkerRuntime({
+    client: {},
+    adapter: {},
+    journal: {},
+    logger: {},
+    config: { scheduling: {} }
+  }), /action policy is required/i);
+});
 
 test("approved work wakes the browser, sends once, confirms, and clears the journal", async () => {
   const value = fixture({ pending: true });
@@ -84,4 +98,15 @@ test("an interrupted action is blocked during recovery instead of resent", async
   assert.equal(confirmation.outcome, "blocked");
   assert.equal(confirmation.failureCode, "worker_interrupted_during_send");
   assert.equal(value.journalEntries.length, 0);
+});
+
+test("the local kill switch stops browser work before polling or claiming", async () => {
+  const value = fixture({ pending: true });
+  value.runtime.config.automationEnabled = false;
+  await value.runtime.tick();
+  assert.equal(value.calls.includes("pending"), false);
+  assert.equal(value.calls.includes("start"), false);
+  const health = value.calls.find((call) => Array.isArray(call) && call[0] === "health")?.[1];
+  assert.equal(health.state, "warning");
+  assert.match(health.reason, /kill switch/i);
 });

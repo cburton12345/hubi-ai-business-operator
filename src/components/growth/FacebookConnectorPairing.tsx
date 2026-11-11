@@ -63,7 +63,7 @@ export function FacebookConnectorPairing({ identityId }: { identityId: string })
   return <div>
     <div className="inline-actions">
       <a className="mini-button" href="/downloads/ferocity-facebook-connector-0.1.0.zip" download>Download connector</a>
-      <a className="mini-button" href="/downloads/ferocity-marketplace-worker-0.3.0.zip" download>Download Windows worker</a>
+      <a className="mini-button" href="/downloads/ferocity-marketplace-worker-0.4.0.zip" download>Download Windows worker</a>
       <button className="mini-button" type="button" disabled={busy} onClick={createCode}>{busy ? "Creating…" : "Create pairing code"}</button>
       {code ? <code aria-label="Facebook connector pairing code">{code}</code> : null}
       {message ? <small className="muted">{message}</small> : null}

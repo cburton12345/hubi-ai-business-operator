@@ -29,7 +29,7 @@ describe("Netlify background function bundles", () => {
 
   it("spaces the database-heavy business automation schedule beyond its observed runtime", async () => {
     const scheduledFunction = await import("../../../netlify/functions/run-business-automation");
-    expect(scheduledFunction.config).toEqual({ schedule: "*/20 * * * *" });
+    expect(scheduledFunction.config).toEqual({ schedule: "23 * * * *" });
   });
 
   it("loads the calendar-sync dependency graph outside the Next.js react-server condition", async () => {

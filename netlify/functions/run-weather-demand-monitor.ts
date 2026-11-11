@@ -25,5 +25,5 @@ export default async function runWeatherDemandMonitorSchedule() {
 }
 
 export const config: Config = {
-  schedule: "*/15 * * * *"
+  schedule: "37 */6 * * *"
 };
