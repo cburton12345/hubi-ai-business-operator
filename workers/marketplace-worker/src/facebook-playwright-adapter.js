@@ -80,6 +80,28 @@ export class FacebookPlaywrightAdapter {
     if (!facebookUrl(url)) {
       return { state: "connector_incompatible", browserState: "failed", url: this.config.inboxUrl, reason: "The worker browser is not on a recognized Facebook or Messenger page." };
     }
+    if (this.config.expectedProfileId) {
+      const cookies = await this.context.cookies("https://www.facebook.com").catch(() => []);
+      const activeProfileId = cookies.find((cookie) => cookie.name === "c_user")?.value;
+      if (!activeProfileId) {
+        return {
+          state: "verification_required",
+          browserState: "attention_required",
+          providerCode: "facebook_identity_unverified",
+          url,
+          reason: "The worker could not verify the signed-in Facebook profile. No automated action will run until the intended account is confirmed."
+        };
+      }
+      if (activeProfileId !== this.config.expectedProfileId) {
+        return {
+          state: "connector_incompatible",
+          browserState: "failed",
+          providerCode: "facebook_identity_mismatch",
+          url,
+          reason: "The signed-in Facebook profile does not match this worker's locked identity. No automated action was performed."
+        };
+      }
+    }
     return { state: "ready", browserState: "ready", url, reason: "Facebook session is available." };
   }
 
@@ -144,7 +166,7 @@ export class FacebookPlaywrightAdapter {
           body: item.body,
           sourceUrl: this.page.url(),
           surface: "messenger",
-          connectorVersion: "marketplace-worker-0.3.0",
+          connectorVersion: "marketplace-worker-0.4.0",
           observedAt: new Date().toISOString()
         });
       }
@@ -225,7 +247,7 @@ export class FacebookPlaywrightAdapter {
         rulesText: details.rulesText || undefined,
         rulesSourceUrl: details.rulesText ? aboutUrl : undefined,
         membershipState: details.membershipState,
-        connectorVersion: "marketplace-worker-0.3.0",
+        connectorVersion: "marketplace-worker-0.4.0",
         observedAt: new Date().toISOString()
       });
     }

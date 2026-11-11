@@ -20,6 +20,9 @@ It remains separate from H4R. It uses a Ferocity pairing code, Ferocity device c
 - The supervisor restarts the worker after a crash with bounded exponential backoff.
 - The worker restarts Chrome after launch/runtime failures and reports health, login, checkpoint, restriction, and incompatible-page states to Ferocity.
 - An on-disk action journal prevents a crash from blindly resending an action whose outcome is uncertain.
+- Every configured worker is locked to one numeric Facebook profile ID. A different signed-in profile blocks all reads and writes.
+- A local `PAUSE` file is an immediate kill switch. The worker closes Chrome, stops claiming work, and reports the paused state.
+- A durable local policy journal enforces the daily join cap, randomized write spacing, and exact-content post deduplication even if Ferocity or the worker restarts.
 
 Facebook does not provide an inbound webhook to this assisted-browser connector. Therefore, a closed browser cannot wake instantly because a prospect sent a new Facebook message. Ferocity uses scheduled inbox sweeps for inbound discovery and immediate demand wake-up for outbound work. The default sweep is every five minutes; it is configurable from one minute to one hour.
 
@@ -61,6 +64,9 @@ The Windows scheduled task runs as the current interactive user because Facebook
 - `maxCommunitiesPerSweep`: bound on group navigation in one sweep; default eight and maximum twenty.
 - `communityDiscoveryEnabled`: opt-in group/rules discovery switch. It remains false for a fresh install.
 - `headless`: defaults to false; headful mode is safer for legitimate customer login/checkpoint handling.
+- `identity.expectedProfileId`: required before sending can be enabled; compared only with Facebook's local `c_user` session identifier.
+- `actionPolicy`: defaults to five joins per UTC day, 45–180 seconds between write actions, and 90-day exact post deduplication.
+- `killSwitchFile`: defaults to `PAUSE` in this directory. Create it to stop work; remove it to allow observe-only operation to resume.
 
 ## Hosted deployment later
 
