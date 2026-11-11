@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { PublicBotChallenge } from "@/components/security/PublicBotChallenge";
 
 export const metadata: Metadata = {
   title: "Ferocity Growth System | Free Business Audit",
@@ -341,6 +342,7 @@ export default function GrowthSystemPage() {
               <input name="createWorkspace" type="checkbox" />
               <span>Create a starter business account if I am eligible.</span>
             </label>
+            <PublicBotChallenge action="access_request" />
             <button className="button" type="submit">
               Request setup path <ArrowRight size={16} />
             </button>

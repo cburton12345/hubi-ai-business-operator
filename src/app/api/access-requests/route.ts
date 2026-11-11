@@ -16,6 +16,7 @@ import {
   consumePublicRateLimit,
   consumePublicValueRateLimit
 } from "@/lib/security/rate-limit";
+import { verifyPublicBotChallenge } from "@/lib/security/public-bot-challenge";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -801,6 +802,16 @@ export async function POST(request: NextRequest) {
   if (!clientDailyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
 
   const formData = await request.formData();
+  if (String(formData.get("website") ?? "").trim()) {
+    return redirectTo(request, "/start?error=1");
+  }
+  const botChallengeVerified = await verifyPublicBotChallenge(
+    String(formData.get("altcha") ?? ""),
+    "access_request"
+  );
+  if (!botChallengeVerified) {
+    return redirectTo(request, "/start?error=verification");
+  }
   const parsed = accessRequestSchema.safeParse({
     name: String(formData.get("name") ?? ""),
     email: String(formData.get("email") ?? ""),

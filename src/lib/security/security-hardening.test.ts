@@ -72,9 +72,17 @@ describe("security hardening invariants", () => {
     const accessRequestSource = source("src/app/api/access-requests/route.ts");
     expect(accessRequestSource).toContain("consumePublicValueRateLimit");
     expect(accessRequestSource).toContain("consumeGlobalRateLimit");
+    expect(accessRequestSource).toContain("verifyPublicBotChallenge");
     expect(accessRequestSource.indexOf("consumeGlobalRateLimit")).toBeLessThan(
       accessRequestSource.indexOf("sendAccessRequestEmailsSafely({")
     );
+    for (const form of [
+      "src/app/start/page.tsx",
+      "src/app/growth-system/page.tsx",
+      "src/app/website-grader/report/[token]/page.tsx"
+    ]) {
+      expect(source(form)).toContain('<PublicBotChallenge action="access_request" />');
+    }
   });
 
   it("keeps employee self-service access owner-gated and employee-bound", () => {

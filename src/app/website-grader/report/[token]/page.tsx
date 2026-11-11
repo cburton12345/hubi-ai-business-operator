@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Gauge, ShieldCheck, Sparkles } from "lucide-react";
 import { queryPostgres } from "@/lib/db/postgres";
+import { PublicBotChallenge } from "@/components/security/PublicBotChallenge";
 import type {
   BusinessHealthCategory,
   BusinessHealthOpportunity,
@@ -396,6 +397,7 @@ export default async function WebsiteGraderReportPage({
               <input name="createWorkspace" type="checkbox" defaultChecked />
               <span>Create a starter workspace and send me an invite link.</span>
             </label>
+            <PublicBotChallenge action="access_request" />
             <button className="button" type="submit">
               Start setup from this score <ArrowRight size={16} />
             </button>
