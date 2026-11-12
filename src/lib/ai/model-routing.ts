@@ -18,6 +18,7 @@ const advancedRunTypes = new Set([
   "growth_funnel_strategy",
   "market_trend_research",
   "lease_document_analysis",
+  "insurance_document_analysis",
   "public_website_chat_reply",
   "video_creative_direction"
 ]);
