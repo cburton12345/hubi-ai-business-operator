@@ -162,6 +162,9 @@
     "vitest": "^4.0.16"
   },
   "overrides": {
+    "@hono/node-server": "2.1.8",
+    "hono": "4.13.18",
+    "minimatch": "11.0.8",
     "postcss": "8.5.23",
     "sharp": "0.35.5",
     "source-map-js": "1.2.2"

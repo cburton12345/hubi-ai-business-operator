@@ -2,6 +2,11 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { FerocityBrandMark } from "@/components/public/FerocityBrandMark";
 import { WorkspaceNavMenu } from "@/components/admin/WorkspaceNavMenu";
+import {
+  MobileAppNav,
+  type MobileNavigationItem,
+  type MobileToolSection,
+} from "@/components/admin/MobileAppNav";
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
@@ -172,6 +177,98 @@ const fieldToolSections = [
   },
 ] as const;
 
+const platformMobileToolSections: readonly MobileToolSection[] = [
+  {
+    label: "Start & AI",
+    links: [
+      ["Ask Ferocity", "/app/ferocity"],
+      ["AI Office Manager", "/app/office-manager"],
+      ["Managed Operator", "/app/managed-operator"],
+      ["Daily Brief", "/app/ai-monitoring"],
+      ["Guided Setup", "/app/build-system"],
+      ["Business Gap Scan", "/app/gap-scan"],
+      ["Autopilot", "/app/autopilot"],
+      ["Business Info", "/app/business-brain"],
+      ["Install App", "/install"],
+    ],
+  },
+  {
+    label: "Customers & Work",
+    links: [
+      ["Leads & Customers", "/app/lead-command"],
+      ["Conversations", "/app/messaging"],
+      ["Jobs & Money", "/app/job-tracker"],
+      ["Schedule & Dispatch", "/app/schedule"],
+      ["AI Estimator", "/app/estimator"],
+      ["Pricebook & Memberships", "/app/pricebook"],
+      ["Purchasing & Accounting", "/app/purchasing"],
+      ["Receipts & Expenses", "/app/expenses"],
+      ["Field Team", "/employee"],
+      ["Hiring & Team Readiness", "/app/team"],
+      ["Labor Bench", "/app/labor-bench"],
+      ["Email Watch", "/app/email-watch"],
+    ],
+  },
+  {
+    label: "Money & Growth",
+    links: [
+      ["Cash Collection", "/app/cash-collection"],
+      ["Billing", "/app/billing"],
+      ["Growth", "/app/growth"],
+      ["Marketing", "/app/marketing-os"],
+      ["Publishing Queue", "/app/publishing-hub"],
+      ["Revenue Growth", "/app/revenue-growth"],
+      ["Website / Public Links", "/app/customer-touchpoints"],
+      ["Growth Funnels", "/app/growth-funnels"],
+      ["Customer Proof", "/app/proof"],
+      ["SEO", "/app/seo"],
+      ["Local Presence", "/app/local-presence"],
+      ["Reviews", "/app/review"],
+    ],
+  },
+  {
+    label: "Automation & Insights",
+    links: [
+      ["Automation", "/app/automation"],
+      ["Automation Rules", "/app/automation-command"],
+      ["Automation Timeline", "/app/automation-timeline"],
+      ["Workflows", "/app/workflows"],
+      ["Action Queue", "/app/actions"],
+      ["Alerts", "/app/alerts"],
+      ["Notifications", "/app/notifications"],
+      ["Reports", "/app/reports"],
+      ["Recommendations", "/app/recommendations"],
+    ],
+  },
+  {
+    label: "Settings",
+    links: [
+      ["Brands", "/app/brands"],
+      ["Connections", "/app/integrations"],
+      ["Approvals & Controls", "/app/controls"],
+      ["AI Cost Controls", "/app/ai-control"],
+      ["Plan & Usage", "/app/billing"],
+      ["Team Access", "/app/access"],
+      ["Connected Account Keys", "/app/credentials"],
+      ["Backups / Exports", "/app/exports"],
+      ["Get Help", "/app/support"],
+    ],
+  },
+];
+
+const advancedMobileToolSection: MobileToolSection = {
+  label: "Advanced",
+  links: [
+    ["Safety & Readiness", "/app/safety-readiness"],
+    ["Visitors, Sales & Support", "/app/platform-activity"],
+    ["System Health", "/app/system-health"],
+    ["Go Live", "/app/go-live"],
+    ["Operational QA", "/app/qa"],
+    ["Webhooks", "/app/webhooks"],
+    ["Connected Systems", "/app/lifeops-connections"],
+  ],
+};
+
 function matchesNavigationPath(currentPath: string, paths: readonly string[]) {
   return paths.some(
     (path) =>
@@ -235,6 +332,102 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       : simpleCustomerExperience
         ? customerNavigation
         : primaryNavigation;
+  const mobileNavigation: readonly MobileNavigationItem[] = callsOnly
+    ? [
+        {
+          label: "Today",
+          href: "/app",
+          icon: "today",
+          paths: ["/app", "/app/attention-command"],
+        },
+        {
+          label: "Calls",
+          href: "/app/calls",
+          icon: "calls",
+          paths: ["/app/calls", "/app/office-manager"],
+        },
+        {
+          label: "Ask",
+          href: "/app/ferocity",
+          icon: "ask",
+          paths: ["/app/ferocity"],
+        },
+        {
+          label: "Contacts",
+          href: "/app/lead-command",
+          icon: "customers",
+          paths: ["/app/lead-command", "/app/leads", "/app/messaging"],
+        },
+      ]
+    : roleNeedsSimpleFieldView
+      ? [
+          {
+            label: "Today",
+            href: "/app/attention-command",
+            icon: "today",
+            paths: ["/app/attention-command"],
+          },
+          {
+            label: "My work",
+            href: "/app/operations-workforce",
+            icon: "work",
+            paths: ["/app/operations-workforce", "/app/schedule"],
+          },
+          {
+            label: "Ask",
+            href: "/app/ferocity",
+            icon: "ask",
+            paths: ["/app/ferocity"],
+          },
+        ]
+      : [
+          {
+            label: "Today",
+            href: "/app",
+            icon: "today",
+            paths: ["/app", "/app/attention-command"],
+          },
+          {
+            label: "Customers",
+            href: "/app/lead-command",
+            icon: "customers",
+            paths: ["/app/lead-command", "/app/leads", "/app/messaging"],
+          },
+          {
+            label: "Ask",
+            href: "/app/ferocity",
+            icon: "ask",
+            paths: ["/app/ferocity"],
+          },
+          {
+            label: "Work",
+            href: "/app/job-tracker",
+            icon: "work",
+            paths: [
+              "/app/job-tracker",
+              "/app/service",
+              "/app/operations-workforce",
+            ],
+          },
+        ];
+  const mobileToolSections: readonly MobileToolSection[] = callsOnly
+    ? callsToolSections
+    : roleNeedsSimpleFieldView
+      ? fieldToolSections
+      : simpleCustomerExperience
+        ? customerToolSections
+        : [
+            ...platformMobileToolSections,
+            ...(workspaces.length > 1
+              ? [
+                  {
+                    label: "Businesses",
+                    links: [["Switch business", "/app/workspaces"]],
+                  } satisfies MobileToolSection,
+                ]
+              : []),
+            ...(isPlatformAdmin ? [advancedMobileToolSection] : []),
+          ];
 
   return (
     <main className="page-shell">
@@ -266,173 +459,165 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               <WorkspaceNavMenu
                 summaryLabel={simpleCustomerExperience ? "More" : "All Tools"}
               >
-                  {callsOnly ? (
-                    callsToolSections.map((section) => (
-                      <section key={section.label}>
-                        <p>{section.label}</p>
-                        {section.links.map(([label, href]) => (
-                          <Link
-                            aria-current={
-                              matchesNavigationPath(currentPath, [href])
-                                ? "page"
-                                : undefined
-                            }
-                            key={href}
-                            href={href}
-                          >
-                            {label}
-                          </Link>
-                        ))}
-                      </section>
-                    ))
-                  ) : roleNeedsSimpleFieldView ? (
-                    fieldToolSections.map((section) => (
-                      <section key={section.label}>
-                        <p>{section.label}</p>
-                        {section.links.map(([label, href]) => (
-                          <Link
-                            aria-current={
-                              matchesNavigationPath(currentPath, [href])
-                                ? "page"
-                                : undefined
-                            }
-                            key={href}
-                            href={href}
-                          >
-                            {label}
-                          </Link>
-                        ))}
-                      </section>
-                    ))
-                  ) : simpleCustomerExperience ? (
-                    customerToolSections.map((section) => (
-                      <section key={section.label}>
-                        <p>{section.label}</p>
-                        {section.links.map(([label, href]) => (
-                          <Link
-                            aria-current={
-                              matchesNavigationPath(currentPath, [href])
-                                ? "page"
-                                : undefined
-                            }
-                            key={href}
-                            href={href}
-                          >
-                            {label}
-                          </Link>
-                        ))}
-                      </section>
-                    ))
-                  ) : (
-                    <>
-                      <section>
-                        <p>Start & AI</p>
-                        <Link href="/app/welcome">Start Here</Link>
-                        <Link href="/app/ferocity">Ask Ferocity</Link>
-                        <Link href="/app/office-manager">
-                          AI Office Manager
+                {callsOnly ? (
+                  callsToolSections.map((section) => (
+                    <section key={section.label}>
+                      <p>{section.label}</p>
+                      {section.links.map(([label, href]) => (
+                        <Link
+                          aria-current={
+                            matchesNavigationPath(currentPath, [href])
+                              ? "page"
+                              : undefined
+                          }
+                          key={href}
+                          href={href}
+                        >
+                          {label}
                         </Link>
-                        <Link href="/app/managed-operator">
-                          Managed Operator
+                      ))}
+                    </section>
+                  ))
+                ) : roleNeedsSimpleFieldView ? (
+                  fieldToolSections.map((section) => (
+                    <section key={section.label}>
+                      <p>{section.label}</p>
+                      {section.links.map(([label, href]) => (
+                        <Link
+                          aria-current={
+                            matchesNavigationPath(currentPath, [href])
+                              ? "page"
+                              : undefined
+                          }
+                          key={href}
+                          href={href}
+                        >
+                          {label}
                         </Link>
-                        <Link href="/app/build-system">Guided Setup</Link>
-                        <Link href="/app/gap-scan">Business Gap Scan</Link>
-                        <Link href="/app/autopilot">Autopilot</Link>
-                        <Link href="/app/business-brain">Business Info</Link>
-                        <Link href="/app/ai-monitoring">Daily Brief</Link>
-                        <Link href="/install">Install App</Link>
-                      </section>
-                      <section>
-                        <p>Customers & Work</p>
-                        <Link href="/app/lead-command">Leads & Customers</Link>
-                        <Link href="/app/job-tracker">Jobs & Money</Link>
-                        <Link href="/app/estimator">AI Estimator</Link>
-                        <Link href="/app/pricebook">
-                          Pricebook & Memberships
+                      ))}
+                    </section>
+                  ))
+                ) : simpleCustomerExperience ? (
+                  customerToolSections.map((section) => (
+                    <section key={section.label}>
+                      <p>{section.label}</p>
+                      {section.links.map(([label, href]) => (
+                        <Link
+                          aria-current={
+                            matchesNavigationPath(currentPath, [href])
+                              ? "page"
+                              : undefined
+                          }
+                          key={href}
+                          href={href}
+                        >
+                          {label}
                         </Link>
-                        <Link href="/app/purchasing">
-                          Purchasing & Accounting
-                        </Link>
-                        <Link href="/app/expenses">Receipts & Expenses</Link>
-                        <Link href="/employee">Field Team</Link>
-                        <Link href="/app/schedule">Schedule & Dispatch</Link>
-                        <Link href="/app/calendar">
-                          Marketing / AI Calendar
-                        </Link>
-                        <Link href="/app/team">Hiring & Team Readiness</Link>
-                        <Link href="/app/labor-bench">Labor Bench</Link>
-                        <Link href="/app/messaging">Messaging Engine</Link>
-                        <Link href="/app/email-watch">Email Watch</Link>
-                      </section>
-                      <section>
-                        <p>Growth</p>
-                        <Link href="/app/customer-touchpoints">
-                          Website / Public Links
-                        </Link>
-                        <Link href="/app/growth-funnels">Growth Funnels</Link>
-                        <Link href="/app/revenue-growth">Revenue Growth</Link>
-                        <Link href="/app/authority">Authority Engine</Link>
-                        <Link href="/app/publishing-hub">Publishing Queue</Link>
-                        <Link href="/app/marketing-os">Marketing</Link>
-                        <Link href="/app/website-grader">Assessments</Link>
-                        <Link href="/app/proof">Customer Proof</Link>
-                        <Link href="/app/seo">SEO</Link>
-                        <Link href="/app/local-presence">Local Presence</Link>
-                        <Link href="/app/review">Reviews</Link>
-                        <Link href="/app/forms">Forms</Link>
-                      </section>
-                      <section>
-                        <p>Automation & Insights</p>
-                        <Link href="/app/automation">Automation</Link>
-                        <Link href="/app/automation-command">
-                          Automation Rules
-                        </Link>
-                        <Link href="/app/automation-timeline">
-                          Automation Timeline
-                        </Link>
-                        <Link href="/app/workflows">Workflows</Link>
-                        <Link href="/app/alerts">Alerts</Link>
-                        <Link href="/app/actions">Action Queue</Link>
-                        <Link href="/app/reports">Reports</Link>
-                        <Link href="/app/recommendations">Recommendations</Link>
-                      </section>
-                      <section>
-                        <p>Settings</p>
-                        <Link href="/app/brands">Brands</Link>
-                        {workspaces.length > 1 ? (
-                          <Link href="/app/workspaces">Businesses</Link>
-                        ) : null}
-                        <Link href="/app/integrations">Integrations</Link>
-                        <Link href="/app/controls">Controls</Link>
-                        <Link href="/app/ai-control">AI Cost Controls</Link>
-                        <Link href="/app/billing">Billing</Link>
-                        <Link href="/app/support">Get Help</Link>
-                        <Link href="/app/access">Team Access</Link>
-                        <Link href="/app/credentials">
-                          Connected Account Keys
-                        </Link>
-                        <Link href="/app/exports">Backups / Exports</Link>
-                      </section>
-                      {isPlatformAdmin ? (
-                        <section>
-                          <p>Advanced</p>
-                          <Link href="/app/safety-readiness">
-                            Safety & Readiness
-                          </Link>
-                          <Link href="/app/platform-activity">
-                            Visitors, Sales & Support
-                          </Link>
-                          <Link href="/app/system-health">System Health</Link>
-                          <Link href="/app/go-live">Go Live</Link>
-                          <Link href="/app/qa">Operational QA</Link>
-                          <Link href="/app/webhooks">Webhooks</Link>
-                          <Link href="/app/lifeops-connections">
-                            Connected Systems
-                          </Link>
-                        </section>
+                      ))}
+                    </section>
+                  ))
+                ) : (
+                  <>
+                    <section>
+                      <p>Start & AI</p>
+                      <Link href="/app/welcome">Start Here</Link>
+                      <Link href="/app/ferocity">Ask Ferocity</Link>
+                      <Link href="/app/office-manager">AI Office Manager</Link>
+                      <Link href="/app/managed-operator">Managed Operator</Link>
+                      <Link href="/app/build-system">Guided Setup</Link>
+                      <Link href="/app/gap-scan">Business Gap Scan</Link>
+                      <Link href="/app/autopilot">Autopilot</Link>
+                      <Link href="/app/business-brain">Business Info</Link>
+                      <Link href="/app/ai-monitoring">Daily Brief</Link>
+                      <Link href="/install">Install App</Link>
+                    </section>
+                    <section>
+                      <p>Customers & Work</p>
+                      <Link href="/app/lead-command">Leads & Customers</Link>
+                      <Link href="/app/job-tracker">Jobs & Money</Link>
+                      <Link href="/app/estimator">AI Estimator</Link>
+                      <Link href="/app/pricebook">Pricebook & Memberships</Link>
+                      <Link href="/app/purchasing">
+                        Purchasing & Accounting
+                      </Link>
+                      <Link href="/app/expenses">Receipts & Expenses</Link>
+                      <Link href="/employee">Field Team</Link>
+                      <Link href="/app/schedule">Schedule & Dispatch</Link>
+                      <Link href="/app/calendar">Marketing / AI Calendar</Link>
+                      <Link href="/app/team">Hiring & Team Readiness</Link>
+                      <Link href="/app/labor-bench">Labor Bench</Link>
+                      <Link href="/app/messaging">Messaging Engine</Link>
+                      <Link href="/app/email-watch">Email Watch</Link>
+                    </section>
+                    <section>
+                      <p>Growth</p>
+                      <Link href="/app/customer-touchpoints">
+                        Website / Public Links
+                      </Link>
+                      <Link href="/app/growth-funnels">Growth Funnels</Link>
+                      <Link href="/app/revenue-growth">Revenue Growth</Link>
+                      <Link href="/app/authority">Authority Engine</Link>
+                      <Link href="/app/publishing-hub">Publishing Queue</Link>
+                      <Link href="/app/marketing-os">Marketing</Link>
+                      <Link href="/app/website-grader">Assessments</Link>
+                      <Link href="/app/proof">Customer Proof</Link>
+                      <Link href="/app/seo">SEO</Link>
+                      <Link href="/app/local-presence">Local Presence</Link>
+                      <Link href="/app/review">Reviews</Link>
+                      <Link href="/app/forms">Forms</Link>
+                    </section>
+                    <section>
+                      <p>Automation & Insights</p>
+                      <Link href="/app/automation">Automation</Link>
+                      <Link href="/app/automation-command">
+                        Automation Rules
+                      </Link>
+                      <Link href="/app/automation-timeline">
+                        Automation Timeline
+                      </Link>
+                      <Link href="/app/workflows">Workflows</Link>
+                      <Link href="/app/alerts">Alerts</Link>
+                      <Link href="/app/actions">Action Queue</Link>
+                      <Link href="/app/reports">Reports</Link>
+                      <Link href="/app/recommendations">Recommendations</Link>
+                    </section>
+                    <section>
+                      <p>Settings</p>
+                      <Link href="/app/brands">Brands</Link>
+                      {workspaces.length > 1 ? (
+                        <Link href="/app/workspaces">Businesses</Link>
                       ) : null}
-                    </>
-                  )}
+                      <Link href="/app/integrations">Integrations</Link>
+                      <Link href="/app/controls">Controls</Link>
+                      <Link href="/app/ai-control">AI Cost Controls</Link>
+                      <Link href="/app/billing">Billing</Link>
+                      <Link href="/app/support">Get Help</Link>
+                      <Link href="/app/access">Team Access</Link>
+                      <Link href="/app/credentials">
+                        Connected Account Keys
+                      </Link>
+                      <Link href="/app/exports">Backups / Exports</Link>
+                    </section>
+                    {isPlatformAdmin ? (
+                      <section>
+                        <p>Advanced</p>
+                        <Link href="/app/safety-readiness">
+                          Safety & Readiness
+                        </Link>
+                        <Link href="/app/platform-activity">
+                          Visitors, Sales & Support
+                        </Link>
+                        <Link href="/app/system-health">System Health</Link>
+                        <Link href="/app/go-live">Go Live</Link>
+                        <Link href="/app/qa">Operational QA</Link>
+                        <Link href="/app/webhooks">Webhooks</Link>
+                        <Link href="/app/lifeops-connections">
+                          Connected Systems
+                        </Link>
+                      </section>
+                    ) : null}
+                  </>
+                )}
               </WorkspaceNavMenu>
             </nav>
           ) : null}
@@ -492,6 +677,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </form>
         </header>
+        {!onboardingExperience ? (
+          <MobileAppNav
+            items={mobileNavigation}
+            sections={mobileToolSections}
+            workspaceName={workspace.name}
+          />
+        ) : null}
         {showCompactCommand && !simpleCustomerExperience ? (
           <section
             className="operator-command-strip panel"

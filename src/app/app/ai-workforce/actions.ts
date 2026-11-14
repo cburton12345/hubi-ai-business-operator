@@ -45,6 +45,8 @@ import { readBusinessActionForCommand, summarizeBusinessActionItems } from "@/li
 import { invokeBusinessAction, type BusinessActionPrincipal } from "@/lib/business-actions/gateway";
 import { queryPostgres } from "@/lib/db/postgres";
 import { createOwnerGrowthObjectiveFromCommand } from "@/lib/growth/composable-growth-intelligence";
+import { notificationSourceTypes } from "@/lib/push/notification-sources";
+import { setNotificationState } from "@/lib/push/notification-state";
 import { processNewestWebsiteImportForUrl } from "@/lib/marketing-os/website-import-processor";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 import { getLatestCompanionContextSummaryForAi } from "@/lib/integrations/h4r/brain-context";
@@ -196,10 +198,6 @@ function dueDateFrom(command: string) {
   date.setHours(date.getHours() + 2, 0, 0, 0);
   return date;
 }
-
-const notificationSourceTypes = [
-  "owner_event", "ai_work", "approval", "provider_request", "funding_alert", "marketing_recommendation",
-] as const;
 
 function notificationStateCommand(command: string) {
   const sourcePattern = notificationSourceTypes.join("|");
@@ -942,23 +940,16 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
 
   if (notificationCommand && session?.userId) {
     const snoozedUntil = notificationCommand.status === "snoozed" ? dueDateFrom(command) : null;
-    const changed = await queryPostgres<{ id: string }>(
-      `insert into public.in_app_notification_states
-         (tenant_id,user_id,source_type,source_id,status,snoozed_until,cleared_at,resurface_reason)
-       values ($1,$2,$3,$4,$5,$6,
-         case when $5='cleared' then now() else null end,
-         case when $5='snoozed' then 'ferocity_chat' else null end)
-       on conflict (tenant_id,user_id,source_type,source_id) do update
-       set status=excluded.status,
-           snoozed_until=excluded.snoozed_until,
-           cleared_at=excluded.cleared_at,
-           resurface_reason=excluded.resurface_reason,
-           updated_at=now()
-       returning id`,
-      [workspaceId, session.userId, notificationCommand.source, notificationCommand.sourceId, notificationCommand.status, snoozedUntil?.toISOString() ?? null]
-    );
-    const changedId = changed?.rows[0]?.id;
-    if (changedId) {
+    const changed = await setNotificationState({
+      tenantId: workspaceId,
+      userId: session.userId,
+      source: notificationCommand.source,
+      sourceId: notificationCommand.sourceId,
+      status: notificationCommand.status,
+      snoozedUntil,
+      resurfaceReason: notificationCommand.status === "snoozed" ? "ferocity_chat" : null,
+    });
+    if (changed.ok) {
       prepared.push(notificationCommand.status === "snoozed"
         ? `Snoozed the notification until ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(snoozedUntil!)}. Ferocity will return it to the active feed automatically.`
         : notificationCommand.status === "cleared"
@@ -971,9 +962,15 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
         status: "completed",
         href: "/app/notifications",
         targetTable: "in_app_notification_states",
-        targetId: changedId,
+        targetId: changed.stateId,
         evidence: { verifiedAfterWrite: true, source: notificationCommand.source, sourceId: notificationCommand.sourceId, snoozedUntil: snoozedUntil?.toISOString() ?? null },
       });
+    } else {
+      blocked.push(changed.reason === "source_not_found"
+        ? "That notification is no longer active in this workspace. Ferocity did not create a detached notification state."
+        : changed.reason === "invalid_snooze"
+          ? "Choose a reminder time between five minutes and one year from now."
+          : "Ferocity could not verify the notification state change. Nothing was cleared or snoozed.");
     }
   } else if (plans("manage_notification_state") && !notificationCommand) {
     blocked.push("Open Notifications and choose Ask Ferocity on the exact item. Ferocity will not bulk-clear or guess which alert you meant.");

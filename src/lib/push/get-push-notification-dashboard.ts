@@ -6,6 +6,22 @@ import { getCurrentAppSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/require-permission";
 
+export type InAppNotificationItem = {
+  id: string;
+  source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert" | "marketing_recommendation";
+  title: string;
+  body: string;
+  severity: string;
+  status: string;
+  actionUrl: string;
+  createdAt: string;
+  readState: string;
+  snoozedUntil: string | null;
+  clearedAt: string | null;
+  sourceUpdatedAt: string;
+  employeeAccessRequestId: string | null;
+};
+
 export type PushNotificationDashboard = {
   canManageEmployeeAccess: boolean;
   readiness: ReturnType<typeof getPushReadiness>;
@@ -43,18 +59,8 @@ export type PushNotificationDashboard = {
     readState: string;
     errorMessage: string | null;
   }[];
-  inAppNotifications: {
-    id: string;
-    source: "owner_event" | "ai_work" | "approval" | "provider_request" | "funding_alert" | "marketing_recommendation";
-    title: string;
-    body: string;
-    severity: string;
-    status: string;
-    actionUrl: string;
-    createdAt: string;
-    readState: string;
-    employeeAccessRequestId: string | null;
-  }[];
+  inAppNotifications: InAppNotificationItem[];
+  hiddenNotifications: InAppNotificationItem[];
 };
 
 function n(value: unknown) {
@@ -66,16 +72,6 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
   const tenantId = actor.workspace.id;
   const session = await getCurrentAppSession();
   const readiness = getPushReadiness();
-  if (session?.userId) {
-    await queryPostgres(
-      `update public.in_app_notification_states
-       set status='unread', snoozed_until=null, last_resurfaced_at=now(),
-           resurface_count=resurface_count+1, updated_at=now()
-       where tenant_id=$1 and user_id=$2::uuid
-         and status='snoozed' and snoozed_until <= now()`,
-      [tenantId, session.userId]
-    );
-  }
   const [preferences, reminderDashboard, metricsResult, subscriptionsResult, eventsResult, inAppResult] = await Promise.all([
     getPushNotificationPreferences(tenantId),
     getOwnerRemindersDashboard(tenantId),
@@ -143,11 +139,20 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
       action_url: string;
       created_at: Date;
       read_state: string;
+      snoozed_until: Date | null;
+      cleared_at: Date | null;
+      source_updated_at: Date;
       employee_access_request_id: string | null;
     }>(
       `
       select notifications.*,
-        coalesce(state.status, 'unread') as read_state
+        case
+          when state.status = 'snoozed' and state.snoozed_until <= now() then 'unread'
+          when state.status = 'cleared' and notifications.source_updated_at > state.updated_at then 'unread'
+          else coalesce(state.status, 'unread')
+        end as read_state,
+        state.snoozed_until,
+        state.cleared_at
       from (
         select
           e.id::text as id,
@@ -158,6 +163,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           e.status,
           coalesce(nullif(e.action_href, ''), '/app/owner-command-center') as action_url,
           e.occurred_at as created_at,
+          e.updated_at as source_updated_at,
           case when e.event_type = 'employee.access.requested'
             then e.metadata_json->>'accessRequestId' else null end as employee_access_request_id
         from public.owner_command_events e
@@ -189,6 +195,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           o.status,
           case when o.run_id is null then '/app/ai-workforce' else '/app/ai-workforce/results/' || o.run_id::text end as action_url,
           o.created_at,
+          o.created_at as source_updated_at,
           null::text as employee_access_request_id
         from public.ai_agent_outputs o
         where o.tenant_id = $1
@@ -206,6 +213,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           r.status,
           '/app/ai-workforce/results/' || r.id::text as action_url,
           coalesce(r.completed_at, r.created_at) as created_at,
+          coalesce(r.completed_at, r.created_at) as source_updated_at,
           null::text as employee_access_request_id
         from public.ai_agent_runs r
         where r.tenant_id = $1
@@ -226,6 +234,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           a.status,
           '/app/approvals'::text as action_url,
           a.created_at,
+          a.created_at as source_updated_at,
           null::text as employee_access_request_id
         from public.approvals a
         where a.tenant_id = $1
@@ -242,6 +251,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           r.status,
           '/app/integrations#request-provider'::text as action_url,
           r.updated_at as created_at,
+          r.updated_at as source_updated_at,
           null::text as employee_access_request_id
         from public.provider_integration_requests r
         where r.tenant_id = $1
@@ -258,6 +268,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           f.status,
           coalesce(nullif(f.action_href, ''), '/app/provider-costs') as action_url,
           f.last_seen_at as created_at,
+          f.updated_at as source_updated_at,
           null::text as employee_access_request_id
         from public.provider_funding_alerts f
         where f.tenant_id = $1
@@ -277,6 +288,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
           r.status,
           '/app/marketing-os'::text as action_url,
           r.updated_at as created_at,
+          r.updated_at as source_updated_at,
           null::text as employee_access_request_id
         from public.marketing_campaign_recommendations r
         where r.tenant_id = $1
@@ -289,17 +301,39 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
        and state.user_id = $2::uuid
        and state.source_type = notifications.source
        and state.source_id = notifications.id::uuid
-      where coalesce(state.status, 'unread') not in ('dismissed','cleared','snoozed')
       order by
+        case
+          when state.status = 'snoozed' and state.snoozed_until > now() then 1
+          when state.status in ('cleared','dismissed') and not (state.status = 'cleared' and notifications.source_updated_at > state.updated_at) then 1
+          else 0
+        end,
         case severity when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end,
         created_at desc
-      limit 40
+      limit 100
       `,
       [tenantId, session?.userId ?? null]
     )
   ]);
 
   const metrics = metricsResult?.rows[0];
+  const mappedNotifications = (inAppResult?.rows ?? []).map((row) => ({
+    id: row.id,
+    source: row.source,
+    title: row.title,
+    body: row.body,
+    severity: row.severity,
+    status: row.status,
+    actionUrl: row.action_url,
+    createdAt: row.created_at.toISOString(),
+    readState: row.read_state,
+    snoozedUntil: row.snoozed_until?.toISOString() ?? null,
+    clearedAt: row.cleared_at?.toISOString() ?? null,
+    sourceUpdatedAt: row.source_updated_at.toISOString(),
+    employeeAccessRequestId: row.employee_access_request_id
+  }));
+  const hiddenStates = new Set(["snoozed", "cleared", "dismissed"]);
+  const activeNotifications = mappedNotifications.filter((row) => !hiddenStates.has(row.readState));
+  const hiddenNotifications = mappedNotifications.filter((row) => hiddenStates.has(row.readState));
   return {
     canManageEmployeeAccess: can(actor, "tenant:manage"),
     readiness,
@@ -314,8 +348,8 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
       dueReminders: reminderDashboard.metrics.dueNow,
       dailyGoals: reminderDashboard.metrics.dailyGoals,
       meetingReminders: reminderDashboard.metrics.meetings,
-      inAppAttention: (inAppResult?.rows ?? []).filter((row) =>
-        row.read_state === "unread" && (
+      inAppAttention: activeNotifications.filter((row) =>
+        row.readState === "unread" && (
         row.status === "needs_owner"
         || row.status === "critical"
         || row.status === "pending"
@@ -345,17 +379,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
       readState: "read",
       errorMessage: row.error_message
     })),
-    inAppNotifications: (inAppResult?.rows ?? []).map((row) => ({
-      id: row.id,
-      source: row.source,
-      title: row.title,
-      body: row.body,
-      severity: row.severity,
-      status: row.status,
-      actionUrl: row.action_url,
-      createdAt: row.created_at.toISOString(),
-      readState: row.read_state,
-      employeeAccessRequestId: row.employee_access_request_id
-    }))
+    inAppNotifications: activeNotifications,
+    hiddenNotifications
   };
 }
