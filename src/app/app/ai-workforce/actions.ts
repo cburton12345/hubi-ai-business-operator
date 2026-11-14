@@ -175,6 +175,16 @@ function dueDateFrom(command: string) {
     date.setHours(Math.max(date.getHours() + 1, 9), 0, 0, 0);
     return date;
   }
+  if (lower.includes("next week") || lower.includes("for a week") || lower.includes("one week")) {
+    date.setDate(date.getDate() + 7);
+    date.setHours(9, 0, 0, 0);
+    return date;
+  }
+  if (lower.includes("next month") || lower.includes("for a month") || lower.includes("one month")) {
+    date.setMonth(date.getMonth() + 1);
+    date.setHours(9, 0, 0, 0);
+    return date;
+  }
   const explicit = command.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?/i);
   if (explicit) {
     const parsed = new Date(explicit[0]);
@@ -185,6 +195,30 @@ function dueDateFrom(command: string) {
   }
   date.setHours(date.getHours() + 2, 0, 0, 0);
   return date;
+}
+
+const notificationSourceTypes = [
+  "owner_event", "ai_work", "approval", "provider_request", "funding_alert", "marketing_recommendation",
+] as const;
+
+function notificationStateCommand(command: string) {
+  const sourcePattern = notificationSourceTypes.join("|");
+  const reference = command.match(new RegExp(`notification\\s+(${sourcePattern}):([0-9a-f-]{36})`, "i"));
+  if (!reference) return null;
+  const lower = command.toLowerCase();
+  const status = hasAny(lower, ["clear", "delete", "dismiss"])
+    ? "cleared" as const
+    : hasAny(lower, ["snooze", "ignore", "later", "bring it back"])
+      ? "snoozed" as const
+      : hasAny(lower, ["mark read", "read notification"])
+        ? "read" as const
+        : null;
+  if (!status) return null;
+  return {
+    source: reference[1].toLowerCase() as (typeof notificationSourceTypes)[number],
+    sourceId: reference[2].toLowerCase(),
+    status,
+  };
 }
 
 function platformsFrom(command: string) {
@@ -627,6 +661,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   const financialDocumentScope = actionPolicy.financialDocumentScope;
   const plannedActionKeys = new Set<FerocityPlannedActionKey>(actionPolicy.plannedActions);
   const plans = (key: FerocityPlannedActionKey) => plannedActionKeys.has(key);
+  const notificationCommand = notificationStateCommand(command);
   const readOnlyArtifacts = (receipt: FerocityActionReceiptInput) => recordFerocityActionReceipts({
     tenantId: workspaceId,
     threadId,
@@ -650,6 +685,8 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
   const literalIntent = classifyAiCommandIntent(command);
   const intent = actionPolicy.readOnlyRequested
     ? "read_only"
+    : notificationCommand
+    ? "workspace_changing"
     : literalIntent === "read_only" && ["draft_preparation", "workspace_changing"].includes(understanding.requestedMode)
     ? understanding.requestedMode
     : literalIntent;
@@ -903,6 +940,45 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     blocked.push("External actions stay gated. Ferocity can prepare drafts and review records, but sending, publishing, ad spend, payments, and payouts require separate provider approval.");
   }
 
+  if (notificationCommand && session?.userId) {
+    const snoozedUntil = notificationCommand.status === "snoozed" ? dueDateFrom(command) : null;
+    const changed = await queryPostgres<{ id: string }>(
+      `insert into public.in_app_notification_states
+         (tenant_id,user_id,source_type,source_id,status,snoozed_until,cleared_at,resurface_reason)
+       values ($1,$2,$3,$4,$5,$6,
+         case when $5='cleared' then now() else null end,
+         case when $5='snoozed' then 'ferocity_chat' else null end)
+       on conflict (tenant_id,user_id,source_type,source_id) do update
+       set status=excluded.status,
+           snoozed_until=excluded.snoozed_until,
+           cleared_at=excluded.cleared_at,
+           resurface_reason=excluded.resurface_reason,
+           updated_at=now()
+       returning id`,
+      [workspaceId, session.userId, notificationCommand.source, notificationCommand.sourceId, notificationCommand.status, snoozedUntil?.toISOString() ?? null]
+    );
+    const changedId = changed?.rows[0]?.id;
+    if (changedId) {
+      prepared.push(notificationCommand.status === "snoozed"
+        ? `Snoozed the notification until ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(snoozedUntil!)}. Ferocity will return it to the active feed automatically.`
+        : notificationCommand.status === "cleared"
+          ? "Cleared the notification from the active feed without deleting its source record or audit history."
+          : "Marked the notification as read.");
+      verifiedActionReceipts.push({
+        receiptKind: "workspace_change",
+        title: notificationCommand.status === "snoozed" ? "Notification snoozed" : notificationCommand.status === "cleared" ? "Notification cleared" : "Notification read",
+        summary: "Verified the per-user notification state was updated. The source business record remains intact.",
+        status: "completed",
+        href: "/app/notifications",
+        targetTable: "in_app_notification_states",
+        targetId: changedId,
+        evidence: { verifiedAfterWrite: true, source: notificationCommand.source, sourceId: notificationCommand.sourceId, snoozedUntil: snoozedUntil?.toISOString() ?? null },
+      });
+    }
+  } else if (plans("manage_notification_state") && !notificationCommand) {
+    blocked.push("Open Notifications and choose Ask Ferocity on the exact item. Ferocity will not bulk-clear or guess which alert you meant.");
+  }
+
   const explicitlyRequestsSetup = plans("apply_setup_plan") || understanding.capabilities.includes("setup") || hasAny(command.toLowerCase(), ["set up", "setup", "configure", "onboard"]);
   if (!financialDocumentScope && explicitlyRequestsSetup) {
     const setupForm = new FormData();
@@ -1036,7 +1112,7 @@ export async function executeAiWorkforceCommandAction(_state: AiWorkforceState, 
     });
   }
 
-  if (plans("create_reminder") || hasAny(lower, ["remind", "reminder", "call", "meeting", "goal", "tomorrow", "today"])) {
+  if (!notificationCommand && (plans("create_reminder") || hasAny(lower, ["remind", "reminder", "call", "meeting", "goal", "tomorrow", "today"]))) {
     const remindAt = dueDateFrom(command);
     const isPayment = hasAny(lower, ["pay", "invoice", "bill", "owe", "owed"]);
     const reminderId = await createCommandReminder({

@@ -66,6 +66,16 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
   const tenantId = actor.workspace.id;
   const session = await getCurrentAppSession();
   const readiness = getPushReadiness();
+  if (session?.userId) {
+    await queryPostgres(
+      `update public.in_app_notification_states
+       set status='unread', snoozed_until=null, last_resurfaced_at=now(),
+           resurface_count=resurface_count+1, updated_at=now()
+       where tenant_id=$1 and user_id=$2::uuid
+         and status='snoozed' and snoozed_until <= now()`,
+      [tenantId, session.userId]
+    );
+  }
   const [preferences, reminderDashboard, metricsResult, subscriptionsResult, eventsResult, inAppResult] = await Promise.all([
     getPushNotificationPreferences(tenantId),
     getOwnerRemindersDashboard(tenantId),
@@ -279,7 +289,7 @@ export async function getPushNotificationDashboard(): Promise<PushNotificationDa
        and state.user_id = $2::uuid
        and state.source_type = notifications.source
        and state.source_id = notifications.id::uuid
-      where coalesce(state.status, 'unread') <> 'dismissed'
+      where coalesce(state.status, 'unread') not in ('dismissed','cleared','snoozed')
       order by
         case severity when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end,
         created_at desc

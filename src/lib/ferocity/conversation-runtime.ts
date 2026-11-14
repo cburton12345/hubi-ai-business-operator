@@ -14,6 +14,7 @@ export const ferocityPlannedActionKeys = [
   "create_expense_review_task",
   "create_time_review_task",
   "create_reminder",
+  "manage_notification_state",
   "create_job_estimate_task",
   "scan_business",
 ] as const;

@@ -45,6 +45,10 @@ function dateTimeLocalValue(value: string | Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
+function isoFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60_000).toISOString();
+}
+
 export default async function NotificationsPage({
   searchParams
 }: {
@@ -188,8 +192,25 @@ export default async function NotificationsPage({
                 <form action={updateInAppNotificationStateAction}>
                   <input type="hidden" name="source" value={notification.source} />
                   <input type="hidden" name="sourceId" value={notification.id} />
-                  <input type="hidden" name="status" value="dismissed" />
-                  <button className="mini-button" type="submit">Dismiss</button>
+                  <input type="hidden" name="status" value="snoozed" />
+                  <input type="hidden" name="snoozedUntil" value={isoFromNow(1)} />
+                  <button className="mini-button secondary-button" type="submit">Tomorrow</button>
+                </form>
+                <form action={updateInAppNotificationStateAction}>
+                  <input type="hidden" name="source" value={notification.source} />
+                  <input type="hidden" name="sourceId" value={notification.id} />
+                  <input type="hidden" name="status" value="snoozed" />
+                  <input type="hidden" name="snoozedUntil" value={isoFromNow(7)} />
+                  <button className="mini-button secondary-button" type="submit">Next week</button>
+                </form>
+                <Link className="mini-button secondary-button" href={`/app/ferocity?command=${encodeURIComponent(`Snooze notification ${notification.source}:${notification.id} until tomorrow, then bring it back up.`)}`}>
+                  Ask Ferocity
+                </Link>
+                <form action={updateInAppNotificationStateAction}>
+                  <input type="hidden" name="source" value={notification.source} />
+                  <input type="hidden" name="sourceId" value={notification.id} />
+                  <input type="hidden" name="status" value="cleared" />
+                  <button className="mini-button" type="submit">Clear</button>
                 </form>
               </div>
             </li>
