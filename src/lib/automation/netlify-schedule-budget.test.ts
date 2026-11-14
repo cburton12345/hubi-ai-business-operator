@@ -8,6 +8,7 @@ const schedules = [
   { file: "run-conversion-feedback.ts", cron: "13 * * * *", scheduledRuns: 24, dispatchesBackground: true },
   { file: "run-mailbox-sync.ts", cron: "*/15 * * * *", scheduledRuns: 96, dispatchesBackground: true },
   { file: "run-business-automation.ts", cron: "23 * * * *", scheduledRuns: 24, dispatchesBackground: true },
+  { file: "run-operator-timeline-retention.ts", cron: "11 9 * * *", scheduledRuns: 1, dispatchesBackground: true },
   { file: "run-weather-demand-monitor.ts", cron: "37 */6 * * *", scheduledRuns: 4, dispatchesBackground: true },
 ] as const;
 
@@ -22,7 +23,7 @@ describe("Netlify scheduled-function credit budget", () => {
       (total, schedule) => total + schedule.scheduledRuns * (schedule.dispatchesBackground ? 2 : 1),
       0,
     );
-    expect(dailyInvocations).toBe(488);
+    expect(dailyInvocations).toBe(490);
     expect(dailyInvocations).toBeLessThanOrEqual(500);
   });
 });
