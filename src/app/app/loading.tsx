@@ -7,7 +7,10 @@ export default function WorkspaceLoading() {
           <div>
             <p className="eyebrow">Ferocity</p>
             <h1>Getting your workspace ready</h1>
-            <p className="muted">Loading the latest customers, work, messages, and priorities.</p>
+            <p className="muted">
+              Loading the latest customers, work, messages, and priorities. No
+              action is being submitted while this screen is shown.
+            </p>
           </div>
         </section>
       </section>

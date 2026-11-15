@@ -7,6 +7,7 @@ import {
   type MobileNavigationItem,
   type MobileToolSection,
 } from "@/components/admin/MobileAppNav";
+import { ConnectivityStatus } from "@/components/admin/ConnectivityStatus";
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
@@ -677,6 +678,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </form>
         </header>
+        <ConnectivityStatus />
         {!onboardingExperience ? (
           <MobileAppNav
             items={mobileNavigation}
