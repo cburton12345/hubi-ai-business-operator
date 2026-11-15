@@ -13,14 +13,17 @@ export default async function LoginPage({
   const params = await searchParams;
   const fieldMode = params.mode === "field" || params.next?.startsWith("/employee");
   const locale = workerLocale(params.lang);
-  const spanish = fieldMode && locale === "es";
+  const spanish = locale === "es";
   const copy = spanish ? {
     eyebrow: "Inicio de sesión seguro",
-    title: "Abra su jornada del equipo de campo.",
-    description: "Inicie sesión para ver su horario, horas, ubicación, millas, gastos, fotos y trabajo terminado.",
+    title: fieldMode ? "Abra su jornada del equipo de campo." : "Abra su espacio de trabajo de Ferocity.",
+    description: fieldMode
+      ? "Inicie sesión para ver su horario, horas, ubicación, millas, gastos, fotos y trabajo terminado."
+      : "Inicie sesión con el correo electrónico y la contraseña que usó al aceptar su invitación. Ferocity abrirá automáticamente la empresa correcta.",
     manage: "Administrar el negocio",
+    field: "Necesito la vista del equipo de campo",
     install: "Instalar la aplicación",
-    heading: "Inicio de sesión del equipo de campo",
+    heading: fieldMode ? "Inicio de sesión del equipo de campo" : "Inicio de sesión del espacio de trabajo",
     email: "Correo electrónico",
     password: "Contraseña",
     invalid: "El correo electrónico o la contraseña no son válidos.",
@@ -28,13 +31,14 @@ export default async function LoginPage({
     reset: "Contraseña actualizada. Inicie sesión con la nueva contraseña.",
     signing: "Iniciando sesión...",
     continue: "Continuar",
-    forgot: "¿Olvidó su contraseña?"
+    forgot: "¿Olvidó su contraseña?",
+    language: "English"
   } : null;
   const nextPath = safePostLoginDestination(fieldMode ? params.next ?? "/employee" : params.next);
 
   return (
-    <main className="page-shell" lang={fieldMode && locale === "es" ? "es-US" : "en-US"}>
-      {fieldMode ? <WorkerDocumentLanguage language={locale} /> : null}
+    <main className="page-shell" lang={locale === "es" ? "es-US" : "en-US"}>
+      <WorkerDocumentLanguage language={locale} />
       <section className="workspace auth-workspace">
         <div>
           <p className="eyebrow">{copy?.eyebrow ?? "Secure sign in"}</p>
@@ -45,8 +49,13 @@ export default async function LoginPage({
               : "Sign in with the email and password you used when accepting your invitation. Ferocity will open the correct business automatically.")}
           </p>
           <div className="button-row">
-            {fieldMode ? <Link className="mini-button" href="/login?mode=business&next=/app">{copy?.manage ?? "Manage the business instead"}</Link> : <Link className="mini-button" href="/login?mode=field&next=/employee">I need the field team view</Link>}
-            <Link className="mini-button" href="/install">{copy?.install ?? "Install the app"}</Link>
+            {fieldMode
+              ? <Link className="mini-button" href={withWorkerLocale("/login?mode=business&next=/app", locale)}>{copy?.manage ?? "Manage the business instead"}</Link>
+              : <Link className="mini-button" href={withWorkerLocale("/login?mode=field&next=/employee", locale)}>{copy?.field ?? "I need the field team view"}</Link>}
+            <Link className="mini-button" href={withWorkerLocale("/install", locale)}>{copy?.install ?? "Install the app"}</Link>
+            <Link className="mini-button" href={withWorkerLocale(`/login?mode=${fieldMode ? "field" : "business"}&next=${encodeURIComponent(nextPath)}`, locale === "es" ? "en" : "es")}>
+              {copy?.language ?? "Español"}
+            </Link>
           </div>
         </div>
 
@@ -66,7 +75,9 @@ export default async function LoginPage({
           {params.error === "invite" ? <p className="form-error">{copy?.invite ?? "This invitation is no longer available. Ask your company for a new link."}</p> : null}
           {params.reset === "complete" ? <p className="muted">{copy?.reset ?? "Password updated. Sign in with the new password."}</p> : null}
           <ActionStatusButton pendingLabel={copy?.signing ?? "Signing in..."}>{copy?.continue ?? "Continue"}</ActionStatusButton>
-          <Link className="mini-button" href={withWorkerLocale("/reset-password?mode=field", locale)}>
+          <Link className="mini-button" href={fieldMode
+            ? withWorkerLocale("/reset-password?mode=field", locale)
+            : withWorkerLocale("/reset-password?mode=business", locale)}>
             {copy?.forgot ?? "Forgot password?"}
           </Link>
         </form>

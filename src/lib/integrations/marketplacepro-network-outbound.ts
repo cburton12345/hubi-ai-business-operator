@@ -1,4 +1,3 @@
-import "server-only";
 import { z } from "zod";
 
 const uuid = z.string().uuid();
@@ -104,6 +103,15 @@ const marketplaceProPhoneIntakeResponseSchema = z.object({
   laborRequestId: uuid.nullable().optional(),
   facilityProspectId: uuid.nullable().optional(),
   bindingWorkOrderAccepted: z.literal(false),
+}).passthrough();
+
+const marketplaceProContractorRequestResponseSchema = z.object({
+  ok: z.literal(true),
+  id: uuid,
+  duplicate: z.boolean(),
+  opportunityStatus: boundedText(120),
+  accepted: z.literal(false).optional(),
+  ferocitySyncQueued: z.boolean().optional(),
 }).passthrough();
 
 const marketplaceProVendorOutreachSchema = z.object({
@@ -239,7 +247,8 @@ export async function requestMarketplaceProContractors(
     required_insurance: parsed.requiredInsurance,
     licensing_requirements: parsed.licensingRequirements,
   };
-  return sendMarketplacePro("/.netlify/functions/maintenance-opportunity-intake", payload, options);
+  const response = await sendMarketplacePro("/.netlify/functions/maintenance-opportunity-intake", payload, options);
+  return marketplaceProContractorRequestResponseSchema.parse(response);
 }
 
 export async function sendMarketplaceProOperationalCallback(

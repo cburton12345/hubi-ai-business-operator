@@ -60,6 +60,7 @@ import { refreshDueProviderCredentialsForTenant } from "@/lib/integrations/crede
 import { advanceOperatingGoalStepsForTenant } from "@/lib/operations/goal-step-runner";
 import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 import { scanFerocityCheckoutRecovery } from "@/lib/platform/checkout-recovery";
+import { runMaintenanceOpportunityOrchestration } from "@/lib/maintenance-ops/autonomous-orchestrator";
 
 export type BusinessAutomationCompletedResult = {
   ok: true;
@@ -75,6 +76,9 @@ export type BusinessAutomationCompletedResult = {
   }>;
   linkAuthority: Array<{ tenantId: string } & LinkAuthoritySyncResult>;
   readyMessages: Array<{ tenantId: string } & ReadyMessageProcessingResult>;
+  maintenanceOpportunities: Array<
+    { tenantId: string } & Awaited<ReturnType<typeof runMaintenanceOpportunityOrchestration>>
+  >;
   usageBilling: Array<{ tenantId: string } & MaturedUsageSyncResult>;
   earnSettlements: Array<{ tenantId: string } & EarnSettlementSyncResult>;
   adapterFactory: Array<
@@ -577,6 +581,7 @@ async function runBusinessAutomationLoopUnlocked(
     [];
   const linkAuthority: BusinessAutomationCompletedResult["linkAuthority"] = [];
   const readyMessages: BusinessAutomationCompletedResult["readyMessages"] = [];
+  const maintenanceOpportunities: BusinessAutomationCompletedResult["maintenanceOpportunities"] = [];
   const usageBilling: BusinessAutomationCompletedResult["usageBilling"] = [];
   const earnSettlements: BusinessAutomationCompletedResult["earnSettlements"] =
     [];
@@ -633,6 +638,10 @@ async function runBusinessAutomationLoopUnlocked(
         readyMessages.push({
           tenantId,
           ...(await processReadyMessagesForTenant(tenantId)),
+        });
+        maintenanceOpportunities.push({
+          tenantId,
+          ...(await runMaintenanceOpportunityOrchestration({ tenantId, limit: 20 })),
         });
         usageBilling.push({
           tenantId,
@@ -798,6 +807,7 @@ async function runBusinessAutomationLoopUnlocked(
         constructionHealth,
         linkAuthority,
         readyMessages,
+        maintenanceOpportunities,
         usageBilling,
         earnSettlements,
         adapterFactory,
@@ -842,6 +852,7 @@ async function runBusinessAutomationLoopUnlocked(
     constructionHealth,
     linkAuthority,
     readyMessages,
+    maintenanceOpportunities,
     usageBilling,
     earnSettlements,
     adapterFactory,

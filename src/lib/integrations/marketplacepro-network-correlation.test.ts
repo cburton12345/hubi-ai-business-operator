@@ -17,11 +17,13 @@ const connection: MarketplaceProDeliveryConnection = {
 };
 
 describe("MarketplacePro network event correlation", () => {
-  it("links a contractor event to an exact tenant-scoped Ferocity service job", async () => {
+  it("links a contractor event through the exact tenant-scoped opportunity to its service job", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
-    const jobId = "3b21bb5f-e058-4683-bce2-3be681ed48e8";
+    const opportunityId = "3b21bb5f-e058-4683-bce2-3be681ed48e8";
+    const jobId = "4b21bb5f-e058-4683-bce2-3be681ed48e8";
     const query = (async (text: string, values: unknown[] = []) => {
       calls.push({ text, values });
+      if (text.includes("from public.opportunities")) return { rows: [{ id: opportunityId }] };
       if (text.includes("from public.service_jobs")) return { rows: [{ id: jobId }] };
       if (text.includes("returning id")) return { rows: [{ id: "timeline-a" }] };
       return { rows: [] };
@@ -31,12 +33,12 @@ describe("MarketplacePro network event correlation", () => {
       marketplaceTable: "worker_matches",
       marketplaceObjectId: "match-a",
       eventType: "contractor_matches_found",
-      payload: { externalOpportunityId: jobId, eligibleCount: 2 },
+      payload: { externalOpportunityId: opportunityId, eligibleCount: 2 },
     }, { connection, query });
 
     const jobLookup = calls.find((call) => call.text.includes("from public.service_jobs"));
-    expect(jobLookup?.text).toContain("where tenant_id = $1 and id = $2");
-    expect(jobLookup?.values).toEqual(["tenant-a", jobId]);
+    expect(jobLookup?.text).toContain("where tenant_id = $1 and opportunity_id = $2");
+    expect(jobLookup?.values).toEqual(["tenant-a", opportunityId]);
     const timeline = calls.find((call) => call.text.includes("insert into public.operator_timeline_events"));
     expect(timeline?.values).toContain("job");
     expect(timeline?.values).toContain(jobId);

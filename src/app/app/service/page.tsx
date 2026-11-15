@@ -30,6 +30,7 @@ export default async function ServiceOpsPage({
         <Link className="button secondary-button" href="/app/service/routes">Route planning</Link>
         <Link className="button secondary-button" href="/app/service/tech">Technician workflow</Link>
         <Link className="button secondary-button" href="/app/service/inventory">Inventory</Link>
+        <Link className="button secondary-button" href="/app/opportunities">Opportunities</Link>
         <Link className="button secondary-button" href="/app/job-tracker">Jobs & Money</Link>
         <Link className="button" href="/app/cash-collection">Cash Collection</Link>
       </div>

@@ -33,7 +33,13 @@ describe("MarketplacePro outbound contractor network", () => {
         workers_needed: 1,
         required_insurance: {},
       });
-      return Response.json({ ok: true, id: "request-a" });
+      return Response.json({
+        ok: true,
+        id: "cc2932a0-6f83-4f6f-a333-41f9597e19fe",
+        duplicate: false,
+        opportunityStatus: "received",
+        accepted: false,
+      });
     }) as typeof fetch;
 
     const result = await requestMarketplaceProContractors({
@@ -51,7 +57,12 @@ describe("MarketplacePro outbound contractor network", () => {
       licensingRequirements: [],
     }, { config, fetcher });
 
-    expect(result).toMatchObject({ ok: true, id: "request-a" });
+    expect(result).toMatchObject({
+      ok: true,
+      id: "cc2932a0-6f83-4f6f-a333-41f9597e19fe",
+      duplicate: false,
+      accepted: false,
+    });
     expect(fetcher).toHaveBeenCalledOnce();
   });
 

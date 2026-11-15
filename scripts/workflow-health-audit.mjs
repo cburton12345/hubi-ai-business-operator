@@ -27,7 +27,10 @@ try {
         (select count(*)::int from public.ai_agent_workflows where status='active' and cadence_key <> 'manual' and next_run_at is null) as active_missing_next_run,
         (select count(*)::int from public.ai_agent_workflows where status='active' and last_run_status='failed') as active_last_run_failed,
         (select count(*)::int from public.ai_agent_runs where status in ('queued','running') and started_at < now() - interval '30 minutes') as stuck_agent_runs,
-        (select count(*)::int from public.integration_jobs where status in ('queued','running') and coalesce(started_at,scheduled_for,created_at) < now() - interval '30 minutes') as stuck_integration_jobs,
+        (select count(*)::int from public.integration_jobs
+          where status in ('queued','running')
+            and not (job_type='oauth_start_requested' and status='queued')
+            and coalesce(started_at,scheduled_for,created_at) < now() - interval '30 minutes') as stuck_integration_jobs,
         (select count(*)::int from public.integration_jobs where status='failed' and coalesce(completed_at,created_at) >= now() - interval '24 hours') as failed_integration_jobs_24h,
         (select count(*)::int from public.document_intelligence_documents where status='processing' and updated_at < now() - interval '30 minutes') as stuck_documents,
         (select count(*)::int from public.document_intelligence_documents where status='failed' and updated_at >= now() - interval '24 hours') as failed_documents_24h,
