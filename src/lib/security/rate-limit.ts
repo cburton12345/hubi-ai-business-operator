@@ -84,6 +84,19 @@ export async function consumeIdentifierRateLimit(input: {
   });
 }
 
+export async function consumePublicValueRateLimit(input: {
+  scope: string;
+  value: string;
+  limit: number;
+  windowSeconds: number;
+}) {
+  const normalizedValue = input.value.trim().toLowerCase().slice(0, 1_000);
+  return consumeRateLimit({
+    ...input,
+    fingerprint: securityFingerprint(`public-value|${normalizedValue}`)
+  });
+}
+
 export async function consumeGlobalRateLimit(input: {
   scope: string;
   limit: number;
@@ -91,7 +104,7 @@ export async function consumeGlobalRateLimit(input: {
 }) {
   return consumeRateLimit({
     ...input,
-    fingerprint: securityFingerprint(`global:${input.scope}`)
+    fingerprint: securityFingerprint(`global|${input.scope}`)
   });
 }
 

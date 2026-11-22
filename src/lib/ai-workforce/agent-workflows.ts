@@ -490,10 +490,6 @@ async function getOwnerEmails(tenantId: string) {
       where tu.tenant_id = $1
         and tu.status = 'active'
         and tu.role in ('owner', 'admin')
-      union
-      select b.email, 3 as sort_order
-      from public.brands b
-      where b.tenant_id = $1 and b.status = 'active' and b.email is not null and b.email <> ''
     ) emails
     where email like '%@%'
     order by sort_order
@@ -501,7 +497,19 @@ async function getOwnerEmails(tenantId: string) {
     `,
     [tenantId]
   );
-  return [...new Set((result?.rows ?? []).map((row) => row.email.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(
+    (result?.rows ?? [])
+      .map((row) => row.email.trim().toLowerCase())
+      .filter((email) => isRoutableOwnerEmail(email))
+  )];
+}
+
+export function isRoutableOwnerEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+$/.test(normalized)
+    && !normalized.endsWith(".local")
+    && !normalized.endsWith(".invalid")
+    && !normalized.endsWith(".test");
 }
 
 async function runLeadResponseAgent(tenantId: string, workflowId: string, runId: string) {
@@ -534,6 +542,7 @@ async function runLeadResponseAgent(tenantId: string, workflowId: string, runId:
   );
 
   const rows = leads?.rows ?? [];
+  const preparedLeads: typeof rows = [];
   for (const lead of rows) {
     const thread = await queryPostgres<{ id: string }>(
       `
@@ -578,6 +587,8 @@ async function runLeadResponseAgent(tenantId: string, workflowId: string, runId:
       ]
     );
     const messageId = message?.rows[0]?.id;
+    if (!messageId) continue;
+    preparedLeads.push(lead);
     await recordOutput({
       tenantId,
       workflowId,
@@ -594,22 +605,22 @@ async function runLeadResponseAgent(tenantId: string, workflowId: string, runId:
 
   const ownerEmails = await getOwnerEmails(tenantId);
   let ownerEmailSent = 0;
-  if (rows.length && ownerEmails.length) {
+  if (preparedLeads.length && ownerEmails.length) {
     const text = [
-      `Ferocity found ${rows.length} new lead(s) that need attention.`,
+      `Ferocity found ${preparedLeads.length} new lead(s) that need attention.`,
       "",
-      ...rows.slice(0, 5).map((lead) => `- ${lead.name ?? "Unnamed lead"} / ${lead.email ?? lead.phone ?? "no contact"} / ${lead.source ?? "unknown source"}`),
+      ...preparedLeads.slice(0, 5).map((lead) => `- ${lead.name ?? "Unnamed lead"} / ${lead.email ?? lead.phone ?? "no contact"} / ${lead.source ?? "unknown source"}`),
       "",
       "Customer-facing replies were prepared as drafts and still need review before sending."
     ].join("\n");
     for (const to of ownerEmails) {
       const result = await sendTransactionalEmail({
         to,
-        subject: `Ferocity: ${rows.length} lead(s) need a reply`,
+        subject: `Ferocity: ${preparedLeads.length} lead(s) need a reply`,
         text,
         tenantId,
         eventKey: "lead_response_agent_owner_notice",
-        metadata: { agentKey: "lead_response_agent", leadCount: rows.length }
+        metadata: { agentKey: "lead_response_agent", leadCount: preparedLeads.length }
       });
       await recordOutput({
         tenantId,
@@ -626,10 +637,10 @@ async function runLeadResponseAgent(tenantId: string, workflowId: string, runId:
   }
 
   return {
-    preparedCount: rows.length,
+    preparedCount: preparedLeads.length,
     ownerEmailSent,
-    summary: rows.length
-      ? `Prepared ${rows.length} lead response draft(s) and sent ${ownerEmailSent} owner notification email(s).`
+    summary: preparedLeads.length
+      ? `Prepared ${preparedLeads.length} lead response draft(s) and sent ${ownerEmailSent} owner notification email(s).`
       : "No new leads needed first-response drafts."
   };
 }

@@ -5,6 +5,7 @@ import { resolveRetellConfiguration, resolveRetellWebhookTenant } from "@/lib/pr
 import { verifyRetellSignature } from "@/lib/providers/voice-adapters";
 import { createSupportIssue } from "@/lib/support/create-support-issue";
 import { supportGuidanceFor } from "@/lib/support/self-service";
+import { submitMarketplaceProPhoneIntake } from "@/lib/integrations/marketplacepro-network-outbound";
 
 type Json = Record<string, unknown>;
 function record(value: unknown): Json { return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {}; }
@@ -24,12 +25,13 @@ export async function processRetellBusinessTool(rawBody: string, signature: stri
   if (!tenantId || !providerCallId || !name) return { ok: false, message: "Ferocity could not connect this action to a workspace." };
   const apiKey = (await resolveRetellConfiguration(tenantId, false))?.apiKey;
   if (!apiKey || !verifyRetellSignature(rawBody, apiKey, signature)) return { ok: false, message: "Ferocity could not authenticate this action." };
-  const brandResult = await queryPostgres<{ id: string }>(
-    `select id from public.brands where tenant_id=$1 and status='active'
+  const brandResult = await queryPostgres<{ id: string; slug: string }>(
+    `select id,slug from public.brands where tenant_id=$1 and status='active'
      and ($2::uuid is null or id=$2::uuid) order by case when id=$2::uuid then 0 else 1 end,created_at limit 1`,
     [tenantId, uuid(metadata.ferocityBrandId ?? metadata.brandId)]
   );
-  const brandId = brandResult?.rows[0]?.id ?? null;
+  const brand = brandResult?.rows[0] ?? null;
+  const brandId = brand?.id ?? null;
   const callerNumber = text(args.phone, 40) ?? phoneFromCall(call);
   if (name === "diagnose_ferocity_support") {
     const description = text(args.description, 3000);
@@ -124,12 +126,84 @@ export async function processRetellBusinessTool(rawBody: string, signature: stri
       message: `The Ferocity support case is recorded. Give the caller reference ${support.issueId}. Do not promise an exact response time.`
     };
   }
+  if (name === "record_marketplacepro_intake" && brand?.slug !== "diamond-homes") {
+    return { ok: false, status: "wrong_business_line", message: "This intake tool is only available on the verified Diamond Homes operations line." };
+  }
   const contact = await reconcileCallContact({
     tenantId, brandId, customerId: uuid(metadata.customerId), leadId: uuid(metadata.leadId), callerNumber,
     callerName: args.caller_name, callerEmail: args.email, summary: args.reason ?? "Updated during a phone conversation.",
     outcome: "new_lead", qualification: text(args.qualification, 20) === "hot" ? "hot" : "unknown",
     consentToContact: args.consent_to_contact === true, provider: "retell_voice", providerCallId, finalEvent: true
   });
+  if (name === "record_marketplacepro_intake") {
+    const intakeType = text(args.intake_type, 40);
+    const summary = text(args.summary, 5000);
+    if (!intakeType || !summary) {
+      return { ok: false, status: "not_recorded", message: "Confirm the intake type and a concise request summary before recording it." };
+    }
+    const rawFollowUpAt = text(args.follow_up_at, 100);
+    const parsedFollowUpAt = rawFollowUpAt ? new Date(rawFollowUpAt) : null;
+    const followUpAt = parsedFollowUpAt && Number.isFinite(parsedFollowUpAt.getTime())
+      ? parsedFollowUpAt.toISOString()
+      : undefined;
+    const trades = Array.isArray(args.trades)
+      ? args.trades.map((trade) => text(trade, 120)).filter((trade): trade is string => Boolean(trade)).slice(0, 50)
+      : [];
+    try {
+      const recorded = await submitMarketplaceProPhoneIntake({
+        idempotencyKey: `retell:${providerCallId}:${intakeType}`,
+        externalCallId: providerCallId,
+        intakeType: intakeType as "contractor" | "opportunity" | "vendor" | "follow_up",
+        callerName: text(args.caller_name, 160) ?? undefined,
+        businessName: text(args.business_name, 200) ?? undefined,
+        phone: callerNumber ?? undefined,
+        email: text(args.email, 320)?.toLowerCase() ?? undefined,
+        city: text(args.city, 120) ?? undefined,
+        state: text(args.state, 2)?.toUpperCase() ?? undefined,
+        zip: text(args.zip, 10) ?? undefined,
+        trades,
+        summary,
+        urgency: (text(args.urgency, 20) ?? "normal") as "normal" | "high" | "urgent",
+        consentToContact: args.consent_to_contact === true,
+        followUpAt,
+      });
+      const preferredDate = followUpAt ?? new Date().toISOString();
+      const localFollowUp = await queryPostgres<{ id: string }>(
+        `insert into public.operator_schedule_events (tenant_id,brand_id,event_type,title,status,starts_at,reminder_policy_json,metadata_json)
+         select $1,$2,'callback',$3,'scheduled',$4::timestamptz,'{"ownerQueue":true}'::jsonb,$5::jsonb
+         where not exists (select 1 from public.operator_schedule_events where tenant_id=$1
+           and metadata_json->>'providerCallId'=$6 and metadata_json->>'source'='marketplacepro_phone_intake')
+         returning id`,
+        [tenantId, brandId, `Review ${intakeType.replaceAll("_", " ")} phone intake`, preferredDate,
+          JSON.stringify({ source: "marketplacepro_phone_intake", providerCallId, marketplacePhoneIntakeId: recorded.intakeId,
+            intakeType, status: recorded.status, customerId: contact.customerId, leadId: contact.leadId }), providerCallId]
+      );
+      const localFollowUpRecorded = Boolean(localFollowUp?.rows[0]?.id) || Boolean((await queryPostgres<{ id: string }>(
+        `select id from public.operator_schedule_events where tenant_id=$1 and metadata_json->>'providerCallId'=$2
+         and metadata_json->>'source'='marketplacepro_phone_intake' limit 1`,
+        [tenantId, providerCallId]
+      ))?.rows[0]?.id);
+      if (!localFollowUpRecorded) {
+        console.error(`MarketplacePro phone intake ${recorded.intakeId} was recorded without a Ferocity owner-queue follow-up.`);
+      }
+      return {
+        ok: true,
+        status: localFollowUpRecorded ? recorded.status : "routed_follow_up_attention",
+        intake_id: recorded.intakeId,
+        duplicate: recorded.duplicate,
+        message: !localFollowUpRecorded
+          ? "The MarketplacePro intake is recorded, but Ferocity could not confirm its owner follow-up. Tell the caller the request was recorded without promising timing."
+          : recorded.duplicate
+          ? "This call intake was already recorded. Do not create another copy."
+          : recorded.status === "routed"
+            ? "The intake is recorded and routed for review. No job, vendor, or contractor approval was granted."
+            : "The intake is recorded for human review. No job, vendor, or contractor approval was granted."
+      };
+    } catch (error) {
+      console.error(`MarketplacePro phone intake failed for call ${providerCallId}: ${error instanceof Error ? error.message : "unknown error"}`);
+      return { ok: false, status: "not_recorded", message: "MarketplacePro did not confirm the intake. Explain that it was not recorded there and create a tracked Ferocity follow-up instead." };
+    }
+  }
   if (name === "update_contact") {
     return { ok: true, status: "contact_saved", customer_id: contact.customerId, lead_id: contact.leadId, message: "The contact details are saved in Ferocity." };
   }

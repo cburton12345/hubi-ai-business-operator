@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { runBusinessAutomationLoop } from "../../src/lib/automation/run-business-automation";
+import { resurfaceDueNotifications } from "../../src/lib/push/resurface-due-notifications";
 
 function boundedInt(value: string | undefined, fallback: number, max: number) {
   const parsed = Number(value ?? fallback);
@@ -14,6 +15,7 @@ export default async function runBusinessAutomationBackground(request: Request) 
     return new Response("Unauthorized", { status: 401 });
   }
 
+  const notificationResurface = await resurfaceDueNotifications(20);
   const result = await runBusinessAutomationLoop({
     tenantLimit: boundedInt(Netlify.env.get("AUTOMATION_TENANT_BATCH_SIZE"), 4, 4),
     agentLimit: boundedInt(Netlify.env.get("AUTOMATION_AGENT_BATCH_SIZE"), 25, 25),
@@ -27,7 +29,8 @@ export default async function runBusinessAutomationBackground(request: Request) 
     skipReason: result.skipped ? result.skipReason : null,
     tenantsChecked: "tenantsChecked" in result ? result.tenantsChecked : 0,
     tenantFailures: "tenantFailures" in result ? result.tenantFailures.length : 0,
-    elapsedMs: result.elapsedMs
+    elapsedMs: result.elapsedMs,
+    notificationResurface,
   });
 
   return new Response(null, { status: 204 });

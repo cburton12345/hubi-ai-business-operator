@@ -656,6 +656,11 @@ export class RetellVoiceAdapter implements VoiceAgentProvider {
         high_empathy: true,
         ai_disclosure: true,
         scope_boundaries: true
+      },
+      metadata: {
+        ferocityTenantId: context.tenantId,
+        ferocityBrandId: context.brandId ?? null,
+        purpose: text(record(config.metadata).purpose) ?? "ferocity_managed_voice"
       }
     };
 

@@ -7,6 +7,22 @@ describe("retellBusinessTools", () => {
     expect(tools.some((tool) => tool.type === "end_call" && tool.name === "end_call")).toBe(true);
   });
 
+  it("provides an approval-safe MarketplacePro intake tool", () => {
+    const tool = retellBusinessTools("https://ferocity.live")
+      .find((candidate) => candidate.name === "record_marketplacepro_intake");
+    expect(tool).toMatchObject({
+      type: "custom",
+      name: "record_marketplacepro_intake",
+      parameters: {
+        required: ["intake_type", "summary"],
+        properties: {
+          intake_type: { enum: ["contractor", "opportunity", "vendor", "follow_up"] }
+        }
+      }
+    });
+    expect(String(tool?.description)).toContain("Never use this tool to accept a job");
+  });
+
   it("keeps transfer optional and only accepts a valid E.164 destination", () => {
     expect(retellBusinessTools("https://ferocity.live", "not-a-number").some((tool) => tool.type === "transfer_call")).toBe(false);
     expect(retellBusinessTools("https://ferocity.live", "+17155550123").some((tool) => tool.type === "transfer_call")).toBe(true);

@@ -12,7 +12,9 @@ describe("workspace information density", () => {
     const overview = source("src/lib/dashboard/get-today-overview.ts");
     expect(overview).toContain("doFirst: chatOverview.attentionItems.slice(0, 3)");
     expect(overview).toContain("moneyMoves: moneyMoves.slice(0, 2)");
-    expect(page).toContain("const ownerSummary = attention.criticalIssues");
+    expect(page).toMatch(
+      /const ownerSummary\s*=\s*attention\.criticalIssues\s*>\s*0/,
+    );
     expect(page).not.toContain("{attention.briefing}");
     expect(page).toContain('<details className="panel progressive-disclosure">');
   });

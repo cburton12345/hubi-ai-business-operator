@@ -148,8 +148,19 @@ export async function resolveRetellWebhookTenant(agentId: string | null, phoneNu
       select tenant_id, 1 as priority
       from public.telephony_numbers
       where provider_key = 'retell_voice'
+        and $1::text is not null
+        and $1 in (
+          metadata_json->>'assistantId',
+          metadata_json->>'outboundAssistantId'
+        )
+        and status <> 'released'
+      union all
+      select tenant_id, 2 as priority
+      from public.telephony_numbers
+      where provider_key = 'retell_voice'
         and $2::text is not null
         and phone_number = $2
+        and status <> 'released'
     ) mapped
     order by priority
     limit 1
@@ -157,4 +168,57 @@ export async function resolveRetellWebhookTenant(agentId: string | null, phoneNu
     [agentId, phoneNumber]
   );
   return result?.rows[0]?.tenant_id ?? null;
+}
+
+export type RetellInboundRoute = {
+  tenantId: string;
+  brandId: string | null;
+  assistantId: string;
+  inboundEnabled: boolean;
+};
+
+/**
+ * Resolve the exact called line before falling back to the legacy tenant-wide
+ * assistant. A tenant may own multiple brands and Retell numbers; routing all
+ * of them through provider_accounts.metadata_json would mix brand context.
+ */
+export async function resolveRetellInboundRoute(phoneNumber: string): Promise<RetellInboundRoute | null> {
+  const result = await queryPostgres<{
+    tenant_id: string;
+    brand_id: string | null;
+    assistant_id: string | null;
+    inbound_enabled: boolean;
+  }>(
+    `
+    select
+      n.tenant_id,
+      n.brand_id,
+      coalesce(
+        nullif(n.metadata_json->>'assistantId', ''),
+        nullif(a.metadata_json->>'assistantId', '')
+      ) as assistant_id,
+      n.inbound_enabled
+    from public.telephony_numbers n
+    join public.provider_accounts a
+      on a.tenant_id = n.tenant_id
+     and a.provider_key = 'retell_voice'
+     and a.status in ('connected', 'paused', 'error')
+     and a.credentials_status = 'configured'
+    where n.provider_key = 'retell_voice'
+      and n.phone_number = $1
+      and n.status in ('provisioning', 'active', 'paused', 'needs_attention')
+    order by case n.status when 'active' then 0 when 'provisioning' then 1 else 2 end,
+             n.updated_at desc
+    limit 1
+    `,
+    [phoneNumber]
+  );
+  const row = result?.rows[0];
+  if (!row?.assistant_id) return null;
+  return {
+    tenantId: row.tenant_id,
+    brandId: row.brand_id,
+    assistantId: row.assistant_id,
+    inboundEnabled: row.inbound_enabled === true
+  };
 }

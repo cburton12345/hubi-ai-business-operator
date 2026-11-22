@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PublicNav } from "@/components/public/PublicNav";
 import { PublicFooter } from "@/components/public/PublicFooter";
+import { PublicBotChallenge } from "@/components/security/PublicBotChallenge";
 import { publicEarnPlan } from "@/lib/billing/public-plans";
 
 export const metadata: Metadata = {
@@ -128,7 +129,11 @@ export default async function StartPage({
               <p className="form-error">
                 {params.error === "save"
                   ? "We could not save this request. Please try again."
-                  : "Please check the required fields and try again."}
+                  : params.error === "verification"
+                    ? "Browser verification expired or failed. Please try the verification again."
+                    : params.error === "rate_limit"
+                      ? "Too many requests were received. Wait before trying again."
+                      : "Please check the required fields and try again."}
               </p>
             ) : null}
             {billingMessage ? <p className="success-panel">{billingMessage}</p> : null}
@@ -255,6 +260,7 @@ export default async function StartPage({
               <input name="consentToContact" type="checkbox" required />
               <span>I agree Ferocity can contact me about setup and access. This form does not turn on customer messaging.</span>
             </label>
+            <PublicBotChallenge action="access_request" />
             <button className="button" type="submit">
               Continue with guided setup <ArrowRight size={16} />
             </button>

@@ -45,15 +45,26 @@ function dateTimeLocalValue(value: string | Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
+function isoFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60_000).toISOString();
+}
+
 export default async function NotificationsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ priority?: string }>;
+  searchParams?: Promise<{ priority?: string; view?: string }>;
 }) {
   const params = (await searchParams) ?? {};
   const dashboard = await getPushNotificationDashboard();
   const priority = params.priority === "urgent" || params.priority === "unread" ? params.priority : "all";
-  const visibleNotifications = dashboard.inAppNotifications.filter((notification) => {
+  const view = params.view === "snoozed" || params.view === "cleared" ? params.view : "active";
+  const notificationPool = view === "active"
+    ? dashboard.inAppNotifications
+    : dashboard.hiddenNotifications.filter((notification) => view === "snoozed"
+      ? notification.readState === "snoozed"
+      : notification.readState === "cleared" || notification.readState === "dismissed");
+  const visibleNotifications = notificationPool.filter((notification) => {
+    if (view !== "active") return true;
     if (priority === "unread") return notification.readState === "unread";
     if (priority === "urgent") return ["high", "critical"].includes(notification.severity)
       || ["needs_owner", "critical", "pending", "active"].includes(notification.status);
@@ -121,32 +132,39 @@ export default async function NotificationsPage({
       <section className="panel section-actions">
         <div className="list-row flush-row">
           <div>
-            <p className="eyebrow">In-app notification center</p>
-            <h2>Everything important stays here—even without SMS.</h2>
+            <p className="eyebrow">Your attention</p>
+            <h2>Important now. Quiet when it can wait.</h2>
             <p className="muted">
-              AI work, approvals, failures, urgent customer issues, verified growth opportunities, provider requests, and spending warnings use their existing Ferocity records. This feed brings them together without duplicating them.
+              Customer messages and urgent problems stay immediate. Routine work can be snoozed or cleared without deleting its source record.
             </p>
           </div>
-          <div className="button-row">
-            <Link className={`mini-button ${priority === "all" ? "active" : ""}`} href="/app/notifications">All</Link>
-            <Link className={`mini-button ${priority === "unread" ? "active" : ""}`} href="/app/notifications?priority=unread">Unread</Link>
-            <Link className={`mini-button ${priority === "urgent" ? "active" : ""}`} href="/app/notifications?priority=urgent">Urgent</Link>
-            <Link className="button secondary-button" href="/app/owner-command-center">Full command center</Link>
-          </div>
+          <Link className="button secondary-button" href="/app/owner-command-center">Command center</Link>
         </div>
-        <ul className="list">
+        <nav aria-label="Notification views" className="notification-view-tabs">
+          <Link className={`mini-button ${view === "active" && priority === "all" ? "active" : ""}`} href="/app/notifications">Active <span>{dashboard.inAppNotifications.length}</span></Link>
+          <Link className={`mini-button ${view === "active" && priority === "urgent" ? "active" : ""}`} href="/app/notifications?priority=urgent">Urgent</Link>
+          <Link className={`mini-button ${view === "active" && priority === "unread" ? "active" : ""}`} href="/app/notifications?priority=unread">Unread</Link>
+          <Link className={`mini-button ${view === "snoozed" ? "active" : ""}`} href="/app/notifications?view=snoozed">Snoozed <span>{dashboard.hiddenNotifications.filter((item) => item.readState === "snoozed").length}</span></Link>
+          <Link className={`mini-button ${view === "cleared" ? "active" : ""}`} href="/app/notifications?view=cleared">Cleared <span>{dashboard.hiddenNotifications.filter((item) => item.readState !== "snoozed").length}</span></Link>
+        </nav>
+        <ul className="list notification-list">
           {visibleNotifications.map((notification) => (
-            <li className="list-row" key={`${notification.source}:${notification.id}`}>
+            <li className={`list-row notification-card ${["critical", "high"].includes(notification.severity) ? "notification-card-urgent" : ""}`} key={`${notification.source}:${notification.id}`}>
               <div>
                 <div className="inline-actions">
                   <span className="pill">{notificationSource(notification.source)}</span>
                   <span className={`pill ${tone(notification.severity)}`}>{notification.severity}</span>
+                  {["critical", "high"].includes(notification.severity) ? <span className="pill high">Pinned</span> : null}
                 </div>
                 <h3>{notification.title}</h3>
                 <p>{notification.body}</p>
-                <p className="muted">{notification.status.replaceAll("_", " ")} / {dateLabel(notification.createdAt)}</p>
+                <p className="muted">
+                  {notification.readState === "snoozed" && notification.snoozedUntil
+                    ? `Returns ${dateLabel(notification.snoozedUntil)}`
+                    : `${notification.status.replaceAll("_", " ")} / ${dateLabel(notification.createdAt)}`}
+                </p>
               </div>
-              <div className="inline-actions">
+              <div className="notification-actions">
                 <span className={`pill ${notification.readState === "unread" ? "high" : ""}`}>{notification.readState}</span>
                 {notification.source === "owner_event"
                 && notification.status === "needs_owner"
@@ -165,16 +183,15 @@ export default async function NotificationsPage({
                     </form>
                   </>
                 ) : null}
-                <Link className="mini-button" href={notification.actionUrl}>Open</Link>
-                {notification.readState === "unread" ? (
+                <Link className="button" href={notification.actionUrl}>Open</Link>
+                {view !== "active" ? (
                   <form action={updateInAppNotificationStateAction}>
                     <input type="hidden" name="source" value={notification.source} />
                     <input type="hidden" name="sourceId" value={notification.id} />
-                    <input type="hidden" name="status" value="read" />
-                    <button className="mini-button" type="submit">Mark read</button>
+                    <input type="hidden" name="status" value="unread" />
+                    <button className="mini-button secondary-button" type="submit">Restore</button>
                   </form>
-                ) : null}
-                {notification.readState !== "acknowledged" && (
+                ) : notification.readState !== "acknowledged" && (
                   ["high", "critical"].includes(notification.severity)
                   || ["needs_owner", "critical", "pending", "active"].includes(notification.status)
                 ) ? (
@@ -185,17 +202,53 @@ export default async function NotificationsPage({
                     <button className="mini-button" type="submit">Acknowledge</button>
                   </form>
                 ) : null}
-                <form action={updateInAppNotificationStateAction}>
-                  <input type="hidden" name="source" value={notification.source} />
-                  <input type="hidden" name="sourceId" value={notification.id} />
-                  <input type="hidden" name="status" value="dismissed" />
-                  <button className="mini-button" type="submit">Dismiss</button>
-                </form>
+                {view === "active" ? (
+                  <details className="notification-more">
+                    <summary className="mini-button secondary-button">More</summary>
+                    <div className="notification-more-menu">
+                      {notification.readState === "unread" ? (
+                        <form action={updateInAppNotificationStateAction}>
+                          <input type="hidden" name="source" value={notification.source} />
+                          <input type="hidden" name="sourceId" value={notification.id} />
+                          <input type="hidden" name="status" value="read" />
+                          <button className="mini-button" type="submit">Mark read</button>
+                        </form>
+                      ) : null}
+                      <form action={updateInAppNotificationStateAction}>
+                        <input type="hidden" name="source" value={notification.source} />
+                        <input type="hidden" name="sourceId" value={notification.id} />
+                        <input type="hidden" name="status" value="snoozed" />
+                        <input type="hidden" name="snoozedUntil" value={isoFromNow(1)} />
+                        <button className="mini-button" type="submit">Remind me tomorrow</button>
+                      </form>
+                      <form action={updateInAppNotificationStateAction}>
+                        <input type="hidden" name="source" value={notification.source} />
+                        <input type="hidden" name="sourceId" value={notification.id} />
+                        <input type="hidden" name="status" value="snoozed" />
+                        <input type="hidden" name="snoozedUntil" value={isoFromNow(7)} />
+                        <button className="mini-button" type="submit">Remind me next week</button>
+                      </form>
+                      <Link className="mini-button" href={`/app/ferocity?command=${encodeURIComponent(`Snooze notification ${notification.source}:${notification.id} until tomorrow, then bring it back up.`)}`}>
+                        Ask Ferocity
+                      </Link>
+                      <form action={updateInAppNotificationStateAction}>
+                        <input type="hidden" name="source" value={notification.source} />
+                        <input type="hidden" name="sourceId" value={notification.id} />
+                        <input type="hidden" name="status" value="cleared" />
+                        <button className="mini-button" type="submit">Clear from feed</button>
+                      </form>
+                    </div>
+                  </details>
+                ) : null}
               </div>
             </li>
           ))}
           {visibleNotifications.length === 0 ? (
-            <li className="list-row"><span className="muted">Nothing needs attention. Ferocity will place new work and exceptions here automatically.</span></li>
+            <li className="notification-zero" role="status">
+              <CheckCircle2 aria-hidden="true" size={30} />
+              <strong>{view === "active" ? "You’re caught up." : `No ${view} notifications.`}</strong>
+              <span>{view === "active" ? "Ferocity will bring back snoozed work and surface new exceptions automatically." : "Nothing is hidden in this view."}</span>
+            </li>
           ) : null}
         </ul>
       </section>

@@ -184,7 +184,9 @@ export async function getOperationalHealthSnapshot(tenantId: string): Promise<Op
       (select count(*) from public.ai_agent_runs where tenant_id=$1 and status='failed' and started_at>=now()-interval '24 hours')::text as "failedAgentRuns24h",
       (select count(*) from public.outbound_action_queue where tenant_id=$1 and status in ('approved','queued') and coalesce(scheduled_for,created_at)<=now())::text as "dueOutboundActions",
       (select count(*) from public.outbound_action_queue where tenant_id=$1 and status in ('failed','blocked') and updated_at>=now()-interval '24 hours')::text as "failedOutboundActions24h",
-      (select count(*) from public.integration_jobs where tenant_id=$1 and status in ('queued','running') and coalesce(started_at,scheduled_for,created_at)<now()-interval '30 minutes')::text as "stuckIntegrationJobs",
+      (select count(*) from public.integration_jobs where tenant_id=$1 and status in ('queued','running')
+        and not (job_type='oauth_start_requested' and status='queued')
+        and coalesce(started_at,scheduled_for,created_at)<now()-interval '30 minutes')::text as "stuckIntegrationJobs",
       (select count(*) from public.integration_jobs where tenant_id=$1 and status='failed' and coalesce(completed_at,created_at)>=now()-interval '24 hours')::text as "failedIntegrationJobs24h",
       (select count(*) from public.document_intelligence_documents where tenant_id=$1 and status='processing' and updated_at<now()-interval '30 minutes')::text as "stuckDocuments",
       (select count(*) from public.document_intelligence_documents where tenant_id=$1 and status='failed' and updated_at>=now()-interval '24 hours')::text as "failedDocuments24h",

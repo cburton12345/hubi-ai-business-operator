@@ -207,13 +207,38 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
   if (!connection.brandId) throw new Error("MarketplacePro connection is missing a brand mapping.");
 
   const eventType = eventTypeForTable(input.marketplaceTable, input.eventType);
+  const externalOpportunityId = typeof input.payload.externalOpportunityId === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.payload.externalOpportunityId)
+    ? input.payload.externalOpportunityId
+    : null;
+  const opportunityResult = externalOpportunityId
+    ? await query<{ id: string }>(
+      `select id from public.opportunities where tenant_id=$1 and id=$2 limit 1`,
+      [connection.tenantId, externalOpportunityId],
+    )
+    : null;
+  const opportunityId = opportunityResult?.rows[0]?.id ?? null;
+  const jobResult = opportunityId
+    ? await query<{ id: string }>(
+      `
+      select id
+      from public.service_jobs
+      where tenant_id = $1 and opportunity_id = $2
+      order by created_at desc
+      limit 1
+      `,
+      [connection.tenantId, opportunityId],
+    )
+    : null;
+  const serviceJobId = jobResult?.rows[0]?.id ?? null;
+  const ferocityObjectType = serviceJobId ? "service_job" : opportunityId ? "opportunity" : "timeline_event";
   const timelineResult = await query<{ id: string }>(
     `
     insert into public.operator_timeline_events (
       tenant_id, brand_id, event_family, event_type, title, body,
       primary_entity_type, primary_entity_id, source_table, metadata_json, occurred_at
     )
-    values ($1, $2, $3, $4, $5, $6, null, null, 'marketplacepro_object_links', $7::jsonb, coalesce($8::timestamptz, now()))
+    values ($1, $2, $3, $4, $5, $6, $7, $8, 'marketplacepro_object_links', $9::jsonb, coalesce($10::timestamptz, now()))
     returning id
     `,
     [
@@ -223,6 +248,8 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
       eventType,
       titleForEvent(input),
       input.body ?? input.actorLabel ?? null,
+      serviceJobId ? "job" : opportunityId ? "opportunity" : null,
+      serviceJobId ?? opportunityId,
       JSON.stringify({
         marketplaceTable: input.marketplaceTable,
         marketplaceObjectId: input.marketplaceObjectId,
@@ -242,7 +269,7 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
       tenant_id, brand_id, connection_id, marketplace_table, marketplace_object_id,
       ferocity_object_type, ferocity_object_id, sync_status, metadata_json
     )
-    values ($1, $2, $3, $4, $5, 'timeline_event', $6, 'logged', $7::jsonb)
+    values ($1, $2, $3, $4, $5, $6, $7, 'logged', $8::jsonb)
     on conflict (tenant_id, marketplace_table, marketplace_object_id) do update
     set ferocity_object_type = excluded.ferocity_object_type,
         ferocity_object_id = excluded.ferocity_object_id,
@@ -256,10 +283,42 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
       connection.id,
       input.marketplaceTable,
       input.marketplaceObjectId,
-      timelineId,
+      ferocityObjectType,
+      serviceJobId ?? opportunityId ?? timelineId,
       JSON.stringify({ eventType, status: input.status, category: input.category, service: input.service })
     ]
   );
+
+  if (opportunityId) {
+    const laborRequestCandidate = input.marketplaceTable === "labor_requests"
+      ? input.marketplaceObjectId
+      : typeof input.payload.laborRequestId === "string" ? input.payload.laborRequestId : null;
+    const laborRequestId = laborRequestCandidate
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(laborRequestCandidate)
+      ? laborRequestCandidate
+      : null;
+    const contractorConfirmed = eventType === "contractor_confirmed"
+      || input.payload.confirmed === true
+      || input.status === "confirmed";
+    const workflowStatus = eventType === "coverage_gap_detected"
+      ? "recruiting"
+      : contractorConfirmed
+        ? "contractor_confirmed"
+        : eventType === "contractor_matches_found"
+          ? "contractor_identified"
+          : "sourcing";
+    await query(
+      `update public.maintenance_opportunity_profiles
+          set marketplacepro_labor_request_id=coalesce(marketplacepro_labor_request_id,$3::uuid),
+              marketplacepro_status=coalesce($4,marketplacepro_status),
+              marketplacepro_last_event_at=coalesce($5::timestamptz,now()),
+              contractor_confirmed=contractor_confirmed or $6,
+              workflow_status=case when workflow_status in ('converted','closed','declined') then workflow_status else $7 end,
+              updated_at=now()
+        where tenant_id=$1 and opportunity_id=$2`,
+      [connection.tenantId, opportunityId, laborRequestId, input.status ?? eventType, occurredAt ?? null, contractorConfirmed, workflowStatus],
+    );
+  }
 
   if (input.marketplaceTable === "offers" || input.marketplaceTable === "worker_contact_requests" || input.marketplaceTable === "support_requests") {
     await query(
@@ -291,7 +350,9 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
   }, query);
 
   if (deliveryId && occurredAt) {
-    const actionable = ["offers", "worker_contact_requests", "support_requests", "payments", "labor_requests", "worker_matches", "labor_assignments", "coverage_requirements"].includes(input.marketplaceTable);
+    const ownerActionable = input.marketplaceTable === "support_requests"
+      || (input.marketplaceTable === "payments" && input.status === "failed")
+      || (eventType === "assignment_status_changed" && input.status === "disputed");
     await query(
       `
       insert into public.owner_command_events (
@@ -309,9 +370,9 @@ export async function recordMarketplaceProEvent(input: MarketplaceProEventInput,
         eventType,
         titleForEvent(input),
         input.body ?? input.actorLabel ?? `MarketplacePro reported ${input.marketplaceTable} activity.`,
-        input.marketplaceTable === "support_requests" ? "high" : actionable ? "medium" : "info",
-        actionable,
-        actionable ? "Review this MarketplacePro activity and choose the next authorized business action." : null,
+        ownerActionable ? "high" : "info",
+        ownerActionable,
+        ownerActionable ? "Review this exception after the assigned manager has attempted routine resolution." : null,
         JSON.stringify({
           connectionId: connection.id,
           sourceWorkspaceId: connection.sourceAccountId,

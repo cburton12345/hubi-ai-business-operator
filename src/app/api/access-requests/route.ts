@@ -14,8 +14,10 @@ import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboa
 import {
   consumeGlobalRateLimit,
   consumeIdentifierRateLimit,
-  consumePublicRateLimit
+  consumePublicRateLimit,
+  consumePublicValueRateLimit
 } from "@/lib/security/rate-limit";
+import { verifyPublicBotChallenge } from "@/lib/security/public-bot-challenge";
 
 const accessRequestSchema = z.object({
   name: z.string().trim().max(160).optional(),
@@ -841,7 +843,33 @@ export async function POST(request: NextRequest) {
     return redirectTo(request, "/start?error=rate_limit");
   }
 
+  const clientHourlyLimit = await consumePublicRateLimit({
+    request,
+    scope: "access-request-client-hour",
+    limit: 2,
+    windowSeconds: 60 * 60
+  });
+  if (!clientHourlyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
+  const clientDailyLimit = await consumePublicRateLimit({
+    request,
+    scope: "access-request-client-day",
+    limit: 4,
+    windowSeconds: 24 * 60 * 60
+  });
+  if (!clientDailyLimit.allowed) return redirectTo(request, "/start?error=rate_limit");
+
   const formData = await request.formData();
+  if (String(formData.get("website") ?? "").trim()) {
+    return redirectTo(request, "/start?error=1");
+  }
+  const botChallengeVerified = await verifyPublicBotChallenge(
+    String(formData.get("altcha") ?? ""),
+    "access_request"
+  );
+  if (!botChallengeVerified) {
+    return redirectTo(request, "/start?error=verification");
+  }
   const parsed = accessRequestSchema.safeParse({
     name: String(formData.get("name") ?? ""),
     email: String(formData.get("email") ?? ""),
@@ -882,15 +910,15 @@ export async function POST(request: NextRequest) {
   }
 
   const [emailBudget, payloadBudget] = await Promise.all([
-    consumeIdentifierRateLimit({
+    consumePublicValueRateLimit({
       scope: "access_request_email_day",
-      identifier: parsed.data.email,
+      value: parsed.data.email,
       limit: 2,
       windowSeconds: 24 * 60 * 60
     }),
-    consumeIdentifierRateLimit({
+    consumePublicValueRateLimit({
       scope: "access_request_payload_day",
-      identifier: accessRequestPayloadFingerprint(parsed.data),
+      value: accessRequestPayloadFingerprint(parsed.data),
       limit: 4,
       windowSeconds: 24 * 60 * 60
     })

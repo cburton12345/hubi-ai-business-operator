@@ -5,7 +5,7 @@ export function QueuePageShell({
   title,
   description,
   dashboardLabel = "Dashboard",
-  children
+  children,
 }: {
   eyebrow: string;
   title: string;
@@ -14,21 +14,19 @@ export function QueuePageShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="page-shell">
-      <section className="workspace page-section">
-        <div className="topbar">
-          <div>
-            <p className="eyebrow">{eyebrow}</p>
-            <h1>{title}</h1>
-            <p className="muted">{description}</p>
-          </div>
-          <Link className="button secondary-button" href="/app">
-            {dashboardLabel}
-          </Link>
+    <section className="queue-page page-section">
+      <header className="queue-page-header">
+        <div>
+          <p className="eyebrow">{eyebrow}</p>
+          <h1>{title}</h1>
+          <p className="muted">{description}</p>
         </div>
+        <Link className="mini-button" href="/app">
+          {dashboardLabel}
+        </Link>
+      </header>
 
-        <section className="panel span-12">{children}</section>
-      </section>
-    </main>
+      <section className="panel queue-page-content">{children}</section>
+    </section>
   );
 }
