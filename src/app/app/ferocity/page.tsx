@@ -10,7 +10,7 @@ import { getFerocityChatOverview } from "@/lib/ferocity/get-chat-overview";
 import { pairFerocityChatMessages } from "@/lib/ferocity/pair-chat-messages";
 import { getCustomerOnboardingState } from "@/lib/onboarding/customer-onboarding";
 import { getOwnerChatCapabilities } from "@/lib/ferocity/owner-chat-access";
-import { getOwnerTwinSuggestions } from "@/lib/ferocity/owner-operating-twin";
+import { buildOwnerDailyBrief, getOwnerTwinSuggestions } from "@/lib/ferocity/owner-operating-twin";
 
 type SourceEvent = {
   externalEventId: string;
@@ -235,7 +235,19 @@ export default async function FerocityChatPage({
     fallback: {
       command: leaderRecommendation.command,
       title: leaderRecommendation.title,
+      evidenceHref: leaderRecommendation.href,
     },
+  });
+  const visibleApprovals = (approvalResult?.rows ?? [])
+    .filter((approval) => access.canReviewApproval(approval.risk_level))
+    .slice(0, 4);
+  const ownerDailyBrief = buildOwnerDailyBrief({
+    attentionCount: customerSafeAttention.length,
+    opportunityCount: safeOpportunityBrief.mattersNowCount,
+    approvalCount: visibleApprovals.length,
+    activeGoalCount: Number(goalsResult?.rows[0]?.active_goal_count ?? 0),
+    setupRemainingCount: setupProgress.filter((step) => !step.complete).length,
+    topPriority: leaderRecommendation,
   });
 
   return (
@@ -250,7 +262,7 @@ export default async function FerocityChatPage({
       threads={threads}
       activeThreadId={activeThreadId}
       initialTurns={initialTurns}
-      approvals={(approvalResult?.rows ?? []).filter((approval) => access.canReviewApproval(approval.risk_level)).slice(0, 4).map((approval) => ({
+      approvals={visibleApprovals.map((approval) => ({
         id: approval.id,
         targetType: approval.target_type,
         riskLevel: approval.risk_level,
@@ -271,6 +283,7 @@ export default async function FerocityChatPage({
       workspaceTimeZone={settings.timezone}
       leaderRecommendation={leaderRecommendation}
       ownerTwinSuggestions={ownerTwinSuggestions}
+      ownerDailyBrief={ownerDailyBrief}
       operatingGoalTotal={Number(goalsResult?.rows[0]?.active_goal_count ?? 0)}
       operatingGoals={(goalsResult?.rows ?? []).map((goal) => ({
         id: goal.id,

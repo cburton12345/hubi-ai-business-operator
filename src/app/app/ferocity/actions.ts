@@ -53,6 +53,51 @@ const h4rLeasingDecisionSchema = z.object({
   replyBody: z.string().trim().max(2000).optional(),
 });
 
+const ownerTwinFeedbackSchema = z.object({
+  suggestionKey: z.string().regex(/^[a-f0-9]{32}$/),
+  command: z.string().trim().min(2).max(500),
+  channel: z.enum(["internal_command", "email", "text", "phone", "vendor", "work_order"]),
+  feedback: z.enum(["accepted", "dismissed"]),
+  evidenceHref: z.string().startsWith("/app/").max(500),
+});
+
+export async function recordOwnerTwinSuggestionFeedbackAction(input: z.input<typeof ownerTwinFeedbackSchema>) {
+  const actor = await requirePermission("ai:queue");
+  const parsed = ownerTwinFeedbackSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, message: "That suggestion feedback is invalid." };
+  const workspaceId = await getCurrentWorkspaceId();
+  try {
+    await queryPostgres(
+      `insert into public.owner_twin_suggestion_feedback
+         (tenant_id,user_id,suggestion_key,command,channel,feedback,evidence_href,expires_at)
+       values ($1,$2,$3,$4,$5,$6,$7,now()+interval '365 days')
+       on conflict (tenant_id,user_id,suggestion_key) do update set
+         command=excluded.command,channel=excluded.channel,feedback=excluded.feedback,
+         evidence_href=excluded.evidence_href,updated_at=now(),expires_at=excluded.expires_at`,
+      [workspaceId, actor.userId, parsed.data.suggestionKey, parsed.data.command, parsed.data.channel, parsed.data.feedback, parsed.data.evidenceHref],
+    );
+    revalidatePath("/app/ferocity");
+    return { ok: true as const, message: "Preference saved." };
+  } catch {
+    return { ok: false as const, message: "Ferocity could not save that preference. No command was run." };
+  }
+}
+
+export async function clearOwnerTwinLearningAction() {
+  const actor = await requirePermission("ai:queue");
+  const workspaceId = await getCurrentWorkspaceId();
+  try {
+    await queryPostgres(
+      `delete from public.owner_twin_suggestion_feedback where tenant_id=$1 and user_id=$2`,
+      [workspaceId, actor.userId],
+    );
+    revalidatePath("/app/ferocity");
+    return { ok: true as const, message: "Suggestion feedback cleared." };
+  } catch {
+    return { ok: false as const, message: "Ferocity could not clear suggestion feedback. No records were changed." };
+  }
+}
+
 export async function applyH4rLeasingDecisionAction(input: {
   externalEventId: string;
   decision: H4rLeasingDecision;

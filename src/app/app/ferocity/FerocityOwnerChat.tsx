@@ -32,10 +32,12 @@ import {
 import { decideApproval } from "@/app/app/approvals/actions";
 import {
   applyH4rLeasingDecisionAction,
+  clearOwnerTwinLearningAction,
   completeH4rOwnerPaymentAuthorizationAction,
   controlOperatingGoalAction,
   createFerocityThreadAction,
   executeFerocityChatAction,
+  recordOwnerTwinSuggestionFeedbackAction,
 } from "@/app/app/ferocity/actions";
 import {
   ferocityGoals,
@@ -52,7 +54,7 @@ import { uploadAndProcessExpenseDocuments } from "@/lib/document-intelligence/di
 import type { StatementYearCoverage } from "@/lib/document-intelligence/statement-year-coverage";
 import type { FerocityArtifactLink, FerocityCustomerMode } from "@/lib/ferocity/conversation-runtime";
 import { presentFerocityMessage } from "@/lib/ui/ferocity-message";
-import type { OwnerTwinSuggestion } from "@/lib/ferocity/owner-operating-twin";
+import type { OwnerDailyBrief, OwnerTwinSuggestion } from "@/lib/ferocity/owner-operating-twin";
 
 type ChatTurn = {
   id: string;
@@ -244,6 +246,7 @@ export function FerocityOwnerChat({
   workspaceTimeZone,
   leaderRecommendation,
   ownerTwinSuggestions,
+  ownerDailyBrief,
   operatingGoalTotal,
   operatingGoals,
 }: {
@@ -266,6 +269,7 @@ export function FerocityOwnerChat({
   workspaceTimeZone: string;
   leaderRecommendation: LeaderRecommendation;
   ownerTwinSuggestions: OwnerTwinSuggestion[];
+  ownerDailyBrief: OwnerDailyBrief;
   operatingGoalTotal: number;
   operatingGoals: OperatingGoalItem[];
 }) {
@@ -310,6 +314,8 @@ export function FerocityOwnerChat({
   const [uploading, setUploading] = useState(false);
   const [dispatchPending, startDispatch] = useTransition();
   const [leasingDecisionPending, startLeasingDecision] = useTransition();
+  const [ownerTwinFeedbackPending, startOwnerTwinFeedback] = useTransition();
+  const [dismissedOwnerTwinSuggestions, setDismissedOwnerTwinSuggestions] = useState<string[]>([]);
   const [leasingDecisionMessage, setLeasingDecisionMessage] = useState("");
   const [leasingReplyDraft, setLeasingReplyDraft] = useState(sourceEvent?.suggestedReply ?? "");
 
@@ -328,7 +334,7 @@ export function FerocityOwnerChat({
     });
   }, [leasingDecisionPending, leasingReplyDraft, router, sourceEvent]);
   const [requestDelayed, setRequestDelayed] = useState(false);
-  const pending = actionPending || uploading || dispatchPending;
+  const pending = actionPending || uploading || dispatchPending || ownerTwinFeedbackPending;
   const latestRecommendations = command.trim() || pending
     ? []
     : turns.at(-1)?.recommended ?? [];
@@ -543,6 +549,70 @@ export function FerocityOwnerChat({
     setCommand(value);
   }
 
+  function acceptOwnerTwinSuggestion(suggestion: OwnerTwinSuggestion) {
+    if (pending) return;
+    startOwnerTwinFeedback(async () => {
+      try {
+        const result = await recordOwnerTwinSuggestionFeedbackAction({
+          suggestionKey: suggestion.suggestionKey,
+          command: suggestion.command,
+          channel: suggestion.channel,
+          feedback: "accepted",
+          evidenceHref: suggestion.evidenceHref,
+        });
+        if (!result.ok) {
+          setVoiceStatus(result.message);
+          return;
+        }
+        submitSuggestedCommand(suggestion.command);
+      } catch {
+        setVoiceStatus("Ferocity could not save that preference. The command was not submitted.");
+      }
+    });
+  }
+
+  function dismissOwnerTwinSuggestion(suggestion: OwnerTwinSuggestion) {
+    if (pending) return;
+    setDismissedOwnerTwinSuggestions((current) => [...new Set([...current, suggestion.suggestionKey])]);
+    startOwnerTwinFeedback(async () => {
+      try {
+        const result = await recordOwnerTwinSuggestionFeedbackAction({
+          suggestionKey: suggestion.suggestionKey,
+          command: suggestion.command,
+          channel: suggestion.channel,
+          feedback: "dismissed",
+          evidenceHref: suggestion.evidenceHref,
+        });
+        if (!result.ok) {
+          setDismissedOwnerTwinSuggestions((current) => current.filter((key) => key !== suggestion.suggestionKey));
+          setVoiceStatus(result.message);
+          return;
+        }
+        router.refresh();
+      } catch {
+        setDismissedOwnerTwinSuggestions((current) => current.filter((key) => key !== suggestion.suggestionKey));
+        setVoiceStatus("Ferocity could not save that dismissal. Nothing else changed.");
+      }
+    });
+  }
+
+  function clearOwnerTwinLearning() {
+    if (pending || !window.confirm("Clear your adaptive-suggestion feedback for this workspace? This does not delete chat history or business records.")) return;
+    startOwnerTwinFeedback(async () => {
+      try {
+        const result = await clearOwnerTwinLearningAction();
+        if (!result.ok) {
+          setVoiceStatus(result.message);
+          return;
+        }
+        setDismissedOwnerTwinSuggestions([]);
+        router.refresh();
+      } catch {
+        setVoiceStatus("Ferocity could not clear suggestion feedback. Chat and business records were not changed.");
+      }
+    });
+  }
+
   function chooseGoal(goal: FerocityGoal) {
     setGuideOwnerMessage(goal.label);
     if (goal.key === "money") {
@@ -737,6 +807,28 @@ export function FerocityOwnerChat({
                 : leaderRecommendation.detail}
             </p>
             {!onboardingMode ? <div className="button-row"><button className="mini-button" type="button" onClick={() => submitSuggestedCommand(leaderRecommendation.command)}>Lead this now</button><Link className="mini-button secondary-button" href={leaderRecommendation.href}>See why</Link></div> : null}
+            {!onboardingMode ? (
+              <details className="ferocity-context-disclosure">
+                <summary>
+                  <span>
+                    <strong>{ownerDailyBrief.headline}</strong>
+                    <small>{ownerDailyBrief.summary}</small>
+                  </span>
+                </summary>
+                <div className="form-stack">
+                  <p><strong>Top priority:</strong> {ownerDailyBrief.topPriority.title}</p>
+                  <p className="muted">{ownerDailyBrief.topPriority.detail}</p>
+                  <div className="button-row">
+                    <Link className="mini-button" href={ownerDailyBrief.topPriority.href}>Open evidence</Link>
+                    {ownerDailyBrief.items.map((item) => (
+                      <Link className="mini-button secondary-button" href={item.href} key={`${item.href}:${item.label}`}>
+                        {item.count} {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            ) : null}
             {!onboardingMode && ownerTwinSuggestions.length ? (
               <details className="ferocity-context-disclosure">
                 <summary>
@@ -746,19 +838,24 @@ export function FerocityOwnerChat({
                   </span>
                 </summary>
                 <div className="form-stack">
-                  {ownerTwinSuggestions.map((suggestion) => (
-                    <button
-                      className="mini-button secondary-button"
-                      key={suggestion.command}
-                      onClick={() => submitSuggestedCommand(suggestion.command)}
-                      title={`${Math.round(suggestion.confidence * 100)}% confidence · ${suggestion.reason}`}
-                      type="button"
-                    >
-                      {suggestion.label}
-                      {suggestion.executionMode === "draft_only" ? " · review first" : ""}
-                    </button>
+                  {ownerTwinSuggestions.filter((suggestion) => !dismissedOwnerTwinSuggestions.includes(suggestion.suggestionKey)).map((suggestion) => (
+                    <div className="button-row" key={suggestion.suggestionKey}>
+                      <button
+                        className="mini-button secondary-button"
+                        onClick={() => acceptOwnerTwinSuggestion(suggestion)}
+                        title={`${Math.round(suggestion.confidence * 100)}% confidence · ${suggestion.reason}`}
+                        type="button"
+                      >
+                        {suggestion.label}
+                        {suggestion.executionMode === "draft_only" ? " · review first" : ""}
+                      </button>
+                      <Link className="mini-button secondary-button" href={suggestion.evidenceHref}>Evidence</Link>
+                      <button className="mini-button secondary-button" onClick={() => dismissOwnerTwinSuggestion(suggestion)} type="button">Dismiss</button>
+                      <small>{suggestion.channel.replaceAll("_", " ")} · {Math.round(suggestion.confidence * 100)}%</small>
+                    </div>
                   ))}
-                  <p className="muted">One tap submits the command in your wording. Ferocity can prepare or carry out only what your existing authority rules allow.</p>
+                  <p className="muted">Accepting submits the command in your wording; dismissing teaches only this workspace/user. Ferocity can act only within existing authority rules.</p>
+                  <button className="mini-button secondary-button" onClick={clearOwnerTwinLearning} type="button">Clear suggestion learning</button>
                 </div>
               </details>
             ) : null}
