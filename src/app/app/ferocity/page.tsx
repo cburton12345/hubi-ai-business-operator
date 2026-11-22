@@ -12,11 +12,14 @@ import { getCustomerOnboardingState } from "@/lib/onboarding/customer-onboarding
 import { getOwnerChatCapabilities } from "@/lib/ferocity/owner-chat-access";
 
 type SourceEvent = {
+  externalEventId: string;
   platformName: string;
   title: string;
   summary: string;
   severity: string;
   recommendedAction: string | null;
+  actionableLeasingReply: boolean;
+  suggestedReply: string | null;
 };
 
 export default async function FerocityChatPage({
@@ -29,7 +32,9 @@ export default async function FerocityChatPage({
   const access = getOwnerChatCapabilities(actor);
 
   let sourceEvent: SourceEvent | null = null;
-  if (params.source === "h4r" && params.externalEventId?.startsWith("h4r:leasing-owner-alert:")) {
+  if (params.source === "h4r" && params.externalEventId
+    && (params.externalEventId.startsWith("h4r:leasing-owner-alert:")
+      || params.externalEventId.startsWith("h4r:owner-notification:"))) {
     const workspaceId = await getCurrentWorkspaceId();
     const result = await queryPostgres<{
       platform_name: string;
@@ -37,9 +42,10 @@ export default async function FerocityChatPage({
       summary: string;
       severity: string;
       recommended_action: string | null;
+      metadata_json: Record<string, unknown> | null;
     }>(
       `
-      select platform_name, title, summary, severity, recommended_action
+      select platform_name, title, summary, severity, recommended_action, metadata_json
       from public.owner_command_events
       where tenant_id = $1
         and platform_key = 'h4r'
@@ -50,12 +56,25 @@ export default async function FerocityChatPage({
     );
     const row = result?.rows[0];
     if (row) {
+      const notificationMetadata = row.metadata_json?.notificationMetadata;
+      const leasingMetadata = notificationMetadata && typeof notificationMetadata === "object"
+        ? notificationMetadata as Record<string, unknown>
+        : row.metadata_json ?? {};
+      const suggestedReply = typeof leasingMetadata.suggestedReply === "string"
+        ? leasingMetadata.suggestedReply.slice(0, 2000)
+        : null;
+      const actionableLeasingReply = typeof leasingMetadata.question === "string"
+        && Boolean(leasingMetadata.conversationId)
+        && params.externalEventId.startsWith("h4r:owner-notification:");
       sourceEvent = {
+        externalEventId: params.externalEventId,
         platformName: row.platform_name,
         title: row.title,
         summary: row.summary,
         severity: row.severity,
-        recommendedAction: row.recommended_action
+        recommendedAction: row.recommended_action,
+        actionableLeasingReply,
+        suggestedReply,
       };
     }
   }

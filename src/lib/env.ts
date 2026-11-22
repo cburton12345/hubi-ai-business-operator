@@ -177,6 +177,7 @@ const envSchema = z.object({
   H4R_DOCUMENT_ORIGIN: optionalUrl,
   H4R_CONTEXT_URL: optionalUrl,
   H4R_OPERATOR_URL: optionalUrl,
+  H4R_LEASING_DECISION_URL: optionalUrl,
   H4R_OPERATOR_MODE: optionalString
 });
 
@@ -345,6 +346,7 @@ export const env = envSchema.parse({
   H4R_DOCUMENT_ORIGIN: process.env.H4R_DOCUMENT_ORIGIN,
   H4R_CONTEXT_URL: process.env.H4R_CONTEXT_URL,
   H4R_OPERATOR_URL: process.env.H4R_OPERATOR_URL,
+  H4R_LEASING_DECISION_URL: process.env.H4R_LEASING_DECISION_URL,
   H4R_OPERATOR_MODE: process.env.H4R_OPERATOR_MODE
 });
 

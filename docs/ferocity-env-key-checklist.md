@@ -161,6 +161,7 @@ Redirect:
 - `H4R_DOCUMENT_ORIGIN` — exact HTTPS origin of H4R's Supabase project. Lease analysis accepts short-lived private `h4r-documents` signed URLs only from this origin.
 - `H4R_CONTEXT_URL` — H4R's signed, read-only `ferocity-brain-context` endpoint. It returns aggregate operating context without tenant PII, ledger rows, payment credentials, document contents, or signature evidence.
 - `H4R_OPERATOR_URL`
+- `H4R_LEASING_DECISION_URL` — H4R's signed `ferocity-leasing-decision` endpoint. It accepts only explicit approve/edit-and-send/hold/close decisions for an existing bridged H4R leasing event.
 - `H4R_OPERATOR_MODE`
 
 H4R separately stores `FEROCITY_LEASE_ANALYSIS_URL` and the same bridge secret as `FEROCITY_SMS_BRIDGE_SECRET`. None of these values belongs in browser code.

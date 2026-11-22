@@ -1,6 +1,6 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -26,6 +26,7 @@ import { controlOperatingGoal, type OperatingGoalControl } from "@/lib/operation
 import { listExpenseTaxPacketRows } from "@/lib/reports/expense-tax-packet";
 import { syncCustomerOnboardingForTenant } from "@/lib/onboarding/customer-onboarding";
 import { completeH4rOwnerPaymentAuthorization, handleH4rOwnerPaymentChat } from "@/lib/integrations/h4r/owner-payments";
+import { applyH4rLeasingDecision, type H4rLeasingDecision } from "@/lib/integrations/h4r/leasing-decisions";
 import { persistFerocityOwnerRequest, persistFerocityResponse } from "@/lib/ferocity/chat-request-lifecycle";
 import { getOwnerChatCapabilities } from "@/lib/ferocity/owner-chat-access";
 
@@ -45,6 +46,74 @@ export type FerocityChatActionState = {
   recommended?: CapabilityRecommendation[];
   artifacts?: FerocityArtifactLink[];
 };
+
+const h4rLeasingDecisionSchema = z.object({
+  externalEventId: z.string().trim().min(1).max(220),
+  decision: z.enum(["approve", "edit_and_send", "hold", "close"]),
+  replyBody: z.string().trim().max(2000).optional(),
+});
+
+export async function applyH4rLeasingDecisionAction(input: {
+  externalEventId: string;
+  decision: H4rLeasingDecision;
+  replyBody?: string;
+}) {
+  const actor = await requirePermission("ai:queue");
+  const parsed = h4rLeasingDecisionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, message: "The leasing decision is incomplete or invalid." };
+  if (parsed.data.decision === "edit_and_send" && !parsed.data.replyBody) {
+    return { ok: false as const, message: "Enter the reply H4R should send." };
+  }
+
+  const workspaceId = await getCurrentWorkspaceId();
+  const event = await queryPostgres<{ id: string }>(
+    `select id from public.owner_command_events
+      where tenant_id=$1 and platform_key='h4r' and external_event_id=$2
+      limit 1`,
+    [workspaceId, parsed.data.externalEventId],
+  );
+  if (!event?.rows[0]?.id) return { ok: false as const, message: "This H4R leasing alert is no longer available." };
+
+  const replyHash = createHash("sha256").update(parsed.data.replyBody ?? "", "utf8").digest("hex").slice(0, 16);
+  const idempotencyKey = `ferocity:${workspaceId}:${event.rows[0].id}:${parsed.data.decision}:${replyHash}`;
+  const result = await applyH4rLeasingDecision({
+    externalEventId: parsed.data.externalEventId,
+    decision: parsed.data.decision,
+    replyBody: parsed.data.replyBody,
+    idempotencyKey,
+  });
+  if (!result.ok) {
+    const message = result.skipped
+      ? "The H4R leasing decision connection is not configured yet. Nothing was sent."
+      : `${result.safeError} Nothing was sent.`;
+    return { ok: false as const, message };
+  }
+
+  if (parsed.data.decision !== "hold") {
+    await queryPostgres(
+      `update public.owner_command_events
+          set status='resolved', owner_attention=false, ai_handled=false,
+              metadata_json=coalesce(metadata_json,'{}'::jsonb) || $3::jsonb,
+              updated_at=now()
+        where tenant_id=$1 and id=$2`,
+      [workspaceId, event.rows[0].id, JSON.stringify({
+        h4rLeasingDecision: parsed.data.decision,
+        decidedByUserId: actor.userId,
+        decidedAt: new Date().toISOString(),
+      })],
+    );
+  }
+  revalidatePath("/app/ferocity");
+  revalidatePath("/app/owner-command-center");
+  return {
+    ok: true as const,
+    message: parsed.data.decision === "approve" || parsed.data.decision === "edit_and_send"
+      ? result.duplicate ? "That reply was already approved; it was not queued twice." : "H4R queued the approved reply through its authorized Facebook connector."
+      : parsed.data.decision === "close"
+        ? "H4R closed the conversation and cancelled unsent replies."
+        : "The conversation remains open. Nothing was sent.",
+  };
+}
 
 const uuid = z.string().uuid();
 const processedDocumentsSchema = z.array(z.discriminatedUnion("ok", [

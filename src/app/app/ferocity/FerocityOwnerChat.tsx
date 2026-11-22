@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { decideApproval } from "@/app/app/approvals/actions";
 import {
+  applyH4rLeasingDecisionAction,
   completeH4rOwnerPaymentAuthorizationAction,
   controlOperatingGoalAction,
   createFerocityThreadAction,
@@ -117,11 +118,14 @@ function formatWorkspaceTime(
 }
 
 type SourceEvent = {
+  externalEventId: string;
   platformName: string;
   title: string;
   summary: string;
   severity: string;
   recommendedAction: string | null;
+  actionableLeasingReply: boolean;
+  suggestedReply: string | null;
 };
 
 type AttentionItem = {
@@ -302,6 +306,24 @@ export function FerocityOwnerChat({
   });
   const [uploading, setUploading] = useState(false);
   const [dispatchPending, startDispatch] = useTransition();
+  const [leasingDecisionPending, startLeasingDecision] = useTransition();
+  const [leasingDecisionMessage, setLeasingDecisionMessage] = useState("");
+  const [leasingReplyDraft, setLeasingReplyDraft] = useState(sourceEvent?.suggestedReply ?? "");
+
+  const decideH4rLeasingReply = useCallback((decision: "approve" | "edit_and_send" | "hold" | "close") => {
+    if (!sourceEvent?.actionableLeasingReply || leasingDecisionPending) return;
+    if (decision === "close" && !window.confirm("Close this H4R lead conversation and cancel any unsent reply?")) return;
+    setLeasingDecisionMessage("");
+    startLeasingDecision(async () => {
+      const result = await applyH4rLeasingDecisionAction({
+        externalEventId: sourceEvent.externalEventId,
+        decision,
+        replyBody: decision === "edit_and_send" ? leasingReplyDraft : undefined,
+      });
+      setLeasingDecisionMessage(result.message);
+      if (result.ok) router.refresh();
+    });
+  }, [leasingDecisionPending, leasingReplyDraft, router, sourceEvent]);
   const [requestDelayed, setRequestDelayed] = useState(false);
   const pending = actionPending || uploading || dispatchPending;
   const latestRecommendations = command.trim() || pending
@@ -916,6 +938,28 @@ export function FerocityOwnerChat({
                   <strong>Suggested next step:</strong>{" "}
                   {sourceEvent.recommendedAction}
                 </p>
+              ) : null}
+              {sourceEvent.actionableLeasingReply ? (
+                <div className="approval-card">
+                  {sourceEvent.suggestedReply ? (
+                    <label>
+                      <span>Prepared reply</span>
+                      <textarea
+                        rows={4}
+                        value={leasingReplyDraft}
+                        onChange={(event) => setLeasingReplyDraft(event.target.value.slice(0, 2000))}
+                        disabled={leasingDecisionPending}
+                      />
+                    </label>
+                  ) : null}
+                  <div className="button-row">
+                    <button className="mini-button" type="button" disabled={leasingDecisionPending} onClick={() => decideH4rLeasingReply("approve")}>Approve reply</button>
+                    <button className="mini-button secondary-button" type="button" disabled={leasingDecisionPending || !leasingReplyDraft.trim()} onClick={() => decideH4rLeasingReply("edit_and_send")}>Send edited reply</button>
+                    <button className="mini-button secondary-button" type="button" disabled={leasingDecisionPending} onClick={() => decideH4rLeasingReply("hold")}>Hold</button>
+                    <button className="mini-button secondary-button" type="button" disabled={leasingDecisionPending} onClick={() => decideH4rLeasingReply("close")}>Close lead</button>
+                  </div>
+                  {leasingDecisionMessage ? <p className="muted" role="status">{leasingDecisionMessage}</p> : null}
+                </div>
               ) : null}
             </div>
           </article>
