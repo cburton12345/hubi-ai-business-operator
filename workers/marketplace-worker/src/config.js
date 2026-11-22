@@ -7,6 +7,14 @@ function finiteNumber(value, fallback, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, parsed));
 }
 
+function environmentBoolean(value, fallback) {
+  if (value == null || String(value).trim() === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw new Error(`Invalid boolean environment value: ${value}`);
+}
+
 export function resolveConfigPath(argv = process.argv) {
   const index = argv.indexOf("--config");
   return path.resolve(index >= 0 && argv[index + 1] ? argv[index + 1] : "worker.config.json");
@@ -15,13 +23,14 @@ export function resolveConfigPath(argv = process.argv) {
 export function loadWorkerConfig(configPath) {
   if (!fs.existsSync(configPath)) throw new Error(`Missing worker configuration: ${configPath}`);
   const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const configRoot = path.dirname(configPath);
-  const runtime = raw.runtime || "windows_worker";
+  const configRoot = path.resolve(process.env.FEROCITY_WORKER_ROOT || path.dirname(configPath));
+  const runtime = process.env.FEROCITY_CONNECTOR_RUNTIME || raw.runtime || "windows_worker";
   if (!["windows_worker", "hosted_worker"].includes(runtime)) throw new Error("runtime must be windows_worker or hosted_worker");
-  if (!raw.deviceId || String(raw.deviceId).length < 16) throw new Error("A paired deviceId is required.");
+  const deviceId = String(process.env.FEROCITY_FACEBOOK_DEVICE_ID || raw.deviceId || "").trim();
+  if (deviceId.length < 16) throw new Error("A paired deviceId is required.");
 
-  const sendEnabled = raw.sendEnabled === true;
-  const expectedProfileId = String(raw.identity?.expectedProfileId || "").trim();
+  const sendEnabled = environmentBoolean(process.env.FEROCITY_FACEBOOK_SEND_ENABLED, raw.sendEnabled === true);
+  const expectedProfileId = String(process.env.FEROCITY_FACEBOOK_PROFILE_ID || raw.identity?.expectedProfileId || "").trim();
   if (expectedProfileId && !/^\d{5,30}$/.test(expectedProfileId)) throw new Error("identity.expectedProfileId must be a numeric Facebook profile ID.");
   if (sendEnabled && !expectedProfileId) throw new Error("identity.expectedProfileId is required before sendEnabled can be true.");
   const minimumWriteDelayMs = finiteNumber(raw.actionPolicy?.minimumWriteDelaySeconds, 45, 0, 3600) * 1000;
@@ -31,14 +40,14 @@ export function loadWorkerConfig(configPath) {
   return {
     configPath,
     root: configRoot,
-    apiBase: String(raw.apiBase || "https://ferocity.live/api/integrations/facebook-connector").replace(/\/$/, ""),
-    deviceId: String(raw.deviceId),
-    deviceName: String(raw.deviceName || "Ferocity Marketplace worker").slice(0, 120),
+    apiBase: String(process.env.FEROCITY_CONNECTOR_API_BASE || raw.apiBase || "https://ferocity.live/api/integrations/facebook-connector").replace(/\/$/, ""),
+    deviceId,
+    deviceName: String(process.env.FEROCITY_FACEBOOK_DEVICE_NAME || raw.deviceName || "Ferocity Marketplace worker").slice(0, 120),
     runtime,
-    automationEnabled: raw.automationEnabled !== false,
+    automationEnabled: environmentBoolean(process.env.FEROCITY_FACEBOOK_AUTOMATION_ENABLED, raw.automationEnabled !== false),
     sendEnabled,
-    communityDiscoveryEnabled: raw.communityDiscoveryEnabled === true,
-    killSwitchFile: path.resolve(configRoot, raw.killSwitchFile || "PAUSE"),
+    communityDiscoveryEnabled: environmentBoolean(process.env.FEROCITY_FACEBOOK_DISCOVERY_ENABLED, raw.communityDiscoveryEnabled === true),
+    killSwitchFile: path.resolve(configRoot, process.env.FEROCITY_FACEBOOK_KILL_SWITCH_FILE || raw.killSwitchFile || "PAUSE"),
     identity: {
       expectedProfileId: expectedProfileId || null
     },
@@ -49,10 +58,10 @@ export function loadWorkerConfig(configPath) {
       duplicatePostWindowMs: finiteNumber(raw.actionPolicy?.duplicatePostWindowDays, 90, 1, 365) * 24 * 60 * 60 * 1000
     },
     browser: {
-      profileDir: path.resolve(configRoot, raw.browser?.profileDir || ".facebook-profile"),
+      profileDir: path.resolve(configRoot, process.env.FEROCITY_FACEBOOK_PROFILE_DIR || raw.browser?.profileDir || ".facebook-profile"),
       inboxUrl: raw.browser?.inboxUrl || "https://www.facebook.com/messages/requests",
-      headless: raw.browser?.headless === true,
-      channel: raw.browser?.channel || undefined,
+      headless: environmentBoolean(process.env.FEROCITY_FACEBOOK_HEADLESS, raw.browser?.headless === true),
+      channel: process.env.FEROCITY_FACEBOOK_BROWSER_CHANNEL || raw.browser?.channel || undefined,
       maxThreadsPerSweep: finiteNumber(raw.browser?.maxThreadsPerSweep, 12, 1, 50),
       groupsFeedUrl: raw.browser?.groupsFeedUrl || "https://www.facebook.com/groups/feed/",
       maxCommunitiesPerSweep: finiteNumber(raw.browser?.maxCommunitiesPerSweep, 8, 1, 20)

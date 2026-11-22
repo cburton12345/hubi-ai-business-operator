@@ -1,11 +1,12 @@
 {
   "name": "ferocity-marketplace-worker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
     "configure": "node src/configure.js",
     "start": "node src/index.js",
+    "start:hosted": "node src/index.js --config worker.hosted.config.json",
     "supervise": "node src/supervisor.js",
     "dry-run": "node src/index.js --dry-run --config worker.config.example.json",
     "logs": "node src/show-logs.js",
@@ -13,6 +14,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "playwright": "^1.46.0"
+    "playwright": "1.63.0"
   }
 }

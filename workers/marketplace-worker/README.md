@@ -1,6 +1,6 @@
 # Ferocity Marketplace Worker
 
-This package is the deployment-independent worker for Ferocity's assisted Facebook Marketplace, Messenger, and Groups connector. The first runtime is a local Windows worker, but the orchestration, Ferocity API client, action journal, and browser adapter do not depend on Windows. A later hosted Windows or Oracle worker can run the same package with `runtime: hosted_worker` and an environment-managed connector secret; Ferocity's backend contract does not change.
+This package is the deployment-independent worker for Ferocity's assisted Facebook Marketplace, Messenger, and Groups connector. The primary unattended runtime is a private, persistent hosted VM; the local Windows worker and Chrome extension remain fallback transports. The orchestration, Ferocity API client, action journal, and browser adapter do not depend on Windows. Hosted deployment uses `runtime: hosted_worker`, environment-managed identity/credential settings, a private graphical session, and persistent storage; Ferocity's backend contract does not change.
 
 It remains separate from H4R. It uses a Ferocity pairing code, Ferocity device credential, Ferocity workspace/identity, and Ferocity API routes. It does not reuse H4R production tokens or rows.
 
@@ -68,7 +68,7 @@ The Windows scheduled task runs as the current interactive user because Facebook
 - `actionPolicy`: defaults to five joins per UTC day, 45–180 seconds between write actions, and 90-day exact post deduplication.
 - `killSwitchFile`: defaults to `PAUSE` in this directory. Create it to stop work; remove it to allow observe-only operation to resume.
 
-## Hosted deployment later
+## Hosted deployment
 
 Use the same package and configure:
 
@@ -76,6 +76,8 @@ Use the same package and configure:
 - a persistent disk for `.facebook-profile` and `logs/action-journal.json`
 - `FEROCITY_CONNECTOR_TOKEN` in the host's secret manager
 - a supervisor appropriate to the host (Windows Scheduled Task, systemd, or container restart policy)
+
+The reviewed systemd template, secret-manager environment template, persistent-storage layout, private-login procedure, kill switch, and recovery gate are in [HOSTED_DEPLOYMENT.md](HOSTED_DEPLOYMENT.md). Hosted operation does not require Christopher's PC to remain on. A legitimate initial Facebook login or later security checkpoint still requires the account owner through a private remote desktop; the worker does not bypass or automate it.
 
 The persistent action journal is required. Moving an identity between machines should be deliberate: pause the old worker, revoke its session, pair the new worker, complete Facebook verification, then certify observe-only before enabling sends.
 

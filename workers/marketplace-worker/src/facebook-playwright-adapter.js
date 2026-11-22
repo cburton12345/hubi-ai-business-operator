@@ -166,7 +166,7 @@ export class FacebookPlaywrightAdapter {
           body: item.body,
           sourceUrl: this.page.url(),
           surface: "messenger",
-          connectorVersion: "marketplace-worker-0.4.0",
+          connectorVersion: "marketplace-worker-0.5.0",
           observedAt: new Date().toISOString()
         });
       }
@@ -247,7 +247,7 @@ export class FacebookPlaywrightAdapter {
         rulesText: details.rulesText || undefined,
         rulesSourceUrl: details.rulesText ? aboutUrl : undefined,
         membershipState: details.membershipState,
-        connectorVersion: "marketplace-worker-0.4.0",
+        connectorVersion: "marketplace-worker-0.5.0",
         observedAt: new Date().toISOString()
       });
     }
