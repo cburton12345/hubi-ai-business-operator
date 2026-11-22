@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
+    agentUpgrade: "security",
     serverActions: {
       // Document bytes upload directly to private storage. This limit covers
       // structured form metadata and the existing CSV import surface only.
