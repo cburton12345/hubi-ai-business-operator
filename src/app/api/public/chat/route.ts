@@ -15,6 +15,7 @@ import {
   resolvePublicFerocityCapabilities,
 } from "@/lib/public-site/ferocity-capabilities";
 import { consumePublicRateLimit } from "@/lib/security/rate-limit";
+import { reserveWorkspaceAbuseCapacity } from "@/lib/security/workspace-abuse-control";
 
 const chatSchema = z.object({
   formPublicKey: z.string().min(8).max(180),
@@ -86,6 +87,18 @@ export async function POST(request: NextRequest) {
   );
   const profile = profileResult?.rows[0];
   if (!profile) return NextResponse.json({ error: "Chat is not available." }, { status: 404 });
+  if (!localCertification) {
+    const abuseBudget = await reserveWorkspaceAbuseCapacity({
+      tenantId: profile.tenant_id,
+      surface: "public_chat_ai"
+    });
+    if (!abuseBudget.allowed) {
+      return NextResponse.json(
+        { error: abuseBudget.unavailable ? "Chat is temporarily unavailable." : "Chat is busy. Please use the contact form." },
+        { status: abuseBudget.unavailable ? 503 : 429 }
+      );
+    }
+  }
   const salesExperience = input.experience === "ferocity_sales" && profile.brand_name.toLowerCase() === "ferocity";
   if (input.experience === "ferocity_sales" && !salesExperience) {
     return NextResponse.json({ error: "This sales chat is not available for that brand." }, { status: 403 });

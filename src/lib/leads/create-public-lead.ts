@@ -7,6 +7,7 @@ import { getPushNotificationPreferences, pushPreferencesAllowEvent, type PushSev
 import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { evaluateQualification } from "@/lib/revenue-growth/qualification";
 import { enrollFerocitySalesProspect } from "@/lib/leads/enroll-ferocity-sales-prospect";
+import { reserveWorkspaceAbuseCapacity } from "@/lib/security/workspace-abuse-control";
 
 type FormRecord = {
   id: string;
@@ -406,6 +407,20 @@ export async function createPublicLead(input: PublicLeadInput, requestMeta: { ip
     };
   }
 
+  const abuseBudget = await reserveWorkspaceAbuseCapacity({
+    tenantId: form.tenant_id,
+    surface: "public_lead_intake"
+  });
+  if (!abuseBudget.allowed) {
+    return {
+      ok: false,
+      status: abuseBudget.unavailable ? 503 : 429,
+      error: abuseBudget.unavailable
+        ? "Lead intake is temporarily unavailable. Please try again shortly."
+        : "This workspace is receiving unusually high form traffic. Please try again later."
+    };
+  }
+
   const limit = await checkLeadIntakeLimits(form.tenant_id);
   if (!limit.ok) {
     return {
@@ -550,6 +565,20 @@ async function createPublicLeadWithPostgres(
       ok: false,
       status: 404,
       error: "Lead form was not found."
+    };
+  }
+
+  const abuseBudget = await reserveWorkspaceAbuseCapacity({
+    tenantId: form.tenant_id,
+    surface: "public_lead_intake"
+  });
+  if (!abuseBudget.allowed) {
+    return {
+      ok: false,
+      status: abuseBudget.unavailable ? 503 : 429,
+      error: abuseBudget.unavailable
+        ? "Lead intake is temporarily unavailable. Please try again shortly."
+        : "This workspace is receiving unusually high form traffic. Please try again later."
     };
   }
 

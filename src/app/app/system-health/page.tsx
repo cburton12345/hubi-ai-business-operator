@@ -9,6 +9,7 @@ import { getPlatformCapacityDashboard } from "@/lib/observability/platform-capac
 import { getActivePlatformAdminAlerts } from "@/lib/observability/platform-admin-alerts";
 import { getOperationalHealthSnapshot, type OperationalHealthStatus } from "@/lib/observability/operational-health";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
+import { getWorkspaceAbuseControlSnapshot } from "@/lib/security/workspace-abuse-control";
 
 type HealthStatus = "ok" | "needs_setup" | "warning" | "broken" | "not_connected" | "paused";
 
@@ -60,7 +61,7 @@ type IntegrationStatus = {
 
 async function getSystemHealthData() {
   const workspaceId = await getCurrentWorkspaceId();
-  const [statsResult, integrationsResult, emailHealth, capacity, adminAlerts, operations] = await Promise.all([
+  const [statsResult, integrationsResult, emailHealth, capacity, adminAlerts, operations, abuseControls] = await Promise.all([
     queryPostgres<HealthStats>(
       `
       select
@@ -121,9 +122,10 @@ async function getSystemHealthData() {
     getPlatformCapacityDashboard(),
     getActivePlatformAdminAlerts(workspaceId),
     getOperationalHealthSnapshot(workspaceId),
+    getWorkspaceAbuseControlSnapshot(workspaceId),
   ]);
 
-  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth, capacity, adminAlerts, operations };
+  return { stats: statsResult?.rows[0] ?? null, integrations: integrationsResult?.rows ?? [], emailHealth, capacity, adminAlerts, operations, abuseControls };
 }
 
 function count(value: string | undefined) {
@@ -379,7 +381,7 @@ function operationalClassName(status: OperationalHealthStatus) {
 }
 
 export default async function SystemHealthPage() {
-  const { stats, integrations, emailHealth, capacity, adminAlerts, operations } = await getSystemHealthData();
+  const { stats, integrations, emailHealth, capacity, adminAlerts, operations, abuseControls } = await getSystemHealthData();
   const checks = buildHealthChecks(stats, integrations, emailHealth);
   const totals = {
     ok: checks.filter((item) => item.status === "ok").length,
@@ -419,6 +421,37 @@ export default async function SystemHealthPage() {
           <div className="panel span-2 metric"><span className="muted">Not connected</span><strong>{totals.notConnected}</strong></div>
           <div className="panel span-2 metric"><span className="muted">Paused</span><strong>{totals.paused}</strong></div>
         </div>
+      </section>
+
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <p className="eyebrow">Abuse resistance</p>
+            <h2>Workspace Safety Budgets</h2>
+            <p className="muted">Aggregate limits stop distributed form and AI abuse after per-visitor defenses. Evidence contains counts only, never contact values, IP addresses, or message content.</p>
+          </div>
+          <span className={`pill ${abuseControls.some((control) => control.status === "paused" || (control.trippedUntil && new Date(control.trippedUntil) > new Date())) ? "high" : "status-included"}`}>
+            {abuseControls.filter((control) => control.status === "paused" || (control.trippedUntil && new Date(control.trippedUntil) > new Date())).length} tripped
+          </span>
+        </div>
+        <ul className="list section-actions">
+          {abuseControls.map((control) => {
+            const tripped = control.status === "paused" || Boolean(control.trippedUntil && new Date(control.trippedUntil) > new Date());
+            return (
+              <li className="list-row" key={control.surfaceKey}>
+                <div>
+                  <h3>{control.surfaceKey.replaceAll("_", " ")}</h3>
+                  <p className="muted">
+                    {control.hourlyCount}/{control.hourlyLimit} this hour · {control.dailyCount}/{control.dailyLimit} today · {control.blockedLast24Hours} blocked in 24 hours
+                  </p>
+                  {control.tripReason ? <p className="muted">{control.tripReason}</p> : null}
+                </div>
+                <span className={`pill ${tripped ? "high" : "status-included"}`}>{tripped ? "tripped" : "active"}</span>
+              </li>
+            );
+          })}
+          {!abuseControls.length ? <li className="list-row"><span className="muted">No workspace safety budgets are configured.</span></li> : null}
+        </ul>
       </section>
 
       <section className="panel section-actions">
