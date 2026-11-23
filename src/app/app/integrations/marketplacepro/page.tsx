@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { QueuePageShell } from "@/components/admin/QueuePageShell";
 import { getMarketplaceProVendorPhoneReadiness } from "@/lib/integrations/marketplacepro-vendor-readiness";
+import { getMarketplaceProReconciliation } from "@/lib/integrations/marketplacepro-reconciliation";
 import { getCurrentWorkspaceId } from "@/lib/workspace/current-workspace";
 
 function label(value: string | null | undefined) {
@@ -9,7 +10,10 @@ function label(value: string | null | undefined) {
 
 export default async function MarketplaceProOperationsPage() {
   const tenantId = await getCurrentWorkspaceId();
-  const readiness = await getMarketplaceProVendorPhoneReadiness(tenantId);
+  const [readiness, reconciliation] = await Promise.all([
+    getMarketplaceProVendorPhoneReadiness(tenantId),
+    getMarketplaceProReconciliation(tenantId)
+  ]);
   return (
     <QueuePageShell
       eyebrow="MarketplacePro operations"
@@ -44,6 +48,35 @@ export default async function MarketplaceProOperationsPage() {
           <li>Delivery, reply, job, invoice, and payment outcomes synchronize back to the shared record.</li>
           <li>Only blockers, approvals, and unusual replies require owner attention.</li>
         </ol>
+      </section>
+      <section className="panel section-actions">
+        <div className="list-row flush-row">
+          <div>
+            <h2>Contractor state reconciliation</h2>
+            <p className="muted">Ferocity and MarketplacePro remain separate authorities. This view exposes disagreement; it never advances a job or accepts work automatically.</p>
+          </div>
+          <div className="inline-actions">
+            <span className={`pill ${reconciliation.counts.attention ? "high" : "status-included"}`}>{reconciliation.counts.attention} attention</span>
+            <span className="pill">{reconciliation.counts.waiting} waiting</span>
+            <span className="pill status-included">{reconciliation.counts.aligned} aligned</span>
+          </div>
+        </div>
+        <ul className="list section-actions">
+          {reconciliation.items.map((item) => (
+            <li className="list-row" key={item.opportunityId}>
+              <div>
+                <h3>{item.opportunityTitle}</h3>
+                <p className="muted">Ferocity {label(item.ferocityStatus)} · MPP {label(item.marketplaceProStatus)} · match {label(item.matchStatus)} · contractor {label(item.confirmationStatus)} · assignment {label(item.assignmentStatus)} · job {label(item.serviceJobStatus)}</p>
+                <p className="muted">{item.reasons.join(" ")}{item.lastSyncAt ? ` Last sync ${item.lastSyncAt}.` : " No correlated sync is recorded yet."}</p>
+              </div>
+              <div className="inline-actions">
+                <span className={`pill ${item.state === "attention" ? "high" : item.state === "waiting" ? "medium" : "status-included"}`}>{item.state}</span>
+                <Link className="mini-button" href={`/app/opportunities/${item.opportunityId}`}>Opportunity</Link>
+              </div>
+            </li>
+          ))}
+          {!reconciliation.items.length ? <li className="list-row"><span className="muted">No commercial-maintenance opportunities are linked to MarketplacePro yet.</span></li> : null}
+        </ul>
       </section>
     </QueuePageShell>
   );
