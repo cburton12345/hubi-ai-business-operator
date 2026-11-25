@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { env } from "@/lib/env";
 import { queryPostgres } from "@/lib/db/postgres";
 import { logAppError } from "@/lib/observability/log-error";
@@ -9,28 +8,12 @@ import { sendWorkspacePushNotifications } from "@/lib/push/send-workspace-push";
 import { captureH4rGoalObservation } from "@/lib/integrations/h4r/goal-observation";
 import { captureIntegrationGoalObservation } from "@/lib/integrations/goal-observation";
 import { timingSafeSecretMatch } from "@/lib/security/rotating-secret";
-
-const eventSchema = z.object({
-  tenantId: z.string().uuid().optional(),
-  platformKey: z.string().trim().min(1).max(80),
-  platformName: z.string().trim().min(1).max(120),
-  externalEventId: z.string().trim().max(180).optional(),
-  eventType: z.string().trim().min(1).max(120),
-  title: z.string().trim().min(1).max(220),
-  summary: z.string().trim().min(1).max(1200),
-  severity: z.enum(["info", "low", "medium", "high", "critical"]).default("info"),
-  status: z.enum(["open", "needs_owner", "critical", "ai_handled", "watching", "resolved", "archived"]).default("open"),
-  ownerAttention: z.boolean().default(false),
-  aiHandled: z.boolean().default(false),
-  aiSummary: z.string().trim().max(1200).optional(),
-  recommendedAction: z.string().trim().max(1200).optional(),
-  actionHref: z.string().trim().max(500).optional(),
-  moneyCents: z.number().int().nonnegative().default(0),
-  riskType: z.enum(["revenue", "financial", "customer", "legal", "safety", "automation", "low_confidence", "approval"]).optional(),
-  confidenceScore: z.number().int().min(0).max(100).default(80),
-  occurredAt: z.string().datetime().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({})
-});
+import {
+  ownerEventSchema,
+  OwnerEventRequestError,
+  readBoundedJson,
+  type OwnerEventInput,
+} from "@/lib/owner-command-center/owner-event-intake";
 
 function bearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -38,8 +21,15 @@ function bearerToken(request: Request) {
   return request.headers.get("x-ferocity-owner-event-token")?.trim() ?? "";
 }
 
-function hasPushWorthySignal(event: z.infer<typeof eventSchema>) {
-  if (!event.tenantId) return false;
+type OwnerPushSignal = Pick<
+  OwnerEventInput,
+  "platformName" | "severity" | "status" | "ownerAttention" | "moneyCents" | "summary"
+> & {
+  recommendedAction?: string | null;
+  riskType?: OwnerEventInput["riskType"] | null;
+};
+
+function hasPushWorthySignal(event: OwnerPushSignal) {
   if (event.ownerAttention) return true;
   if (event.status === "needs_owner" || event.status === "critical") return true;
   if (event.severity === "high" || event.severity === "critical") return true;
@@ -47,7 +37,7 @@ function hasPushWorthySignal(event: z.infer<typeof eventSchema>) {
   return Boolean(event.riskType);
 }
 
-function ownerNotificationBody(event: z.infer<typeof eventSchema>) {
+function ownerNotificationBody(event: OwnerPushSignal) {
   const parts = [
     event.platformName,
     event.moneyCents > 0 ? `$${Math.round(event.moneyCents / 100).toLocaleString()} at stake` : null,
@@ -64,68 +54,76 @@ export async function POST(request: Request) {
 
   let json: unknown;
   try {
-    json = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    json = await readBoundedJson(request);
+  } catch (error) {
+    const status = error instanceof OwnerEventRequestError ? error.statusCode : 400;
+    const message = error instanceof OwnerEventRequestError ? error.message : "Invalid JSON payload.";
+    return NextResponse.json({ error: message }, { status });
   }
 
-  const parsed = eventSchema.safeParse(json);
+  const parsed = ownerEventSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid owner event payload.", issues: parsed.error.flatten() }, { status: 400 });
   }
 
   const event = parsed.data;
-  if (event.tenantId) {
-    const connectionResult = await queryPostgres<{ connection_status: string }>(
-      `
-      select connection_status
-      from public.owner_platform_connections
-      where tenant_id = $1 and platform_key = $2
-      limit 1
-      `,
-      [event.tenantId, event.platformKey]
-    );
-    const connectionStatus = connectionResult?.rows[0]?.connection_status;
-    if (connectionStatus === "paused" || connectionStatus === "archived") {
-      return NextResponse.json({
-        error: "Owner event intake is disconnected for this platform.",
-        status: connectionStatus
-      }, { status: 409 });
-    }
+  const connectionResult = await queryPostgres<{ connection_status: string }>(
+    `
+    select connection_status
+    from public.owner_platform_connections
+    where tenant_id = $1 and platform_key = $2
+    limit 1
+    `,
+    [event.tenantId, event.platformKey]
+  );
+  const connectionStatus = connectionResult?.rows[0]?.connection_status;
+  if (connectionStatus === "paused" || connectionStatus === "archived") {
+    return NextResponse.json({
+      error: "Owner event intake is disconnected for this platform.",
+      status: connectionStatus
+    }, { status: 409 });
   }
 
-  const triageDecision = event.tenantId
-    ? await triageOwnerEvent({
-        tenantId: event.tenantId,
-        platformKey: event.platformKey,
-        platformName: event.platformName,
-        eventType: event.eventType,
-        title: event.title,
-        summary: event.summary,
-        severity: event.severity,
-        status: event.status,
-        ownerAttention: event.ownerAttention,
-        aiHandled: event.aiHandled,
-        recommendedAction: event.recommendedAction,
-        actionHref: event.actionHref,
-        moneyCents: event.moneyCents,
-        riskType: event.riskType,
-        confidenceScore: event.confidenceScore,
-        metadata: event.metadata
-      })
-    : null;
+  const existing = await queryPostgres<{ id: string }>(
+    `select id from public.owner_command_events
+     where tenant_id = $1 and platform_key = $2 and external_event_id = $3
+     limit 1`,
+    [event.tenantId, event.platformKey, event.externalEventId],
+  );
+  if (existing?.rows[0]?.id) {
+    return NextResponse.json({ ok: true, id: existing.rows[0].id, duplicate: true, push: "not_repeated" });
+  }
+
+  const triageDecision = await triageOwnerEvent({
+    tenantId: event.tenantId,
+    platformKey: event.platformKey,
+    platformName: event.platformName,
+    eventType: event.eventType,
+    title: event.title,
+    summary: event.summary,
+    severity: event.severity,
+    status: event.status,
+    ownerAttention: event.ownerAttention,
+    aiHandled: event.aiHandled,
+    recommendedAction: event.recommendedAction,
+    actionHref: event.actionHref,
+    moneyCents: event.moneyCents,
+    riskType: event.riskType,
+    confidenceScore: event.confidenceScore,
+    metadata: event.metadata
+  });
 
   const effectiveEvent = {
     ...event,
-    severity: triageDecision?.severity ?? event.severity,
-    status: triageDecision?.status ?? event.status,
-    ownerAttention: triageDecision?.ownerAttention ?? event.ownerAttention,
-    aiHandled: triageDecision?.aiHandled ?? event.aiHandled,
-    aiSummary: triageDecision?.aiSummary ?? event.aiSummary,
-    recommendedAction: triageDecision?.recommendedAction ?? event.recommendedAction,
-    moneyCents: triageDecision?.moneyCents ?? event.moneyCents,
-    riskType: triageDecision?.riskType ?? event.riskType,
-    confidenceScore: triageDecision?.confidenceScore ?? event.confidenceScore
+    severity: triageDecision.severity,
+    status: triageDecision.status,
+    ownerAttention: triageDecision.ownerAttention,
+    aiHandled: triageDecision.aiHandled,
+    aiSummary: triageDecision.aiSummary,
+    recommendedAction: triageDecision.recommendedAction,
+    moneyCents: triageDecision.moneyCents,
+    riskType: triageDecision.riskType,
+    confidenceScore: triageDecision.confidenceScore
   };
 
   const result = await queryPostgres<{ id: string }>(
@@ -136,30 +134,14 @@ export async function POST(request: Request) {
       action_href, money_cents, risk_type, confidence_score, metadata_json, occurred_at
     )
     values ($1, $2, $3, nullif($4, ''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, coalesce($19::timestamptz, now()))
-    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do update
-    set event_type = excluded.event_type,
-        title = excluded.title,
-        summary = excluded.summary,
-        severity = excluded.severity,
-        status = excluded.status,
-        owner_attention = excluded.owner_attention,
-        ai_handled = excluded.ai_handled,
-        ai_summary = excluded.ai_summary,
-        recommended_action = excluded.recommended_action,
-        action_href = excluded.action_href,
-        money_cents = excluded.money_cents,
-        risk_type = excluded.risk_type,
-        confidence_score = excluded.confidence_score,
-        metadata_json = public.owner_command_events.metadata_json || excluded.metadata_json,
-        occurred_at = excluded.occurred_at,
-        updated_at = now()
+    on conflict (tenant_id, platform_key, external_event_id) where external_event_id is not null do nothing
     returning id
     `,
     [
-      event.tenantId ?? null,
+      event.tenantId,
       event.platformKey,
       event.platformName,
-      event.externalEventId ?? null,
+      event.externalEventId,
       event.eventType,
       event.title,
       event.summary,
@@ -176,20 +158,27 @@ export async function POST(request: Request) {
       JSON.stringify({
         ...event.metadata,
         intake: "owner_command_center",
-        aiTriage: triageDecision
-          ? {
-              decisionStatus: triageDecision.decisionStatus,
-              escalationReasons: triageDecision.escalationReasons,
-              makeMoneyNext: triageDecision.makeMoneyNext,
-              liveActionAllowed: triageDecision.liveActionAllowed
-            }
-          : null
+        aiTriage: {
+          decisionStatus: triageDecision.decisionStatus,
+          escalationReasons: triageDecision.escalationReasons,
+          makeMoneyNext: triageDecision.makeMoneyNext,
+          liveActionAllowed: triageDecision.liveActionAllowed
+        }
       }),
       event.occurredAt ?? null
     ]
   );
 
   if (!result?.rows[0]?.id) {
+    const concurrentDuplicate = await queryPostgres<{ id: string }>(
+      `select id from public.owner_command_events
+       where tenant_id = $1 and platform_key = $2 and external_event_id = $3
+       limit 1`,
+      [event.tenantId, event.platformKey, event.externalEventId],
+    );
+    if (concurrentDuplicate?.rows[0]?.id) {
+      return NextResponse.json({ ok: true, id: concurrentDuplicate.rows[0].id, duplicate: true, push: "not_repeated" });
+    }
     await logAppError({
       source: "api.owner-command-center.events",
       message: "Owner event intake failed to write event.",
@@ -199,50 +188,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Event was not saved." }, { status: 500 });
   }
 
-  if (event.tenantId) {
-    try {
-      const goalEvent = {
-        tenantId: event.tenantId,
-        ownerEventId: result.rows[0].id,
-        externalEventId: event.externalEventId,
-        eventType: event.eventType,
-        title: event.title,
-        summary: event.summary,
-        severity: effectiveEvent.severity,
-        status: effectiveEvent.status,
-        ownerAttention: effectiveEvent.ownerAttention,
-        occurredAt: event.occurredAt,
-        riskType: effectiveEvent.riskType,
-        moneyCents: effectiveEvent.moneyCents,
-        recommendedAction: effectiveEvent.recommendedAction,
-        metadata: event.metadata,
-      };
-      if (event.platformKey === "h4r") {
-        await captureH4rGoalObservation(goalEvent);
-      } else {
-        await captureIntegrationGoalObservation({
-          ...goalEvent,
-          platformKey: event.platformKey,
-          platformName: event.platformName,
-        });
-      }
-    } catch (error) {
-      await logAppError({
-        tenantId: event.tenantId,
-        source: "api.owner-command-center.events.integration-goal",
-        message: error instanceof Error ? error.message : "Integration goal observation failed.",
-        severity: "warning",
-        retryable: true,
-        metadata: {
-          ownerEventId: result.rows[0].id,
-          externalEventId: event.externalEventId ?? null,
-        },
+  try {
+    const goalEvent = {
+      tenantId: event.tenantId,
+      ownerEventId: result.rows[0].id,
+      externalEventId: event.externalEventId,
+      eventType: event.eventType,
+      title: event.title,
+      summary: event.summary,
+      severity: effectiveEvent.severity,
+      status: effectiveEvent.status,
+      ownerAttention: effectiveEvent.ownerAttention,
+      occurredAt: event.occurredAt,
+      riskType: effectiveEvent.riskType,
+      moneyCents: effectiveEvent.moneyCents,
+      recommendedAction: effectiveEvent.recommendedAction,
+      metadata: event.metadata,
+    };
+    if (event.platformKey === "h4r") {
+      await captureH4rGoalObservation(goalEvent);
+    } else {
+      await captureIntegrationGoalObservation({
+        ...goalEvent,
+        platformKey: event.platformKey,
+        platformName: event.platformName,
       });
     }
+  } catch (error) {
+    await logAppError({
+      tenantId: event.tenantId,
+      source: "api.owner-command-center.events.integration-goal",
+      message: error instanceof Error ? error.message : "Integration goal observation failed.",
+      severity: "warning",
+      retryable: true,
+      metadata: {
+        ownerEventId: result.rows[0].id,
+        externalEventId: event.externalEventId,
+      },
+    });
   }
 
-  if (event.tenantId && triageDecision) {
-    await queryPostgres(
+  await queryPostgres(
       `
       insert into public.owner_ai_decisions (
         tenant_id, owner_event_id, decision_type, model_provider, model_name, decision_status,
@@ -275,11 +261,9 @@ export async function POST(request: Request) {
         triageDecision.ownerAttention,
         triageDecision.escalationReasons
       ]
-    );
-  }
+  );
 
-  if (event.tenantId) {
-    await queryPostgres(
+  await queryPostgres(
       `
       update public.owner_platform_connections
       set last_event_at = coalesce($3::timestamptz, now()),
@@ -292,16 +276,15 @@ export async function POST(request: Request) {
         event.platformKey,
         event.occurredAt ?? null,
         JSON.stringify({
-          lastExternalEventId: event.externalEventId ?? null,
+          lastExternalEventId: event.externalEventId,
           lastEventType: event.eventType,
           lastIntakeAt: new Date().toISOString()
         })
       ]
-    );
-  }
+  );
 
   if (hasPushWorthySignal(effectiveEvent)) {
-    const preferences = await getPushNotificationPreferences(event.tenantId!);
+    const preferences = await getPushNotificationPreferences(event.tenantId);
     const preferencesAllowPush = pushPreferencesAllowEvent({
       preferences,
       severity: effectiveEvent.severity,
@@ -316,7 +299,7 @@ export async function POST(request: Request) {
     }
 
     const pushResult = await sendWorkspacePushNotifications({
-      tenantId: event.tenantId!,
+      tenantId: event.tenantId,
       eventType: `owner.${event.eventType}`,
       title: event.title,
       body: ownerNotificationBody(effectiveEvent),
