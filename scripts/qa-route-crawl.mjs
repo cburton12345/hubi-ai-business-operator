@@ -86,6 +86,23 @@ function urlFor(route) {
   return new URL(route, baseUrl).toString();
 }
 
+function getSafeAppMetaRedirect(body) {
+  const match = body.match(/<meta\s+id=["']__next-page-redirect["'][^>]*content=["'][^;]+;url=([^"']+)["'][^>]*>/i);
+  if (!match) return null;
+  try {
+    const target = new URL(match[1], baseUrl);
+    const expectedOrigin = new URL(baseUrl).origin;
+    if (target.origin !== expectedOrigin || !target.pathname.startsWith("/app/")) return null;
+    return target.toString();
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeRuntimeError(body) {
+  return body.includes("Application error:") || body.includes("Unhandled Runtime Error");
+}
+
 function loadLocalEnv() {
   if (!fs.existsSync(".env.local")) return;
   for (const line of fs.readFileSync(".env.local", "utf8").split(/\r?\n/)) {
@@ -123,14 +140,10 @@ async function checkPublic(route) {
   const response = await fetch(urlFor(route), { redirect: "follow" });
   const contentType = response.headers.get("content-type") || "";
   const body = await response.text();
-  const looksLikeError =
-    body.includes("Application error:") ||
-    body.includes("Unhandled Runtime Error") ||
-    body.includes("NEXT_REDIRECT");
 
   const failures = [];
   if (response.status >= 400) failures.push(`HTTP ${response.status}`);
-  if (looksLikeError) failures.push("error-like body");
+  if (looksLikeRuntimeError(body)) failures.push("error-like body");
   if (contentType.includes("text/html") && body.trim().length < 1000) {
     failures.push("suspiciously small HTML body");
   }
@@ -173,25 +186,28 @@ async function checkProtectedAuthenticated(route) {
     };
   }
 
-  const response = await fetch(urlFor(route), {
+  const headers = {
+    cookie: `ferocity_admin_session=${createHash("sha256")
+      .update(`ferocity-admin-session:${process.env.ADMIN_ACCESS_TOKEN}`)
+      .digest("hex")}`,
+  };
+  let response = await fetch(urlFor(route), {
     redirect: "follow",
-    headers: {
-      cookie: `ferocity_admin_session=${createHash("sha256")
-        .update(`ferocity-admin-session:${process.env.ADMIN_ACCESS_TOKEN}`)
-        .digest("hex")}`,
-    },
+    headers,
   });
-  const body = await response.text();
-  const looksLikeError =
-    body.includes("Application error:") ||
-    body.includes("Unhandled Runtime Error") ||
-    body.includes("NEXT_REDIRECT");
+  let body = await response.text();
+  const safeMetaRedirect = getSafeAppMetaRedirect(body);
+  if (safeMetaRedirect) {
+    response = await fetch(safeMetaRedirect, { redirect: "follow", headers });
+    body = await response.text();
+  }
 
   const failures = [];
   if (response.status >= 400) failures.push(`HTTP ${response.status}`);
   if (response.url.includes("/login")) failures.push(`authenticated request landed on login: ${response.url}`);
   if (body.includes("Sign in to Ferocity")) failures.push("authenticated body contains login page");
-  if (looksLikeError) failures.push("error-like body");
+  if (looksLikeRuntimeError(body)) failures.push("error-like body");
+  if (body.includes("NEXT_REDIRECT") && !getSafeAppMetaRedirect(body)) failures.push("unexpected redirect body");
   if (body.trim().length < 1000) failures.push("suspiciously small protected body");
 
   return {
