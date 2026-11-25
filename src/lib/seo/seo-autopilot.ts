@@ -685,7 +685,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
         targetUrl: null
       }
     ]) {
-      const result = await queryPostgres<{ id: string }>(
+      const result = await queryPostgres<{ id: string; inserted: boolean }>(
         `
         insert into public.brand_publishing_connections (
           tenant_id, brand_id, provider_key, display_name, target_url, status, live_publish_enabled, requires_approval, metadata_json
@@ -693,7 +693,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
         values ($1, $2, $3, $4, $5, 'not_connected', false, true, $6::jsonb)
         on conflict (tenant_id, brand_id, provider_key)
         do update set updated_at = now(), metadata_json = public.brand_publishing_connections.metadata_json || excluded.metadata_json
-        returning id
+        returning id, (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -704,11 +704,11 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           JSON.stringify({ seededBy: "seo_geo_growth_engine", livePublishDisabled: true, approvalRequired: true })
         ]
       );
-      if (result?.rows[0]?.id) publishingConnectionsCreated += 1;
+      if (result?.rows[0]?.inserted) publishingConnectionsCreated += 1;
     }
 
     for (const check of platformChecks(row)) {
-      const result = await queryPostgres<{ id: string }>(
+      const result = await queryPostgres<{ id: string; inserted: boolean }>(
         `
         insert into public.ai_search_visibility_checks (
           tenant_id, brand_id, platform_key, check_name, query_text, result_summary, status, next_check_at, metadata_json
@@ -721,7 +721,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           next_check_at = excluded.next_check_at,
           metadata_json = public.ai_search_visibility_checks.metadata_json || excluded.metadata_json,
           updated_at = now()
-        returning id
+        returning id, (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -733,11 +733,11 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           JSON.stringify({ seededBy: "seo_geo_growth_engine", evidenceRequired: true })
         ]
       );
-      if (result?.rows[0]?.id) visibilityChecksCreated += 1;
+      if (result?.rows[0]?.inserted) visibilityChecksCreated += 1;
     }
 
     for (const item of contentStrategy(row)) {
-      const result = await queryPostgres<{ id: string }>(
+      const result = await queryPostgres<{ id: string; inserted: boolean }>(
         `
         insert into public.seo_content_strategy_items (
           tenant_id, brand_id, strategy_name, content_type, title, target_keyword, target_prompt,
@@ -755,7 +755,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           priority_score = excluded.priority_score,
           metadata_json = public.seo_content_strategy_items.metadata_json || excluded.metadata_json,
           updated_at = now()
-        returning id
+        returning id, (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -776,11 +776,11 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           })
         ]
       );
-      if (result?.rows[0]?.id) strategyItemsCreated += 1;
+      if (result?.rows[0]?.inserted) strategyItemsCreated += 1;
     }
 
     for (const task of authorityTasks(row)) {
-      const result = await queryPostgres<{ id: string }>(
+      const result = await queryPostgres<{ id: string; inserted: boolean }>(
         `
         insert into public.seo_authority_tasks (
           tenant_id, brand_id, task_type, title, description, status, priority_score, due_at, metadata_json
@@ -793,7 +793,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           due_at = excluded.due_at,
           metadata_json = public.seo_authority_tasks.metadata_json || excluded.metadata_json,
           updated_at = now()
-        returning id
+        returning id, (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -805,15 +805,17 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
           JSON.stringify({ seededBy: "seo_geo_growth_engine", noSpam: true, noPaidLinkScheme: true })
         ]
       );
-      if (result?.rows[0]?.id) authorityTasksCreated += 1;
+      if (result?.rows[0]?.inserted) authorityTasksCreated += 1;
     }
 
     await queryPostgres(
       `
       insert into public.operator_timeline_events (
-        tenant_id, brand_id, event_family, event_type, title, body, metadata_json
+        tenant_id, brand_id, event_family, event_type, title, body, metadata_json, generation_key
       )
-      values ($1, $2, 'seo', 'growth_engine_prepared', $3, $4, $5::jsonb)
+      values ($1, $2, 'seo', 'growth_engine_prepared', $3, $4, $5::jsonb, 'seo-traffic-engine:activation')
+      on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+      do nothing
       `,
       [
         row.tenant_id,
@@ -836,6 +838,7 @@ export async function activateSeoTrafficEngine(workspaceId: string): Promise<Act
 
 export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<GenerateSeoAutopilotResult> {
   const rows = await loadSeoBrandRows(workspaceId);
+  const periodKey = new Date().toISOString().slice(0, 7);
   let draftsCreated = 0;
   let recommendationsCreated = 0;
   let calendarItemsCreated = 0;
@@ -843,19 +846,9 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
   for (const row of rows) {
     const topics = topicCluster(row);
 
-    await queryPostgres(
-      `
-      delete from public.ai_drafts
-      where tenant_id = $1
-        and brand_id = $2
-        and metadata_json->>'generator' = 'seo_autopilot_foundation'
-        and created_at >= date_trunc('week', now())
-      `,
-      [row.tenant_id, row.brand_id]
-    );
-
     for (const [index, topic] of topics.entries()) {
       const contentType = topic.type === "service_page" ? "service_page" : topic.type === "city_page" ? "city_page" : "blog";
+      const generationKey = `seo-autopilot:${periodKey}:${topic.type}:${slugify(topic.keyword)}`;
       const sourceResult = await queryPostgres<{ id: string }>(
         `
         insert into public.growth_sources (
@@ -887,11 +880,13 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
         ]
       );
       const sourceId = sourceResult?.rows[0]?.id ?? null;
-      const draftResult = await queryPostgres<{ id: string }>(
+      const draftResult = await queryPostgres<{ id: string; inserted: boolean }>(
         `
-        insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, metadata_json, status, risk_level)
-        values ($1, $2, $3, $4, $5, $6::jsonb, 'draft', $7)
-        returning id
+        insert into public.ai_drafts (tenant_id, brand_id, content_type, title, body, metadata_json, status, risk_level, generation_key)
+        values ($1, $2, $3, $4, $5, $6::jsonb, 'draft', $7, $8)
+        on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+        do update set updated_at = now()
+        returning id, (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -906,16 +901,18 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
             slugSuggestion: slugify(topic.title),
             growthSourceId: sourceId,
             draftOnly: true,
-            noExternalPublishing: true
+            noExternalPublishing: true,
+            generationKey
           }),
-          row.risk_profile === "legal_sensitive" ? "high" : index === 0 ? "low" : "medium"
+          row.risk_profile === "legal_sensitive" ? "high" : index === 0 ? "low" : "medium",
+          generationKey
         ]
       );
       const draftId = draftResult?.rows[0]?.id;
       if (!draftId) continue;
-      draftsCreated += 1;
+      if (draftResult.rows[0]?.inserted) draftsCreated += 1;
 
-      await queryPostgres(
+      const calendarResult = await queryPostgres<{ inserted: boolean }>(
         `
         insert into public.marketing_calendar_items (
           tenant_id,
@@ -928,9 +925,13 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           scheduled_for,
           risk_level,
           notes,
-          metadata_json
+          metadata_json,
+          generation_key
         )
-        values ($1, $2, 'ai_draft', $3, $4, $5, 'draft', now() + ($6::int * interval '1 day'), $7, $8, $9::jsonb)
+        values ($1, $2, 'ai_draft', $3, $4, $5, 'draft', now() + ($6::int * interval '1 day'), $7, $8, $9::jsonb, $10)
+        on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+        do update set updated_at = now()
+        returning (xmax = 0) as inserted
         `,
         [
           row.tenant_id,
@@ -941,10 +942,11 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           index + 1,
           row.risk_profile === "legal_sensitive" ? "high" : index === 0 ? "low" : "medium",
           `SEO autopilot draft for ${topic.keyword}. Review before publishing.`,
-          JSON.stringify({ generator: "seo_autopilot_foundation", draftOnly: true })
+          JSON.stringify({ generator: "seo_autopilot_foundation", draftOnly: true, generationKey }),
+          generationKey
         ]
       );
-      calendarItemsCreated += 1;
+      if (calendarResult?.rows[0]?.inserted) calendarItemsCreated += 1;
 
       await queryPostgres(
         `
@@ -985,9 +987,12 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           provider_status,
           queue_status,
           scheduled_for,
-          metadata_json
+          metadata_json,
+          generation_key
         )
-        values ($1, $2, $3, $4, 'not_connected', 'draft', now() + ($5::int * interval '1 day'), $6::jsonb)
+        values ($1, $2, $3, $4, 'not_connected', 'draft', now() + ($5::int * interval '1 day'), $6::jsonb, $7)
+        on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+        do update set updated_at = now()
         `,
         [
           row.tenant_id,
@@ -998,8 +1003,10 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           JSON.stringify({
             generator: "seo_autopilot_foundation",
             providerReadyOnly: true,
-            requiresQualityReview: true
-          })
+            requiresQualityReview: true,
+            generationKey
+          }),
+          generationKey
         ]
       );
 
@@ -1016,9 +1023,12 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           primary_entity_id,
           source_table,
           source_id,
-          metadata_json
+          metadata_json,
+          generation_key
         )
-        values ($1, $2, 'seo', 'draft_created', $3, $4, 'draft', $5, 'ai_drafts', $5, $6::jsonb)
+        values ($1, $2, 'seo', 'draft_created', $3, $4, 'draft', $5, 'ai_drafts', $5, $6::jsonb, $7)
+        on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+        do nothing
         `,
         [
           row.tenant_id,
@@ -1026,12 +1036,14 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           `SEO draft created: ${topic.title}`,
           `Draft-only growth asset for ${topic.keyword}. Quality review and manual approval required before publishing.`,
           draftId,
-          JSON.stringify({ sourceId, contentType, topicType: topic.type })
+          JSON.stringify({ generator: "seo_autopilot_foundation", sourceId, contentType, topicType: topic.type, generationKey }),
+          generationKey
         ]
       );
     }
 
-    await queryPostgres(
+    const recommendationGenerationKey = `seo-autopilot:${periodKey}:recommendation`;
+    const recommendationResult = await queryPostgres<{ inserted: boolean }>(
       `
       insert into public.recommendations (
         tenant_id,
@@ -1046,9 +1058,13 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
         risk_level,
         status,
         created_by,
-        metadata_json
+        metadata_json,
+        generation_key
       )
-      values ($1, $2, 'seo', $3, $4, $5, $6, 'medium', 'low', 'low', 'open', 'system', $7::jsonb)
+      values ($1, $2, 'seo', $3, $4, $5, $6, 'medium', 'low', 'low', 'open', 'system', $7::jsonb, $8)
+      on conflict (tenant_id, brand_id, generation_key) where generation_key is not null
+      do update set updated_at = now()
+      returning (xmax = 0) as inserted
       `,
       [
         row.tenant_id,
@@ -1061,11 +1077,13 @@ export async function generateSeoAutopilotDrafts(workspaceId: string): Promise<G
           generator: "seo_autopilot_foundation",
           keywordSeeds: keywordSeeds(row),
           draftOnly: true,
-          providerKeysNeeded: ["Search Console", "Analytics", "CMS publishing"]
-        })
+          providerKeysNeeded: ["Search Console", "Analytics", "CMS publishing"],
+          generationKey: recommendationGenerationKey
+        }),
+        recommendationGenerationKey
       ]
     );
-    recommendationsCreated += 1;
+    if (recommendationResult?.rows[0]?.inserted) recommendationsCreated += 1;
   }
 
   return {
