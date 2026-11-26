@@ -8,6 +8,7 @@ import {
   type MobileToolSection,
 } from "@/components/admin/MobileAppNav";
 import { ConnectivityStatus } from "@/components/admin/ConnectivityStatus";
+import { SessionContinuity } from "@/components/auth/SessionContinuity";
 import { executeAiWorkforceCommandSimpleAction } from "@/app/app/ai-workforce/actions";
 import { logoutUser } from "@/app/login/actions";
 import { switchWorkspaceAction } from "@/app/app/workspace/actions";
@@ -432,6 +433,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="page-shell">
+      {session ? <SessionContinuity /> : null}
       <a className="skip-link" href="#ferocity-workspace-content">
         Skip to workspace
       </a>
@@ -658,6 +660,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   ? `Signed in as ${session.email}`
                   : "Platform recovery session"}
             </span>
+            {session ? <Link className="muted" href="/app/devices">Trusted devices</Link> : null}
             {isPlatformAdmin ? (
               <span
                 className="muted"

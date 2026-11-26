@@ -27,6 +27,7 @@ export default async function LoginPage({
     email: "Correo electrónico",
     password: "Contraseña",
     invalid: "El correo electrónico o la contraseña no son válidos.",
+    unavailable: "Ferocity no pudo abrir una sesión segura. Inténtelo de nuevo en un momento.",
     invite: "La invitación ya no está disponible. Solicite un enlace nuevo a su empresa.",
     reset: "Contraseña actualizada. Inicie sesión con la nueva contraseña.",
     signing: "Iniciando sesión...",
@@ -72,6 +73,7 @@ export default async function LoginPage({
             <input name="password" type="password" autoComplete="current-password" required />
           </label>
           {params.error === "credentials" ? <p className="form-error">{copy?.invalid ?? "Invalid email or password."}</p> : null}
+          {params.error === "unavailable" ? <p className="form-error">{copy?.unavailable ?? "Ferocity could not open a secure session. Try again in a moment."}</p> : null}
           {params.error === "invite" ? <p className="form-error">{copy?.invite ?? "This invitation is no longer available. Ask your company for a new link."}</p> : null}
           {params.reset === "complete" ? <p className="muted">{copy?.reset ?? "Password updated. Sign in with the new password."}</p> : null}
           <ActionStatusButton pendingLabel={copy?.signing ?? "Signing in..."}>{copy?.continue ?? "Continue"}</ActionStatusButton>

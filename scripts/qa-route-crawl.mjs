@@ -74,6 +74,7 @@ const protectedRoutes = [
   "/app/integrations",
   "/app/credentials",
   "/app/settings",
+  "/app/devices",
   "/app/system-health",
   "/app/go-live",
   "/app/notifications",

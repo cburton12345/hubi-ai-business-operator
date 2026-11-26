@@ -8,6 +8,7 @@ import { getEmployeeAccessContext } from "@/lib/employee/employee-access";
 import { absoluteAppUrl } from "@/lib/http/safe-redirect";
 import { getCurrentWorkspace } from "@/lib/workspace/current-workspace";
 import { logoutUser } from "@/app/login/actions";
+import { SessionContinuity } from "@/components/auth/SessionContinuity";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export default async function EmployeeAppPage() {
 
   return (
     <main className="page-shell employee-shell" lang={spanish ? "es-US" : "en-US"}>
+      {appSession ? <SessionContinuity /> : null}
       <WorkerDocumentLanguage language={spanish ? "es" : "en"} />
       <section className="workspace">
         <header className="app-shell-header panel">
@@ -31,6 +33,7 @@ export default async function EmployeeAppPage() {
             <span className="muted">{spanish ? "Hoy, horas, horario, gastos y comprobantes" : "Today, hours, schedule, costs, proof"}</span>
           </div>
           {canOpenFullWorkspace ? <Link className="mini-button" href="/app">{spanish ? "Espacio de trabajo completo" : "Full workspace"}</Link> : null}
+          {appSession ? <Link className="mini-button secondary-button" href="/app/devices">{spanish ? "Dispositivos" : "Devices"}</Link> : null}
           <form action={logoutUser}><button className="mini-button" type="submit">{spanish ? "Cerrar sesión" : "Sign out"}</button></form>
         </header>
         <EmployeeWorkday />

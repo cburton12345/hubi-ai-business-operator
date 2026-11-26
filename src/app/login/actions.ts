@@ -10,6 +10,7 @@ import { signInWithSupabasePassword } from "@/lib/auth/supabase-auth";
 import { queryPostgres } from "@/lib/db/postgres";
 import { consumeLoginRateLimit } from "@/lib/security/rate-limit";
 import { safePostLoginDestination } from "@/lib/auth/post-login-destination";
+import { boundedUserAgent, sessionCookieOptions, trustedDeviceLabel } from "@/lib/auth/session-policy";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -161,23 +162,24 @@ export async function loginUser(formData: FormData) {
   }
 
   const token = randomSessionToken();
-  await queryPostgres(
+  const userAgent = boundedUserAgent(requestHeaders.get("user-agent"));
+  const createdSession = await queryPostgres<{ id: string }>(
     `
-    insert into public.app_sessions (user_id, session_token_hash, selected_tenant_id, expires_at)
-    values ($1, $2, $3, now() + interval '14 days')
+    insert into public.app_sessions (
+      user_id, session_token_hash, selected_tenant_id, user_agent, device_label,
+      authentication_method, authenticated_at, last_seen_at, expires_at, absolute_expires_at
+    )
+    values ($1, $2, $3, $4, $5, 'password', now(), now(), now() + interval '90 days', now() + interval '365 days')
+    returning id
     `,
-    [user.user_id, hashSessionToken(token), user.selected_tenant_id]
+    [user.user_id, hashSessionToken(token), user.selected_tenant_id, userAgent, trustedDeviceLabel(userAgent)]
   );
+  if (!createdSession?.rows[0]) {
+    redirect(loginErrorUrl("unavailable", parsed.data.next, parsed.data.lang));
+  }
 
   const cookieStore = await cookies();
-  cookieStore.set(appSessionCookieName, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 14,
-    priority: "high"
-  });
+  cookieStore.set(appSessionCookieName, token, sessionCookieOptions());
 
   redirect(safePostLoginDestination(parsed.data.next));
 }

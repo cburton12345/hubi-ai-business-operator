@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { appSessionCookieName } from "@/lib/auth/session";
@@ -9,6 +9,7 @@ import { ensureSupabaseAuthUser } from "@/lib/auth/supabase-auth";
 import { queryPostgres, withPostgresTransactionResult } from "@/lib/db/postgres";
 import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { env } from "@/lib/env";
+import { boundedUserAgent, sessionCookieOptions, trustedDeviceLabel } from "@/lib/auth/session-policy";
 
 const acceptInviteSchema = z.object({
   token: z.string().min(20),
@@ -61,6 +62,8 @@ export async function acceptInviteAction(formData: FormData) {
   });
   const credential = hashPassword(parsed.data.password);
   const sessionToken = randomSessionToken();
+  const requestHeaders = await headers();
+  const userAgent = boundedUserAgent(requestHeaders.get("user-agent"));
   const accepted = await withPostgresTransactionResult(async (client) => {
     const lockedInvite = await client.query<{ id: string }>(
       `select id from public.workspace_invites
@@ -151,9 +154,11 @@ export async function acceptInviteAction(formData: FormData) {
     if (!consumed.rows[0]) throw new Error("The invitation was already used or revoked.");
 
     await client.query(
-      `insert into public.app_sessions (user_id, session_token_hash, selected_tenant_id, expires_at)
-       values ($1, $2, $3, now() + interval '14 days')`,
-      [userId, hashSessionToken(sessionToken), invite.tenant_id]
+      `insert into public.app_sessions (
+         user_id,session_token_hash,selected_tenant_id,user_agent,device_label,
+         authentication_method,authenticated_at,last_seen_at,expires_at,absolute_expires_at
+       ) values ($1,$2,$3,$4,$5,'invite',now(),now(),now()+interval '90 days',now()+interval '365 days')`,
+      [userId, hashSessionToken(sessionToken), invite.tenant_id, userAgent, trustedDeviceLabel(userAgent)]
     );
     return { userId };
   });
@@ -203,14 +208,7 @@ Ferocity will open with a short guided conversation. Tell it what kind of busine
   });
 
   const cookieStore = await cookies();
-  cookieStore.set(appSessionCookieName, sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 14,
-    priority: "high"
-  });
+  cookieStore.set(appSessionCookieName, sessionToken, sessionCookieOptions());
 
   redirect(destination);
 }

@@ -41,6 +41,7 @@ export const getCurrentAppSession = cache(async (): Promise<CurrentAppSession | 
     where s.session_token_hash = $1
       and s.revoked_at is null
       and s.expires_at > now()
+      and (s.absolute_expires_at is null or s.absolute_expires_at > now())
     limit 1
     `,
     [hashSessionToken(token)]
