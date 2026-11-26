@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState,useState } from "react";
-import { bulkCrewTimeAction,correctCrewTimeEntryAction,type BulkTimeActionState,type TimeClockActionState } from "@/app/app/operations-workforce/actions";
+import { correctCrewTimeEntryAction,type TimeClockActionState } from "@/app/app/operations-workforce/actions";
+import { useWorkforceQueue,type WorkforceActionType } from "@/components/employee/WorkforceQuickActions";
 
-const initialBulk: BulkTimeActionState = { ok: true,message: "",applied: 0,skipped: 0,failures: [] };
 const initialCorrection: TimeClockActionState = { ok: true,message: "" };
 
 function localDateTimeValue(iso: string) {
@@ -17,29 +17,56 @@ export function CrewTimeBoardForm({ workers,assignments }: {
   workers: { id: string;name: string;clockStatus: string;todayHours: string }[];
   assignments: { id: string;title: string }[];
 }) {
-  const [state,action,pending] = useActionState(async (previous: BulkTimeActionState,formData: FormData) => {
+  const [selected,setSelected] = useState<string[]>([]);
+  const [assignmentId,setAssignmentId] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [payOpen,setPayOpen] = useState(false);
+  const [payAmount,setPayAmount] = useState("");
+  const [payMethod,setPayMethod] = useState<"cash" | "check" | "ach" | "card" | "payroll_provider" | "other">("ach");
+  const { submit,pendingCount,message,setMessage } = useWorkforceQueue("en");
+
+  async function run(type: WorkforceActionType) {
+    if (!selected.length) return void setMessage("Tap at least one worker first.");
+    setBusy(true);setMessage("");
     try {
-      return await bulkCrewTimeAction(previous,formData);
-    } catch {
-      return { ok: false,message: "Connection lost. Some workers may already be updated; reconnect and retry. Workers already in the requested state will be skipped safely.",applied: previous.applied,skipped: previous.skipped,failures: ["Network unavailable"] };
-    }
-  },initialBulk);
-  return <form action={action} className="panel form-stack span-12">
-    <div><h2>Crew time board</h2><p className="muted">Select one or more workers, then use one large action. Replays are skipped instead of creating duplicate shifts.</p></div>
+      for (const workerId of selected) await submit({ actionType: type,workerId,assignmentId: assignmentId || undefined });
+      setMessage(`${selected.length} worker${selected.length === 1 ? "" : "s"} saved. Offline actions will sync automatically.`);
+    } catch { setMessage("The action could not be stored on this device. Try again."); }
+    finally { setBusy(false); }
+  }
+
+  async function recordPayment() {
+    const amount = Number(payAmount.replace(/[$,]/g,""));
+    if (!selected.length) return void setMessage("Tap the worker who was paid.");
+    if (!Number.isFinite(amount) || amount <= 0) return void setMessage("Enter the amount paid.");
+    setBusy(true);setMessage("");
+    try {
+      for (const workerId of selected) await submit({
+        actionType: "worker_payment",workerId,assignmentId: assignmentId || undefined,
+        payment: { amountCents: Math.round(amount * 100),method: payMethod,paymentType: "payroll" }
+      });
+      setPayAmount("");setPayOpen(false);setMessage("Payment recorded. It remains in the audit ledger.");
+    } catch { setMessage("The payment could not be stored on this device. Try again."); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="panel form-stack span-12 workforce-quick-actions">
+    <div className="list-row flush-row"><div><h2>Crew today</h2><p className="muted">Tap people, then tap one action. Location is captured only at that tap. No service is okay.</p></div>{pendingCount ? <span className="pill medium">{pendingCount} pending</span> : <span className="pill">Synced</span>}</div>
     <div className="grid">{workers.map((worker) => <label className="panel span-3 checkbox-row" key={worker.id}>
-      <input name="workerIds" type="checkbox" value={worker.id} />
+      <input type="checkbox" value={worker.id} checked={selected.includes(worker.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current,worker.id] : current.filter((id) => id !== worker.id))} />
       <span><strong>{worker.name}</strong><br /><span className="muted">{worker.clockStatus} / {worker.todayHours} h today</span></span>
     </label>)}</div>
-    <select name="assignmentId" defaultValue=""><option value="">No shared assignment</option>{assignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.title}</option>)}</select>
-    <input name="note" placeholder="Optional crew note" />
-    <div className="button-row">
-      <button className="button" name="intent" value="clock_in" disabled={pending}>Clock in selected</button>
-      <button className="button secondary-button" name="intent" value="start_break" disabled={pending}>Start break</button>
-      <button className="button secondary-button" name="intent" value="end_break" disabled={pending}>End break</button>
-      <button className="button" name="intent" value="clock_out" disabled={pending}>Clock out selected</button>
+    <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}><option value="">No job selected</option>{assignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.title}</option>)}</select>
+    <div className="workforce-action-grid">
+      <button className="button workforce-primary-action" type="button" disabled={busy} onClick={() => void run("clock_in")}>Start</button>
+      <button className="button secondary-button" type="button" disabled={busy} onClick={() => void run("start_break")}>Break</button>
+      <button className="button secondary-button" type="button" disabled={busy} onClick={() => void run("end_break")}>Resume</button>
+      <button className="button" type="button" disabled={busy} onClick={() => void run("clock_out")}>Finish</button>
+      <button className="button secondary-button" type="button" disabled={busy} onClick={() => setPayOpen((value) => !value)}>Mark paid</button>
     </div>
-    {state.message ? <div className={state.ok ? "notice success" : "notice warning"} role="status" aria-live="polite"><strong>{state.message}</strong>{state.failures.length ? <p>{state.failures.join(", ")}</p> : null}</div> : null}
-  </form>;
+    {payOpen ? <div className="form-stack"><div className="two-col"><input value={payAmount} onChange={(event) => setPayAmount(event.target.value)} inputMode="decimal" placeholder="Amount per selected worker" /><select value={payMethod} onChange={(event) => setPayMethod(event.target.value as typeof payMethod)}><option value="ach">ACH / bank</option><option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="payroll_provider">Payroll provider</option><option value="other">Other</option></select></div><p className="field-help">This records the entered amount for each selected worker. It does not move money.</p><button className="button" type="button" disabled={busy} onClick={() => void recordPayment()}>Confirm payment</button></div> : null}
+    {message ? <div className="notice success" role="status" aria-live="polite"><strong>{message}</strong></div> : null}
+  </section>;
 }
 
 export function TimeCorrectionForm({ entry }: {

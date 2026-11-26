@@ -47,6 +47,18 @@ describe("employee time clock", () => {
     expect(fake.calls.some((call) => call.sql.includes("insert into"))).toBe(false);
   });
 
+  it("replays a device mutation by audit id without creating a second shift", async () => {
+    const calls: string[] = [];
+    const client = { async query<T>(sql: string) {
+      calls.push(sql);
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [],rowCount: 1 };
+      if (sql.includes("from public.operations_time_entry_events")) return { rows: [{ time_entry_id: "closed-entry" } as T],rowCount: 1 };
+      throw new Error(`Unexpected query: ${sql}`);
+    }};
+    await expect(createTimeClockEntry(client as never,{ ...input,idempotencyKey: "device-action-a",occurredAt: "2026-10-27T12:00:00Z" })).resolves.toEqual({ id: "closed-entry",created: false });
+    expect(calls.some((sql) => sql.includes("insert into public.operations_time_entries"))).toBe(false);
+  });
+
   it("uses a tenant-and-worker advisory lock before checking and inserting", async () => {
     const rows: Row[] = [];
     const fake = fakeClient(rows);
@@ -124,6 +136,25 @@ describe("employee time clock", () => {
     })).resolves.toEqual({ closed: true, id: "entry-1" });
   });
 
+  it("uses the device capture time for an offline clock-out and its audit event", async () => {
+    const calls: { sql: string;values: unknown[] }[] = [];
+    const capturedAt = "2026-10-27T20:00:00Z";
+    const client = { async query<T>(sql: string,values: unknown[] = []) {
+      calls.push({ sql,values });
+      if (sql.includes("from public.operations_time_entry_events")) return { rows: [],rowCount: 0 };
+      if (sql.startsWith("select id,worker_id")) return { rows: [{ id: "entry-1",worker_id: "worker-a",status: "open",elapsed_seconds: "28800",effective_break_seconds: "0",break_started_at: null } as T],rowCount: 1 };
+      if (sql.startsWith("update public.operations_time_entries")) return { rows: [{ id: "entry-1" } as T],rowCount: 1 };
+      if (sql.includes("insert into public.operations_time_entry_events")) return { rows: [],rowCount: 1 };
+      throw new Error(`Unexpected query: ${sql}`);
+    }};
+    await expect(closeTimeClockEntry(client as never,{
+      tenantId: "tenant-a",timeEntryId: "entry-1",workerId: "worker-a",clockOutLocation: "Madison, WI",
+      breakMinutes: 0,notes: null,source: "employee_app",occurredAt: capturedAt,idempotencyKey: "device-action-b"
+    })).resolves.toEqual({ closed: true,id: "entry-1" });
+    expect(calls.some((call) => call.values.includes(capturedAt))).toBe(true);
+    expect(calls.find((call) => call.sql.includes("insert into public.operations_time_entry_events"))?.values).toContain("device-action-b");
+  });
+
   it.each([
     ["excessive break", { id: "entry-1", worker_id: "worker-a", status: "open", elapsed_minutes: "20" }, "worker-a", 30, "break_exceeds_shift"],
     ["already closed", { id: "entry-1", worker_id: "worker-a", status: "needs_review", elapsed_minutes: "20" }, "worker-a", 0, "not_open"],
@@ -158,7 +189,7 @@ describe("employee time clock", () => {
     const events: string[] = [];
     const client = { async query<T>(sql: string) {
       if (sql.startsWith("select id,worker_id,status,break_started_at")) return { rows: [{ id: "entry-1",worker_id: "worker-a",status: "open",break_started_at: breakStarted ? new Date() : null,break_seconds: breakSeconds } as T],rowCount: 1 };
-      if (sql.includes("set break_started_at=now()")) { breakStarted = true; return { rows: [{ id: "entry-1",break_seconds: breakSeconds } as T],rowCount: 1 }; }
+      if (sql.includes("set break_started_at=")) { breakStarted = true; return { rows: [{ id: "entry-1",break_seconds: breakSeconds } as T],rowCount: 1 }; }
       if (sql.includes("set break_seconds=break_seconds")) { breakStarted = false;breakSeconds = 600;return { rows: [{ id: "entry-1",break_seconds: breakSeconds } as T],rowCount: 1 }; }
       if (sql.includes("insert into public.operations_time_entry_events")) { events.push("event");return { rows: [],rowCount: 1 }; }
       throw new Error(`Unexpected query: ${sql}`);

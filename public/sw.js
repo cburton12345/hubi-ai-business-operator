@@ -14,6 +14,68 @@ self.addEventListener("activate", (event) => {
 });
 
 const fieldShellCache = "ferocity-field-shell-v1";
+const fieldDatabaseName = "ferocity-field";
+const fieldDatabaseVersion = 2;
+const workforceStoreName = "workforceActions";
+
+function openFieldDatabase() {
+  return new Promise((resolve,reject) => {
+    const request = indexedDB.open(fieldDatabaseName,fieldDatabaseVersion);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("snapshots")) database.createObjectStore("snapshots");
+      if (!database.objectStoreNames.contains("mutations")) database.createObjectStore("mutations",{ keyPath: "clientMutationId" });
+      if (!database.objectStoreNames.contains(workforceStoreName)) database.createObjectStore(workforceStoreName,{ keyPath: "clientMutationId" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readWorkforceActions() {
+  const database = await openFieldDatabase();
+  const actions = await new Promise((resolve,reject) => {
+    const request = database.transaction(workforceStoreName,"readonly").objectStore(workforceStoreName).getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  return actions.sort((left,right) => left.capturedAt.localeCompare(right.capturedAt));
+}
+
+async function removeWorkforceActions(ids) {
+  if (!ids.length) return;
+  const database = await openFieldDatabase();
+  await new Promise((resolve,reject) => {
+    const transaction = database.transaction(workforceStoreName,"readwrite");
+    const store = transaction.objectStore(workforceStoreName);
+    for (const id of ids) store.delete(id);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
+
+async function flushWorkforceActions() {
+  const actions = await readWorkforceActions();
+  if (!actions.length) return;
+  const results = [];
+  for (const action of actions) {
+    const response = await fetch("/api/workforce/mobile-actions",{
+      method: "POST",credentials: "include",headers: { "content-type": "application/json" },body: JSON.stringify({ actions: [action] })
+    });
+    if (!response.ok) throw new Error("Workforce sync is unavailable.");
+    const body = await response.json();
+    results.push(...(body.results || []));
+  }
+  const completed = results.filter((result) => result.status === "applied" || result.status === "rejected").map((result) => result.clientMutationId);
+  await removeWorkforceActions(completed);
+  if (results.some((result) => result.status === "failed")) throw new Error("Some workforce actions still need to sync.");
+}
+
+self.addEventListener("sync",(event) => {
+  if (event.tag === "ferocity-workforce-sync") event.waitUntil(flushWorkforceActions());
+});
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;

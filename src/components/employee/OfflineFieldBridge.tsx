@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatWorkerDateTime, workerPlural, type WorkerLocale } from "@/lib/employee/worker-locale";
 
 const databaseName = "ferocity-field";
-const databaseVersion = 1;
+const databaseVersion = 2;
 
 type OfflineMutation = {
   clientMutationId: string;
@@ -33,6 +33,7 @@ function openDatabase() {
       const database = request.result;
       if (!database.objectStoreNames.contains("snapshots")) database.createObjectStore("snapshots");
       if (!database.objectStoreNames.contains("mutations")) database.createObjectStore("mutations", { keyPath: "clientMutationId" });
+      if (!database.objectStoreNames.contains("workforceActions")) database.createObjectStore("workforceActions", { keyPath: "clientMutationId" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

@@ -5,12 +5,11 @@ import { OfflineFieldBridge } from "@/components/employee/OfflineFieldBridge";
 import { EmployeeFerocityChat } from "@/components/employee/EmployeeFerocityChat";
 import { EmployeeTimeClockForm } from "@/components/employee/EmployeeTimeClockForm";
 import { EmployeeBalanceEntryForm } from "@/components/employee/EmployeeBalanceEntryForm";
+import { WorkforceQuickActions } from "@/components/employee/WorkforceQuickActions";
 import { getEmployeeChatInitialState } from "@/lib/employee/employee-chat";
 import { getEmployeeWorkday } from "@/lib/employee/get-employee-workday";
 import { getOperationsWorkforceDashboard } from "@/lib/operations-workforce/get-operations-workforce-dashboard";
 import {
-  clockOutTimeEntryAction,
-  changeEmployeeBreakAction,
   createClockInAction,
   createExpenseAction,
   createFieldMediaAction,
@@ -60,26 +59,12 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
         </form>
       ) : null}
 
-      {employeeDashboard && signedInWorker ? <section className="panel section-actions">
-        <div className="list-row flush-row"><div><p className="eyebrow">{copy.todayHours}: {employeeDashboard.payBalance.todayHours}</p><h2>{employeeDashboard.openTimeEntry ? employeeDashboard.openTimeEntry.onBreak ? copy.onBreak : copy.workingNowStatus : copy.clockedOutStatus}</h2><p className="muted">{copy.outstandingBalance}: {employeeDashboard.payBalance.outstandingAuthorizedBalance}</p></div><a className="mini-button secondary-button" href="#worker-balance-entry">{copy.addBalanceShortcut}</a></div>
-        {!employeeDashboard.openTimeEntry ? <EmployeeTimeClockForm submitAction={createClockInAction} idleLabel={copy.punchInButton} pendingLabel={language === "es" ? "Guardando..." : "Saving..."} offlineMessage={copy.offlineRetry}>
-          <EmployeeModeFields employeeMode worker={signedInWorker} copy={copy} />
-          <AssignmentSelect assignments={dashboard.assignments} copy={copy} />
-          <input name="clockInLocation" placeholder={copy.startLocation} />
-        </EmployeeTimeClockForm> : <div className="grid">
-          <EmployeeTimeClockForm submitAction={changeEmployeeBreakAction} idleLabel={employeeDashboard.openTimeEntry.onBreak ? copy.endBreak : copy.startBreak} pendingLabel={language === "es" ? "Guardando..." : "Saving..."} offlineMessage={copy.offlineRetry}>
-            <input name="timeEntryId" type="hidden" value={employeeDashboard.openTimeEntry.id} />
-            <input name="mode" type="hidden" value={employeeDashboard.openTimeEntry.onBreak ? "end" : "start"} />
-            <p>{employeeDashboard.openTimeEntry.onBreak ? copy.endBreakBody : copy.startBreakBody}</p>
-          </EmployeeTimeClockForm>
-          <EmployeeTimeClockForm submitAction={clockOutTimeEntryAction} idleLabel={copy.punchOutButton} pendingLabel={language === "es" ? "Guardando..." : "Saving..."} offlineMessage={copy.offlineRetry}>
-            <input name="employeeMode" type="hidden" value="1" />
-            <input name="timeEntryId" type="hidden" value={employeeDashboard.openTimeEntry.id} />
-            <input name="clockOutLocation" placeholder={copy.endLocation} />
-            <input name="breakMinutes" inputMode="numeric" placeholder={copy.breakMinutes} />
-          </EmployeeTimeClockForm>
-        </div>}
-      </section> : null}
+      {employeeDashboard && signedInWorker ? <WorkforceQuickActions
+        workerId={signedInWorker.id}
+        openState={!employeeDashboard.openTimeEntry ? "clocked_out" : employeeDashboard.openTimeEntry.onBreak ? "break" : "working"}
+        assignments={dashboard.assignments.map((assignment) => ({ id: assignment.id,title: assignment.title }))}
+        language={language}
+      /> : null}
 
       {employeeMode && signedInWorker && employeeChat ? (
         <EmployeeFerocityChat
@@ -272,7 +257,7 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
           <button className="button" type="submit" disabled={employeeMode && !signedInWorker}>{copy.saveMiles}</button>
         </form>
 
-        <form action={createExpenseAction} className="panel form-stack span-6">
+        {!employeeDashboard ? <form action={createExpenseAction} className="panel form-stack span-6">
           <h2><ReceiptText size={18} /> {copy.addCost}</h2>
           <p className="muted">{copy.costBody}</p>
           <EmployeeModeFields employeeMode={employeeMode} worker={signedInWorker} copy={copy} />
@@ -301,7 +286,7 @@ export async function EmployeeWorkday({ showOwnerLinks = false }: { showOwnerLin
           </select>
           <textarea name="aiSummary" rows={2} placeholder={copy.officeNote} />
           <button className="button" type="submit" disabled={employeeMode && !signedInWorker}>{copy.saveCost}</button>
-        </form>
+        </form> : null}
 
         <form action={createFieldMediaAction} className="panel form-stack span-6">
           <h2><Camera size={18} /> {copy.uploadProof}</h2>

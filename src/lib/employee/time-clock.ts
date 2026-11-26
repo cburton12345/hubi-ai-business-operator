@@ -12,6 +12,8 @@ export type CreateTimeClockEntryInput = {
   source: "employee_app" | "operations_workforce";
   actorUserId?: string | null;
   actorWorkerId?: string | null;
+  occurredAt?: string | null;
+  idempotencyKey?: string | null;
 };
 
 export type CreateTimeClockEntryResult = { id: string; created: boolean };
@@ -35,16 +37,17 @@ async function appendTimeEvent(client: TimeClockClient, input: {
   previous?: Record<string, unknown>;
   next?: Record<string, unknown>;
   idempotencyKey?: string | null;
+  occurredAt?: string | null;
 }) {
   const result = await client.query(
     `insert into public.operations_time_entry_events
        (tenant_id,time_entry_id,worker_id,event_type,actor_user_id,actor_worker_id,reason,
-        previous_state_json,new_state_json,idempotency_key)
-     values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10)
+        previous_state_json,new_state_json,idempotency_key,occurred_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,coalesce($11::timestamptz,now()))
      on conflict (tenant_id,idempotency_key) where idempotency_key is not null do nothing`,
     [input.tenantId,input.timeEntryId,input.workerId,input.eventType,input.actorUserId ?? null,
       input.actorWorkerId ?? null,input.reason ?? null,JSON.stringify(input.previous ?? {}),
-      JSON.stringify(input.next ?? {}),input.idempotencyKey ?? null]
+      JSON.stringify(input.next ?? {}),input.idempotencyKey ?? null,input.occurredAt ?? null]
   );
   if (result.rowCount !== 1 && !input.idempotencyKey) throw new Error("Time-clock audit evidence was not saved.");
 }
@@ -61,6 +64,15 @@ export async function createTimeClockEntry(
   const lockKey = `employee-time-clock:${input.tenantId}:${input.workerId}`;
   await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [lockKey]);
 
+  if (input.idempotencyKey) {
+    const replay = await client.query<{ time_entry_id: string }>(
+      `select time_entry_id from public.operations_time_entry_events
+       where tenant_id=$1 and idempotency_key=$2 limit 1`,
+      [input.tenantId,input.idempotencyKey]
+    );
+    if (replay.rows[0]?.time_entry_id) return { id: replay.rows[0].time_entry_id,created: false };
+  }
+
   const existing = await client.query<{ id: string }>(
     `select id
      from public.operations_time_entries
@@ -74,13 +86,14 @@ export async function createTimeClockEntry(
 
   const inserted = await client.query<{ id: string }>(
     `insert into public.operations_time_entries (
-       tenant_id, worker_id, assignment_id, clock_in_location, gps_verified, notes, metadata_json
-     ) values ($1,$2,$3,$4,$5,$6,$7::jsonb)
+       tenant_id, worker_id, assignment_id, clock_in_at, clock_in_location, gps_verified, notes, metadata_json
+     ) values ($1,$2,$3,coalesce($4::timestamptz,now()),$5,$6,$7,$8::jsonb)
      returning id`,
     [
       input.tenantId,
       input.workerId,
       input.assignmentId,
+      input.occurredAt ?? null,
       input.clockInLocation,
       input.gpsVerified,
       input.notes,
@@ -95,7 +108,8 @@ export async function createTimeClockEntry(
   await appendTimeEvent(client, {
     tenantId: input.tenantId,timeEntryId: id,workerId: input.workerId,eventType: "clock_in",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,
-    next: { assignmentId: input.assignmentId, source: input.source }
+    next: { assignmentId: input.assignmentId, source: input.source },
+    idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { id, created: true };
 }
@@ -108,7 +122,17 @@ export async function changeTimeClockBreak(client: TimeClockClient, input: {
   actorUserId?: string | null;
   actorWorkerId?: string | null;
   source: "employee_app" | "operations_workforce";
+  occurredAt?: string | null;
+  idempotencyKey?: string | null;
 }): Promise<BreakChangeResult> {
+  if (input.idempotencyKey) {
+    const replay = await client.query<{ time_entry_id: string;new_state_json: { breakSeconds?: number } }>(
+      `select time_entry_id,new_state_json from public.operations_time_entry_events
+       where tenant_id=$1 and idempotency_key=$2 limit 1`,
+      [input.tenantId,input.idempotencyKey]
+    );
+    if (replay.rows[0]) return { changed: true,id: replay.rows[0].time_entry_id,breakSeconds: Number(replay.rows[0].new_state_json?.breakSeconds ?? 0) };
+  }
   const current = await client.query<{
     id: string; worker_id: string | null; status: string; break_started_at: Date | null; break_seconds: number;
   }>(
@@ -124,19 +148,19 @@ export async function changeTimeClockBreak(client: TimeClockClient, input: {
 
   const updated = input.mode === "start"
     ? await client.query<{ id: string; break_seconds: number }>(
-        `update public.operations_time_entries set break_started_at=now(),updated_at=now()
+        `update public.operations_time_entries set break_started_at=coalesce($3::timestamptz,now()),updated_at=now()
          where tenant_id=$1 and id=$2 and status='open' and break_started_at is null
          returning id,break_seconds`,
-        [input.tenantId,input.timeEntryId]
+        [input.tenantId,input.timeEntryId,input.occurredAt ?? null]
       )
     : await client.query<{ id: string; break_seconds: number }>(
         `update public.operations_time_entries
-         set break_seconds=break_seconds+greatest(0,extract(epoch from (now()-break_started_at)))::integer,
-             break_minutes=ceil((break_seconds+greatest(0,extract(epoch from (now()-break_started_at))))/60.0)::integer,
+         set break_seconds=break_seconds+greatest(0,extract(epoch from (coalesce($3::timestamptz,now())-break_started_at)))::integer,
+             break_minutes=ceil((break_seconds+greatest(0,extract(epoch from (coalesce($3::timestamptz,now())-break_started_at))))/60.0)::integer,
              break_started_at=null,updated_at=now()
          where tenant_id=$1 and id=$2 and status='open' and break_started_at is not null
          returning id,break_seconds`,
-        [input.tenantId,input.timeEntryId]
+        [input.tenantId,input.timeEntryId,input.occurredAt ?? null]
       );
   const changed = updated.rows[0];
   if (!changed) throw new Error("The break state changed before it could be saved.");
@@ -145,7 +169,8 @@ export async function changeTimeClockBreak(client: TimeClockClient, input: {
     eventType: input.mode === "start" ? "break_started" : "break_ended",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,
     previous: { breakStartedAt: entry.break_started_at, breakSeconds: entry.break_seconds },
-    next: { onBreak: input.mode === "start", breakSeconds: changed.break_seconds, source: input.source }
+    next: { onBreak: input.mode === "start", breakSeconds: changed.break_seconds, source: input.source },
+    idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { changed: true, id: changed.id, breakSeconds: changed.break_seconds };
 }
@@ -162,8 +187,18 @@ export async function closeTimeClockEntry(
     source: "employee_app" | "operations_workforce";
     actorUserId?: string | null;
     actorWorkerId?: string | null;
+    occurredAt?: string | null;
+    idempotencyKey?: string | null;
   }
 ): Promise<CloseTimeClockEntryResult> {
+  if (input.idempotencyKey) {
+    const replay = await client.query<{ time_entry_id: string }>(
+      `select time_entry_id from public.operations_time_entry_events
+       where tenant_id=$1 and idempotency_key=$2 limit 1`,
+      [input.tenantId,input.idempotencyKey]
+    );
+    if (replay.rows[0]?.time_entry_id) return { closed: true,id: replay.rows[0].time_entry_id };
+  }
   const current = await client.query<{
     id: string;
     worker_id: string | null;
@@ -174,14 +209,14 @@ export async function closeTimeClockEntry(
     break_started_at: Date | null;
   }>(
     `select id,worker_id,status,break_started_at,
-            greatest(0,extract(epoch from (now()-clock_in_at)))::text as elapsed_seconds,
-            greatest(0,extract(epoch from (now()-clock_in_at))/60)::text as elapsed_minutes,
+            greatest(0,extract(epoch from (coalesce($3::timestamptz,now())-clock_in_at)))::text as elapsed_seconds,
+            greatest(0,extract(epoch from (coalesce($3::timestamptz,now())-clock_in_at))/60)::text as elapsed_minutes,
             (break_seconds+case when break_started_at is not null then
-              greatest(0,extract(epoch from (now()-break_started_at)))::integer else 0 end)::text as effective_break_seconds
+              greatest(0,extract(epoch from (coalesce($3::timestamptz,now())-break_started_at)))::integer else 0 end)::text as effective_break_seconds
      from public.operations_time_entries
      where id = $1 and tenant_id = $2
      for update`,
-    [input.timeEntryId, input.tenantId]
+    [input.timeEntryId, input.tenantId,input.occurredAt ?? null]
   );
   const entry = current.rows[0];
   if (!entry || entry.status !== "open") return { closed: false, reason: "not_open" };
@@ -191,7 +226,7 @@ export async function closeTimeClockEntry(
 
   const updated = await client.query<{ id: string }>(
     `update public.operations_time_entries
-     set clock_out_at = now(),
+     set clock_out_at = coalesce($8::timestamptz,now()),
          clock_out_location = $3,
          break_seconds = $4,
          break_minutes = ceil($4/60.0)::integer,
@@ -210,7 +245,8 @@ export async function closeTimeClockEntry(
       effectiveBreakSeconds,
       input.notes,
       JSON.stringify({ clockOutMode: "manual", payrollReviewRequired: true, source: input.source }),
-      input.workerId
+      input.workerId,
+      input.occurredAt ?? null
     ]
   );
   const id = updated.rows[0]?.id;
@@ -219,7 +255,8 @@ export async function closeTimeClockEntry(
     tenantId: input.tenantId,timeEntryId: id,workerId: entry.worker_id,eventType: "clock_out",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,reason: input.notes,
     previous: { status: entry.status, breakStartedAt: entry.break_started_at },
-    next: { status: "needs_review", breakSeconds: effectiveBreakSeconds, source: input.source }
+    next: { status: "needs_review", breakSeconds: effectiveBreakSeconds, source: input.source },
+    idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { closed: true, id };
 }
