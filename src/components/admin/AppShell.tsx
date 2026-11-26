@@ -23,7 +23,7 @@ import packageJson from "../../../package.json";
 const commandShortcuts = [
   ["Show me what matters today", "/app/attention-command"],
   ["Create an estimate", "/app/job-tracker#new-estimate"],
-  ["Check job health", "/app/job-tracker/health"],
+  ["Find a contractor", "/app/integrations/marketplacepro"],
   ["Collect unpaid invoices", "/app/cash-collection"],
 ];
 
@@ -31,21 +31,31 @@ const primaryNavigation = [
   { label: "Ask Ferocity", href: "/app/ferocity", paths: ["/app/ferocity"] },
   { label: "Today", href: "/app", paths: ["/app", "/app/attention-command"] },
   {
+    label: "Opportunities",
+    href: "/app/opportunities",
+    paths: ["/app/opportunities"],
+  },
+  {
     label: "Customers",
     href: "/app/lead-command",
     paths: ["/app/lead-command", "/app/leads", "/app/messaging"],
   },
-  { label: "Schedule", href: "/app/schedule", paths: ["/app/schedule"] },
   {
     label: "Work",
     href: "/app/job-tracker",
     paths: [
       "/app/job-tracker",
       "/app/service",
+      "/app/schedule",
       "/app/estimator",
       "/app/operations-workforce",
       "/app/purchasing",
     ],
+  },
+  {
+    label: "Network",
+    href: "/app/integrations/marketplacepro",
+    paths: ["/app/integrations/marketplacepro", "/app/labor-bench"],
   },
   {
     label: "Money",
@@ -64,7 +74,6 @@ const primaryNavigation = [
       "/app/revenue-growth",
     ],
   },
-  { label: "Insights", href: "/app/reports", paths: ["/app/reports"] },
 ] as const;
 
 const customerNavigation = [
@@ -187,8 +196,6 @@ const platformMobileToolSections: readonly MobileToolSection[] = [
       ["AI Office Manager", "/app/office-manager"],
       ["Managed Operator", "/app/managed-operator"],
       ["Daily Brief", "/app/ai-monitoring"],
-      ["Guided Setup", "/app/build-system"],
-      ["Business Gap Scan", "/app/gap-scan"],
       ["Autopilot", "/app/autopilot"],
       ["Business Info", "/app/business-brain"],
       ["Install App", "/install"],
@@ -208,6 +215,7 @@ const platformMobileToolSections: readonly MobileToolSection[] = [
       ["Field Team", "/employee"],
       ["Hiring & Team Readiness", "/app/team"],
       ["Labor Bench", "/app/labor-bench"],
+      ["MarketplacePro Network", "/app/integrations/marketplacepro"],
       ["Email Watch", "/app/email-watch"],
     ],
   },
@@ -527,8 +535,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                       <Link href="/app/ferocity">Ask Ferocity</Link>
                       <Link href="/app/office-manager">AI Office Manager</Link>
                       <Link href="/app/managed-operator">Managed Operator</Link>
-                      <Link href="/app/build-system">Guided Setup</Link>
-                      <Link href="/app/gap-scan">Business Gap Scan</Link>
                       <Link href="/app/autopilot">Autopilot</Link>
                       <Link href="/app/business-brain">Business Info</Link>
                       <Link href="/app/ai-monitoring">Daily Brief</Link>
@@ -537,6 +543,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                     <section>
                       <p>Customers & Work</p>
                       <Link href="/app/lead-command">Leads & Customers</Link>
+                      <Link href="/app/opportunities">Opportunities</Link>
+                      <Link href="/app/integrations/marketplacepro">
+                        MarketplacePro Network
+                      </Link>
                       <Link href="/app/job-tracker">Jobs & Money</Link>
                       <Link href="/app/estimator">AI Estimator</Link>
                       <Link href="/app/pricebook">Pricebook & Memberships</Link>

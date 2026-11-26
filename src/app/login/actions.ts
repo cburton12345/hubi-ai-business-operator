@@ -11,9 +11,10 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { consumeLoginRateLimit } from "@/lib/security/rate-limit";
 import { safePostLoginDestination } from "@/lib/auth/post-login-destination";
 import { boundedUserAgent, sessionCookieOptions, trustedDeviceLabel } from "@/lib/auth/session-policy";
+import { normalizeLoginIdentifier } from "@/lib/auth/login-identifier";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().trim().min(3).max(320),
   password: z.string().min(8),
   next: z.string().optional(),
   lang: z.enum(["en", "es"]).optional()
@@ -64,7 +65,7 @@ export async function loginAdmin(formData: FormData) {
 
 export async function loginUser(formData: FormData) {
   const parsed = loginSchema.safeParse({
-    email: formData.get("email"),
+    identifier: formData.get("identifier") ?? formData.get("email"),
     password: formData.get("password"),
     next: formData.get("next")?.toString(),
     lang: formData.get("lang")?.toString()
@@ -73,10 +74,14 @@ export async function loginUser(formData: FormData) {
   if (!parsed.success) {
     redirect(loginErrorUrl("credentials", formData.get("next")?.toString(), formData.get("lang") === "es" ? "es" : "en"));
   }
+  const identifier = normalizeLoginIdentifier(parsed.data.identifier);
+  if (!identifier) {
+    redirect(loginErrorUrl("credentials", parsed.data.next, parsed.data.lang));
+  }
   const requestHeaders = await headers();
   const loginLimit = await consumeLoginRateLimit({
     scope: "workspace-password-login",
-    identifier: parsed.data.email,
+    identifier: `${identifier.kind}:${identifier.canonical}`,
     clientHint:
       requestHeaders.get("x-nf-client-connection-ip") ||
       requestHeaders.get("x-forwarded-for") ||
@@ -89,7 +94,36 @@ export async function loginUser(formData: FormData) {
     redirect(loginErrorUrl("credentials", parsed.data.next, parsed.data.lang));
   }
 
-  const supabaseIdentity = await signInWithSupabasePassword(parsed.data.email, parsed.data.password);
+  const resolvedEmail = identifier.kind === "email"
+    ? identifier.canonical
+    : (await queryPostgres<{ email: string }>(
+        `
+        with phone_candidates as (
+          select distinct u.id, u.email
+          from public.operations_workers worker
+          join public.users u on u.id = worker.user_id
+          join public.tenant_users membership
+            on membership.user_id = u.id
+           and membership.tenant_id = worker.tenant_id
+           and membership.status = 'active'
+          join public.tenants tenant
+            on tenant.id = worker.tenant_id
+           and tenant.status in ('active', 'trial')
+          where regexp_replace(coalesce(worker.phone, ''), '[^0-9]', '', 'g') = any($1::text[])
+        )
+        select email
+        from phone_candidates
+        where (select count(*) from phone_candidates) = 1
+        limit 1
+        `,
+        [identifier.phoneCandidates]
+      ))?.rows[0]?.email ?? null;
+
+  if (!resolvedEmail) {
+    redirect(loginErrorUrl("credentials", parsed.data.next, parsed.data.lang));
+  }
+
+  const supabaseIdentity = await signInWithSupabasePassword(resolvedEmail, parsed.data.password);
   const userResult = await queryPostgres<{
     user_id: string;
     email: string;
@@ -119,7 +153,7 @@ export async function loginUser(formData: FormData) {
     where lower(u.email) = lower($1) or u.auth_user_id = $2
     limit 1
     `,
-    [parsed.data.email, supabaseIdentity?.authUserId ?? null]
+    [resolvedEmail, supabaseIdentity?.authUserId ?? null]
   );
   const user = userResult?.rows[0];
 

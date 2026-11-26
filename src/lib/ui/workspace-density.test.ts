@@ -99,6 +99,20 @@ describe("workspace information density", () => {
     expect(css).not.toContain("inset: 74px 10px auto 10px");
   });
 
+  it("keeps contractor operations on one visible, non-binding path", () => {
+    const shell = source("src/components/admin/AppShell.tsx");
+    const page = source("src/app/app/integrations/marketplacepro/page.tsx");
+
+    expect(shell).toContain('label: "Opportunities"');
+    expect(shell).toContain('label: "Network"');
+    expect(shell).toContain('["Find a contractor", "/app/integrations/marketplacepro"]');
+    expect(page).toContain("Opportunity to completed job workflow");
+    expect(page).toContain("MarketplacePro sources and verifies contractors");
+    expect(page).toContain("Ferocity never advances or accepts the work automatically");
+    expect(page).toContain('href="https://marketplacepro.live/app"');
+    expect(page).toContain('className="network-boundary-list"');
+  });
+
   it("keeps the primary tax print actions visible beside document work", () => {
     const expenses = source("src/app/app/expenses/page.tsx");
     expect(expenses).toContain("Tax packets by year");
