@@ -11,6 +11,8 @@ export type QueuedWorkforceAction = {
   workerId: string;
   assignmentId?: string;
   location?: { latitude: number;longitude: number;accuracyMeters?: number;label?: string };
+  manualLocation?: string;
+  workContext?: string;
   note?: string;
   expense?: { vendor?: string;amountCents: number;category: string;reimbursable: boolean;receipt?: { name: string;type: string;size: number;base64: string } };
   payment?: { amountCents: number;method: "cash" | "check" | "ach" | "card" | "payroll_provider" | "other";paymentType: "payroll" | "subcontractor" | "bonus" | "reimbursement" | "draw" | "other" };
@@ -85,10 +87,10 @@ async function postActions(actions: QueuedWorkforceAction[]) {
   return { results };
 }
 
-async function currentLocation() {
+export async function captureWorkforceLocation() {
   if (!("geolocation" in navigator)) return undefined;
   const position = await new Promise<GeolocationPosition | null>((resolve) => {
-    navigator.geolocation.getCurrentPosition(resolve,() => resolve(null),{ enableHighAccuracy: true,timeout: 8_000,maximumAge: 0 });
+    navigator.geolocation.getCurrentPosition(resolve,() => resolve(null),{ enableHighAccuracy: true,timeout: 4_000,maximumAge: 30_000 });
   });
   if (!position) return undefined;
   const location = {
@@ -158,23 +160,28 @@ export function useWorkforceQueue(language: "en" | "es" = "en") {
     return () => { window.clearTimeout(hydrateTimer);window.removeEventListener("online",online); };
   },[flush,refresh]);
 
-  const submit = useCallback(async (action: Omit<QueuedWorkforceAction,"clientMutationId" | "capturedAt" | "location">) => {
+  const submit = useCallback(async (action: Omit<QueuedWorkforceAction,"clientMutationId" | "capturedAt">,options: { captureLocation?: boolean } = {}) => {
+    const capturedAt = new Date().toISOString();
+    const detectedLocation = action.location ?? (options.captureLocation === false ? undefined : await captureWorkforceLocation());
     const complete: QueuedWorkforceAction = {
-      ...action,clientMutationId: crypto.randomUUID(),capturedAt: new Date().toISOString(),location: await currentLocation()
+      ...action,
+      manualLocation: action.manualLocation?.trim() || undefined,
+      workContext: action.workContext?.trim() || undefined,
+      clientMutationId: crypto.randomUUID(),capturedAt,location: detectedLocation
     };
     await queueAction(complete);
     await refresh();
     if (!navigator.onLine) {
       setMessage(language === "es" ? "Guardado sin conexión. Se enviará automáticamente." : "Saved offline. It will upload automatically.");
-      return { queued: true };
+      return { queued: true,locationLabel: complete.manualLocation || detectedLocation?.label };
     }
     const results = await flush();
     const ownResult = results.find((result) => result.clientMutationId === complete.clientMutationId);
     if (ownResult?.status === "rejected") throw new Error(ownResult.message);
-    return { queued: false };
+    return { queued: false,locationLabel: complete.manualLocation || detectedLocation?.label };
   },[flush,language,refresh]);
 
-  return { submit,pendingCount,message,setMessage };
+  return { submit,pendingCount,message,setMessage,syncNow: flush };
 }
 
 export function WorkforceQuickActions({ workerId,openState,assignments,language }: {
@@ -182,14 +189,17 @@ export function WorkforceQuickActions({ workerId,openState,assignments,language 
   assignments: { id: string;title: string }[];language: "en" | "es";
 }) {
   const copy = language === "es" ? {
-    status: "Estado de hoy",out: "Fuera de turno",working: "Trabajando",onBreak: "En descanso",start: "Comenzar",break: "Descanso",resume: "Continuar",finish: "Terminar",expense: "Agregar gasto",amount: "Cantidad",vendor: "Tienda o proveedor",category: "Categoría",receipt: "Foto del recibo",reimburse: "Necesito reembolso",save: "Guardar gasto",job: "Trabajo (opcional)",note: "Nota opcional"
+    status: "Estado de hoy",out: "Fuera de turno",working: "Trabajando",onBreak: "En descanso",start: "Comenzar",break: "Descanso",resume: "Continuar",finish: "Terminar",expense: "Agregar gasto",amount: "Cantidad",vendor: "Tienda o proveedor",category: "Categoría",receipt: "Foto del recibo",reimburse: "Necesito reembolso",save: "Guardar gasto",job: "Trabajo (opcional)",note: "Nota opcional",manualLocation: "Ciudad o dirección (opcional)",workContext: "Otra empresa o trabajo (opcional)",locationHelp: "El GPS se guarda al tocar. Escriba una ubicación si el GPS no está disponible o si trabaja en otro lugar."
   } : {
-    status: "Today",out: "Clocked out",working: "Working",onBreak: "On break",start: "Start work",break: "Take break",resume: "Resume work",finish: "Finish",expense: "Add expense",amount: "Amount",vendor: "Store or vendor",category: "Category",receipt: "Receipt photo",reimburse: "Pay me back",save: "Save expense",job: "Job (optional)",note: "Optional note"
+    status: "Today",out: "Clocked out",working: "Working",onBreak: "On break",start: "Start work",break: "Take break",resume: "Resume work",finish: "Finish",expense: "Add expense",amount: "Amount",vendor: "Store or vendor",category: "Category",receipt: "Receipt photo",reimburse: "Pay me back",save: "Save expense",job: "Job (optional)",note: "Optional note",manualLocation: "Town or address (optional)",workContext: "Other company or job (optional)",locationHelp: "GPS saves when you tap. Type a location if GPS is unavailable or you are working somewhere else."
   };
   const [state,setState] = useState(openState);
+  const [assignmentId,setAssignmentId] = useState("");
+  const [manualLocation,setManualLocation] = useState("");
+  const [workContext,setWorkContext] = useState("");
   const [busy,setBusy] = useState(false);
   const [expenseOpen,setExpenseOpen] = useState(false);
-  const { submit,pendingCount,message,setMessage } = useWorkforceQueue(language);
+  const { submit,pendingCount,message,setMessage,syncNow } = useWorkforceQueue(language);
   const status = state === "working" ? copy.working : state === "break" ? copy.onBreak : copy.out;
   const primary = useMemo(() => state === "clocked_out"
     ? { type: "clock_in" as const,label: copy.start,next: "working" as const }
@@ -197,9 +207,13 @@ export function WorkforceQuickActions({ workerId,openState,assignments,language 
       ? { type: "end_break" as const,label: copy.resume,next: "working" as const }
       : { type: "start_break" as const,label: copy.break,next: "break" as const },[copy.break,copy.resume,copy.start,state]);
 
-  async function timeAction(type: WorkforceActionType,next: typeof state,assignmentId?: string) {
+  async function timeAction(type: WorkforceActionType,next: typeof state) {
     setBusy(true);setMessage("");
-    try { await submit({ actionType: type,workerId,assignmentId });setState(next); }
+    try {
+      const result = await submit({ actionType: type,workerId,assignmentId: assignmentId || undefined,manualLocation,workContext });
+      setState(next);
+      if (result.locationLabel && !result.queued) setMessage(`${language === "es" ? "Guardado en" : "Saved at"} ${result.locationLabel}.`);
+    }
     catch { setMessage(language === "es" ? "No se pudo guardar en este dispositivo." : "Could not save on this device."); }
     finally { setBusy(false); }
   }
@@ -212,7 +226,7 @@ export function WorkforceQuickActions({ workerId,openState,assignments,language 
       if (!Number.isFinite(amount) || amount <= 0) throw new Error("amount");
       const receipt = await fileReceipt(data.get("receipt") instanceof File ? data.get("receipt") as File : null);
       await submit({
-        actionType: "expense",workerId,assignmentId: String(data.get("assignmentId") || "") || undefined,
+        actionType: "expense",workerId,assignmentId: String(data.get("assignmentId") || "") || undefined,manualLocation,workContext,
         note: String(data.get("note") || "") || undefined,
         expense: { vendor: String(data.get("vendor") || "") || undefined,amountCents: Math.round(amount * 100),category: String(data.get("category") || "Other"),reimbursable: data.get("reimbursable") === "on",receipt }
       });
@@ -222,11 +236,16 @@ export function WorkforceQuickActions({ workerId,openState,assignments,language 
   }
 
   return <section className="panel form-stack workforce-quick-actions">
-    <div className="list-row flush-row"><div><span className="eyebrow">{copy.status}</span><h2>{status}</h2></div>{pendingCount ? <span className="pill medium">{pendingCount} pending</span> : <span className="pill">Synced</span>}</div>
-    <select id="worker-quick-assignment" defaultValue="" aria-label={copy.job}><option value="">{copy.job}</option>{assignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.title}</option>)}</select>
+    <div className="list-row flush-row"><div><span className="eyebrow">{copy.status}</span><h2>{status}</h2></div><div className="button-row">{pendingCount ? <><span className="pill medium">{pendingCount} pending</span><button className="mini-button secondary-button" type="button" onClick={() => void syncNow()}>{language === "es" ? "Sincronizar" : "Sync now"}</button></> : <span className="pill">{language === "es" ? "Sincronizado" : "Synced"}</span>}</div></div>
+    <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)} aria-label={copy.job}><option value="">{copy.job}</option>{assignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.title}</option>)}</select>
+    <div className="two-col">
+      <input value={manualLocation} onChange={(event) => setManualLocation(event.target.value)} maxLength={220} placeholder={copy.manualLocation} autoComplete="street-address" />
+      <input value={workContext} onChange={(event) => setWorkContext(event.target.value)} maxLength={220} placeholder={copy.workContext} />
+    </div>
+    <p className="field-help">{copy.locationHelp}</p>
     <div className="workforce-action-grid">
-      <button className="button workforce-primary-action" type="button" disabled={busy} onClick={() => void timeAction(primary.type,primary.next,(document.getElementById("worker-quick-assignment") as HTMLSelectElement | null)?.value || undefined)}>{primary.label}</button>
-      {state !== "clocked_out" ? <button className="button secondary-button" type="button" disabled={busy} onClick={() => void timeAction("clock_out","clocked_out",(document.getElementById("worker-quick-assignment") as HTMLSelectElement | null)?.value || undefined)}>{copy.finish}</button> : null}
+      <button className="button workforce-primary-action" type="button" disabled={busy} onClick={() => void timeAction(primary.type,primary.next)}>{primary.label}</button>
+      {state !== "clocked_out" ? <button className="button secondary-button" type="button" disabled={busy} onClick={() => void timeAction("clock_out","clocked_out")}>{copy.finish}</button> : null}
       <button className="button secondary-button" type="button" onClick={() => setExpenseOpen((value) => !value)}>{copy.expense}</button>
     </div>
     {expenseOpen ? <form className="form-stack" onSubmit={saveExpense}>
@@ -239,6 +258,6 @@ export function WorkforceQuickActions({ workerId,openState,assignments,language 
       <button className="button" type="submit" disabled={busy}>{copy.save}</button>
     </form> : null}
     {message ? <p className="notice success" role="status" aria-live="polite">{message}</p> : null}
-    <p className="field-help">Location is captured only when you tap an action. If service is unavailable, the original time and receipt stay on this device and sync automatically.</p>
+    <p className="field-help">Location is captured only when you tap an action. Entered location and GPS evidence are both preserved. If service is unavailable, the original time and receipt stay on this device and sync automatically.</p>
   </section>;
 }

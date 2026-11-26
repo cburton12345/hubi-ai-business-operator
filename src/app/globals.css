@@ -8968,6 +8968,12 @@ pre {
   font-weight: 800;
 }
 
+.selected-workforce-card {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 @media (max-width: 640px) {
   .workforce-action-grid {
     grid-template-columns: 1fr;

@@ -14,6 +14,7 @@ export type CreateTimeClockEntryInput = {
   actorWorkerId?: string | null;
   occurredAt?: string | null;
   idempotencyKey?: string | null;
+  context?: Record<string, unknown>;
 };
 
 export type CreateTimeClockEntryResult = { id: string; created: boolean };
@@ -99,7 +100,8 @@ export async function createTimeClockEntry(
       input.notes,
       JSON.stringify({
         clockMode: input.gpsVerified ? "gps_verified" : "manual",
-        source: input.source
+        source: input.source,
+        ...(input.context ?? {})
       })
     ]
   );
@@ -108,7 +110,7 @@ export async function createTimeClockEntry(
   await appendTimeEvent(client, {
     tenantId: input.tenantId,timeEntryId: id,workerId: input.workerId,eventType: "clock_in",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,
-    next: { assignmentId: input.assignmentId, source: input.source },
+    next: { assignmentId: input.assignmentId, source: input.source,...(input.context ?? {}) },
     idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { id, created: true };
@@ -124,6 +126,7 @@ export async function changeTimeClockBreak(client: TimeClockClient, input: {
   source: "employee_app" | "operations_workforce";
   occurredAt?: string | null;
   idempotencyKey?: string | null;
+  context?: Record<string, unknown>;
 }): Promise<BreakChangeResult> {
   if (input.idempotencyKey) {
     const replay = await client.query<{ time_entry_id: string;new_state_json: { breakSeconds?: number } }>(
@@ -169,7 +172,7 @@ export async function changeTimeClockBreak(client: TimeClockClient, input: {
     eventType: input.mode === "start" ? "break_started" : "break_ended",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,
     previous: { breakStartedAt: entry.break_started_at, breakSeconds: entry.break_seconds },
-    next: { onBreak: input.mode === "start", breakSeconds: changed.break_seconds, source: input.source },
+    next: { onBreak: input.mode === "start", breakSeconds: changed.break_seconds, source: input.source,...(input.context ?? {}) },
     idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { changed: true, id: changed.id, breakSeconds: changed.break_seconds };
@@ -189,6 +192,7 @@ export async function closeTimeClockEntry(
     actorWorkerId?: string | null;
     occurredAt?: string | null;
     idempotencyKey?: string | null;
+    context?: Record<string, unknown>;
   }
 ): Promise<CloseTimeClockEntryResult> {
   if (input.idempotencyKey) {
@@ -244,7 +248,7 @@ export async function closeTimeClockEntry(
       input.clockOutLocation,
       effectiveBreakSeconds,
       input.notes,
-      JSON.stringify({ clockOutMode: "manual", payrollReviewRequired: true, source: input.source }),
+      JSON.stringify({ clockOutMode: "manual", payrollReviewRequired: true, source: input.source,...(input.context ?? {}) }),
       input.workerId,
       input.occurredAt ?? null
     ]
@@ -255,7 +259,7 @@ export async function closeTimeClockEntry(
     tenantId: input.tenantId,timeEntryId: id,workerId: entry.worker_id,eventType: "clock_out",
     actorUserId: input.actorUserId,actorWorkerId: input.actorWorkerId,reason: input.notes,
     previous: { status: entry.status, breakStartedAt: entry.break_started_at },
-    next: { status: "needs_review", breakSeconds: effectiveBreakSeconds, source: input.source },
+    next: { status: "needs_review", breakSeconds: effectiveBreakSeconds, source: input.source,...(input.context ?? {}) },
     idempotencyKey: input.idempotencyKey,occurredAt: input.occurredAt
   });
   return { closed: true, id };

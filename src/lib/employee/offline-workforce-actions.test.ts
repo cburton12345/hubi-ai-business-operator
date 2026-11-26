@@ -31,6 +31,17 @@ describe("offline workforce actions",() => {
     expect(source("public/sw.js")).toContain("flushWorkforceActions");
   });
 
+  it("preserves manual work location and outside-company context beside GPS evidence",() => {
+    const component = source("src/components/employee/WorkforceQuickActions.tsx");
+    const route = source("src/app/api/workforce/mobile-actions/route.ts");
+    expect(component).toContain("manualLocation");
+    expect(component).toContain("workContext");
+    expect(route).toContain("GPS near");
+    expect(route).toContain("manualLocation: action.manualLocation ?? null");
+    expect(route).toContain("workContext: action.workContext ?? null");
+    expect(route).toContain('action.location ? "gps" : "manual"');
+  });
+
   it("keeps receipt evidence on the device and enforces a bounded offline payload",() => {
     const component = source("src/components/employee/WorkforceQuickActions.tsx");
     const route = source("src/app/api/workforce/mobile-actions/route.ts");

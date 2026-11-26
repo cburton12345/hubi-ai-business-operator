@@ -30,6 +30,8 @@ const actionSchema = z.object({
   workerId: z.string().uuid(),
   assignmentId: z.string().uuid().optional(),
   location: locationSchema,
+  manualLocation: z.string().trim().max(220).optional(),
+  workContext: z.string().trim().max(220).optional(),
   note: z.string().trim().max(1000).optional(),
   expense: z.object({
     vendor: z.string().trim().max(160).optional(),
@@ -58,8 +60,16 @@ function safeCapturedAt(value: string) {
 }
 
 function locationLabel(action: z.infer<typeof actionSchema>) {
-  if (!action.location) return null;
-  return action.location.label?.trim() || `${action.location.latitude.toFixed(5)}, ${action.location.longitude.toFixed(5)}`;
+  const gpsLabel = action.location?.label?.trim()
+    || (action.location ? `${action.location.latitude.toFixed(5)}, ${action.location.longitude.toFixed(5)}` : null);
+  if (action.manualLocation && gpsLabel && action.manualLocation.toLocaleLowerCase() !== gpsLabel.toLocaleLowerCase()) {
+    return `${action.manualLocation} (GPS near ${gpsLabel})`.slice(0,220);
+  }
+  return action.manualLocation || gpsLabel;
+}
+
+function actionNote(action: z.infer<typeof actionSchema>) {
+  return [action.note,action.workContext ? `Other company/job: ${action.workContext}` : null].filter(Boolean).join("\n") || null;
 }
 
 async function receiptFile(receipt: z.infer<typeof receiptSchema>) {
@@ -135,12 +145,14 @@ export async function POST(request: Request) {
         const actorUserId = employee.userId;
         const actorWorkerId = employee.workerId;
         const place = locationLabel(action);
+        const note = actionNote(action);
+        const context = { location: action.location ?? null,manualLocation: action.manualLocation ?? null,locationLabel: place,workContext: action.workContext ?? null };
 
         if (action.actionType === "clock_in") {
           await createTimeClockEntry(client,{
             tenantId: employee.tenantId,workerId: action.workerId,assignmentId: action.assignmentId ?? null,
-            clockInLocation: place,gpsVerified: Boolean(action.location),notes: action.note ?? null,source,
-            actorUserId,actorWorkerId,occurredAt: capturedAt,idempotencyKey: action.clientMutationId
+            clockInLocation: place,gpsVerified: Boolean(action.location),notes: note,source,
+            actorUserId,actorWorkerId,occurredAt: capturedAt,idempotencyKey: action.clientMutationId,context
           });
         } else if (["start_break","end_break","clock_out"].includes(action.actionType)) {
           const open = await client.query<{ id: string }>(
@@ -159,15 +171,15 @@ export async function POST(request: Request) {
           if (action.actionType === "clock_out") {
             const closed = await closeTimeClockEntry(client,{
               tenantId: employee.tenantId,timeEntryId,workerId: action.workerId,clockOutLocation: place,
-              breakMinutes: 0,notes: action.note ?? null,source,actorUserId,actorWorkerId,
-              occurredAt: capturedAt,idempotencyKey: action.clientMutationId
+              breakMinutes: 0,notes: note,source,actorUserId,actorWorkerId,
+              occurredAt: capturedAt,idempotencyKey: action.clientMutationId,context
             });
             if (!closed.closed) throw new Error(closed.reason);
           } else {
             const changed = await changeTimeClockBreak(client,{
               tenantId: employee.tenantId,timeEntryId,workerId: action.workerId,
               mode: action.actionType === "start_break" ? "start" : "end",source,actorUserId,actorWorkerId,
-              occurredAt: capturedAt,idempotencyKey: action.clientMutationId
+              occurredAt: capturedAt,idempotencyKey: action.clientMutationId,context
             });
             if (!changed.changed && !["already_on_break","not_on_break"].includes(changed.reason)) throw new Error(changed.reason);
           }
@@ -180,8 +192,8 @@ export async function POST(request: Request) {
              on conflict (tenant_id,client_mutation_id) where client_mutation_id is not null do nothing`,
             [employee.tenantId,action.workerId,action.assignmentId ?? null,action.expense.vendor ?? null,capturedAt,
               action.expense.amountCents,action.expense.category,uploadedReceipt?.storageUri ?? null,
-              action.expense.reimbursable ? "submitted" : "not_reimbursable",action.note ?? null,action.clientMutationId,
-              JSON.stringify({ source,location: action.location ?? null,locationLabel: place,receiptUploadStatus: uploadedReceipt?.uploadStatus ?? "none",reviewRequired: true })]
+              action.expense.reimbursable ? "submitted" : "not_reimbursable",note,action.clientMutationId,
+              JSON.stringify({ source,location: action.location ?? null,manualLocation: action.manualLocation ?? null,locationLabel: place,workContext: action.workContext ?? null,receiptUploadStatus: uploadedReceipt?.uploadStatus ?? "none",reviewRequired: true })]
           );
         } else if (action.actionType === "worker_payment" && action.payment) {
           await client.query(
@@ -190,19 +202,20 @@ export async function POST(request: Request) {
              values ($1,$2,$3,$4,$5,$6,$7::timestamptz::date,$8,'recorded',$9,$10,$11::jsonb)
              on conflict (tenant_id,client_mutation_id) where client_mutation_id is not null do nothing`,
             [employee.tenantId,action.workerId,action.assignmentId ?? null,worker.rows[0].name,action.payment.paymentType,
-              action.payment.amountCents,capturedAt,action.payment.method,action.note ?? null,action.clientMutationId,
-              JSON.stringify({ source: "workforce_quick_action",actorUserId,location: action.location ?? null,locationLabel: place })]
+              action.payment.amountCents,capturedAt,action.payment.method,note,action.clientMutationId,
+              JSON.stringify({ source: "workforce_quick_action",actorUserId,location: action.location ?? null,manualLocation: action.manualLocation ?? null,locationLabel: place,workContext: action.workContext ?? null })]
           );
         }
 
-        if (action.location) {
+        if (action.location || action.manualLocation) {
           await client.query(
             `insert into public.operations_location_pings
                (tenant_id,worker_id,assignment_id,latitude,longitude,accuracy_meters,location_label,ping_source,alert_status,client_mutation_id,metadata_json)
-             values ($1,$2,$3,$4,$5,$6,$7,'gps','normal',$8,$9::jsonb)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,'normal',$9,$10::jsonb)
              on conflict (tenant_id,client_mutation_id) where client_mutation_id is not null do nothing`,
-            [employee.tenantId,action.workerId,action.assignmentId ?? null,action.location.latitude,action.location.longitude,
-              action.location.accuracyMeters ?? null,place,action.clientMutationId,JSON.stringify({ sourceAction: action.actionType,clientMutationId: action.clientMutationId,capturedAt,explicitActionOnly: true })]
+            [employee.tenantId,action.workerId,action.assignmentId ?? null,action.location?.latitude ?? null,action.location?.longitude ?? null,
+              action.location?.accuracyMeters ?? null,place,action.location ? "gps" : "manual",action.clientMutationId,
+              JSON.stringify({ sourceAction: action.actionType,clientMutationId: action.clientMutationId,capturedAt,explicitActionOnly: true,manualLocation: action.manualLocation ?? null,gpsLabel: action.location?.label ?? null,workContext: action.workContext ?? null })]
           );
         }
       });
