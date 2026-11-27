@@ -232,8 +232,8 @@ export async function closeTimeClockEntry(
     `update public.operations_time_entries
      set clock_out_at = coalesce($8::timestamptz,now()),
          clock_out_location = $3,
-         break_seconds = $4,
-         break_minutes = ceil($4/60.0)::integer,
+         break_seconds = $4::integer,
+         break_minutes = ceil($4::numeric/60.0)::integer,
          break_started_at = null,
          status = 'needs_review',
          notes = concat_ws(E'\n', nullif(notes, ''), nullif($5, '')),

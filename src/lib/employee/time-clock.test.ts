@@ -152,6 +152,9 @@ describe("employee time clock", () => {
       breakMinutes: 0,notes: null,source: "employee_app",occurredAt: capturedAt,idempotencyKey: "device-action-b"
     })).resolves.toEqual({ closed: true,id: "entry-1" });
     expect(calls.some((call) => call.values.includes(capturedAt))).toBe(true);
+    const updateCall = calls.find((call) => call.sql.startsWith("update public.operations_time_entries"));
+    expect(updateCall?.sql).toContain("break_seconds = $4::integer");
+    expect(updateCall?.sql).toContain("break_minutes = ceil($4::numeric/60.0)::integer");
     expect(calls.find((call) => call.sql.includes("insert into public.operations_time_entry_events"))?.values).toContain("device-action-b");
   });
 
