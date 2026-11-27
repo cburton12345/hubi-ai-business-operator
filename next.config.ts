@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Netlify's image transformation endpoint cannot reliably fetch this app's
+  // same-origin assets from immutable deploy domains. Serve the already-sized
+  // local brand images directly so login and public chat never depend on that
+  // additional runtime hop.
+  images: {
+    unoptimized: true,
+  },
   experimental: {
     agentUpgrade: "security",
     serverActions: {
