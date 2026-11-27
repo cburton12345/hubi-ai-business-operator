@@ -42,7 +42,32 @@ export async function POST(request: NextRequest) {
   const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const endsAt = new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString();
   const dueAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const certificationTaskKey = `business-action:certification-seed:${certificationPrefix}`;
+  const certificationWorkflowKey = `${certificationPrefix}:workflow`;
+  const persistedGoalKey = `external:undefined:${certificationWorkflowKey}`;
+  const certificationTask = await queryPostgres<{ id: string }>(
+    `insert into public.operating_commitments (
+       tenant_id,brand_id,commitment_key,description,status,importance,responsible_type,responsible_label,
+       due_at,source_type,source_reference,confidence_score,expected_outcome,
+       completion_evidence_required,confirmed_at,metadata_json
+     ) values (
+       $1,$2,$3,'QA-only task before runtime certification.','active','low','ferocity','Ferocity certification',
+       $4,'runtime_certification',$5,100,'Verify that task updates persist with audit history.',false,now(),
+       '{"qaOnly":true,"noExternalAction":true}'::jsonb
+     ) on conflict (tenant_id,commitment_key) do update set
+       description=excluded.description,status='active',due_at=excluded.due_at,updated_at=now()
+     returning id`,
+    [fixture.tenant_id, fixture.brand_id, certificationTaskKey, dueAt, certificationPrefix],
+  );
+  const certificationTaskId = certificationTask?.rows[0]?.id;
+  if (!certificationTaskId) {
+    return NextResponse.json({ error: "The QA task fixture could not be prepared." }, { status: 500 });
+  }
   const inputs: Record<string, unknown> = {
+    getBusinessSummary: {},
+    listCustomers: { limit: 10 },
+    listJobs: { limit: 10 },
+    listInvoices: { limit: 10 },
     getOpenLeads: { limit: 10 },
     getStaleLeads: { olderThanDays: 1, limit: 10 },
     getUnsoldEstimates: { limit: 10 },
@@ -68,6 +93,7 @@ export async function POST(request: NextRequest) {
     },
     getOutstandingInvoices: { limit: 10 },
     getOpenCommitments: { limit: 10 },
+    getMarketplaceProContractorSourcing: { limit: 10 },
     createCommitment: {
       brandId: fixture.brand_id,
       description: "Complete the QA-only business action certification cleanup.",
@@ -77,6 +103,21 @@ export async function POST(request: NextRequest) {
       expectedOutcome: "All action records verified and removed.",
       importance: "normal",
       completionEvidenceRequired: true,
+    },
+    updateCommitment: {
+      taskId: certificationTaskId,
+      description: "QA-only task updated through the business action layer.",
+      status: "blocked",
+      evidence: "Synthetic certification evidence; no external action occurred.",
+    },
+    startWorkflow: {
+      workflowKey: certificationWorkflowKey,
+      workflowType: "runtime_certification",
+      title: "QA-only governed workflow certification",
+      desiredOutcome: "Prove that a governed observe-mode workflow is recorded durably and removed after certification.",
+      priority: "low",
+      authorityMode: "observe",
+      targetAt: dueAt,
     },
   };
   const beforeJob = await queryPostgres<{ scheduled_start: string | null }>(
@@ -115,11 +156,41 @@ export async function POST(request: NextRequest) {
     }
     if (audit?.rows.some((row) => !["completed", "needs_attention"].includes(row.state))) throw new Error("One or more action audits did not finish correctly.");
 
+    const [updatedTask, updateEvent, createdCommitment, startedWorkflow] = await Promise.all([
+      queryPostgres<{ status: string; description: string }>(
+        `select status,description from public.operating_commitments where tenant_id=$1 and id=$2`,
+        [fixture.tenant_id, certificationTaskId],
+      ),
+      queryPostgres<{ count: number }>(
+        `select count(*)::int as count from public.operating_commitment_events
+         where tenant_id=$1 and commitment_id=$2 and event_type='external_update'`,
+        [fixture.tenant_id, certificationTaskId],
+      ),
+      queryPostgres<{ count: number }>(
+        `select count(*)::int as count from public.operating_commitments
+         where tenant_id=$1 and commitment_key=$2`,
+        [fixture.tenant_id, `business-action:${certificationPrefix}:createCommitment`],
+      ),
+      queryPostgres<{ status: string; authority_mode: string }>(
+        `select status,authority_mode from public.operating_goals where tenant_id=$1 and goal_key=$2`,
+        [fixture.tenant_id, persistedGoalKey],
+      ),
+    ]);
+    if (updatedTask?.rows[0]?.status !== "blocked" || updatedTask.rows[0]?.description !== "QA-only task updated through the business action layer.") {
+      throw new Error("The task update did not persist the certified values.");
+    }
+    if (updateEvent?.rows[0]?.count !== 1) throw new Error("The task update history was not recorded exactly once.");
+    if (createdCommitment?.rows[0]?.count !== 1) throw new Error("The task creation was not recorded exactly once.");
+    if (startedWorkflow?.rows[0]?.authority_mode !== "observe") throw new Error("The governed workflow was not recorded in observe mode.");
+
     return NextResponse.json({
       tenantId: fixture.tenant_id,
       certifiedActions,
       auditsVerified: audit?.rows.length ?? 0,
       protectedJobMutationPrevented: true,
+      taskPersistenceVerified: true,
+      taskHistoryVerified: true,
+      governedWorkflowVerified: true,
       externalProviderActionsTriggered: false,
     });
   } catch (error) {
@@ -128,6 +199,8 @@ export async function POST(request: NextRequest) {
     await queryPostgres(`delete from public.office_manager_action_requests where tenant_id=$1 and idempotency_key like $2`, [fixture.tenant_id, `business-action:${certificationPrefix}:%`]);
     await queryPostgres(`delete from public.follow_up_workflows where tenant_id=$1 and metadata_json->>'source'='qa_runtime_certification'`, [fixture.tenant_id]);
     await queryPostgres(`delete from public.operating_commitments where tenant_id=$1 and commitment_key like $2`, [fixture.tenant_id, `business-action:${certificationPrefix}:%`]);
+    await queryPostgres(`delete from public.operating_commitments where tenant_id=$1 and commitment_key=$2`, [fixture.tenant_id, certificationTaskKey]);
+    await queryPostgres(`delete from public.operating_goals where tenant_id=$1 and goal_key=$2`, [fixture.tenant_id, persistedGoalKey]);
     await queryPostgres(`delete from public.capability_execution_audits where tenant_id=$1 and idempotency_key like $2`, [fixture.tenant_id, `${certificationPrefix}:%`]);
   }
 }
