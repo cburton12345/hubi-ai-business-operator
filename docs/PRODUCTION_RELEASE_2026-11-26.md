@@ -32,6 +32,13 @@
 - Protected MarketplacePro integration routing returned the expected authentication redirect.
 - Live English and Spanish sign-in HTML contains the phone-or-email control.
 
+## Next release candidate
+
+- Local commit `32c5b0e` hardens emergency-fallback packaging and monitoring on top of the offline workforce and flexible-location candidate.
+- The complete current-tree `npm run predeploy:local` gate passes: all public/provider/capability/UI/integration guards, explicit Data API grants, rollback-only validation of migrations 282–294 against the retained disposable PostgreSQL target, 371 Vitest files / 1,562 tests, 15 Marketplace Worker tests, TypeScript, full ESLint, the optimized production build, and document-runtime verification across 149 server traces.
+- The Netlify production-context bundle check passes with `@netlify/plugin-nextjs` 5.16.9 and proves byte-identical emergency fallback content plus a non-empty Next.js server handler.
+- This candidate and migration 294 are not deployed. Current production still returns HTTP 404 for `/emergency.html`; `/health` and `/status` return HTTP 200.
+
 ## Database and provider state
 
 - No production database migration was required or applied for this release.
