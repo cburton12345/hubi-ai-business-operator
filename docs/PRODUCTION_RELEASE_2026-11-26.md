@@ -39,6 +39,7 @@
 - Production-context Netlify build passed with Netlify CLI 27.20.1, Netlify Build 37.8.0, and Next runtime 5.16.9.
 - The final bundle contains the verified independent emergency page, 370 Next static assets, 20 packaged functions, and a non-empty Next server handler.
 - Live `/`, English login, Spanish field login, `/status`, `/health`, `/api/health/supabase`, and `/emergency.html` return HTTP 200.
+- The production launch smoke passed all 17 read-only routes, including public marketing, signup, install, reset-password, protected-app redirect, and the current public worker-intake route.
 - Browser validation confirmed the hydrated English and Spanish sign-in layouts render correctly.
 - All 15 frontend resources referenced by the checked pages return HTTP 200; no page references the failing Netlify image-optimizer route.
 - `/app/operations-workforce` redirects unauthenticated users to login; an unauthenticated POST to `/api/workforce/mobile-actions` returns HTTP 401.
