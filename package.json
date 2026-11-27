@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/prepare-emergency-fallback.mjs",
     "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
     "db:migrate": "node scripts/run-migrations.mjs",
     "db:validate:data-api-grants": "node scripts/validate-public-data-api-grants.mjs",
@@ -59,6 +59,8 @@
     "features:architecture": "node scripts/feature-integration-check.mjs",
     "acceptance:platform": "vitest run src/lib/onboarding src/lib/security/self-serve-onboarding-handoff.test.ts src/lib/ferocity src/lib/employee src/lib/document-intelligence src/lib/messaging src/lib/ferocity-connect src/lib/phone/retell-tool-definitions.test.ts src/lib/providers/retell-config.test.ts src/lib/integrations/provider-access-token.test.ts src/lib/security/integration-disconnect-safety.test.ts src/lib/marketing-os/managed-ad-spend.test.ts src/lib/business-actions/gateway.test.ts src/lib/operations/goal-throughput-contract.test.ts src/lib/certification/ferocity-acceptance-contract.test.ts src/lib/mcp",
     "predeploy:local": "npm run public:guard && npm run provider:truth && npm run capability:truth && npm run ui:guard && npm run features:integrated && npm run db:validate:data-api-grants && npm run db:validate:migrations && npm test && npm run marketplace-worker:check && npm run typecheck && npm run lint && npm run build && npm run document-runtime:artifact",
+    "release:bundle": "npx --yes netlify@27.20.1 build --offline && npm run release:bundle:verify",
+    "release:bundle:verify": "node scripts/verify-netlify-release-bundle.mjs",
     "launch:smoke": "node scripts/launch-smoke.mjs",
     "launch:load": "node scripts/launch-load-smoke.mjs",
     "release:local:runtime": "node scripts/local-runtime-release-smoke.mjs",
@@ -150,7 +152,7 @@
   },
   "devDependencies": {
     "@netlify/functions": "^5.3.0",
-    "@netlify/plugin-nextjs": "^5.16.0",
+    "@netlify/plugin-nextjs": "^5.16.9",
     "@types/node": "^24.10.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.7",

@@ -37,3 +37,10 @@
 - No production database migration was required or applied for this release.
 - No provider write, customer communication, billing action, DNS change, or credential rotation occurred.
 - Authenticated owner/worker task completion remains ordinary live-use acceptance, not a release blocker for the verified public and authentication boundaries above.
+
+## Emergency fallback incident
+
+- The scheduled uptime workflow first observed `https://ferocity.live/emergency.html` returning HTTP 404 on November 26 after the same probe had passed earlier that day. `/health` and `/status` continued returning HTTP 200; this was degraded incident resilience, not a full application outage.
+- `public/emergency.html` remained present in source. The release process now copies the dependency-free fallback into the direct `.next` publish output, verifies the final `.netlify/static` bundle byte-for-byte, and verifies the Next.js server handler before publication.
+- The uptime workflow now validates the fallback's HTML content and identity markers, preventing an unrelated 200 response or generic error document from being reported as healthy.
+- Future production publication must use a Netlify build-backed release. Publishing a raw, unverified directory is not an authorized Ferocity release path.

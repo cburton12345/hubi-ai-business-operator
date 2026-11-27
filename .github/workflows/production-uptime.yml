@@ -37,6 +37,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          response_file="$(mktemp)"
+          response_headers="$(mktemp)"
+          trap 'rm -f "$response_file" "$response_headers"' EXIT
           curl --fail --silent --show-error --location \
             --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
-            https://ferocity.live/emergency.html > /dev/null
+            --dump-header "$response_headers" \
+            --output "$response_file" \
+            https://ferocity.live/emergency.html
+          grep --ignore-case --quiet '^content-type: text/html' "$response_headers"
+          grep --fixed-strings --quiet '<title>Ferocity Emergency Status</title>' "$response_file"
+          grep --fixed-strings --quiet 'This page is intentionally independent of Ferocity’s database' "$response_file"
