@@ -1,4 +1,57 @@
-# Ferocity production release — 2026-11-26
+# Ferocity production releases — 2026-11-26 to 2026-11-27
+
+## 2026-11-27 verified release
+
+### Published artifact
+
+- Site: `418ea625-bb2f-45cc-951c-33b231147ab8` (`ferocityflo`)
+- Production deploy: `6b0936f9c61b12dc48e26fbe`
+- Immutable URL: `https://6b0936f9c61b12dc48e26fbe--ferocityflo.netlify.app`
+- Canonical URL: `https://ferocity.live`
+- Published Git commit: `b56bbcc` (`Serve local brand images without runtime optimizer`)
+- Feature/release base: `aebde06` plus commits `e60c91f`, `b3f2273`, `152d55b`, and `78f478f`
+- Previous verified production baseline: `6b07f1c44648849c8b4b039a`
+- Netlify API confirmed deploy `6b0936f9c61b12dc48e26fbe` is `ready` and is the site's published deploy.
+
+### Recovery evidence
+
+- Fresh encrypted production backup:
+  `C:\Users\schem\Documents\Ferocity Backups\Encrypted\ferocity-puvpgebitzvyqbdnnlyz-20261127T073138Z-af96c8277324d7cf0c93014fa798e91a`
+- Supabase project: `puvpgebitzvyqbdnnlyz`
+- Archive SHA-256: `82ceaadd8f6f985eb7168c1a3b941ff14030ffc2440180205da9f29d85517a87`
+- Manifest SHA-256: `55158b2316b21c42afa534228365e1b48f08923dfd62725911b81c3d839c6879`
+- Manifest signature and authenticated restore verification passed before migration.
+
+### Database changes and postconditions
+
+- Applied `293_trusted_device_sessions` atomically; source SHA-256:
+  `79bcaf2b28803018566012a850207f61c23746704c49bd9cf02d8c9785838874`.
+- Applied `294_offline_workforce_actions` atomically; source SHA-256:
+  `3068d0758f03f62e28282310679db67c6808bd6542f008e0f2774a505e7e2946`.
+- Production ledger contains both versions.
+- Verified 9 required columns, 4 required indexes, and 3 validated session constraints.
+- Session postflight: 45 total, 5 active, 0 null absolute expiries, and 0 expiries beyond the hard ceiling.
+- Offline idempotency postflight: 0 duplicate expense, worker-payment, or location-ping mutation groups.
+
+### Build and live verification
+
+- Full `npm run predeploy:local` passed before publication: 371 Vitest files / 1,562 tests, 15 Marketplace Worker tests, migration rollback validation, TypeScript, ESLint, production build, and 149 document-runtime traces.
+- Production-context Netlify build passed with Netlify CLI 27.20.1, Netlify Build 37.8.0, and Next runtime 5.16.9.
+- The final bundle contains the verified independent emergency page, 370 Next static assets, 20 packaged functions, and a non-empty Next server handler.
+- Live `/`, English login, Spanish field login, `/status`, `/health`, `/api/health/supabase`, and `/emergency.html` return HTTP 200.
+- Browser validation confirmed the hydrated English and Spanish sign-in layouts render correctly.
+- All 15 frontend resources referenced by the checked pages return HTTP 200; no page references the failing Netlify image-optimizer route.
+- `/app/operations-workforce` redirects unauthenticated users to login; an unauthenticated POST to `/api/workforce/mobile-actions` returns HTTP 401.
+- `/health` reports `ok: true` and Supabase `ready`; the direct Supabase health endpoint reports `ready`.
+- CSP and HSTS are present on the checked public pages.
+
+### Publication incident and permanent release correction
+
+- Deploy `6b0933a7a5b9b443c892cfcf` was immediately rejected because the default `--no-build` publication included server functions but omitted generated static CSS and JavaScript. Live checks caught the failure before certification.
+- Fix-forward deploy `6b09361b999f20164401ec26` published the explicit verified `.netlify/static` and `.netlify/functions` outputs and restored all CSS and JavaScript resources.
+- The same-origin Netlify image optimizer still failed for local brand images, including on the previous production baseline. Commit `b56bbcc` disables that unnecessary runtime hop globally; the final build serves the original local brand assets directly.
+- Authorized manual production publication for this project must specify both generated outputs: `--dir .netlify/static --functions .netlify/functions`. A raw `.next` publish or a default `--no-build` publish without those paths is not an accepted release path.
+- The strengthened GitHub uptime workflow remains source-only until its branch is merged; the live fallback URL and identity markers were independently verified in this release.
 
 ## Published artifact
 
