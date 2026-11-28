@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { refreshTikTokAccessToken } from "@/lib/integrations/tiktok-oauth";
 
 type RefreshableProvider =
+  | "facebook"
   | "google_calendar"
   | "google_business_profile"
   | "google_ads"
@@ -28,6 +29,9 @@ type CredentialRow = {
 };
 
 function clientConfig(provider: RefreshableProvider) {
+  if (provider === "facebook") {
+    return { clientId: env.META_APP_ID, clientSecret: env.META_APP_SECRET, tokenUrl: "https://graph.facebook.com/v25.0/oauth/access_token" };
+  }
   if (provider === "tiktok") {
     return { clientId: env.TIKTOK_CLIENT_KEY, clientSecret: env.TIKTOK_CLIENT_SECRET, tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/" };
   }
@@ -77,8 +81,36 @@ export async function getFreshProviderAccessToken(tenantId: string, provider: Re
   const expiresAt = accessRow?.rotation_due_at ? new Date(accessRow.rotation_due_at).getTime() : 0;
   if (accessToken && expiresAt > Date.now() + 5 * 60_000) return accessToken;
 
-  const refreshToken = open(refreshRow);
   const config = clientConfig(provider);
+  if (provider === "facebook") {
+    if (!accessToken || !config.clientId || !config.clientSecret) {
+      throw new Error("The provider connection must be reauthorized.");
+    }
+    const url = new URL(config.tokenUrl);
+    url.searchParams.set("grant_type", "fb_exchange_token");
+    url.searchParams.set("client_id", config.clientId);
+    url.searchParams.set("client_secret", config.clientSecret);
+    url.searchParams.set("fb_exchange_token", accessToken);
+    const response = await fetchImpl(url, { method: "GET", cache: "no-store" });
+    const body = await response.json().catch(() => null) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: { message?: string; code?: number; type?: string };
+    } | null;
+    if (!response.ok || !body?.access_token) {
+      const providerReason = body?.error?.message;
+      throw new Error(providerReason
+        ? `The provider token refresh failed: ${providerReason}`
+        : `The provider token refresh failed (HTTP ${response.status}).`);
+    }
+    const newExpiresAt = new Date(
+      Date.now() + Math.max(300, Number(body.expires_in ?? 5_184_000)) * 1000,
+    ).toISOString();
+    await storeToken(tenantId, provider, "oauth_access_token", body.access_token, newExpiresAt);
+    return body.access_token;
+  }
+
+  const refreshToken = open(refreshRow);
   if (!refreshToken || !config.clientId || !config.clientSecret) throw new Error("The provider connection must be reauthorized.");
   if (provider === "tiktok") {
     const tokens = await refreshTikTokAccessToken({

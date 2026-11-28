@@ -2,6 +2,7 @@ import { queryPostgres } from "@/lib/db/postgres";
 import { getFreshProviderAccessToken } from "@/lib/integrations/provider-access-token";
 
 export const refreshableProviderKeys = [
+  "facebook",
   "google_calendar",
   "google_business_profile",
   "google_ads",
@@ -51,7 +52,9 @@ function failureReason(error: unknown): ProviderCredentialRefreshOutcome["reason
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   return message.includes("reauthoriz") ||
     message.includes("invalid_grant") ||
-    message.includes("revoked")
+    message.includes("revoked") ||
+    message.includes("error validating access token") ||
+    message.includes("session has expired")
     ? "reauthorization_required"
     : "refresh_failed";
 }
@@ -63,7 +66,7 @@ async function findDueCredentials(tenantId: string, limit: number) {
        join public.provider_accounts account
          on account.tenant_id=access.tenant_id
         and account.provider_key=access.provider_key
-       join public.tenant_provider_credentials refresh
+       left join public.tenant_provider_credentials refresh
          on refresh.tenant_id=access.tenant_id
         and refresh.provider_key=access.provider_key
         and refresh.credential_label='oauth_refresh_token'
@@ -73,12 +76,19 @@ async function findDueCredentials(tenantId: string, limit: number) {
         and access.status='configured'
         and access.provider_key=any($2::text[])
         and account.status in ('connected','ready','active')
-        and account.credentials_status='configured'
+        and account.credentials_status in ('configured','expired')
+        and (access.provider_key='facebook' or refresh.tenant_id is not null)
         and (access.rotation_due_at is null or access.rotation_due_at <= now()+interval '15 minutes')
         and (
           account.metadata_json->>'lastCredentialMaintenanceStatus' is distinct from 'failed'
-          or account.metadata_json->>'credentialMaintenanceFailureReason' is distinct from 'refresh_failed'
-          or nullif(account.metadata_json->>'lastCredentialMaintenanceAt','')::timestamptz <= now()-interval '30 minutes'
+          or (
+            account.metadata_json->>'credentialMaintenanceFailureReason'='refresh_failed'
+            and nullif(account.metadata_json->>'lastCredentialMaintenanceAt','')::timestamptz <= now()-interval '30 minutes'
+          )
+          or (
+            account.metadata_json->>'credentialMaintenanceFailureReason'='reauthorization_required'
+            and nullif(account.metadata_json->>'lastCredentialMaintenanceAt','')::timestamptz <= now()-interval '24 hours'
+          )
         )
       order by access.provider_key
       limit $3`,

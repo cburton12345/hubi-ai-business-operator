@@ -13,6 +13,8 @@ vi.mock("@/lib/credentials/credential-vault", () => ({
 }));
 vi.mock("@/lib/env", () => ({
   env: {
+    META_APP_ID: "meta-app",
+    META_APP_SECRET: "meta-secret",
     MICROSOFT_CLIENT_ID: "microsoft-client",
     MICROSOFT_CLIENT_SECRET: "microsoft-secret",
     REDDIT_CLIENT_ID: "reddit-client",
@@ -95,6 +97,41 @@ describe("getFreshProviderAccessToken", () => {
     expect(request.body.toString()).toContain("scope=offline_access+https%3A%2F%2Fads.microsoft.com%2Fmsads.manage");
     expect(request.body.toString()).not.toContain("oauth2.googleapis.com");
     expect(mocks.queryPostgres).toHaveBeenCalledTimes(3);
+  });
+
+  it("renews a Meta long-lived token without requiring an OAuth refresh-token row", async () => {
+    mocks.queryPostgres
+      .mockReset()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            credential_label: "oauth_access_token",
+            encrypted_secret: "expiring-meta-access",
+            encryption_iv: "iv",
+            encryption_tag: "tag",
+            rotation_due_at: "2026-09-29T00:00:00.000Z",
+          },
+        ],
+      })
+      .mockResolvedValue({ rows: [] });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "renewed-meta-access",
+      expires_in: 5_184_000,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const token = await getFreshProviderAccessToken("tenant-1", "facebook", fetchImpl as typeof fetch);
+
+    expect(token).toBe("renewed-meta-access");
+    const [url, request] = fetchImpl.mock.calls[0];
+    expect(url).toBeInstanceOf(URL);
+    expect(url.origin).toBe("https://graph.facebook.com");
+    expect(url.pathname).toBe("/v25.0/oauth/access_token");
+    expect(url.searchParams.get("grant_type")).toBe("fb_exchange_token");
+    expect(url.searchParams.get("client_id")).toBe("meta-app");
+    expect(url.searchParams.get("client_secret")).toBe("meta-secret");
+    expect(url.searchParams.get("fb_exchange_token")).toBe("expiring-meta-access");
+    expect(request.method).toBe("GET");
+    expect(mocks.queryPostgres).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes Reddit with HTTP Basic authentication and the required user agent", async () => {
