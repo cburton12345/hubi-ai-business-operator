@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { refreshDueProviderCredentialsForTenant } from "@/lib/integrations/credential-maintenance";
+import {
+  credentialRefreshLeadMinutes,
+  refreshDueProviderCredentialsForTenant,
+} from "@/lib/integrations/credential-maintenance";
 
 describe("refreshDueProviderCredentialsForTenant", () => {
+  it("starts renewal early enough for the hourly maintenance schedule", () => {
+    expect(credentialRefreshLeadMinutes).toBeGreaterThan(60);
+  });
+
   it("isolates provider failures and returns no access-token material", async () => {
     const recordOutcome = vi.fn().mockResolvedValue(undefined);
     const result = await refreshDueProviderCredentialsForTenant("tenant-1", {

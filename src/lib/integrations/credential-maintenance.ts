@@ -20,6 +20,7 @@ export const refreshableProviderKeys = [
 ] as const;
 
 export type RefreshableProviderKey = (typeof refreshableProviderKeys)[number];
+export const credentialRefreshLeadMinutes = 90;
 
 type DueCredentialConnection = {
   tenant_id: string;
@@ -78,7 +79,7 @@ async function findDueCredentials(tenantId: string, limit: number) {
         and account.status in ('connected','ready','active')
         and account.credentials_status in ('configured','expired')
         and (access.provider_key='facebook' or refresh.tenant_id is not null)
-        and (access.rotation_due_at is null or access.rotation_due_at <= now()+interval '15 minutes')
+        and (access.rotation_due_at is null or access.rotation_due_at <= now()+($4::int * interval '1 minute'))
         and (
           account.metadata_json->>'lastCredentialMaintenanceStatus' is distinct from 'failed'
           or (
@@ -92,7 +93,7 @@ async function findDueCredentials(tenantId: string, limit: number) {
         )
       order by access.provider_key
       limit $3`,
-    [tenantId, refreshableProviderKeys, limit],
+    [tenantId, refreshableProviderKeys, limit, credentialRefreshLeadMinutes],
   );
   return result?.rows ?? [];
 }
