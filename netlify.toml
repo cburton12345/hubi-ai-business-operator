@@ -5,6 +5,9 @@
 [build.environment]
   NODE_VERSION = "22"
   NPM_FLAGS = "--include=dev"
+  # These values are public/non-sensitive configuration identifiers or numeric
+  # spending limits. Keep secret scanning enabled for every credential value.
+  SECRETS_SCAN_OMIT_KEYS = "VIDEO_MONTHLY_BUDGET_CENTS,PINTEREST_CLIENT_ID,META_APP_ID"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
