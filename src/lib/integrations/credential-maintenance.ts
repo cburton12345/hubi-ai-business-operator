@@ -122,7 +122,12 @@ async function recordCredentialRefreshOutcome(
 
 const defaultDependencies: CredentialMaintenanceDependencies = {
   findDue: findDueCredentials,
-  refresh: getFreshProviderAccessToken,
+  refresh: (tenantId, provider) => getFreshProviderAccessToken(
+    tenantId,
+    provider,
+    fetch,
+    { forceRefresh: true },
+  ),
   recordOutcome: recordCredentialRefreshOutcome,
 };
 

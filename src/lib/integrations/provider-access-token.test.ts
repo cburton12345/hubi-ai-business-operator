@@ -134,6 +134,44 @@ describe("getFreshProviderAccessToken", () => {
     expect(mocks.queryPostgres).toHaveBeenCalledTimes(2);
   });
 
+  it("forces scheduled maintenance to exchange a token before its ordinary freshness window", async () => {
+    mocks.queryPostgres
+      .mockReset()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            credential_label: "oauth_access_token",
+            encrypted_secret: "still-valid-reddit-access",
+            encryption_iv: "iv",
+            encryption_tag: "tag",
+            rotation_due_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          },
+          {
+            credential_label: "oauth_refresh_token",
+            encrypted_secret: "refresh-token",
+            encryption_iv: "iv",
+            encryption_tag: "tag",
+            rotation_due_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+          },
+        ],
+      })
+      .mockResolvedValue({ rows: [] });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "forced-new-reddit-access",
+      expires_in: 3600,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const token = await getFreshProviderAccessToken(
+      "tenant-1",
+      "reddit",
+      fetchImpl as typeof fetch,
+      { forceRefresh: true },
+    );
+
+    expect(token).toBe("forced-new-reddit-access");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
   it("refreshes Reddit with HTTP Basic authentication and the required user agent", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       access_token: "new-reddit-access",

@@ -67,7 +67,12 @@ async function storeToken(tenantId: string, provider: RefreshableProvider, label
   );
 }
 
-export async function getFreshProviderAccessToken(tenantId: string, provider: RefreshableProvider, fetchImpl: typeof fetch = fetch) {
+export async function getFreshProviderAccessToken(
+  tenantId: string,
+  provider: RefreshableProvider,
+  fetchImpl: typeof fetch = fetch,
+  options: { forceRefresh?: boolean } = {},
+) {
   const result = await queryPostgres<CredentialRow>(
     `select credential_label, encrypted_secret, encryption_iv, encryption_tag, rotation_due_at
      from public.tenant_provider_credentials
@@ -79,7 +84,7 @@ export async function getFreshProviderAccessToken(tenantId: string, provider: Re
   const refreshRow = result?.rows.find((row) => row.credential_label === "oauth_refresh_token");
   const accessToken = open(accessRow);
   const expiresAt = accessRow?.rotation_due_at ? new Date(accessRow.rotation_due_at).getTime() : 0;
-  if (accessToken && expiresAt > Date.now() + 5 * 60_000) return accessToken;
+  if (!options.forceRefresh && accessToken && expiresAt > Date.now() + 5 * 60_000) return accessToken;
 
   const config = clientConfig(provider);
   if (provider === "facebook") {
